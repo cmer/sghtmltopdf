@@ -10,7 +10,7 @@ use crate::html::{Dom, NodeData, NodeId};
 
 use super::cascade::matching_declarations;
 use super::properties::PropertyDeclaration;
-use super::stylesheet::Stylesheet;
+use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{Color, Display, Length, LengthPercentage, LengthPercentageOrAuto};
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -128,6 +128,7 @@ fn compute_element_style(
     author: &Stylesheet,
 ) -> ComputedStyle {
     let declarations = matching_declarations(dom, element, ua, author);
+    let inline_declarations = inline_style_declarations(dom, element);
 
     let mut display = None;
     let mut width = None;
@@ -150,7 +151,8 @@ fn compute_element_style(
     let mut background_color = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
-    for decl in declarations {
+    // インラインstyle属性はセレクタベースのどの宣言よりも優先度が高いため、最後に置く。
+    for decl in declarations.into_iter().chain(inline_declarations.iter()) {
         match decl {
             PropertyDeclaration::Display(v) => display = Some(*v),
             PropertyDeclaration::Width(v) => width = Some(*v),
@@ -238,6 +240,18 @@ fn resolve_color(declared: Option<Color>, inherited: RgbaColor) -> RgbaColor {
         },
         Some(Color::CurrentColor) | None => inherited,
     }
+}
+
+/// 要素の`style="..."`属性をパースする(属性がなければ空)。
+fn inline_style_declarations(dom: &Dom, element: NodeId) -> Vec<PropertyDeclaration> {
+    let NodeData::Element { attrs, .. } = &dom.node(element).data else {
+        return Vec::new();
+    };
+    attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "style")
+        .map(|attr| parse_inline_style(&attr.value))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -381,5 +395,59 @@ mod tests {
 
         let styles = compute_styles(&dom, &ua, &author);
         assert_eq!(styles[&text], styles[&p]);
+    }
+
+    #[test]
+    fn inline_style_overrides_stylesheet_rules_regardless_of_specificity() {
+        // #idセレクタは通常どのクラス/type選択子よりも詳細度が高いが、
+        // インラインstyleはそれよりもさらに優先されるはず。
+        let dom = html::parse(br#"<div id="x" style="color: rgb(9, 9, 9);">t</div>"#);
+        let p = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("#x { color: rgb(1, 1, 1); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&p].color,
+            RgbaColor {
+                red: 9,
+                green: 9,
+                blue: 9,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn inline_style_applies_when_there_is_no_matching_rule() {
+        let dom = html::parse(br#"<div style="background-color: rgb(4, 5, 6);">t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = Stylesheet::default();
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].background_color,
+            RgbaColor {
+                red: 4,
+                green: 5,
+                blue: 6,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn elements_without_style_attribute_are_unaffected() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = Stylesheet::default();
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div], ComputedStyle::default());
     }
 }
