@@ -372,6 +372,10 @@ mod tests {
             count_occurrences(&bytes, b"/Type /CMap") > 0,
             "ToUnicode CMap should be embedded"
         );
+        assert!(
+            count_occurrences(&bytes, b"/FlateDecode") > 0,
+            "font stream should be compressed"
+        );
     }
 
     #[test]

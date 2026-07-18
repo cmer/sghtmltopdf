@@ -11,13 +11,16 @@
 //! 返し、呼び出し側([`super::document`])はコンテンツストリームを書く際に
 //! この対応表でグリフIDを変換する必要がある。
 //!
-//! 既知の未対応事項(将来のマイルストーンで対応):
-//! - フォントストリームは無圧縮のまま埋め込む(`flate2`等の追加が必要)
+//! `pdf-writer`は圧縮を自前で行わないため、サブセット後のフォントバイト列は
+//! `flate2`でzlib(`/FlateDecode`)圧縮してから埋め込む。
 
 use std::collections::BTreeMap;
+use std::io::Write;
 
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
-use pdf_writer::{Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
+use pdf_writer::{Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 use subsetter::GlyphRemapper;
 
 use crate::fonts::Font;
@@ -68,8 +71,11 @@ pub fn embed_font(
 
     let subset_data = subsetter::subset(font.data(), font.face_index(), &remapper)
         .unwrap_or_else(|_| font.data().to_vec());
+    let compressed = deflate(&subset_data);
 
-    let mut font_file = pdf.stream(ids.font_file, &subset_data);
+    let mut font_file = pdf.stream(ids.font_file, &compressed);
+    font_file.filter(Filter::FlateDecode);
+    // Length1はフォントプログラム本体の「圧縮前」の長さ(PDF仕様上の規定)。
     font_file.pair(Name(b"Length1"), subset_data.len() as i32);
     font_file.finish();
 
@@ -148,4 +154,44 @@ pub fn embed_font(
         .to_unicode(ids.to_unicode);
 
     old_to_new
+}
+
+/// zlib(`/FlateDecode`)圧縮する。
+fn deflate(data: &[u8]) -> Vec<u8> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(data)
+        .expect("インメモリバッファへの書き込みは失敗しない");
+    encoder
+        .finish()
+        .expect("インメモリバッファへの書き込みは失敗しない")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deflate_shrinks_compressible_data() {
+        let data = vec![b'A'; 10_000];
+        let compressed = deflate(&data);
+        assert!(
+            compressed.len() < data.len() / 10,
+            "highly repetitive data should compress well: {} -> {}",
+            data.len(),
+            compressed.len()
+        );
+    }
+
+    #[test]
+    fn deflate_output_round_trips_via_zlib_decoder() {
+        let data = b"the quick brown fox jumps over the lazy dog".repeat(50);
+        let compressed = deflate(&data);
+
+        let mut decoder = flate2::read::ZlibDecoder::new(&compressed[..]);
+        let mut decompressed = Vec::new();
+        std::io::Read::read_to_end(&mut decoder, &mut decompressed).unwrap();
+
+        assert_eq!(decompressed, data);
+    }
 }
