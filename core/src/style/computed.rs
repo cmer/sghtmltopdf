@@ -11,7 +11,9 @@ use crate::html::{Dom, NodeData, NodeId};
 use super::cascade::matching_declarations;
 use super::properties::PropertyDeclaration;
 use super::stylesheet::{parse_inline_style, Stylesheet};
-use super::values::{Color, Display, Length, LengthPercentage, LengthPercentageOrAuto};
+use super::values::{
+    Color, Display, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
+};
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,6 +46,10 @@ pub struct ComputedStyle {
     /// 継承プロパティ。
     pub font_family: Vec<String>,
     /// 継承プロパティ。
+    pub font_weight: FontWeight,
+    /// 継承プロパティ。
+    pub font_style: FontStyle,
+    /// 継承プロパティ。
     pub color: RgbaColor,
     pub background_color: RgbaColor,
 }
@@ -71,6 +77,8 @@ impl Default for ComputedStyle {
             border_left_width: Length(0.0),
             font_size: Length(16.0),
             font_family: vec!["sans-serif".to_string()],
+            font_weight: FontWeight::Normal,
+            font_style: FontStyle::Normal,
             color: RgbaColor {
                 red: 0,
                 green: 0,
@@ -147,6 +155,8 @@ fn compute_element_style(
     let mut border_left_width = None;
     let mut font_size = None;
     let mut font_family = None;
+    let mut font_weight = None;
+    let mut font_style = None;
     let mut color = None;
     let mut background_color = None;
 
@@ -171,6 +181,8 @@ fn compute_element_style(
             PropertyDeclaration::BorderLeftWidth(v) => border_left_width = Some(*v),
             PropertyDeclaration::FontSize(v) => font_size = Some(*v),
             PropertyDeclaration::FontFamily(v) => font_family = Some(v.clone()),
+            PropertyDeclaration::FontWeight(v) => font_weight = Some(*v),
+            PropertyDeclaration::FontStyle(v) => font_style = Some(*v),
             PropertyDeclaration::Color(v) => color = Some(*v),
             PropertyDeclaration::BackgroundColor(v) => background_color = Some(*v),
         }
@@ -180,6 +192,8 @@ fn compute_element_style(
     let inherited_font_size = parent.map_or(initial.font_size, |p| p.font_size);
     let inherited_font_family =
         parent.map_or_else(|| initial.font_family.clone(), |p| p.font_family.clone());
+    let inherited_font_weight = parent.map_or(initial.font_weight, |p| p.font_weight);
+    let inherited_font_style = parent.map_or(initial.font_style, |p| p.font_style);
     let inherited_color = parent.map_or(initial.color, |p| p.color);
 
     let resolved_color = resolve_color(color, inherited_color);
@@ -218,6 +232,8 @@ fn compute_element_style(
         border_left_width: border_left_width.unwrap_or(initial.border_left_width),
         font_size: font_size.unwrap_or(inherited_font_size),
         font_family: font_family.unwrap_or(inherited_font_family),
+        font_weight: font_weight.unwrap_or(inherited_font_weight),
+        font_style: font_style.unwrap_or(inherited_font_style),
         color: resolved_color,
         background_color: resolved_background_color,
     }
@@ -437,6 +453,45 @@ mod tests {
                 alpha: 1.0
             }
         );
+    }
+
+    #[test]
+    fn font_weight_and_style_are_inherited_but_overridable() {
+        let dom = html::parse(br#"<p><b>bold <i>bold-italic</i></b></p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let b = find(&dom, p, "b").expect("b not found");
+        let i = find(&dom, b, "i").expect("i not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("b { font-weight: bold; } i { font-style: italic; }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&p].font_weight, super::FontWeight::Normal);
+        assert_eq!(styles[&b].font_weight, super::FontWeight::Bold);
+        assert_eq!(styles[&b].font_style, super::FontStyle::Normal);
+        // <i>は<b>からfont-weight: boldを継承しつつ、自身のfont-style: italicを追加する。
+        assert_eq!(styles[&i].font_weight, super::FontWeight::Bold);
+        assert_eq!(styles[&i].font_style, super::FontStyle::Italic);
+    }
+
+    #[test]
+    fn numeric_font_weight_is_thresholded_to_bold_or_normal() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let light = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { font-weight: 400; }"),
+        );
+        assert_eq!(light[&p].font_weight, super::FontWeight::Normal);
+
+        let heavy = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { font-weight: 700; }"),
+        );
+        assert_eq!(heavy[&p].font_weight, super::FontWeight::Bold);
     }
 
     #[test]

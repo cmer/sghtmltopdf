@@ -82,9 +82,9 @@ fn layout_box(
             let height = resolve_height(&style).unwrap_or(auto_height);
             (LaidOutContent::Blocks(laid_children), height)
         }
-        BoxContent::Inline(text) => {
+        BoxContent::Inline(spans) => {
             let lines =
-                layout_inline_content(text, &style, fonts, content_width, content_x, content_y);
+                layout_inline_content(spans, styles, fonts, content_width, content_x, content_y);
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
             let height = resolve_height(&style).unwrap_or(lines_height);
             (LaidOutContent::Inline(lines), height)
@@ -296,9 +296,13 @@ mod tests {
             panic!("expected block container")
         };
         assert_eq!(children.len(), 3, "before-text / <p> / after-text");
-        assert!(matches!(&children[0].content, BoxContent::Inline(t) if t.trim() == "before"));
+        let joined_text = |content: &BoxContent| match content {
+            BoxContent::Inline(spans) => spans.iter().map(|s| s.text.as_str()).collect::<String>(),
+            BoxContent::Blocks(_) => panic!("expected inline content"),
+        };
+        assert_eq!(joined_text(&children[0].content).trim(), "before");
         assert_eq!(children[1].node, Some(ps[0]));
-        assert!(matches!(&children[2].content, BoxContent::Inline(t) if t.trim() == "after"));
+        assert_eq!(joined_text(&children[2].content).trim(), "after");
     }
 
     #[test]

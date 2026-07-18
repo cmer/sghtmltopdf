@@ -2,7 +2,9 @@
 
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
-use super::values::{Color, Display, Length, LengthPercentage, LengthPercentageOrAuto};
+use super::values::{
+    Color, Display, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyDeclaration {
@@ -23,6 +25,8 @@ pub enum PropertyDeclaration {
     BorderLeftWidth(Length),
     FontSize(Length),
     FontFamily(Vec<String>),
+    FontWeight(FontWeight),
+    FontStyle(FontStyle),
     Color(Color),
     BackgroundColor(Color),
 }
@@ -44,6 +48,8 @@ pub fn parse_declaration<'i>(
         "border" => parse_border_shorthand(input),
         "font-size" => Ok(vec![D::FontSize(parse_length(input)?)]),
         "font-family" => Ok(vec![D::FontFamily(parse_font_family(input)?)]),
+        "font-weight" => Ok(vec![D::FontWeight(parse_font_weight(input)?)]),
+        "font-style" => Ok(vec![D::FontStyle(parse_font_style(input)?)]),
         "color" => Ok(vec![D::Color(parse_color(input)?)]),
         "background-color" => Ok(vec![D::BackgroundColor(parse_color(input)?)]),
         _ => Err(input.new_custom_error(())),
@@ -136,6 +142,35 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "block" => Display::Block,
         "inline" => Display::Inline,
         "none" => Display::None,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// キーワード(`normal`/`bold`)と数値(`100`〜`900`)のどちらも受け付ける。
+/// 数値は600以上を`Bold`とみなす簡略実装(実際の太字フォントを持たず、
+/// 描画時に疑似太字で表現するため、細かい太さの段階は区別しない)。
+fn parse_font_weight<'i>(input: &mut Parser<'i, '_>) -> Result<FontWeight, ParseError<'i, ()>> {
+    if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+        return Ok(match_ignore_ascii_case! { &ident,
+            "normal" => FontWeight::Normal,
+            "bold" => FontWeight::Bold,
+            _ => return Err(input.new_custom_error(())),
+        });
+    }
+    let value = input.expect_number()?;
+    Ok(if value >= 600.0 {
+        FontWeight::Bold
+    } else {
+        FontWeight::Normal
+    })
+}
+
+fn parse_font_style<'i>(input: &mut Parser<'i, '_>) -> Result<FontStyle, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "normal" => FontStyle::Normal,
+        // `oblique`は専用の傾斜角を持たないため`italic`と同一視する。
+        "italic" | "oblique" => FontStyle::Italic,
         _ => return Err(input.new_custom_error(())),
     })
 }

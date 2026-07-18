@@ -12,16 +12,23 @@
 //! シェイピング済みの[`crate::fonts::ShapedGlyph`]をそのまま使うため、
 //! テキストの再シェイピングは発生しない。
 //!
+//! テキストの色・太字・イタリックは[`crate::layout::inline::TextRun`]に
+//! レイアウト時点で焼き込み済み(`<b>`/`<span style="...">`等のインライン要素
+//! ごとに異なりうる)なので、ページ分割で無名化されたインライン断片
+//! (`node: None`)であっても正しい見た目で描画される。
+//!
 //! 既知の簡略化:
 //! - `border-color`は計算スタイルに保持していない(T3参照)ため、枠線の描画は
 //!   行わない(`background-color`のみ描画する)
-//! - ページ分割で無名化されたインライン断片(`node: None`)は初期値スタイル
-//!   (黒文字・16px)で描画する
-//! - 1行の中でフォントが複数使われる場合、行のベースライン位置は先頭ランの
-//!   フォントのメトリクスを基準に揃える
+//! - 太字・イタリックは対応する字形を持つフォントファイルを別途要求せず、
+//!   通常字形に対して塗り+縁取り(疑似太字)・テキスト行列のせん断(疑似
+//!   イタリック)で代用する
+//! - 1行の中で複数フォント・複数フォントサイズが混在する場合、行のベースライン
+//!   位置は先頭ランのフォント・サイズのメトリクスを基準に揃える
 
 use std::collections::HashMap;
 
+use pdf_writer::types::TextRenderingMode;
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref};
 
 use crate::fonts::FontCollection;
@@ -212,15 +219,7 @@ fn render_box(
         }
         LaidOutContent::Inline(lines) => {
             for line in lines {
-                render_line(
-                    content,
-                    line,
-                    &style,
-                    fonts,
-                    settings,
-                    remaps,
-                    font_resource_names,
-                );
+                render_line(content, line, fonts, settings, remaps, font_resource_names);
             }
         }
     }
@@ -243,10 +242,15 @@ fn render_background(
     content.fill_nonzero();
 }
 
+/// 疑似イタリック(シアー変形)の傾斜角(12度)。埋め込みフォントに本物の
+/// イタリック字形がない前提で、テキスト行列をせん断することで代用する。
+const ITALIC_SHEAR: f32 = 0.2126; // tan(12°)
+/// 疑似ボールド(塗り+縁取り)の線幅を、フォントサイズに対する比率で表す。
+const BOLD_STROKE_RATIO: f32 = 0.03;
+
 fn render_line(
     content: &mut Content,
     line: &LineBox,
-    style: &ComputedStyle,
     fonts: &FontCollection,
     settings: &PageSettings,
     remaps: &[HashMap<u16, u16>],
@@ -255,23 +259,16 @@ fn render_line(
     let Some(first_run) = line.runs.first() else {
         return;
     };
-    let font_size = style.font_size.0;
 
-    // 行内で複数フォントが混在していても、ベースラインは先頭ランのフォントの
-    // メトリクスを基準に統一する。
+    // 行内で複数フォントが混在していても、ベースラインは先頭ランのフォント・
+    // サイズのメトリクスを基準に統一する。
     let baseline_font = fonts.get(first_run.font_index);
     let baseline_offset_px = baseline_font
-        .map(|f| baseline_offset(f, font_size, line.rect.height))
-        .unwrap_or(font_size);
+        .map(|f| baseline_offset(f, first_run.font_size, line.rect.height))
+        .unwrap_or(first_run.font_size);
     let baseline_y = to_pdf_y(settings, line.rect.y + baseline_offset_px);
-    let color = style.color;
 
     content.begin_text();
-    content.set_fill_rgb(
-        color.red as f32 / 255.0,
-        color.green as f32 / 255.0,
-        color.blue as f32 / 255.0,
-    );
 
     for run in &line.runs {
         if run.glyphs.is_empty() {
@@ -290,9 +287,27 @@ fn render_line(
             glyph_bytes.extend_from_slice(&cid.to_be_bytes());
         }
 
+        content.set_fill_rgb(
+            run.color.red as f32 / 255.0,
+            run.color.green as f32 / 255.0,
+            run.color.blue as f32 / 255.0,
+        );
+        if run.bold {
+            content.set_stroke_rgb(
+                run.color.red as f32 / 255.0,
+                run.color.green as f32 / 255.0,
+                run.color.blue as f32 / 255.0,
+            );
+            content.set_line_width(run.font_size * BOLD_STROKE_RATIO);
+            content.set_text_rendering_mode(TextRenderingMode::FillStroke);
+        } else {
+            content.set_text_rendering_mode(TextRenderingMode::Fill);
+        }
+
         let x = settings.margin.left + line.rect.x + run.x_offset;
-        content.set_font(Name(resource_name.as_bytes()), font_size);
-        content.set_text_matrix([1.0, 0.0, 0.0, 1.0, x, baseline_y]);
+        let shear = if run.italic { ITALIC_SHEAR } else { 0.0 };
+        content.set_font(Name(resource_name.as_bytes()), run.font_size);
+        content.set_text_matrix([1.0, 0.0, shear, 1.0, x, baseline_y]);
         content.show(pdf_writer::Str(&glyph_bytes));
     }
 

@@ -26,6 +26,14 @@ span, a, b, strong, i, em, small, code, label, abbr, sub, sup, u, s, mark {
   display: inline;
 }
 
+b, strong {
+  font-weight: bold;
+}
+
+i, em {
+  font-style: italic;
+}
+
 body {
   margin: 8px;
 }

@@ -18,4 +18,6 @@ pub use properties::PropertyDeclaration;
 pub use selector_impl::SgSelectorImpl;
 pub use stylesheet::{parse_stylesheet, StyleRule, Stylesheet};
 pub use ua::user_agent_stylesheet;
-pub use values::{Color, Display, Length, LengthPercentage, LengthPercentageOrAuto};
+pub use values::{
+    Color, Display, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
+};
