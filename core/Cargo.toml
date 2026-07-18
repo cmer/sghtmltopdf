@@ -15,9 +15,13 @@ path = "src/main.rs"
 [dependencies]
 cssparser = "0.37.0"
 html5ever = "0.39.0"
-krilla = "0.8.2"
 pdf-writer = "0.15.0"
 rustybuzz = "0.20.1"
 selectors = "0.39.0"
 taffy = "0.12.2"
 ttf-parser = "0.25.1"
+
+# krillaはT1スパイクの比較対象として examples/spike_krilla.rs でのみ使用。
+# 採用はpdf-writerに決定したため本実装では使わない(docs/decisions/0001-pdf-writer-crate.md参照)
+[dev-dependencies]
+krilla = "0.8.2"

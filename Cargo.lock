@@ -659,7 +659,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sg-core"
+name = "sghtmltopdf-core"
 version = "0.1.0"
 dependencies = [
  "cssparser",
