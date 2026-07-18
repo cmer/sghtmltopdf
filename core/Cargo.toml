@@ -1,0 +1,15 @@
+[package]
+name = "sg-core"
+version = "0.1.0"
+edition = "2021"
+description = "sg (Feels Good) — Chromium/WebKit/Gecko非依存のHTML→PDFレンダリングエンジン"
+
+[lib]
+name = "sg_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sghtmltopdf"
+path = "src/main.rs"
+
+[dependencies]
