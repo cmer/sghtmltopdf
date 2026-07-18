@@ -7,12 +7,9 @@
 //!   margin-right再計算)は行わない
 //! - 高さのパーセンテージ指定はcontaining blockの高さが不定なため`auto`として扱う
 //! - インラインコンテンツの行分割・実際の行数に応じた高さはT6([`super::inline`])が担う
-//! - 文書全体で単一のフォントを使う(`font-family`によるフォント切り替え・
-//!   フォールバックは将来のマイルストーンで対応)
-
 use std::collections::HashMap;
 
-use crate::fonts::Font;
+use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::style::{ComputedStyle, Display, LengthPercentage, LengthPercentageOrAuto};
 
@@ -37,16 +34,16 @@ pub enum LaidOutContent {
 pub fn layout_document(
     root: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
-    font: &Font,
+    fonts: &FontCollection,
     page_width: f32,
 ) -> LaidOutBox {
-    layout_box(root, styles, font, page_width, 0.0, 0.0)
+    layout_box(root, styles, fonts, page_width, 0.0, 0.0)
 }
 
 fn layout_box(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
-    font: &Font,
+    fonts: &FontCollection,
     containing_width: f32,
     x: f32,
     y: f32,
@@ -77,7 +74,7 @@ fn layout_box(
             let mut laid_children = Vec::with_capacity(children.len());
             for child in children {
                 let child_laid =
-                    layout_box(child, styles, font, content_width, content_x, cursor_y);
+                    layout_box(child, styles, fonts, content_width, content_x, cursor_y);
                 cursor_y += child_laid.layout.margin_box_height();
                 laid_children.push(child_laid);
             }
@@ -87,7 +84,7 @@ fn layout_box(
         }
         BoxContent::Inline(text) => {
             let lines =
-                layout_inline_content(text, &style, font, content_width, content_x, content_y);
+                layout_inline_content(text, &style, fonts, content_width, content_x, content_y);
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
             let height = resolve_height(&style).unwrap_or(lines_height);
             (LaidOutContent::Inline(lines), height)
@@ -212,13 +209,16 @@ fn resolve_width_and_horizontal_margins(
 mod tests {
     use super::super::box_tree::build_box_tree;
     use super::*;
+    use crate::fonts::Font;
     use crate::html::{self, Dom, NodeData};
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet, Stylesheet};
 
     const TEST_FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
 
-    fn test_font() -> Font {
-        Font::load(TEST_FONT_PATH).expect("should load bundled test font")
+    fn test_fonts() -> FontCollection {
+        FontCollection::new(vec![
+            Font::load(TEST_FONT_PATH).expect("should load bundled test font")
+        ])
     }
 
     fn find_all(dom: &Dom, id: NodeId, tag: &str, out: &mut Vec<NodeId>) {
@@ -308,8 +308,8 @@ mod tests {
         let author = parse_stylesheet(".box { margin: 10px; }");
         let styles = compute_styles(&dom, &ua, &author);
         let tree = build_box_tree(&dom, &styles);
-        let font = test_font();
-        let laid = layout_document(&tree, &styles, &font, 800.0);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
 
         let mut divs = Vec::new();
         find_all(&dom, dom.document(), "div", &mut divs);
@@ -330,8 +330,8 @@ mod tests {
         let author = parse_stylesheet(".centered { width: 400px; margin: 0 auto; }");
         let styles = compute_styles(&dom, &ua, &author);
         let tree = build_box_tree(&dom, &styles);
-        let font = test_font();
-        let laid = layout_document(&tree, &styles, &font, 800.0);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
 
         let mut divs = Vec::new();
         find_all(&dom, dom.document(), "div", &mut divs);
@@ -350,8 +350,8 @@ mod tests {
             parse_stylesheet(".a { height: 50px; margin: 0; } .b { height: 30px; margin: 0; }");
         let styles = compute_styles(&dom, &ua, &author);
         let tree = build_box_tree(&dom, &styles);
-        let font = test_font();
-        let laid = layout_document(&tree, &styles, &font, 800.0);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
 
         let mut ps = Vec::new();
         find_all(&dom, dom.document(), "p", &mut ps);
@@ -371,8 +371,8 @@ mod tests {
         let author = parse_stylesheet(".inner { height: 40px; margin: 0; }");
         let styles = compute_styles(&dom, &ua, &author);
         let tree = build_box_tree(&dom, &styles);
-        let font = test_font();
-        let laid = layout_document(&tree, &styles, &font, 800.0);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
 
         let mut divs = Vec::new();
         find_all(&dom, dom.document(), "div", &mut divs);
@@ -389,19 +389,19 @@ mod tests {
         let author = Stylesheet::default();
         let styles = compute_styles(&dom, &ua, &author);
         let tree = build_box_tree(&dom, &styles);
-        let font = test_font();
+        let fonts = test_fonts();
 
         let mut ps = Vec::new();
         find_all(&dom, dom.document(), "p", &mut ps);
 
-        let wide = layout_document(&tree, &styles, &font, 800.0);
+        let wide = layout_document(&tree, &styles, &fonts, 800.0);
         let p_wide = find_laid_out(&wide, ps[0]).expect("p not found");
         let LaidOutContent::Inline(lines_wide) = &p_wide.content else {
             panic!("expected inline content")
         };
         assert_eq!(lines_wide.len(), 1);
 
-        let narrow = layout_document(&tree, &styles, &font, 60.0);
+        let narrow = layout_document(&tree, &styles, &fonts, 60.0);
         let p_narrow = find_laid_out(&narrow, ps[0]).expect("p not found");
         let LaidOutContent::Inline(lines_narrow) = &p_narrow.content else {
             panic!("expected inline content")
@@ -420,8 +420,8 @@ mod tests {
         );
         let styles = compute_styles(&dom, &ua, &author);
         let tree = build_box_tree(&dom, &styles);
-        let font = test_font();
-        let laid = layout_document(&tree, &styles, &font, 800.0);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
 
         let mut divs = Vec::new();
         find_all(&dom, dom.document(), "div", &mut divs);

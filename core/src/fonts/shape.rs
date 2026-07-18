@@ -5,6 +5,9 @@ use super::font::Font;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShapedGlyph {
     pub glyph_id: u16,
+    /// このグリフに対応する、元のテキスト内のUTF-8バイトオフセット
+    /// (PDFの`/ToUnicode`CMap生成等、グリフから元の文字へ逆引きする際に使う)。
+    pub cluster: u32,
     /// 描画位置に対するアドバンス幅・オフセット(px)。
     pub x_advance: f32,
     pub x_offset: f32,
@@ -38,6 +41,7 @@ pub fn shape_text(font: &Font, text: &str, font_size: f32) -> ShapedText {
         let x_advance = pos.x_advance as f32 * scale;
         glyphs.push(ShapedGlyph {
             glyph_id: info.glyph_id as u16,
+            cluster: info.cluster,
             x_advance,
             x_offset: pos.x_offset as f32 * scale,
             y_offset: pos.y_offset as f32 * scale,

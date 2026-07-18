@@ -20,6 +20,7 @@ pdf-writer = "0.15.0"
 precomputed-hash = "0.1.1"
 rustybuzz = "0.20.1"
 selectors = "0.39.0"
+subsetter = "0.2.6"
 taffy = "0.12.2"
 ttf-parser = "0.25.1"
 

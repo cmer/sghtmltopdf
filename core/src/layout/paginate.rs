@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use crate::fonts::Font;
+use crate::fonts::FontCollection;
 use crate::html::{Dom, NodeId};
 use crate::style::ComputedStyle;
 
@@ -42,11 +42,11 @@ pub fn paginate(root: &LaidOutBox, page_content_height: f32) -> Vec<Page> {
 pub fn paginate_document(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
-    font: &Font,
+    fonts: &FontCollection,
     settings: &PageSettings,
 ) -> Vec<Page> {
     let tree = build_box_tree(dom, styles);
-    let laid_out = layout_document(&tree, styles, font, settings.content_width());
+    let laid_out = layout_document(&tree, styles, fonts, settings.content_width());
     paginate(&laid_out, settings.content_height())
 }
 
@@ -162,13 +162,16 @@ fn shift_rect_y(rect: &mut Rect, delta: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fonts::Font;
     use crate::html::{self, Dom, NodeData};
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet, Stylesheet};
 
     const TEST_FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
 
-    fn test_font() -> Font {
-        Font::load(TEST_FONT_PATH).expect("should load bundled test font")
+    fn test_fonts() -> FontCollection {
+        FontCollection::new(vec![
+            Font::load(TEST_FONT_PATH).expect("should load bundled test font")
+        ])
     }
 
     fn find_all(dom: &Dom, id: NodeId, tag: &str, out: &mut Vec<NodeId>) {
@@ -230,10 +233,10 @@ mod tests {
         let ua = user_agent_stylesheet();
         let author = Stylesheet::default();
         let styles = compute_styles(&dom, &ua, &author);
-        let font = test_font();
+        let fonts = test_fonts();
         let settings = PageSettings::default();
 
-        let pages = paginate_document(&dom, &styles, &font, &settings);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
         assert_eq!(pages.len(), 1);
 
         // 分割が発生しないため、無名ルート(node: None)ごと元の構造が保たれているはず。
@@ -256,10 +259,10 @@ mod tests {
         let ua = user_agent_stylesheet();
         let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
         let styles = compute_styles(&dom, &ua, &author);
-        let font = test_font();
+        let fonts = test_fonts();
         let settings = PageSettings::default();
 
-        let pages = paginate_document(&dom, &styles, &font, &settings);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
         assert!(
             pages.len() > 1,
             "20 items of 100px should overflow a single page"
@@ -294,10 +297,10 @@ mod tests {
         let ua = user_agent_stylesheet();
         let author = Stylesheet::default();
         let styles = compute_styles(&dom, &ua, &author);
-        let font = test_font();
+        let fonts = test_fonts();
         let settings = PageSettings::default();
 
-        let pages = paginate_document(&dom, &styles, &font, &settings);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
         assert!(
             pages.len() > 1,
             "1000 words should wrap into more lines than fit on one page"

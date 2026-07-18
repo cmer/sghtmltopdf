@@ -1,20 +1,24 @@
 //! フォントのPDF埋め込み(CIDFontType2 + Type0 `/Encoding /Identity-H`)。
 //!
-//! `core/examples/spike_pdf_font_embedding.rs`で検証した方式をそのまま使う。
-//! 2バイトのコードをそのままCID(=GlyphID、`/CIDToGIDMap /Identity`)として
-//! 扱うため、`fonts::shape_text`が返すグリフID列をそのままテキスト描画コードに
-//! できる。
+//! `core/examples/spike_pdf_font_embedding.rs`で検証した方式をベースに、
+//! 実際に使用したグリフだけへのサブセット化(`subsetter`クレート)と、
+//! `/ToUnicode` CMapによるテキスト抽出対応を追加している。
+//!
+//! `subsetter::subset`はサブセット後のフォントから`cmap`テーブルを取り除く仕様
+//! (PDF埋め込み専用の割り切った設計)のため、サブセット後のグリフIDは元の
+//! グリフIDとは異なる(コンパクトに詰め直された)ものになる。そのため
+//! [`embed_font`]は「元のグリフID→サブセット後のグリフID(=CID)」の対応表を
+//! 返し、呼び出し側([`super::document`])はコンテンツストリームを書く際に
+//! この対応表でグリフIDを変換する必要がある。
 //!
 //! 既知の未対応事項(将来のマイルストーンで対応):
-//! - `/ToUnicode` CMap未設定のため、テキスト抽出/コピペ/全文検索では文字化けする
-//!   (表示自体は正しい)
 //! - フォントストリームは無圧縮のまま埋め込む(`flate2`等の追加が必要)
-//! - フォントサブセット化は未対応(使用したグリフだけに絞り込んでいない)
 
 use std::collections::BTreeMap;
 
-use pdf_writer::types::{CidFontType, FontFlags, SystemInfo};
+use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use pdf_writer::{Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
+use subsetter::GlyphRemapper;
 
 use crate::fonts::Font;
 
@@ -25,14 +29,48 @@ pub struct FontIds {
     pub descriptor: Ref,
     pub cid_font: Ref,
     pub type0_font: Ref,
+    pub to_unicode: Ref,
 }
 
-/// `font`をPDFへ埋め込む。`used_glyphs`は文書全体で実際に使用された
-/// グリフIDと、その幅(1000unit/emグリフ空間)の対応表。
-pub fn embed_font(pdf: &mut Pdf, font: &Font, ids: FontIds, used_glyphs: &BTreeMap<u16, f32>) {
-    let font_data = font.data();
-    let mut font_file = pdf.stream(ids.font_file, font_data);
-    font_file.pair(Name(b"Length1"), font_data.len() as i32);
+/// 1フォント分の使用状況(文書全体を1パス目で走査して集める)。
+#[derive(Debug, Default)]
+pub struct FontUsage {
+    /// 元のグリフID -> (幅[1000unit/emグリフ空間], 代表Unicode文字)。
+    glyphs: BTreeMap<u16, (f32, char)>,
+}
+
+impl FontUsage {
+    /// `glyph_id`の使用を記録する。`unicode`は`/ToUnicode`生成用の代表文字
+    /// (`ShapedGlyph::cluster`から元テキストを逆引きしたもの)。
+    pub fn record(&mut self, font: &Font, glyph_id: u16, unicode: char) {
+        self.glyphs.entry(glyph_id).or_insert_with(|| {
+            let advance = font.glyph_hor_advance(glyph_id).unwrap_or(0) as f32;
+            let width_1000 = advance * 1000.0 / font.units_per_em() as f32;
+            (width_1000, unicode)
+        });
+    }
+}
+
+/// `font`をPDFへ埋め込む(`usage`に記録されたグリフだけにサブセット化する)。
+///
+/// 返り値は「元のグリフID→サブセット後のグリフID(CID)」の対応表。
+pub fn embed_font(
+    pdf: &mut Pdf,
+    font: &Font,
+    ids: FontIds,
+    usage: &FontUsage,
+) -> BTreeMap<u16, u16> {
+    let mut remapper = GlyphRemapper::new();
+    remapper.remap(0); // .notdef
+    for &old_gid in usage.glyphs.keys() {
+        remapper.remap(old_gid);
+    }
+
+    let subset_data = subsetter::subset(font.data(), font.face_index(), &remapper)
+        .unwrap_or_else(|_| font.data().to_vec());
+
+    let mut font_file = pdf.stream(ids.font_file, &subset_data);
+    font_file.pair(Name(b"Length1"), subset_data.len() as i32);
     font_file.finish();
 
     let units_per_em = font.units_per_em() as f32;
@@ -57,6 +95,17 @@ pub fn embed_font(pdf: &mut Pdf, font: &Font, ids: FontIds, used_glyphs: &BTreeM
         .stem_v(if font.weight() >= 700 { 120.0 } else { 80.0 })
         .font_file2(ids.font_file);
 
+    let old_to_new: BTreeMap<u16, u16> = usage
+        .glyphs
+        .keys()
+        .map(|&old_gid| {
+            let new_gid = remapper
+                .get(old_gid)
+                .expect("usageに記録済みのグリフは必ずremapされている");
+            (old_gid, new_gid)
+        })
+        .collect();
+
     let mut cid_font = pdf.cid_font(ids.cid_font);
     cid_font.subtype(CidFontType::Type2);
     cid_font.base_font(Name(b"EmbeddedFont"));
@@ -69,25 +118,34 @@ pub fn embed_font(pdf: &mut Pdf, font: &Font, ids: FontIds, used_glyphs: &BTreeM
     cid_font.default_width(0.0);
     {
         let mut w = cid_font.widths();
-        for (&gid, &width) in used_glyphs {
-            w.same(gid, gid, width);
+        for (&old_gid, &(width, _)) in &usage.glyphs {
+            let new_gid = old_to_new[&old_gid];
+            w.same(new_gid, new_gid, width);
         }
         w.finish();
     }
     cid_font.cid_to_gid_map_predefined(Name(b"Identity"));
     cid_font.finish();
 
+    let mut cmap = UnicodeCmap::<u16>::new(
+        Name(b"Custom"),
+        SystemInfo {
+            registry: Str(b"Adobe"),
+            ordering: Str(b"UCS"),
+            supplement: 0,
+        },
+    );
+    for (&old_gid, &(_, unicode)) in &usage.glyphs {
+        cmap.pair(old_to_new[&old_gid], unicode);
+    }
+    let cmap_bytes = cmap.finish();
+    pdf.cmap(ids.to_unicode, &cmap_bytes).finish();
+
     pdf.type0_font(ids.type0_font)
         .base_font(Name(b"EmbeddedFont"))
         .encoding_predefined(Name(b"Identity-H"))
-        .descendant_font(ids.cid_font);
-}
+        .descendant_font(ids.cid_font)
+        .to_unicode(ids.to_unicode);
 
-/// `font_size`で`glyph_id`を描画したときの、1000unit/emグリフ空間での幅を
-/// 記録する(まだ記録されていなければ)。
-pub fn record_glyph_width(font: &Font, glyph_id: u16, used_glyphs: &mut BTreeMap<u16, f32>) {
-    used_glyphs.entry(glyph_id).or_insert_with(|| {
-        let advance = font.glyph_hor_advance(glyph_id).unwrap_or(0) as f32;
-        advance * 1000.0 / font.units_per_em() as f32
-    });
+    old_to_new
 }

@@ -31,10 +31,16 @@ impl std::error::Error for FontLoadError {}
 impl Font {
     /// ローカルファイルパスからフォントを読み込む。
     pub fn load(path: impl AsRef<Path>) -> Result<Self, FontLoadError> {
+        Self::load_indexed(path, 0)
+    }
+
+    /// ローカルファイルパスからフォントを読み込む。TrueType Collection(`.ttc`)等、
+    /// 複数フェイスを含むファイルの場合は`index`でフェイスを選択する。
+    pub fn load_indexed(path: impl AsRef<Path>, index: u32) -> Result<Self, FontLoadError> {
         let path = path.as_ref();
         let data =
             std::fs::read(path).map_err(|e| FontLoadError(format!("{}: {e}", path.display())))?;
-        Self::from_bytes(data, 0)
+        Self::from_bytes(data, index)
     }
 
     /// 読み込み済みのバイト列からフォントを構築する(TrueType Collection等、
@@ -54,6 +60,11 @@ impl Font {
     /// フォントファイルの生バイト列(PDFへのフォント埋め込み等で必要)。
     pub fn data(&self) -> &[u8] {
         &self.data
+    }
+
+    /// TrueType Collection(`.ttc`)等、複数フェイスを含むファイル内でのフェイス番号。
+    pub fn face_index(&self) -> u32 {
+        self.index
     }
 
     pub fn units_per_em(&self) -> u16 {
@@ -97,6 +108,28 @@ impl Font {
     pub fn glyph_hor_advance(&self, glyph_id: u16) -> Option<u16> {
         self.face().glyph_hor_advance(ttf_parser::GlyphId(glyph_id))
     }
+
+    /// `c`に対応するグリフをこのフォントが持っているか。
+    /// font-familyフォールバック(どのフォントでこの文字を描画できるか)の判定に使う。
+    pub fn has_glyph(&self, c: char) -> bool {
+        self.face().glyph_index(c).is_some()
+    }
+
+    /// フォント名(`name`テーブルの Typographic Family、無ければ Family)。
+    /// Unicodeエンコードの英語名のみ対応する。
+    pub fn family_name(&self) -> Option<String> {
+        let face = self.face();
+        let names = face.names();
+
+        let pick = |id: u16| {
+            names
+                .into_iter()
+                .find(|n| n.name_id == id && n.is_unicode())
+                .and_then(|n| n.to_string())
+        };
+
+        pick(ttf_parser::name_id::TYPOGRAPHIC_FAMILY).or_else(|| pick(ttf_parser::name_id::FAMILY))
+    }
 }
 
 #[cfg(test)]
@@ -115,6 +148,20 @@ mod tests {
     fn load_fails_for_missing_file() {
         let result = Font::load("/nonexistent/path/does-not-exist.ttf");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn reports_family_name() {
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+        assert_eq!(font.family_name().as_deref(), Some("DejaVu Sans"));
+    }
+
+    #[test]
+    fn has_glyph_distinguishes_covered_and_uncovered_characters() {
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+        assert!(font.has_glyph('A'));
+        // DejaVu SansはCJK文字を含まない。
+        assert!(!font.has_glyph('日'));
     }
 
     #[test]

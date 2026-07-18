@@ -1,22 +1,30 @@
 //! sghtmltopdf CLI: HTMLファイルを一括変換してPDFを出力する。
 //!
 //! M1では静的HTML一括変換(ストリーミングなし)のみ対応。フォントはローカル
-//! ファイルパス指定の最小実装(`--font`必須)で、システムフォント探索・
-//! `@font-face`によるwebfont解決は将来のマイルストーンで対応する。
+//! ファイルパス指定の最小実装(`--font`必須、複数指定可)で、システムフォント
+//! 探索・`@font-face`によるwebfont解決は将来のマイルストーンで対応する。
+//! 複数`--font`を指定した場合、CSSの`font-family`と各フォントのグリフカバレッジ
+//! に基づいてフォールバック選択される([`sghtmltopdf_core::fonts::FontCollection`])。
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use sghtmltopdf_core::fonts::Font;
+use sghtmltopdf_core::fonts::{Font, FontCollection};
 use sghtmltopdf_core::html;
 use sghtmltopdf_core::layout::{paginate_document, PageSettings};
 use sghtmltopdf_core::pdf::write_document;
 use sghtmltopdf_core::sink::FileSink;
 use sghtmltopdf_core::style::{compute_styles, extract_author_stylesheet, user_agent_stylesheet};
 
+struct FontSpec {
+    path: PathBuf,
+    /// TrueType Collection(`.ttc`)等、複数フェイスを含むファイルのフェイス番号。
+    index: u32,
+}
+
 struct Options {
     input: PathBuf,
-    font: PathBuf,
+    fonts: Vec<FontSpec>,
     output: PathBuf,
 }
 
@@ -49,12 +57,17 @@ fn main() -> ExitCode {
 }
 
 fn print_usage() {
-    eprintln!("使い方: sghtmltopdf <input.html> --font <font.ttf> [-o <output.pdf>]");
+    eprintln!(
+        "使い方: sghtmltopdf <input.html> --font <font.ttf> [--font <font2.ttf> [--font-index N]]... [-o <output.pdf>]"
+    );
+    eprintln!(
+        "  --font-indexは直前の--fontに対して、TrueType Collection(.ttc)内のフェイス番号を指定する(既定は0)"
+    );
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut input = None;
-    let mut font = None;
+    let mut fonts: Vec<FontSpec> = Vec::new();
     let mut output = None;
 
     let mut i = 0;
@@ -63,7 +76,21 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--font" => {
                 i += 1;
                 let value = args.get(i).ok_or("--fontには値が必要です")?;
-                font = Some(PathBuf::from(value));
+                fonts.push(FontSpec {
+                    path: PathBuf::from(value),
+                    index: 0,
+                });
+            }
+            "--font-index" => {
+                i += 1;
+                let value = args.get(i).ok_or("--font-indexには値が必要です")?;
+                let index: u32 = value
+                    .parse()
+                    .map_err(|_| format!("--font-indexは数値で指定してください: {value}"))?;
+                let last = fonts
+                    .last_mut()
+                    .ok_or("--font-indexは直前の--fontに対して指定してください")?;
+                last.index = index;
             }
             "-o" | "--output" => {
                 i += 1;
@@ -77,12 +104,14 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     }
 
     let input = input.ok_or("入力HTMLファイルを指定してください")?;
-    let font = font.ok_or("--fontでフォントファイルを指定してください")?;
+    if fonts.is_empty() {
+        return Err("--fontでフォントファイルを指定してください(複数指定可)".to_string());
+    }
     let output = output.unwrap_or_else(|| input.with_extension("pdf"));
 
     Ok(Options {
         input,
-        font,
+        fonts,
         output,
     })
 }
@@ -92,20 +121,25 @@ fn run(options: &Options) -> Result<usize, String> {
         .map_err(|e| format!("{}の読み込みに失敗しました: {e}", options.input.display()))?;
     let dom = html::parse(&html_bytes);
 
-    let font =
-        Font::load(&options.font).map_err(|e| format!("フォントの読み込みに失敗しました: {e}"))?;
+    let mut loaded_fonts = Vec::with_capacity(options.fonts.len());
+    for spec in &options.fonts {
+        let font = Font::load_indexed(&spec.path, spec.index)
+            .map_err(|e| format!("フォントの読み込みに失敗しました: {e}"))?;
+        loaded_fonts.push(font);
+    }
+    let fonts = FontCollection::new(loaded_fonts);
 
     let ua = user_agent_stylesheet();
     let author = extract_author_stylesheet(&dom);
     let styles = compute_styles(&dom, &ua, &author);
 
     let settings = PageSettings::default();
-    let pages = paginate_document(&dom, &styles, &font, &settings);
+    let pages = paginate_document(&dom, &styles, &fonts, &settings);
     let page_count = pages.len();
 
     let sink = FileSink::create(&options.output)
         .map_err(|e| format!("{}の作成に失敗しました: {e}", options.output.display()))?;
-    write_document(&pages, &styles, &font, &settings, sink)
+    write_document(&pages, &styles, &fonts, &settings, sink)
         .map_err(|e| format!("PDFの書き込みに失敗しました: {e}"))?;
 
     Ok(page_count)

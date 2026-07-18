@@ -679,6 +679,7 @@ dependencies = [
  "precomputed-hash",
  "rustybuzz",
  "selectors",
+ "subsetter",
  "taffy",
  "ttf-parser",
 ]
