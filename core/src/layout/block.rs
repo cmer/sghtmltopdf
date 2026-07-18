@@ -16,7 +16,7 @@ use crate::style::{
 };
 
 use super::box_tree::{BoxContent, LayoutBox};
-use super::geometry::{EdgeSizes, Layout, Rect};
+use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::{layout_inline_content, LineBox};
 
 #[derive(Debug, Clone)]
@@ -105,6 +105,7 @@ fn layout_box(
             padding,
             border,
             margin,
+            fragment: FragmentPosition::Whole,
         },
         content,
     }

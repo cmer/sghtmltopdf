@@ -28,7 +28,7 @@ use crate::style::ComputedStyle;
 
 use super::block::{layout_document, LaidOutBox, LaidOutContent};
 use super::box_tree::build_box_tree;
-use super::geometry::{EdgeSizes, Layout, Rect};
+use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::LineBox;
 use super::page::PageSettings;
 
@@ -197,6 +197,11 @@ fn extent_of(boxes: &[LaidOutBox]) -> (f32, f32) {
 /// [`Layout`]を組み立てる。`content_y`/`content_bottom`はそのフラグメントの
 /// コンテンツ領域の範囲(`is_first`なら上端はすでに`content_y`で確定済み、
 /// `is_last`なら下端はまだ`padding-bottom`/`border-bottom`を含んでいない)。
+///
+/// `fragment`(→[`FragmentPosition`])には、`is_first`/`is_last`から求めた
+/// 断片の位置を記録する。`border-radius`は計算スタイル側の値をそのまま使うため
+/// (`Layout`は太さしか持たない)、レンダラ側([`crate::pdf::document`])が
+/// この情報を見て「継続中の断片では角を丸めない」よう判断する。
 fn fragment_layout(
     original: &Layout,
     content_y: f32,
@@ -211,6 +216,12 @@ fn fragment_layout(
         original.padding.bottom
     } else {
         0.0
+    };
+    let fragment = match (is_first, is_last) {
+        (true, true) => FragmentPosition::Whole,
+        (true, false) => FragmentPosition::First,
+        (false, true) => FragmentPosition::Last,
+        (false, false) => FragmentPosition::Middle,
     };
 
     Layout {
@@ -233,6 +244,7 @@ fn fragment_layout(
             left: original.border.left,
         },
         margin: EdgeSizes::default(),
+        fragment,
     }
 }
 
@@ -393,6 +405,8 @@ mod tests {
         assert_eq!(pages[0].boxes.len(), 1);
         assert_eq!(pages[0].boxes[0].node, None);
         assert!(box_contains_node(&pages[0].boxes[0], htmls[0]));
+        // 分割されていないボックスは`Whole`(border-radiusを全角に適用してよい)。
+        assert_eq!(pages[0].boxes[0].layout.fragment, FragmentPosition::Whole);
     }
 
     #[test]
@@ -524,10 +538,16 @@ mod tests {
         // 最初のフラグメントだけが上枠線・上パディングを持つ。
         assert_eq!(decorations[0].layout.border.top, 2.0);
         assert_eq!(decorations[0].layout.padding.top, 5.0);
+        assert_eq!(decorations[0].layout.fragment, FragmentPosition::First);
         // 最後のフラグメントだけが下枠線・下パディングを持つ。
         let last = decorations.last().unwrap();
         assert_eq!(last.layout.border.bottom, 2.0);
         assert_eq!(last.layout.padding.bottom, 5.0);
+        assert_eq!(last.layout.fragment, FragmentPosition::Last);
+        // 中間のフラグメントは`Middle`(border-radiusの角丸抑制に使う)。
+        for decoration in &decorations[1..decorations.len() - 1] {
+            assert_eq!(decoration.layout.fragment, FragmentPosition::Middle);
+        }
 
         // 左右の枠線・パディングは全フラグメントに適用される。
         for decoration in &decorations {

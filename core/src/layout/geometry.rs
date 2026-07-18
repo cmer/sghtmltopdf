@@ -16,6 +16,28 @@ pub struct EdgeSizes {
     pub left: f32,
 }
 
+/// ページ分割によって、元のボックスが複数ページにまたがる断片
+/// (フラグメント)に分けられているかどうか。
+///
+/// `border-radius`は要素の計算スタイル(`border_top_left_radius`等)から
+/// 都度引くため、ページをまたいで分割されたボックスの「継続中」の断片
+/// (先頭でも末尾でもない`Middle`、あるいは先頭のみの`First`の下端・
+/// 末尾のみの`Last`の上端)では、本来枠線が無い辺の角に丸みを適用しては
+/// ならない。この情報がないと[`crate::pdf::document`]の描画側で
+/// 区別がつかないため、[`Layout`]に持たせる。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum FragmentPosition {
+    /// 分割されていない(通常の)ボックス。全角に`border-radius`を適用してよい。
+    #[default]
+    Whole,
+    /// 分割された断片のうち最初のもの。上端の角のみ`border-radius`を適用してよい。
+    First,
+    /// 分割された断片のうち最初でも最後でもないもの。どの角にも適用しない。
+    Middle,
+    /// 分割された断片のうち最後のもの。下端の角のみ`border-radius`を適用してよい。
+    Last,
+}
+
 /// ボックスモデルの各領域。`content`のみ絶対座標(ページ内)を持ち、
 /// 他の辺はその太さのみを保持する。
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -24,6 +46,7 @@ pub struct Layout {
     pub padding: EdgeSizes,
     pub border: EdgeSizes,
     pub margin: EdgeSizes,
+    pub fragment: FragmentPosition,
 }
 
 impl Layout {

@@ -23,8 +23,10 @@ pub enum FontStyle {
     Italic,
 }
 
-/// `border-style`。M1では実線・破線・点線のみ対応
-/// (`double`/`groove`/`ridge`/`inset`/`outset`は非対応)。
+/// `border-style`。M1では実線・破線・点線・二重線のみ対応。
+/// `groove`/`ridge`/`inset`/`outset`(border-colorから2階調の疑似立体陰影を
+/// 算出する必要がある)は、請求書・帳票用途での実用性に対して実装コストが
+/// 見合わないため非対応とする。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BorderStyle {
     #[default]
@@ -32,6 +34,7 @@ pub enum BorderStyle {
     Solid,
     Dashed,
     Dotted,
+    Double,
 }
 
 /// 長さ(px)またはパーセンテージ。M1では単位はpxのみ対応する。

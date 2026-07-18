@@ -233,6 +233,7 @@ fn parse_border_style_keyword<'i>(
         "solid" => BorderStyle::Solid,
         "dashed" => BorderStyle::Dashed,
         "dotted" => BorderStyle::Dotted,
+        "double" => BorderStyle::Double,
         _ => return Err(input.new_custom_error(())),
     })
 }

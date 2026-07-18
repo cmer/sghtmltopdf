@@ -18,10 +18,16 @@
 //! (`node: None`)であっても正しい見た目で描画される。
 //!
 //! 枠線は`border-style`が`none`でなく、かつ幅が0より大きい辺のみ、その辺の
-//! 太さの中心線をストロークすることで描画する。`border-radius`が指定されて
-//! おらず、かつ4辺すべての太さ・スタイル・色が同一の場合は角丸のベジェ曲線
-//! パスでまとめてストロークし、それ以外(角丸なし、または4辺が不揃い)は
-//! 4辺を独立にストロークする(角のミトー結合はせず、単純な突き合わせ)。
+//! 太さの中心線をストロークすることで描画する(`double`は太さを3等分し、
+//! 外側1/3・内側1/3にそれぞれ細い線を2本ストロークして表現する)。
+//! `border-radius`が指定されておらず、かつ4辺すべての太さ・スタイル・色が
+//! 同一の場合は角丸のベジェ曲線パスでまとめてストロークし、それ以外
+//! (角丸なし、または4辺が不揃い)は4辺を独立にストロークする(角の
+//! ミトー結合はせず、単純な突き合わせ)。
+//!
+//! ページ分割で断片化したボックス([`crate::layout::FragmentPosition`]参照)は、
+//! 継続中の辺(分割位置に接する辺)に`border-radius`を適用しない
+//! (レイアウト側で`Layout::fragment`として渡された情報を見て角丸を抑制する)。
 //!
 //! 既知の簡略化:
 //! - 太字・イタリックは対応する字形を持つフォントファイルを別途要求せず、
@@ -32,6 +38,8 @@
 //! - `border-radius`が指定されていても4辺の太さ・スタイル・色が不揃いな場合は
 //!   角丸を諦め、直線4辺のストロークにフォールバックする(角ごとの複雑な
 //!   ブレンド処理は非対応)
+//! - `border-style`の`groove`/`ridge`/`inset`/`outset`(2階調の疑似立体陰影)は
+//!   非対応。請求書・帳票用途での実用性に対して実装コストが見合わないため
 
 use std::collections::HashMap;
 
@@ -40,7 +48,9 @@ use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref};
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
-use crate::layout::{LaidOutBox, LaidOutContent, Layout, LineBox, Page, PageSettings, Rect};
+use crate::layout::{
+    FragmentPosition, LaidOutBox, LaidOutContent, Layout, LineBox, Page, PageSettings, Rect,
+};
 use crate::sink::Sink;
 use crate::style::{BorderStyle, ComputedStyle, RgbaColor};
 
@@ -234,13 +244,11 @@ fn render_box_decoration(
     style: &ComputedStyle,
     settings: &PageSettings,
 ) {
-    let has_radius = style.border_top_left_radius.0 > 0.0
-        || style.border_top_right_radius.0 > 0.0
-        || style.border_bottom_right_radius.0 > 0.0
-        || style.border_bottom_left_radius.0 > 0.0;
+    let radii = effective_radii(layout, style);
+    let has_radius = radii.0 > 0.0 || radii.1 > 0.0 || radii.2 > 0.0 || radii.3 > 0.0;
 
     if has_radius {
-        render_rounded_decoration(content, layout, style, settings);
+        render_rounded_decoration(content, layout, style, settings, radii);
         return;
     }
 
@@ -253,6 +261,43 @@ fn render_box_decoration(
         );
     }
     render_border(content, layout, style, settings);
+}
+
+/// スタイル上の`border-radius`を、そのボックスがページ分割された断片の
+/// どの位置にあるか([`FragmentPosition`])に応じて丸める。継続中の断片
+/// (`Middle`/上端なら`Last`/下端なら`First`)では、本来枠線が無い辺の角を
+/// 丸めてしまわないよう、その辺に接する角の半径を0にする。
+fn effective_radii(layout: &Layout, style: &ComputedStyle) -> (f32, f32, f32, f32) {
+    let apply_top = matches!(
+        layout.fragment,
+        FragmentPosition::Whole | FragmentPosition::First
+    );
+    let apply_bottom = matches!(
+        layout.fragment,
+        FragmentPosition::Whole | FragmentPosition::Last
+    );
+    (
+        if apply_top {
+            style.border_top_left_radius.0
+        } else {
+            0.0
+        },
+        if apply_top {
+            style.border_top_right_radius.0
+        } else {
+            0.0
+        },
+        if apply_bottom {
+            style.border_bottom_right_radius.0
+        } else {
+            0.0
+        },
+        if apply_bottom {
+            style.border_bottom_left_radius.0
+        } else {
+            0.0
+        },
+    )
 }
 
 fn render_background(
@@ -284,18 +329,13 @@ fn render_rounded_decoration(
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
+    radii: (f32, f32, f32, f32),
 ) {
     let border_box = layout.border_box();
     let x0 = settings.margin.left + border_box.x;
     let x1 = x0 + border_box.width;
     let y_top = to_pdf_y(settings, border_box.y);
     let y_bottom = to_pdf_y(settings, border_box.y + border_box.height);
-    let radii = (
-        style.border_top_left_radius.0,
-        style.border_top_right_radius.0,
-        style.border_bottom_right_radius.0,
-        style.border_bottom_left_radius.0,
-    );
 
     if style.background_color.alpha > 0.0 {
         content.set_fill_rgb(
@@ -317,14 +357,36 @@ fn render_rounded_decoration(
         return;
     }
 
-    // ストロークは太さの中心線を通るため、外周パスを半分だけ内側へ詰める
-    // (半径も同じ量だけ縮める簡易近似)。
-    let inset = thickness / 2.0;
     content.set_stroke_rgb(
         style.border_top_color.red as f32 / 255.0,
         style.border_top_color.green as f32 / 255.0,
         style.border_top_color.blue as f32 / 255.0,
     );
+
+    if style.border_top_style == BorderStyle::Double {
+        // 太さを3等分し、外周から1/6・5/6の位置(それぞれの帯の中心線)に
+        // 1/3幅の角丸パスを2本ストロークする(中央の1/3は空白として残る)。
+        let band = thickness / 3.0;
+        content.set_line_cap(LineCapStyle::ButtCap);
+        content.set_dash_pattern([], 0.0);
+        content.set_line_width(band);
+        for offset in [band / 2.0, thickness - band / 2.0] {
+            rounded_rect_path(
+                content,
+                x0 + offset,
+                y_top - offset,
+                x1 - offset,
+                y_bottom + offset,
+                shrink_radii(radii, offset),
+            );
+            content.stroke();
+        }
+        return;
+    }
+
+    // ストロークは太さの中心線を通るため、外周パスを半分だけ内側へ詰める
+    // (半径も同じ量だけ縮める簡易近似)。
+    let inset = thickness / 2.0;
     content.set_line_width(thickness);
     apply_border_style_dash(content, style.border_top_style, thickness);
     rounded_rect_path(
@@ -488,6 +550,28 @@ fn render_border_edge(
         color.green as f32 / 255.0,
         color.blue as f32 / 255.0,
     );
+
+    if border_style == BorderStyle::Double {
+        // 太さを3等分し、中心線から外側・内側へそれぞれ1/3だけオフセットした
+        // 1/3幅の線を2本描く(中央の1/3は空白として残る)。
+        let band = thickness / 3.0;
+        let is_horizontal = (from.1 - to.1).abs() < f32::EPSILON;
+        content.set_line_cap(LineCapStyle::ButtCap);
+        content.set_dash_pattern([], 0.0);
+        content.set_line_width(band);
+        for sign in [-1.0, 1.0] {
+            let (dx, dy) = if is_horizontal {
+                (0.0, sign * band)
+            } else {
+                (sign * band, 0.0)
+            };
+            content.move_to(from.0 + dx, from.1 + dy);
+            content.line_to(to.0 + dx, to.1 + dy);
+            content.stroke();
+        }
+        return;
+    }
+
     content.set_line_width(thickness);
     apply_border_style_dash(content, border_style, thickness);
 
@@ -497,9 +581,10 @@ fn render_border_edge(
 }
 
 /// `border-style`に応じたダッシュパターン/線キャップを設定する。
+/// `Double`は2本ストロークする専用処理(呼び出し側)で扱うためここには来ない。
 fn apply_border_style_dash(content: &mut Content, border_style: BorderStyle, thickness: f32) {
     match border_style {
-        BorderStyle::Solid => {
+        BorderStyle::Solid | BorderStyle::Double => {
             content.set_line_cap(LineCapStyle::ButtCap);
             content.set_dash_pattern([], 0.0);
         }
@@ -762,6 +847,50 @@ mod tests {
         );
         // strokeの色(10/255, 20/255, 30/255)が`RG`オペレータで設定されているはず。
         assert!(text.contains(" RG\n"), "border color should be set via RG");
+    }
+
+    #[test]
+    fn double_border_strokes_two_lines_per_side() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author = parse_stylesheet(".box { border: 9px double rgb(0, 0, 0); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+
+        // 4辺 x 2本 = 8回以上のストロークがあるはず。
+        assert!(
+            count_occurrences(bytes.as_slice(), b"\nS\n") >= 8,
+            "double border should stroke two lines per side"
+        );
+    }
+
+    #[test]
+    fn double_border_with_radius_strokes_two_rounded_paths() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author =
+            parse_stylesheet(".box { border: 9px double rgb(0, 0, 0); border-radius: 10px; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+
+        // 角丸パス(4角ぶんのベジェ曲線)を2周分ストロークするはず(背景色は
+        // 未指定なので塗りつぶしはなし)。
+        assert!(
+            count_occurrences(bytes.as_slice(), b" c\n") >= 8,
+            "double border with radius should draw two rounded stroke paths"
+        );
+        assert!(
+            count_occurrences(bytes.as_slice(), b"\nS\n") >= 2,
+            "double border with radius should stroke twice"
+        );
     }
 
     #[test]
