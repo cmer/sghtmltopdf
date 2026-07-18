@@ -32,6 +32,10 @@ pub enum PropertyDeclaration {
     BorderRightStyle(BorderStyle),
     BorderBottomStyle(BorderStyle),
     BorderLeftStyle(BorderStyle),
+    BorderTopLeftRadius(Length),
+    BorderTopRightRadius(Length),
+    BorderBottomRightRadius(Length),
+    BorderBottomLeftRadius(Length),
     FontSize(Length),
     FontFamily(Vec<String>),
     FontWeight(FontWeight),
@@ -58,6 +62,7 @@ pub fn parse_declaration<'i>(
         "border-width" => parse_border_width_shorthand(input),
         "border-color" => parse_border_color_shorthand(input),
         "border-style" => parse_border_style_shorthand(input),
+        "border-radius" => parse_border_radius_shorthand(input),
         "font-size" => Ok(vec![D::FontSize(parse_length(input)?)]),
         "font-family" => Ok(vec![D::FontFamily(parse_font_family(input)?)]),
         "font-weight" => Ok(vec![D::FontWeight(parse_font_weight(input)?)]),
@@ -198,6 +203,24 @@ fn parse_border_style_shorthand<'i>(
         D::BorderRightStyle(right),
         D::BorderBottomStyle(bottom),
         D::BorderLeftStyle(left),
+    ])
+}
+
+/// `border-radius`ショートハンドの簡易実装。CSSの角丸半径は4値展開でも
+/// 「上→右→下→左」ではなく「左上→右上→右下→左下」の順序だが、
+/// `parse_four_sides`は値の個数に応じた展開規則(1〜4値)のみを担う汎用ヘルパーで
+/// 各スロットの意味には関与しないため、そのまま再利用できる。
+/// 楕円形(`/`区切りの水平・垂直別半径)は非対応(常に真円)。
+fn parse_border_radius_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (top_left, top_right, bottom_right, bottom_left) = parse_four_sides(input, parse_length)?;
+    Ok(vec![
+        D::BorderTopLeftRadius(top_left),
+        D::BorderTopRightRadius(top_right),
+        D::BorderBottomRightRadius(bottom_right),
+        D::BorderBottomLeftRadius(bottom_left),
     ])
 }
 

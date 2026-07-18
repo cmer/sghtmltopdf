@@ -52,6 +52,10 @@ pub struct ComputedStyle {
     pub border_right_style: BorderStyle,
     pub border_bottom_style: BorderStyle,
     pub border_left_style: BorderStyle,
+    pub border_top_left_radius: Length,
+    pub border_top_right_radius: Length,
+    pub border_bottom_right_radius: Length,
+    pub border_bottom_left_radius: Length,
     /// 継承プロパティ。
     pub font_size: Length,
     /// 継承プロパティ。
@@ -117,6 +121,10 @@ impl Default for ComputedStyle {
             border_right_style: BorderStyle::None,
             border_bottom_style: BorderStyle::None,
             border_left_style: BorderStyle::None,
+            border_top_left_radius: Length(0.0),
+            border_top_right_radius: Length(0.0),
+            border_bottom_right_radius: Length(0.0),
+            border_bottom_left_radius: Length(0.0),
             font_size: Length(16.0),
             font_family: vec!["sans-serif".to_string()],
             font_weight: FontWeight::Normal,
@@ -203,6 +211,10 @@ fn compute_element_style(
     let mut border_right_style = None;
     let mut border_bottom_style = None;
     let mut border_left_style = None;
+    let mut border_top_left_radius = None;
+    let mut border_top_right_radius = None;
+    let mut border_bottom_right_radius = None;
+    let mut border_bottom_left_radius = None;
     let mut font_size = None;
     let mut font_family = None;
     let mut font_weight = None;
@@ -237,6 +249,12 @@ fn compute_element_style(
             PropertyDeclaration::BorderRightStyle(v) => border_right_style = Some(*v),
             PropertyDeclaration::BorderBottomStyle(v) => border_bottom_style = Some(*v),
             PropertyDeclaration::BorderLeftStyle(v) => border_left_style = Some(*v),
+            PropertyDeclaration::BorderTopLeftRadius(v) => border_top_left_radius = Some(*v),
+            PropertyDeclaration::BorderTopRightRadius(v) => border_top_right_radius = Some(*v),
+            PropertyDeclaration::BorderBottomRightRadius(v) => {
+                border_bottom_right_radius = Some(*v)
+            }
+            PropertyDeclaration::BorderBottomLeftRadius(v) => border_bottom_left_radius = Some(*v),
             PropertyDeclaration::FontSize(v) => font_size = Some(*v),
             PropertyDeclaration::FontFamily(v) => font_family = Some(v.clone()),
             PropertyDeclaration::FontWeight(v) => font_weight = Some(*v),
@@ -302,6 +320,12 @@ fn compute_element_style(
         border_right_style: border_right_style.unwrap_or(initial.border_right_style),
         border_bottom_style: border_bottom_style.unwrap_or(initial.border_bottom_style),
         border_left_style: border_left_style.unwrap_or(initial.border_left_style),
+        border_top_left_radius: border_top_left_radius.unwrap_or(initial.border_top_left_radius),
+        border_top_right_radius: border_top_right_radius.unwrap_or(initial.border_top_right_radius),
+        border_bottom_right_radius: border_bottom_right_radius
+            .unwrap_or(initial.border_bottom_right_radius),
+        border_bottom_left_radius: border_bottom_left_radius
+            .unwrap_or(initial.border_bottom_left_radius),
         font_size: font_size.unwrap_or(inherited_font_size),
         font_family: font_family.unwrap_or(inherited_font_family),
         font_weight: font_weight.unwrap_or(inherited_font_weight),

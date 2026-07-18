@@ -18,8 +18,10 @@
 //! (`node: None`)であっても正しい見た目で描画される。
 //!
 //! 枠線は`border-style`が`none`でなく、かつ幅が0より大きい辺のみ、その辺の
-//! 太さの中心線をストロークすることで描画する(4辺それぞれ独立に描画するため、
-//! 角は単純な突き合わせになりミトー結合はしない)。
+//! 太さの中心線をストロークすることで描画する。`border-radius`が指定されて
+//! おらず、かつ4辺すべての太さ・スタイル・色が同一の場合は角丸のベジェ曲線
+//! パスでまとめてストロークし、それ以外(角丸なし、または4辺が不揃い)は
+//! 4辺を独立にストロークする(角のミトー結合はせず、単純な突き合わせ)。
 //!
 //! 既知の簡略化:
 //! - 太字・イタリックは対応する字形を持つフォントファイルを別途要求せず、
@@ -27,6 +29,9 @@
 //!   イタリック)で代用する
 //! - 1行の中で複数フォント・複数フォントサイズが混在する場合、行のベースライン
 //!   位置は先頭ランのフォント・サイズのメトリクスを基準に揃える
+//! - `border-radius`が指定されていても4辺の太さ・スタイル・色が不揃いな場合は
+//!   角丸を諦め、直線4辺のストロークにフォールバックする(角ごとの複雑な
+//!   ブレンド処理は非対応)
 
 use std::collections::HashMap;
 
@@ -196,15 +201,7 @@ fn render_box(
         .cloned()
         .unwrap_or_default();
 
-    if style.background_color.alpha > 0.0 {
-        render_background(
-            content,
-            b.layout.border_box(),
-            style.background_color,
-            settings,
-        );
-    }
-    render_border(content, &b.layout, &style, settings);
+    render_box_decoration(content, &b.layout, &style, settings);
 
     match &b.content {
         LaidOutContent::Blocks(children) => {
@@ -228,6 +225,36 @@ fn render_box(
     }
 }
 
+/// 背景・枠線を描画する。角丸(`border-radius`)が指定されていなければ従来通り
+/// 直線の矩形/4辺独立ストロークで描き、指定されていれば[`render_rounded_decoration`]
+/// に委譲する。
+fn render_box_decoration(
+    content: &mut Content,
+    layout: &Layout,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+) {
+    let has_radius = style.border_top_left_radius.0 > 0.0
+        || style.border_top_right_radius.0 > 0.0
+        || style.border_bottom_right_radius.0 > 0.0
+        || style.border_bottom_left_radius.0 > 0.0;
+
+    if has_radius {
+        render_rounded_decoration(content, layout, style, settings);
+        return;
+    }
+
+    if style.background_color.alpha > 0.0 {
+        render_background(
+            content,
+            layout.border_box(),
+            style.background_color,
+            settings,
+        );
+    }
+    render_border(content, layout, style, settings);
+}
+
 fn render_background(
     content: &mut Content,
     border_box: Rect,
@@ -243,6 +270,156 @@ fn render_background(
     );
     content.rect(x, y, border_box.width, border_box.height);
     content.fill_nonzero();
+}
+
+/// `border-radius`が指定されている場合の背景・枠線描画。
+///
+/// 背景は各角の半径に従った角丸矩形として塗りつぶす。枠線は、4辺すべての
+/// 太さ・スタイル・色が同一の場合のみ角丸パスをストロークする
+/// (辺ごとに異なる太さ・色・スタイルと角丸の組み合わせは、角での複雑な
+/// ブレンド処理が必要になるためM1では非対応。その場合は角丸を諦め、
+/// 直線4辺の[`render_border`]にフォールバックする)。
+fn render_rounded_decoration(
+    content: &mut Content,
+    layout: &Layout,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+) {
+    let border_box = layout.border_box();
+    let x0 = settings.margin.left + border_box.x;
+    let x1 = x0 + border_box.width;
+    let y_top = to_pdf_y(settings, border_box.y);
+    let y_bottom = to_pdf_y(settings, border_box.y + border_box.height);
+    let radii = (
+        style.border_top_left_radius.0,
+        style.border_top_right_radius.0,
+        style.border_bottom_right_radius.0,
+        style.border_bottom_left_radius.0,
+    );
+
+    if style.background_color.alpha > 0.0 {
+        content.set_fill_rgb(
+            style.background_color.red as f32 / 255.0,
+            style.background_color.green as f32 / 255.0,
+            style.background_color.blue as f32 / 255.0,
+        );
+        rounded_rect_path(content, x0, y_top, x1, y_bottom, radii);
+        content.fill_nonzero();
+    }
+
+    if !is_uniform_border(style) {
+        render_border(content, layout, style, settings);
+        return;
+    }
+
+    let thickness = layout.border.top;
+    if thickness <= 0.0 || style.border_top_style == BorderStyle::None {
+        return;
+    }
+
+    // ストロークは太さの中心線を通るため、外周パスを半分だけ内側へ詰める
+    // (半径も同じ量だけ縮める簡易近似)。
+    let inset = thickness / 2.0;
+    content.set_stroke_rgb(
+        style.border_top_color.red as f32 / 255.0,
+        style.border_top_color.green as f32 / 255.0,
+        style.border_top_color.blue as f32 / 255.0,
+    );
+    content.set_line_width(thickness);
+    apply_border_style_dash(content, style.border_top_style, thickness);
+    rounded_rect_path(
+        content,
+        x0 + inset,
+        y_top - inset,
+        x1 - inset,
+        y_bottom + inset,
+        shrink_radii(radii, inset),
+    );
+    content.stroke();
+}
+
+/// 4辺すべての`border-width`/`border-style`/`border-color`が一致するか。
+fn is_uniform_border(style: &ComputedStyle) -> bool {
+    style.border_top_width == style.border_right_width
+        && style.border_top_width == style.border_bottom_width
+        && style.border_top_width == style.border_left_width
+        && style.border_top_style == style.border_right_style
+        && style.border_top_style == style.border_bottom_style
+        && style.border_top_style == style.border_left_style
+        && style.border_top_color == style.border_right_color
+        && style.border_top_color == style.border_bottom_color
+        && style.border_top_color == style.border_left_color
+}
+
+/// 四分円をベジェ曲線で近似する際の制御点オフセット係数。
+const BEZIER_KAPPA: f32 = 0.552_284_8;
+
+/// PDF空間(Y-up、`y_top` > `y_bottom`)で角丸矩形のパスを構築して閉じる
+/// (塗り/ストロークは呼び出し側が行う)。半径は`(top_left, top_right,
+/// bottom_right, bottom_left)`の順(CSSの`border-radius`と同じ並び)。
+fn rounded_rect_path(
+    content: &mut Content,
+    x0: f32,
+    y_top: f32,
+    x1: f32,
+    y_bottom: f32,
+    radii: (f32, f32, f32, f32),
+) {
+    let max_r = ((x1 - x0) / 2.0)
+        .max(0.0)
+        .min(((y_top - y_bottom) / 2.0).max(0.0));
+    let (r_tl, r_tr, r_br, r_bl) = radii;
+    let r_tl = r_tl.clamp(0.0, max_r);
+    let r_tr = r_tr.clamp(0.0, max_r);
+    let r_br = r_br.clamp(0.0, max_r);
+    let r_bl = r_bl.clamp(0.0, max_r);
+
+    content.move_to(x0 + r_tl, y_top);
+    content.line_to(x1 - r_tr, y_top);
+    if r_tr > 0.0 {
+        let k = r_tr * BEZIER_KAPPA;
+        content.cubic_to(x1 - r_tr + k, y_top, x1, y_top - r_tr + k, x1, y_top - r_tr);
+    }
+    content.line_to(x1, y_bottom + r_br);
+    if r_br > 0.0 {
+        let k = r_br * BEZIER_KAPPA;
+        content.cubic_to(
+            x1,
+            y_bottom + r_br - k,
+            x1 - r_br + k,
+            y_bottom,
+            x1 - r_br,
+            y_bottom,
+        );
+    }
+    content.line_to(x0 + r_bl, y_bottom);
+    if r_bl > 0.0 {
+        let k = r_bl * BEZIER_KAPPA;
+        content.cubic_to(
+            x0 + r_bl - k,
+            y_bottom,
+            x0,
+            y_bottom + r_bl - k,
+            x0,
+            y_bottom + r_bl,
+        );
+    }
+    content.line_to(x0, y_top - r_tl);
+    if r_tl > 0.0 {
+        let k = r_tl * BEZIER_KAPPA;
+        content.cubic_to(x0, y_top - r_tl + k, x0 + r_tl - k, y_top, x0 + r_tl, y_top);
+    }
+    content.close_path();
+}
+
+fn shrink_radii(radii: (f32, f32, f32, f32), inset: f32) -> (f32, f32, f32, f32) {
+    let shrink = |r: f32| (r - inset).max(0.0);
+    (
+        shrink(radii.0),
+        shrink(radii.1),
+        shrink(radii.2),
+        shrink(radii.3),
+    )
 }
 
 /// 4辺それぞれの`border-width`/`border-style`/`border-color`に従って枠線を描く。
@@ -312,7 +489,15 @@ fn render_border_edge(
         color.blue as f32 / 255.0,
     );
     content.set_line_width(thickness);
+    apply_border_style_dash(content, border_style, thickness);
 
+    content.move_to(from.0, from.1);
+    content.line_to(to.0, to.1);
+    content.stroke();
+}
+
+/// `border-style`に応じたダッシュパターン/線キャップを設定する。
+fn apply_border_style_dash(content: &mut Content, border_style: BorderStyle, thickness: f32) {
     match border_style {
         BorderStyle::Solid => {
             content.set_line_cap(LineCapStyle::ButtCap);
@@ -327,12 +512,8 @@ fn render_border_edge(
             content.set_line_cap(LineCapStyle::RoundCap);
             content.set_dash_pattern([0.01, thickness * 2.0], 0.0);
         }
-        BorderStyle::None => unreachable!("直前のガードで弾いている"),
+        BorderStyle::None => {}
     }
-
-    content.move_to(from.0, from.1);
-    content.line_to(to.0, to.1);
-    content.stroke();
 }
 
 /// 疑似イタリック(シアー変形)の傾斜角(12度)。埋め込みフォントに本物の
@@ -600,6 +781,54 @@ mod tests {
         assert!(
             text.contains(" d\n"),
             "dotted border should set a dash pattern"
+        );
+    }
+
+    #[test]
+    fn uniform_border_radius_draws_curved_path_instead_of_straight_rect() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author = parse_stylesheet(
+            ".box { border: 2px solid rgb(0, 0, 0); background-color: rgb(200, 200, 200); border-radius: 10px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let text = String::from_utf8_lossy(&bytes);
+
+        // 角丸パスはベジェ曲線オペレータ`c`を使う。
+        assert!(
+            count_occurrences(bytes.as_slice(), b" c\n") >= 8,
+            "rounded corners should use cubic bezier curve operators (4 corners x fill+stroke)"
+        );
+        // 直線矩形の`re`は(角丸なので)使われないはず。
+        assert!(
+            !text.contains(" re\n"),
+            "rounded box should not use a plain rectangle"
+        );
+    }
+
+    #[test]
+    fn non_uniform_border_with_radius_falls_back_to_straight_edges() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author = parse_stylesheet(
+            ".box { border-style: solid dotted; border-width: 2px; border-color: rgb(0,0,0); border-radius: 10px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+
+        // 4辺が不揃いなので角丸は諦め、直線4辺のストローク(`S`x4)にフォールバックする。
+        assert!(
+            count_occurrences(bytes.as_slice(), b"\nS\n") >= 4,
+            "non-uniform border should fall back to 4 independent straight strokes"
         );
     }
 
