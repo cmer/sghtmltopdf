@@ -6,7 +6,7 @@
 //! - 幅・水平マージンがすべて明示指定された場合の再調整(over-constrained時の
 //!   margin-right再計算)は行わない
 //! - 高さのパーセンテージ指定はcontaining blockの高さが不定なため`auto`として扱う
-//! - インラインコンテンツの高さは行分割前の暫定値(T6で本実装に置き換える)
+//! - インラインコンテンツの行分割・実際の行数に応じた高さはT6([`super::inline`])が担う
 
 use std::collections::HashMap;
 
@@ -15,6 +15,7 @@ use crate::style::{ComputedStyle, Display, LengthPercentage, LengthPercentageOrA
 
 use super::box_tree::{BoxContent, LayoutBox};
 use super::geometry::{EdgeSizes, Layout, Rect};
+use super::inline::{layout_inline_content, LineBox};
 
 #[derive(Debug, Clone)]
 pub struct LaidOutBox {
@@ -26,7 +27,7 @@ pub struct LaidOutBox {
 #[derive(Debug, Clone)]
 pub enum LaidOutContent {
     Blocks(Vec<LaidOutBox>),
-    Inline(String),
+    Inline(Vec<LineBox>),
 }
 
 /// ページ幅を初期containing blockとして、ボックスツリー全体をレイアウトする。
@@ -79,9 +80,10 @@ fn layout_box(
             (LaidOutContent::Blocks(laid_children), height)
         }
         BoxContent::Inline(text) => {
-            let height =
-                resolve_height(&style).unwrap_or_else(|| estimate_inline_height(&style, text));
-            (LaidOutContent::Inline(text.clone()), height)
+            let lines = layout_inline_content(text, &style, content_width, content_x, content_y);
+            let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
+            let height = resolve_height(&style).unwrap_or(lines_height);
+            (LaidOutContent::Inline(lines), height)
         }
     };
 
@@ -196,15 +198,6 @@ fn resolve_width_and_horizontal_margins(
             let margin_right = resolve_lpa_or_zero(style.margin_right, containing_width);
             (width, margin_left, margin_right)
         }
-    }
-}
-
-/// T6で行分割を実装するまでの暫定値: テキストが存在すれば1行分の高さとして扱う。
-fn estimate_inline_height(style: &ComputedStyle, text: &str) -> f32 {
-    if text.trim().is_empty() {
-        0.0
-    } else {
-        style.font_size.0 * 1.2
     }
 }
 
@@ -369,6 +362,35 @@ mod tests {
         let outer = find_laid_out(&laid, divs[0]).expect("outer div not found");
 
         assert_eq!(outer.layout.content.height, 40.0);
+    }
+
+    #[test]
+    fn wrapped_inline_content_drives_auto_height() {
+        // 十分な幅があれば1行、狭ければ複数行に折り返される。
+        let dom = html::parse(br#"<p class="a">hello world</p>"#);
+        let ua = user_agent_stylesheet();
+        let author = Stylesheet::default();
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+
+        let wide = layout_document(&tree, &styles, 800.0);
+        let p_wide = find_laid_out(&wide, ps[0]).expect("p not found");
+        let LaidOutContent::Inline(lines_wide) = &p_wide.content else {
+            panic!("expected inline content")
+        };
+        assert_eq!(lines_wide.len(), 1);
+
+        let narrow = layout_document(&tree, &styles, 60.0);
+        let p_narrow = find_laid_out(&narrow, ps[0]).expect("p not found");
+        let LaidOutContent::Inline(lines_narrow) = &p_narrow.content else {
+            panic!("expected inline content")
+        };
+        assert_eq!(lines_narrow.len(), 2);
+
+        assert!(p_narrow.layout.content.height > p_wide.layout.content.height);
     }
 
     #[test]
