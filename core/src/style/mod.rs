@@ -1,6 +1,7 @@
 //! CSSパース・セレクタマッチング・カスケード(cssparser/selectors)。
 
 mod cascade;
+mod computed;
 mod element_ref;
 mod properties;
 mod selector_impl;
@@ -9,6 +10,7 @@ mod ua;
 mod values;
 
 pub use cascade::matching_declarations;
+pub use computed::{compute_styles, ComputedStyle, RgbaColor};
 pub use element_ref::ElementRef;
 pub use properties::PropertyDeclaration;
 pub use selector_impl::SgSelectorImpl;
