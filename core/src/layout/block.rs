@@ -11,7 +11,9 @@ use std::collections::HashMap;
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
-use crate::style::{ComputedStyle, Display, LengthPercentage, LengthPercentageOrAuto};
+use crate::style::{
+    BorderStyle, ComputedStyle, Display, Length, LengthPercentage, LengthPercentageOrAuto,
+};
 
 use super::box_tree::{BoxContent, LayoutBox};
 use super::geometry::{EdgeSizes, Layout, Rect};
@@ -142,12 +144,21 @@ fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
     }
 }
 
+/// `border-style: none`の辺は、`border-width`の指定に関わらず使用値が`0`になる
+/// (CSS2.1 8.5.3)。レイアウト(幅計算)にもこの丸めが反映される必要がある。
 fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
+    let width_or_zero = |width: Length, border_style: BorderStyle| {
+        if border_style == BorderStyle::None {
+            0.0
+        } else {
+            width.0
+        }
+    };
     EdgeSizes {
-        top: style.border_top_width.0,
-        right: style.border_right_width.0,
-        bottom: style.border_bottom_width.0,
-        left: style.border_left_width.0,
+        top: width_or_zero(style.border_top_width, style.border_top_style),
+        right: width_or_zero(style.border_right_width, style.border_right_style),
+        bottom: width_or_zero(style.border_bottom_width, style.border_bottom_style),
+        left: width_or_zero(style.border_left_width, style.border_left_style),
     }
 }
 
@@ -437,5 +448,29 @@ mod tests {
 
         let border_box = div_box.layout.border_box();
         assert_eq!(border_box.width, 2.0 + 5.0 + 100.0 + 5.0 + 2.0);
+    }
+
+    #[test]
+    fn border_style_none_zeroes_out_the_used_border_width_in_layout() {
+        // CSS2.1 8.5.3: border-styleがnoneの辺は、border-widthの指定に関わらず
+        // 使用値が0になる(枠線が描画されないだけでなく、レイアウト上の
+        // 幅計算にも影響しない)。
+        let dom = html::parse(br#"<div class="box"></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".box { width: 100px; margin: 0; border-width: 5px; border-style: none; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+
+        assert_eq!(div_box.layout.border.left, 0.0);
+        let border_box = div_box.layout.border_box();
+        assert_eq!(border_box.width, 100.0);
     }
 }

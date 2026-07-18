@@ -3,7 +3,8 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
-    Color, Display, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
+    BorderStyle, Color, Display, FontStyle, FontWeight, Length, LengthPercentage,
+    LengthPercentageOrAuto,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +24,14 @@ pub enum PropertyDeclaration {
     BorderRightWidth(Length),
     BorderBottomWidth(Length),
     BorderLeftWidth(Length),
+    BorderTopColor(Color),
+    BorderRightColor(Color),
+    BorderBottomColor(Color),
+    BorderLeftColor(Color),
+    BorderTopStyle(BorderStyle),
+    BorderRightStyle(BorderStyle),
+    BorderBottomStyle(BorderStyle),
+    BorderLeftStyle(BorderStyle),
     FontSize(Length),
     FontFamily(Vec<String>),
     FontWeight(FontWeight),
@@ -46,6 +55,9 @@ pub fn parse_declaration<'i>(
         "margin" => parse_margin_shorthand(input),
         "padding" => parse_padding_shorthand(input),
         "border" => parse_border_shorthand(input),
+        "border-width" => parse_border_width_shorthand(input),
+        "border-color" => parse_border_color_shorthand(input),
+        "border-style" => parse_border_style_shorthand(input),
         "font-size" => Ok(vec![D::FontSize(parse_length(input)?)]),
         "font-family" => Ok(vec![D::FontFamily(parse_font_family(input)?)]),
         "font-weight" => Ok(vec![D::FontWeight(parse_font_weight(input)?)]),
@@ -100,40 +112,106 @@ fn parse_four_sides<'i, T: Copy>(
     Ok((top, right, bottom, left))
 }
 
-/// `border`ショートハンドの簡易実装。
-/// M1ではレイアウト計算に必要な`border-width`のみ抽出し、
-/// `border-style`/`border-color`(キーワードや色)は読み飛ばす。
+/// `border`ショートハンドの簡易実装。`border-width`/`border-style`/`border-color`を
+/// 同時に指定でき、指定順序は問わない(CSSの`border`ショートハンドの仕様通り)。
+/// いずれも4辺に同じ値を適用する(`border-top`等の辺別ショートハンドは非対応)。
+/// `border-color`省略時は宣言を生成しない(計算スタイル側で初期値`currentcolor`
+/// として扱う)。
 fn parse_border_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
     use PropertyDeclaration as D;
     let mut width = Length(0.0);
-    let mut found_width = false;
+    let mut style = BorderStyle::None;
+    let mut color = None;
 
     loop {
-        if !found_width {
-            if let Ok(w) = input.try_parse(parse_length) {
-                width = w;
-                found_width = true;
-                continue;
-            }
-        }
-        // border-style(solid等)やborder-colorは読み飛ばす。
-        if input.try_parse(|input| input.expect_ident_cloned()).is_ok() {
+        if let Ok(w) = input.try_parse(parse_length) {
+            width = w;
             continue;
         }
-        if input.try_parse(parse_color).is_ok() {
+        if let Ok(s) = input.try_parse(parse_border_style_keyword) {
+            style = s;
+            continue;
+        }
+        if let Ok(c) = input.try_parse(parse_color) {
+            color = Some(c);
             continue;
         }
         break;
     }
 
-    Ok(vec![
+    let mut decls = vec![
         D::BorderTopWidth(width),
         D::BorderRightWidth(width),
         D::BorderBottomWidth(width),
         D::BorderLeftWidth(width),
+        D::BorderTopStyle(style),
+        D::BorderRightStyle(style),
+        D::BorderBottomStyle(style),
+        D::BorderLeftStyle(style),
+    ];
+    if let Some(c) = color {
+        decls.extend([
+            D::BorderTopColor(c),
+            D::BorderRightColor(c),
+            D::BorderBottomColor(c),
+            D::BorderLeftColor(c),
+        ]);
+    }
+    Ok(decls)
+}
+
+fn parse_border_width_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_length)?;
+    Ok(vec![
+        D::BorderTopWidth(top),
+        D::BorderRightWidth(right),
+        D::BorderBottomWidth(bottom),
+        D::BorderLeftWidth(left),
     ])
+}
+
+fn parse_border_color_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_color)?;
+    Ok(vec![
+        D::BorderTopColor(top),
+        D::BorderRightColor(right),
+        D::BorderBottomColor(bottom),
+        D::BorderLeftColor(left),
+    ])
+}
+
+fn parse_border_style_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_border_style_keyword)?;
+    Ok(vec![
+        D::BorderTopStyle(top),
+        D::BorderRightStyle(right),
+        D::BorderBottomStyle(bottom),
+        D::BorderLeftStyle(left),
+    ])
+}
+
+fn parse_border_style_keyword<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<BorderStyle, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "none" | "hidden" => BorderStyle::None,
+        "solid" => BorderStyle::Solid,
+        "dashed" => BorderStyle::Dashed,
+        "dotted" => BorderStyle::Dotted,
+        _ => return Err(input.new_custom_error(())),
+    })
 }
 
 fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'i, ()>> {

@@ -12,7 +12,8 @@ use super::cascade::matching_declarations;
 use super::properties::PropertyDeclaration;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    Color, Display, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
+    BorderStyle, Color, Display, FontStyle, FontWeight, Length, LengthPercentage,
+    LengthPercentageOrAuto,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -41,6 +42,16 @@ pub struct ComputedStyle {
     pub border_right_width: Length,
     pub border_bottom_width: Length,
     pub border_left_width: Length,
+    /// 初期値は`currentcolor`(仕様通り)。宣言がなければこの要素自身の
+    /// 計算済み`color`を使う(`resolve_color`で解決)。
+    pub border_top_color: RgbaColor,
+    pub border_right_color: RgbaColor,
+    pub border_bottom_color: RgbaColor,
+    pub border_left_color: RgbaColor,
+    pub border_top_style: BorderStyle,
+    pub border_right_style: BorderStyle,
+    pub border_bottom_style: BorderStyle,
+    pub border_left_style: BorderStyle,
     /// 継承プロパティ。
     pub font_size: Length,
     /// 継承プロパティ。
@@ -55,8 +66,9 @@ pub struct ComputedStyle {
 }
 
 impl Default for ComputedStyle {
-    /// CSSの初期値。`border-style`を扱わないM1では、意図しない既定枠線の描画を
-    /// 避けるため`border-width`の初期値は仕様の`medium`ではなく`0`とする。
+    /// CSSの初期値。`border-width`の初期値は仕様上`medium`(実装依存の太さ、
+    /// 概ね3px相当)だが、意図しない既定枠線の描画を避けるためここでは`0`とする
+    /// (どのみち`border-style`の初期値`none`により、幅があっても描画はされない)。
     fn default() -> Self {
         let zero_lp = LengthPercentage::Length(0.0);
         Self {
@@ -75,6 +87,36 @@ impl Default for ComputedStyle {
             border_right_width: Length(0.0),
             border_bottom_width: Length(0.0),
             border_left_width: Length(0.0),
+            // currentcolorの初期解決先(このデフォルト値自体が親を持たない場合の
+            // 基準になる)。実際の解決は`resolve_color`が行う。
+            border_top_color: RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 1.0,
+            },
+            border_right_color: RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 1.0,
+            },
+            border_bottom_color: RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 1.0,
+            },
+            border_left_color: RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 1.0,
+            },
+            border_top_style: BorderStyle::None,
+            border_right_style: BorderStyle::None,
+            border_bottom_style: BorderStyle::None,
+            border_left_style: BorderStyle::None,
             font_size: Length(16.0),
             font_family: vec!["sans-serif".to_string()],
             font_weight: FontWeight::Normal,
@@ -153,6 +195,14 @@ fn compute_element_style(
     let mut border_right_width = None;
     let mut border_bottom_width = None;
     let mut border_left_width = None;
+    let mut border_top_color = None;
+    let mut border_right_color = None;
+    let mut border_bottom_color = None;
+    let mut border_left_color = None;
+    let mut border_top_style = None;
+    let mut border_right_style = None;
+    let mut border_bottom_style = None;
+    let mut border_left_style = None;
     let mut font_size = None;
     let mut font_family = None;
     let mut font_weight = None;
@@ -179,6 +229,14 @@ fn compute_element_style(
             PropertyDeclaration::BorderRightWidth(v) => border_right_width = Some(*v),
             PropertyDeclaration::BorderBottomWidth(v) => border_bottom_width = Some(*v),
             PropertyDeclaration::BorderLeftWidth(v) => border_left_width = Some(*v),
+            PropertyDeclaration::BorderTopColor(v) => border_top_color = Some(*v),
+            PropertyDeclaration::BorderRightColor(v) => border_right_color = Some(*v),
+            PropertyDeclaration::BorderBottomColor(v) => border_bottom_color = Some(*v),
+            PropertyDeclaration::BorderLeftColor(v) => border_left_color = Some(*v),
+            PropertyDeclaration::BorderTopStyle(v) => border_top_style = Some(*v),
+            PropertyDeclaration::BorderRightStyle(v) => border_right_style = Some(*v),
+            PropertyDeclaration::BorderBottomStyle(v) => border_bottom_style = Some(*v),
+            PropertyDeclaration::BorderLeftStyle(v) => border_left_style = Some(*v),
             PropertyDeclaration::FontSize(v) => font_size = Some(*v),
             PropertyDeclaration::FontFamily(v) => font_family = Some(v.clone()),
             PropertyDeclaration::FontWeight(v) => font_weight = Some(*v),
@@ -213,6 +271,12 @@ fn compute_element_style(
         Some(Color::CurrentColor) => resolved_color,
         None => initial.background_color,
     };
+    // `border-color`の初期値は仕様上`currentcolor`なので、未指定時も
+    // (`currentcolor`指定時と同様に)この要素自身の計算済みcolorへ解決する。
+    let resolved_border_top_color = resolve_color(border_top_color, resolved_color);
+    let resolved_border_right_color = resolve_color(border_right_color, resolved_color);
+    let resolved_border_bottom_color = resolve_color(border_bottom_color, resolved_color);
+    let resolved_border_left_color = resolve_color(border_left_color, resolved_color);
 
     ComputedStyle {
         display: display.unwrap_or(initial.display),
@@ -230,6 +294,14 @@ fn compute_element_style(
         border_right_width: border_right_width.unwrap_or(initial.border_right_width),
         border_bottom_width: border_bottom_width.unwrap_or(initial.border_bottom_width),
         border_left_width: border_left_width.unwrap_or(initial.border_left_width),
+        border_top_color: resolved_border_top_color,
+        border_right_color: resolved_border_right_color,
+        border_bottom_color: resolved_border_bottom_color,
+        border_left_color: resolved_border_left_color,
+        border_top_style: border_top_style.unwrap_or(initial.border_top_style),
+        border_right_style: border_right_style.unwrap_or(initial.border_right_style),
+        border_bottom_style: border_bottom_style.unwrap_or(initial.border_bottom_style),
+        border_left_style: border_left_style.unwrap_or(initial.border_left_style),
         font_size: font_size.unwrap_or(inherited_font_size),
         font_family: font_family.unwrap_or(inherited_font_family),
         font_weight: font_weight.unwrap_or(inherited_font_weight),
@@ -504,5 +576,103 @@ mod tests {
 
         let styles = compute_styles(&dom, &ua, &author);
         assert_eq!(styles[&div], ComputedStyle::default());
+    }
+
+    #[test]
+    fn border_shorthand_sets_width_style_and_color_on_all_sides() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { border: 2px dashed rgb(10, 20, 30); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(style.border_top_width.0, 2.0);
+        assert_eq!(style.border_right_width.0, 2.0);
+        assert_eq!(style.border_bottom_width.0, 2.0);
+        assert_eq!(style.border_left_width.0, 2.0);
+        assert_eq!(style.border_top_style, super::BorderStyle::Dashed);
+        assert_eq!(
+            style.border_top_color,
+            RgbaColor {
+                red: 10,
+                green: 20,
+                blue: 30,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn border_color_defaults_to_currentcolor_when_unspecified() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { color: rgb(9, 9, 9); border: 1px solid; }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(
+            style.border_top_color,
+            RgbaColor {
+                red: 9,
+                green: 9,
+                blue: 9,
+                alpha: 1.0
+            },
+            "border-color should follow currentcolor when not explicitly set"
+        );
+    }
+
+    #[test]
+    fn border_color_and_border_style_shorthands_expand_per_side() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(
+            "div { border-style: solid dotted; border-color: rgb(1,1,1) rgb(2,2,2); }",
+        );
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(style.border_top_style, super::BorderStyle::Solid);
+        assert_eq!(style.border_right_style, super::BorderStyle::Dotted);
+        assert_eq!(style.border_bottom_style, super::BorderStyle::Solid);
+        assert_eq!(style.border_left_style, super::BorderStyle::Dotted);
+        assert_eq!(
+            style.border_top_color,
+            RgbaColor {
+                red: 1,
+                green: 1,
+                blue: 1,
+                alpha: 1.0
+            }
+        );
+        assert_eq!(
+            style.border_right_color,
+            RgbaColor {
+                red: 2,
+                green: 2,
+                blue: 2,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn border_is_not_inherited() {
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { border: 3px solid rgb(1, 2, 3); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&p].border_top_style, super::BorderStyle::None);
+        assert_eq!(styles[&p].border_top_width.0, 0.0);
     }
 }

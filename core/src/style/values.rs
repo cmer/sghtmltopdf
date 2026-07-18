@@ -23,6 +23,17 @@ pub enum FontStyle {
     Italic,
 }
 
+/// `border-style`。M1では実線・破線・点線のみ対応
+/// (`double`/`groove`/`ridge`/`inset`/`outset`は非対応)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BorderStyle {
+    #[default]
+    None,
+    Solid,
+    Dashed,
+    Dotted,
+}
+
 /// 長さ(px)またはパーセンテージ。M1では単位はpxのみ対応する。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LengthPercentage {

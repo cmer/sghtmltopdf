@@ -17,9 +17,11 @@
 //! ごとに異なりうる)なので、ページ分割で無名化されたインライン断片
 //! (`node: None`)であっても正しい見た目で描画される。
 //!
+//! 枠線は`border-style`が`none`でなく、かつ幅が0より大きい辺のみ、その辺の
+//! 太さの中心線をストロークすることで描画する(4辺それぞれ独立に描画するため、
+//! 角は単純な突き合わせになりミトー結合はしない)。
+//!
 //! 既知の簡略化:
-//! - `border-color`は計算スタイルに保持していない(T3参照)ため、枠線の描画は
-//!   行わない(`background-color`のみ描画する)
 //! - 太字・イタリックは対応する字形を持つフォントファイルを別途要求せず、
 //!   通常字形に対して塗り+縁取り(疑似太字)・テキスト行列のせん断(疑似
 //!   イタリック)で代用する
@@ -28,14 +30,14 @@
 
 use std::collections::HashMap;
 
-use pdf_writer::types::TextRenderingMode;
+use pdf_writer::types::{LineCapStyle, TextRenderingMode};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref};
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
-use crate::layout::{LaidOutBox, LaidOutContent, LineBox, Page, PageSettings, Rect};
+use crate::layout::{LaidOutBox, LaidOutContent, Layout, LineBox, Page, PageSettings, Rect};
 use crate::sink::Sink;
-use crate::style::ComputedStyle;
+use crate::style::{BorderStyle, ComputedStyle, RgbaColor};
 
 use super::font::{embed_font, FontIds, FontUsage};
 
@@ -202,6 +204,7 @@ fn render_box(
             settings,
         );
     }
+    render_border(content, &b.layout, &style, settings);
 
     match &b.content {
         LaidOutContent::Blocks(children) => {
@@ -228,7 +231,7 @@ fn render_box(
 fn render_background(
     content: &mut Content,
     border_box: Rect,
-    color: crate::style::RgbaColor,
+    color: RgbaColor,
     settings: &PageSettings,
 ) {
     let x = settings.margin.left + border_box.x;
@@ -240,6 +243,96 @@ fn render_background(
     );
     content.rect(x, y, border_box.width, border_box.height);
     content.fill_nonzero();
+}
+
+/// 4辺それぞれの`border-width`/`border-style`/`border-color`に従って枠線を描く。
+/// 各辺は独立に、太さの中心線をストロークすることで表現する
+/// (角のミトー結合はせず、単純に線分を突き合わせる簡略実装)。
+fn render_border(
+    content: &mut Content,
+    layout: &Layout,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+) {
+    let border_box = layout.border_box();
+    let x0 = settings.margin.left + border_box.x;
+    let x1 = x0 + border_box.width;
+    let y_top = to_pdf_y(settings, border_box.y);
+    let y_bottom = to_pdf_y(settings, border_box.y + border_box.height);
+
+    render_border_edge(
+        content,
+        layout.border.top,
+        style.border_top_color,
+        style.border_top_style,
+        (x0, y_top - layout.border.top / 2.0),
+        (x1, y_top - layout.border.top / 2.0),
+    );
+    render_border_edge(
+        content,
+        layout.border.bottom,
+        style.border_bottom_color,
+        style.border_bottom_style,
+        (x0, y_bottom + layout.border.bottom / 2.0),
+        (x1, y_bottom + layout.border.bottom / 2.0),
+    );
+    render_border_edge(
+        content,
+        layout.border.left,
+        style.border_left_color,
+        style.border_left_style,
+        (x0 + layout.border.left / 2.0, y_top),
+        (x0 + layout.border.left / 2.0, y_bottom),
+    );
+    render_border_edge(
+        content,
+        layout.border.right,
+        style.border_right_color,
+        style.border_right_style,
+        (x1 - layout.border.right / 2.0, y_top),
+        (x1 - layout.border.right / 2.0, y_bottom),
+    );
+}
+
+fn render_border_edge(
+    content: &mut Content,
+    thickness: f32,
+    color: RgbaColor,
+    border_style: BorderStyle,
+    from: (f32, f32),
+    to: (f32, f32),
+) {
+    if thickness <= 0.0 || border_style == BorderStyle::None {
+        return;
+    }
+
+    content.set_stroke_rgb(
+        color.red as f32 / 255.0,
+        color.green as f32 / 255.0,
+        color.blue as f32 / 255.0,
+    );
+    content.set_line_width(thickness);
+
+    match border_style {
+        BorderStyle::Solid => {
+            content.set_line_cap(LineCapStyle::ButtCap);
+            content.set_dash_pattern([], 0.0);
+        }
+        BorderStyle::Dashed => {
+            content.set_line_cap(LineCapStyle::ButtCap);
+            content.set_dash_pattern([thickness * 3.0], 0.0);
+        }
+        BorderStyle::Dotted => {
+            // 長さ0の破線+丸キャップで点線を表現する(PDFの定石)。
+            content.set_line_cap(LineCapStyle::RoundCap);
+            content.set_dash_pattern([0.01, thickness * 2.0], 0.0);
+        }
+        BorderStyle::None => unreachable!("直前のガードで弾いている"),
+    }
+
+    content.move_to(from.0, from.1);
+    content.line_to(to.0, to.1);
+    content.stroke();
 }
 
 /// 疑似イタリック(シアー変形)の傾斜角(12度)。埋め込みフォントに本物の
@@ -299,6 +392,10 @@ fn render_line(
                 run.color.blue as f32 / 255.0,
             );
             content.set_line_width(run.font_size * BOLD_STROKE_RATIO);
+            // 枠線描画がダッシュパターン/丸キャップを残している場合があるため、
+            // テキストの縁取りには影響しないよう明示的に実線・矩形キャップへ戻す。
+            content.set_line_cap(LineCapStyle::ButtCap);
+            content.set_dash_pattern([], 0.0);
             content.set_text_rendering_mode(TextRenderingMode::FillStroke);
         } else {
             content.set_text_rendering_mode(TextRenderingMode::Fill);
@@ -461,6 +558,72 @@ mod tests {
         assert!(
             bytes_with.len() > bytes_without.len(),
             "background-color should add extra drawing operators to the content stream"
+        );
+    }
+
+    #[test]
+    fn solid_border_adds_stroke_operators_to_content_stream() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author = parse_stylesheet(".box { border: 2px solid rgb(10, 20, 30); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let text = String::from_utf8_lossy(&bytes);
+
+        // 4辺分のストローク描画(`S`オペレータ)が追加されているはず。
+        assert!(
+            count_occurrences(bytes.as_slice(), b"\nS\n") >= 4,
+            "solid border should stroke all four sides"
+        );
+        // strokeの色(10/255, 20/255, 30/255)が`RG`オペレータで設定されているはず。
+        assert!(text.contains(" RG\n"), "border color should be set via RG");
+    }
+
+    #[test]
+    fn dotted_border_uses_round_cap_and_dash_pattern() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author = parse_stylesheet(".box { border: 1px dotted rgb(0, 0, 0); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let text = String::from_utf8_lossy(&bytes);
+
+        assert!(text.contains(" J\n"), "dotted border should set a line cap");
+        assert!(
+            text.contains(" d\n"),
+            "dotted border should set a dash pattern"
+        );
+    }
+
+    #[test]
+    fn border_style_none_suppresses_drawing_even_with_nonzero_width() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom_with = html::parse(br#"<div class="box">x</div>"#);
+        let author_with = parse_stylesheet(".box { border-width: 5px; border-style: none; }");
+        let styles_with = compute_styles(&dom_with, &ua, &author_with);
+        let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
+
+        let dom_without = html::parse(br#"<div class="box">x</div>"#);
+        let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
+        let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+
+        assert_eq!(
+            bytes_with.len(),
+            bytes_without.len(),
+            "border-style: none should suppress drawing regardless of border-width"
         );
     }
 
