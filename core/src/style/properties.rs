@@ -3,27 +3,27 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
-    BorderStyle, Color, Display, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto,
+    BorderStyle, Color, Display, FontStyle, FontWeight, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedLengthPercentageOrAuto,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PropertyDeclaration {
     Display(Display),
-    Width(LengthPercentageOrAuto),
-    Height(LengthPercentageOrAuto),
-    MarginTop(LengthPercentageOrAuto),
-    MarginRight(LengthPercentageOrAuto),
-    MarginBottom(LengthPercentageOrAuto),
-    MarginLeft(LengthPercentageOrAuto),
-    PaddingTop(LengthPercentage),
-    PaddingRight(LengthPercentage),
-    PaddingBottom(LengthPercentage),
-    PaddingLeft(LengthPercentage),
-    BorderTopWidth(Length),
-    BorderRightWidth(Length),
-    BorderBottomWidth(Length),
-    BorderLeftWidth(Length),
+    Width(SpecifiedLengthPercentageOrAuto),
+    Height(SpecifiedLengthPercentageOrAuto),
+    MarginTop(SpecifiedLengthPercentageOrAuto),
+    MarginRight(SpecifiedLengthPercentageOrAuto),
+    MarginBottom(SpecifiedLengthPercentageOrAuto),
+    MarginLeft(SpecifiedLengthPercentageOrAuto),
+    PaddingTop(SpecifiedLengthPercentage),
+    PaddingRight(SpecifiedLengthPercentage),
+    PaddingBottom(SpecifiedLengthPercentage),
+    PaddingLeft(SpecifiedLengthPercentage),
+    BorderTopWidth(SpecifiedLength),
+    BorderRightWidth(SpecifiedLength),
+    BorderBottomWidth(SpecifiedLength),
+    BorderLeftWidth(SpecifiedLength),
     BorderTopColor(Color),
     BorderRightColor(Color),
     BorderBottomColor(Color),
@@ -32,16 +32,19 @@ pub enum PropertyDeclaration {
     BorderRightStyle(BorderStyle),
     BorderBottomStyle(BorderStyle),
     BorderLeftStyle(BorderStyle),
-    BorderTopLeftRadius(Length),
-    BorderTopRightRadius(Length),
-    BorderBottomRightRadius(Length),
-    BorderBottomLeftRadius(Length),
-    FontSize(Length),
+    BorderTopLeftRadius(SpecifiedLength),
+    BorderTopRightRadius(SpecifiedLength),
+    BorderBottomRightRadius(SpecifiedLength),
+    BorderBottomLeftRadius(SpecifiedLength),
+    FontSize(SpecifiedLength),
     FontFamily(Vec<String>),
     FontWeight(FontWeight),
     FontStyle(FontStyle),
     Color(Color),
     BackgroundColor(Color),
+    /// `::before`/`::after`用の`content`。`None`は`none`/`normal`(生成ボックスなし)。
+    /// 文字列リテラル1つのみ対応し、`attr()`/`counter()`/複数値の連結は非対応。
+    Content(Option<String>),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -69,6 +72,7 @@ pub fn parse_declaration<'i>(
         "font-style" => Ok(vec![D::FontStyle(parse_font_style(input)?)]),
         "color" => Ok(vec![D::Color(parse_color(input)?)]),
         "background-color" => Ok(vec![D::BackgroundColor(parse_color(input)?)]),
+        "content" => Ok(vec![D::Content(parse_content(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -126,7 +130,7 @@ fn parse_border_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
     use PropertyDeclaration as D;
-    let mut width = Length(0.0);
+    let mut width = SpecifiedLength::Px(0.0);
     let mut style = BorderStyle::None;
     let mut color = None;
 
@@ -279,41 +283,69 @@ fn parse_font_style<'i>(input: &mut Parser<'i, '_>) -> Result<FontStyle, ParseEr
 
 fn parse_length_percentage<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<LengthPercentage, ParseError<'i, ()>> {
+) -> Result<SpecifiedLengthPercentage, ParseError<'i, ()>> {
     let token = input.next()?.clone();
     match token {
+        Token::Percentage { unit_value, .. } => {
+            Ok(SpecifiedLengthPercentage::Percentage(unit_value))
+        }
+        Token::Number { value: 0.0, .. } => {
+            Ok(SpecifiedLengthPercentage::Length(SpecifiedLength::Px(0.0)))
+        }
         Token::Dimension {
             value, ref unit, ..
-        } if unit.eq_ignore_ascii_case("px") => Ok(LengthPercentage::Length(value)),
-        Token::Percentage { unit_value, .. } => Ok(LengthPercentage::Percentage(unit_value)),
-        Token::Number { value: 0.0, .. } => Ok(LengthPercentage::Length(0.0)),
+        } => Ok(SpecifiedLengthPercentage::Length(parse_length_unit(
+            input, value, unit,
+        )?)),
         _ => Err(input.new_custom_error(())),
     }
 }
 
 fn parse_length_percentage_or_auto<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<LengthPercentageOrAuto, ParseError<'i, ()>> {
+) -> Result<SpecifiedLengthPercentageOrAuto, ParseError<'i, ()>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
         .is_ok()
     {
-        return Ok(LengthPercentageOrAuto::Auto);
+        return Ok(SpecifiedLengthPercentageOrAuto::Auto);
     }
-    parse_length_percentage(input).map(LengthPercentageOrAuto::LengthPercentage)
+    parse_length_percentage(input).map(SpecifiedLengthPercentageOrAuto::LengthPercentage)
 }
 
-fn parse_length<'i>(input: &mut Parser<'i, '_>) -> Result<Length, ParseError<'i, ()>> {
+fn parse_length<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedLength, ParseError<'i, ()>> {
     let token = input.next()?.clone();
     match token {
+        Token::Number { value: 0.0, .. } => Ok(SpecifiedLength::Px(0.0)),
         Token::Dimension {
             value, ref unit, ..
-        } if unit.eq_ignore_ascii_case("px") => Ok(Length(value)),
-        Token::Number { value: 0.0, .. } => Ok(Length(0.0)),
+        } => parse_length_unit(input, value, unit),
         _ => Err(input.new_custom_error(())),
     }
 }
 
+/// `<数値><単位>`の単位部分を見て`px`/`em`/`rem`のいずれかとして解釈する。
+/// それ以外の単位(`pt`/`vh`等)はM1では非対応。
+fn parse_length_unit<'i>(
+    input: &Parser<'i, '_>,
+    value: f32,
+    unit: &str,
+) -> Result<SpecifiedLength, ParseError<'i, ()>> {
+    if unit.eq_ignore_ascii_case("px") {
+        Ok(SpecifiedLength::Px(value))
+    } else if unit.eq_ignore_ascii_case("em") {
+        Ok(SpecifiedLength::Em(value))
+    } else if unit.eq_ignore_ascii_case("rem") {
+        Ok(SpecifiedLength::Rem(value))
+    } else {
+        Err(input.new_custom_error(()))
+    }
+}
+
+/// `lab()`/`lch()`/`oklab()`/`oklch()`はCIE系色空間からsRGBへの変換
+/// (行列演算・ガンマ補正)の実装が必要で、請求書・帳票用途での実用性に対して
+/// 実装コストが見合わないため非対応(`hsl()`/`hwb()`はcssparser-colorが
+/// sRGB変換関数を公開しているため対応する)。
 fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
     let color = cssparser_color::Color::parse(input).map_err(|_| input.new_custom_error(()))?;
     match color {
@@ -324,8 +356,48 @@ fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, (
             blue: rgba.blue,
             alpha: rgba.alpha,
         }),
+        cssparser_color::Color::Hsl(hsl) => {
+            let (r, g, b) = cssparser_color::hsl_to_rgb(
+                hsl.hue.unwrap_or(0.0) / 360.0,
+                hsl.saturation.unwrap_or(0.0),
+                hsl.lightness.unwrap_or(0.0),
+            );
+            Ok(rgba_from_unit_floats(r, g, b, hsl.alpha.unwrap_or(1.0)))
+        }
+        cssparser_color::Color::Hwb(hwb) => {
+            let (r, g, b) = cssparser_color::hwb_to_rgb(
+                hwb.hue.unwrap_or(0.0) / 360.0,
+                hwb.whiteness.unwrap_or(0.0),
+                hwb.blackness.unwrap_or(0.0),
+            );
+            Ok(rgba_from_unit_floats(r, g, b, hwb.alpha.unwrap_or(1.0)))
+        }
         _ => Err(input.new_custom_error(())),
     }
+}
+
+/// 0.0〜1.0のRGB成分・アルファ値から[`Color::Rgba`]を組み立てる。
+fn rgba_from_unit_floats(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
+    let to_u8 = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Color::Rgba {
+        red: to_u8(red),
+        green: to_u8(green),
+        blue: to_u8(blue),
+        alpha: alpha.clamp(0.0, 1.0),
+    }
+}
+
+/// `content`の簡易実装。文字列リテラル1つのみ受け付ける
+/// (`attr()`/`counter()`/複数値の連結/引用符生成は非対応)。
+/// `none`/`normal`は「生成ボックスなし」を表す`None`として扱う。
+fn parse_content<'i>(input: &mut Parser<'i, '_>) -> Result<Option<String>, ParseError<'i, ()>> {
+    if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+        return match_ignore_ascii_case! { &ident,
+            "none" | "normal" => Ok(None),
+            _ => Err(input.new_custom_error(())),
+        };
+    }
+    Ok(Some(input.expect_string()?.as_ref().to_string()))
 }
 
 fn parse_font_family<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, ParseError<'i, ()>> {

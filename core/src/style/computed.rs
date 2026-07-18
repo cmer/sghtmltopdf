@@ -4,16 +4,19 @@
 //! なければ継承プロパティは親から継承、そうでなければ初期値」という
 //! CSSの計算値算出手順を実装する。
 
+use std::cell::Cell;
 use std::collections::HashMap;
 
 use crate::html::{Dom, NodeData, NodeId};
 
-use super::cascade::matching_declarations;
+use super::cascade::{matching_declarations, matching_pseudo_content};
 use super::properties::PropertyDeclaration;
+use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
     BorderStyle, Color, Display, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto,
+    LengthPercentageOrAuto, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedLengthPercentageOrAuto,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -67,6 +70,11 @@ pub struct ComputedStyle {
     /// 継承プロパティ。
     pub color: RgbaColor,
     pub background_color: RgbaColor,
+    /// `::before { content: "..." }`の生成コンテンツ。この要素自身のスタイルを
+    /// そのまま流用して描画する(擬似要素専用の計算スタイルは持たない簡略実装)。
+    pub pseudo_before_content: Option<String>,
+    /// `::after { content: "..." }`の生成コンテンツ。
+    pub pseudo_after_content: Option<String>,
 }
 
 impl Default for ComputedStyle {
@@ -141,6 +149,8 @@ impl Default for ComputedStyle {
                 blue: 0,
                 alpha: 0.0,
             },
+            pseudo_before_content: None,
+            pseudo_after_content: None,
         }
     }
 }
@@ -148,31 +158,76 @@ impl Default for ComputedStyle {
 /// DOM全体の計算スタイルを求める。要素以外のノード(テキスト等)には
 /// ボックスに関するプロパティは意味を持たないため、単純に親の計算スタイルを
 /// (= 継承プロパティも含めてそのまま)引き継ぐ。
+///
+/// `rem`の基準となるルート要素(`<html>`)のフォントサイズは、木を辿りながら
+/// 最初に見つかった要素で確定する。それより前の(まだ確定していない)時点では
+/// 初期値`16px`を仮の基準として使うが、ルート要素自身が`rem`単位で
+/// 自分自身のfont-sizeを指定するような通常あり得ない記述を除けば、
+/// ルート要素の子孫は必ずルート確定後に処理されるため実用上問題ない。
 pub fn compute_styles(
     dom: &Dom,
     ua: &Stylesheet,
     author: &Stylesheet,
 ) -> HashMap<NodeId, ComputedStyle> {
     let mut styles = HashMap::new();
-    compute_recursive(dom, dom.document(), None, ua, author, &mut styles);
+    let ctx = StyleContext {
+        ua,
+        author,
+        root_font_size: Cell::new(ComputedStyle::default().font_size.0),
+    };
+    compute_recursive(dom, dom.document(), None, false, &ctx, &mut styles);
     styles
+}
+
+/// `compute_recursive`/`compute_element_style`の再帰全体で共有する、
+/// 木を辿る間変化しない(または`Cell`経由で一方向にのみ更新される)値。
+/// 引数の数を抑えるための単純なまとめ役。
+struct StyleContext<'a> {
+    ua: &'a Stylesheet,
+    author: &'a Stylesheet,
+    /// `rem`の基準となるルート要素(`<html>`)の計算済みフォントサイズ。
+    /// 木を辿りながら最初に見つかった要素で確定する。
+    root_font_size: Cell<f32>,
 }
 
 fn compute_recursive(
     dom: &Dom,
     node: NodeId,
     parent_style: Option<&ComputedStyle>,
-    ua: &Stylesheet,
-    author: &Stylesheet,
+    is_root_candidate: bool,
+    ctx: &StyleContext<'_>,
     out: &mut HashMap<NodeId, ComputedStyle>,
 ) {
     let style = match &dom.node(node).data {
-        NodeData::Element { .. } => compute_element_style(dom, node, parent_style, ua, author),
+        NodeData::Element { .. } => {
+            let style = compute_element_style(
+                dom,
+                node,
+                parent_style,
+                ctx.root_font_size.get(),
+                ctx.ua,
+                ctx.author,
+            );
+            // ドキュメント直下の最初の要素(通常は<html>)がルート要素。
+            if is_root_candidate {
+                ctx.root_font_size.set(style.font_size.0);
+            }
+            style
+        }
         _ => parent_style.cloned().unwrap_or_default(),
     };
 
+    // `node`がドキュメントノードであれば、その直下の子(通常は<html>)がルート要素候補。
+    let children_are_root_candidates = node == dom.document();
     for child in dom.children(node) {
-        compute_recursive(dom, child, Some(&style), ua, author, out);
+        compute_recursive(
+            dom,
+            child,
+            Some(&style),
+            children_are_root_candidates,
+            ctx,
+            out,
+        );
     }
 
     out.insert(node, style);
@@ -182,11 +237,16 @@ fn compute_element_style(
     dom: &Dom,
     element: NodeId,
     parent: Option<&ComputedStyle>,
+    root_font_size: f32,
     ua: &Stylesheet,
     author: &Stylesheet,
 ) -> ComputedStyle {
     let declarations = matching_declarations(dom, element, ua, author);
     let inline_declarations = inline_style_declarations(dom, element);
+    let pseudo_before_content =
+        matching_pseudo_content(dom, element, PseudoElement::Before, ua, author);
+    let pseudo_after_content =
+        matching_pseudo_content(dom, element, PseudoElement::After, ua, author);
 
     let mut display = None;
     let mut width = None;
@@ -261,6 +321,9 @@ fn compute_element_style(
             PropertyDeclaration::FontStyle(v) => font_style = Some(*v),
             PropertyDeclaration::Color(v) => color = Some(*v),
             PropertyDeclaration::BackgroundColor(v) => background_color = Some(*v),
+            // `content`は`::before`/`::after`専用で、通常の要素では効果を持たない
+            // (`matching_pseudo_content`が別途、擬似要素向けのマッチングを行う)。
+            PropertyDeclaration::Content(_) => {}
         }
     }
 
@@ -271,6 +334,27 @@ fn compute_element_style(
     let inherited_font_weight = parent.map_or(initial.font_weight, |p| p.font_weight);
     let inherited_font_style = parent.map_or(initial.font_style, |p| p.font_style);
     let inherited_color = parent.map_or(initial.color, |p| p.color);
+
+    // font-sizeは他の長さ系プロパティより先に解決する。`em`の基準は仕様上
+    // 「親要素の計算済みfont-size」(自分自身の値ではない、循環を避けるため)。
+    let resolved_font_size = font_size
+        .map(|specified| specified.resolve(inherited_font_size.0, root_font_size))
+        .unwrap_or(inherited_font_size);
+    // font-size以外の長さ系プロパティの`em`基準は、この要素自身の(今解決した)font-size。
+    let own_font_size = resolved_font_size.0;
+    let resolve_lp_or_auto = |v: Option<SpecifiedLengthPercentageOrAuto>,
+                              initial: LengthPercentageOrAuto| {
+        v.map(|specified| specified.resolve(own_font_size, root_font_size))
+            .unwrap_or(initial)
+    };
+    let resolve_lp = |v: Option<SpecifiedLengthPercentage>, initial: LengthPercentage| {
+        v.map(|specified| specified.resolve(own_font_size, root_font_size))
+            .unwrap_or(initial)
+    };
+    let resolve_len = |v: Option<SpecifiedLength>, initial: Length| {
+        v.map(|specified| specified.resolve(own_font_size, root_font_size))
+            .unwrap_or(initial)
+    };
 
     let resolved_color = resolve_color(color, inherited_color);
     let resolved_background_color = match background_color {
@@ -298,20 +382,20 @@ fn compute_element_style(
 
     ComputedStyle {
         display: display.unwrap_or(initial.display),
-        width: width.unwrap_or(initial.width),
-        height: height.unwrap_or(initial.height),
-        margin_top: margin_top.unwrap_or(initial.margin_top),
-        margin_right: margin_right.unwrap_or(initial.margin_right),
-        margin_bottom: margin_bottom.unwrap_or(initial.margin_bottom),
-        margin_left: margin_left.unwrap_or(initial.margin_left),
-        padding_top: padding_top.unwrap_or(initial.padding_top),
-        padding_right: padding_right.unwrap_or(initial.padding_right),
-        padding_bottom: padding_bottom.unwrap_or(initial.padding_bottom),
-        padding_left: padding_left.unwrap_or(initial.padding_left),
-        border_top_width: border_top_width.unwrap_or(initial.border_top_width),
-        border_right_width: border_right_width.unwrap_or(initial.border_right_width),
-        border_bottom_width: border_bottom_width.unwrap_or(initial.border_bottom_width),
-        border_left_width: border_left_width.unwrap_or(initial.border_left_width),
+        width: resolve_lp_or_auto(width, initial.width),
+        height: resolve_lp_or_auto(height, initial.height),
+        margin_top: resolve_lp_or_auto(margin_top, initial.margin_top),
+        margin_right: resolve_lp_or_auto(margin_right, initial.margin_right),
+        margin_bottom: resolve_lp_or_auto(margin_bottom, initial.margin_bottom),
+        margin_left: resolve_lp_or_auto(margin_left, initial.margin_left),
+        padding_top: resolve_lp(padding_top, initial.padding_top),
+        padding_right: resolve_lp(padding_right, initial.padding_right),
+        padding_bottom: resolve_lp(padding_bottom, initial.padding_bottom),
+        padding_left: resolve_lp(padding_left, initial.padding_left),
+        border_top_width: resolve_len(border_top_width, initial.border_top_width),
+        border_right_width: resolve_len(border_right_width, initial.border_right_width),
+        border_bottom_width: resolve_len(border_bottom_width, initial.border_bottom_width),
+        border_left_width: resolve_len(border_left_width, initial.border_left_width),
         border_top_color: resolved_border_top_color,
         border_right_color: resolved_border_right_color,
         border_bottom_color: resolved_border_bottom_color,
@@ -320,18 +404,27 @@ fn compute_element_style(
         border_right_style: border_right_style.unwrap_or(initial.border_right_style),
         border_bottom_style: border_bottom_style.unwrap_or(initial.border_bottom_style),
         border_left_style: border_left_style.unwrap_or(initial.border_left_style),
-        border_top_left_radius: border_top_left_radius.unwrap_or(initial.border_top_left_radius),
-        border_top_right_radius: border_top_right_radius.unwrap_or(initial.border_top_right_radius),
-        border_bottom_right_radius: border_bottom_right_radius
-            .unwrap_or(initial.border_bottom_right_radius),
-        border_bottom_left_radius: border_bottom_left_radius
-            .unwrap_or(initial.border_bottom_left_radius),
-        font_size: font_size.unwrap_or(inherited_font_size),
+        border_top_left_radius: resolve_len(border_top_left_radius, initial.border_top_left_radius),
+        border_top_right_radius: resolve_len(
+            border_top_right_radius,
+            initial.border_top_right_radius,
+        ),
+        border_bottom_right_radius: resolve_len(
+            border_bottom_right_radius,
+            initial.border_bottom_right_radius,
+        ),
+        border_bottom_left_radius: resolve_len(
+            border_bottom_left_radius,
+            initial.border_bottom_left_radius,
+        ),
+        font_size: resolved_font_size,
         font_family: font_family.unwrap_or(inherited_font_family),
         font_weight: font_weight.unwrap_or(inherited_font_weight),
         font_style: font_style.unwrap_or(inherited_font_style),
         color: resolved_color,
         background_color: resolved_background_color,
+        pseudo_before_content,
+        pseudo_after_content,
     }
 }
 
@@ -458,6 +551,62 @@ mod tests {
             styles[&p].background_color,
             ComputedStyle::default().background_color
         );
+    }
+
+    #[test]
+    fn hsl_color_function_resolves_to_expected_rgb() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // 純粋な赤(hue=0, saturation=100%, lightness=50%) = rgb(255, 0, 0)。
+        let author = parse_stylesheet("div { color: hsl(0deg 100% 50%); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].color,
+            RgbaColor {
+                red: 255,
+                green: 0,
+                blue: 0,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn hwb_color_function_resolves_to_expected_rgb() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // 白100% -> 完全な白 rgb(255, 255, 255)。
+        let author = parse_stylesheet("div { color: hwb(0deg 100% 0%); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].color,
+            RgbaColor {
+                red: 255,
+                green: 255,
+                blue: 255,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn hsl_color_function_with_alpha_is_preserved() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { background-color: hsl(0deg 0% 0% / 50%); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let bg = styles[&div].background_color;
+        assert_eq!((bg.red, bg.green, bg.blue), (0, 0, 0));
+        assert!((bg.alpha - 0.5).abs() < 0.01);
     }
 
     #[test]
@@ -687,6 +836,53 @@ mod tests {
     }
 
     #[test]
+    fn em_font_size_resolves_against_parent_font_size() {
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let ua = Stylesheet::default();
+        // div: 20px、p: divの1.5倍 = 30px。
+        let author = parse_stylesheet("div { font-size: 20px; } p { font-size: 1.5em; }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].font_size.0, 20.0);
+        assert_eq!(styles[&p].font_size.0, 30.0);
+    }
+
+    #[test]
+    fn em_length_on_non_font_size_property_uses_own_font_size() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // font-sizeが先に20pxへ解決され、border-widthの2emはそれを基準にする = 40px。
+        let author = parse_stylesheet("div { font-size: 20px; border: 2em solid black; }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].border_top_width.0, 40.0);
+    }
+
+    #[test]
+    fn rem_length_resolves_against_root_element_font_size_regardless_of_nesting() {
+        let dom = html::parse(br#"<html><body><div><p>text</p></div></body></html>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let ua = Stylesheet::default();
+        // ルート(<html>)のfont-sizeを10pxにし、ネストしたpのmargin: 2remが
+        // 親(div/body)のfont-sizeに影響されず常に20pxになることを確認する。
+        let author = parse_stylesheet(
+            "html { font-size: 10px; } div { font-size: 30px; } p { margin: 2rem; }",
+        );
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&p].margin_top,
+            LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(20.0))
+        );
+    }
+
+    #[test]
     fn border_is_not_inherited() {
         let dom = html::parse(br#"<div><p>text</p></div>"#);
         let div = find(&dom, dom.document(), "div").expect("div not found");
@@ -698,5 +894,61 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         assert_eq!(styles[&p].border_top_style, super::BorderStyle::None);
         assert_eq!(styles[&p].border_top_width.0, 0.0);
+    }
+
+    #[test]
+    fn before_and_after_pseudo_content_resolve_from_matching_rules() {
+        let dom = html::parse(br#"<span class="badge">Text</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let ua = Stylesheet::default();
+        let author =
+            parse_stylesheet(r#".badge::before { content: "["; } .badge::after { content: "]"; }"#);
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&span].pseudo_before_content.as_deref(), Some("["));
+        assert_eq!(styles[&span].pseudo_after_content.as_deref(), Some("]"));
+    }
+
+    #[test]
+    fn pseudo_content_is_none_without_a_matching_before_after_rule() {
+        let dom = html::parse(br#"<span class="badge">Text</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(".badge { color: rgb(1, 2, 3); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&span].pseudo_before_content, None);
+        assert_eq!(styles[&span].pseudo_after_content, None);
+    }
+
+    #[test]
+    fn explicit_content_none_wins_over_an_earlier_lower_specificity_rule() {
+        let dom = html::parse(br#"<span id="x" class="badge">Text</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let ua = Stylesheet::default();
+        // クラスセレクタで文字列を指定していても、詳細度の高い#idセレクタが
+        // 後から`content: none`にすれば生成ボックスは無くなるはず。
+        let author =
+            parse_stylesheet(r#".badge::before { content: "x"; } #x::before { content: none; }"#);
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&span].pseudo_before_content, None);
+    }
+
+    #[test]
+    fn pseudo_content_ignores_declarations_on_the_real_element() {
+        // `::before`/`::after`を伴わない通常のセレクタでの`content`宣言は無効。
+        let dom = html::parse(br#"<span class="badge">Text</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(r#".badge { content: "x"; }"#);
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&span].pseudo_before_content, None);
+        assert_eq!(styles[&span].pseudo_after_content, None);
     }
 }
