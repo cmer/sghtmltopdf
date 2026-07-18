@@ -50,6 +50,53 @@ impl Font {
         rustybuzz::Face::from_slice(&self.data, self.index)
             .expect("Font構築時に検証済みのため、ここでのパース失敗はありえない")
     }
+
+    /// フォントファイルの生バイト列(PDFへのフォント埋め込み等で必要)。
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn units_per_em(&self) -> u16 {
+        self.face().units_per_em() as u16
+    }
+
+    pub fn ascender(&self) -> i16 {
+        self.face().ascender()
+    }
+
+    pub fn descender(&self) -> i16 {
+        self.face().descender()
+    }
+
+    pub fn capital_height(&self) -> Option<i16> {
+        self.face().capital_height()
+    }
+
+    pub fn italic_angle(&self) -> f32 {
+        self.face().italic_angle()
+    }
+
+    pub fn is_italic(&self) -> bool {
+        self.face().is_italic()
+    }
+
+    pub fn is_monospaced(&self) -> bool {
+        self.face().is_monospaced()
+    }
+
+    /// OS/2テーブルのウェイト値(400=標準, 700=太字)。
+    pub fn weight(&self) -> u16 {
+        self.face().weight().to_number()
+    }
+
+    pub fn bounding_box(&self) -> ttf_parser::Rect {
+        self.face().global_bounding_box()
+    }
+
+    /// `glyph_id`の水平アドバンス幅(フォントユニット)。
+    pub fn glyph_hor_advance(&self, glyph_id: u16) -> Option<u16> {
+        self.face().glyph_hor_advance(ttf_parser::GlyphId(glyph_id))
+    }
 }
 
 #[cfg(test)]
