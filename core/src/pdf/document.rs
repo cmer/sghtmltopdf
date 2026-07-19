@@ -57,7 +57,7 @@ use crate::layout::{
 use crate::sink::Sink;
 use crate::style::{BorderStyle, ComputedStyle, RgbaColor};
 
-use super::font::{embed_font, FontIds, FontUsage};
+use super::font::{deflate, embed_font, FontIds, FontUsage};
 
 /// DOM由来のレイアウト結果(ページ列)をPDFバイト列にエンコードする。
 pub fn encode_pdf(
@@ -139,7 +139,10 @@ pub fn encode_pdf(
         }
         p.finish();
 
-        pdf.stream(content_id, &content_bytes);
+        let compressed_content = deflate(&content_bytes);
+        let mut content_stream = pdf.stream(content_id, &compressed_content);
+        content_stream.filter(pdf_writer::Filter::FlateDecode);
+        content_stream.finish();
     }
 
     pdf.pages(pages_tree_id)
@@ -902,6 +905,41 @@ mod tests {
             .count()
     }
 
+    /// PDFバイト列中の全`stream`〜`endstream`区間を取り出し、
+    /// zlib(`/FlateDecode`)で圧縮されていれば展開して連結したものを返す。
+    /// コンテンツストリームは圧縮済みなので、オペレータ列を文字列として
+    /// 検証したいテストはこちらを使う(構造レベルの辞書キー、例えば
+    /// `/Subtype /Type0`のような、ストリーム本体の外にある文字列は
+    /// 元の`bytes`のままで検証してよい)。
+    fn decompressed_stream_bytes(pdf_bytes: &[u8]) -> Vec<u8> {
+        fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+            haystack.windows(needle.len()).position(|w| w == needle)
+        }
+
+        let mut out = Vec::new();
+        let mut i = 0;
+        while let Some(pos) = find_subslice(&pdf_bytes[i..], b"stream\n") {
+            let start = i + pos + b"stream\n".len();
+            let Some(end_rel) = find_subslice(&pdf_bytes[start..], b"\nendstream") else {
+                break;
+            };
+            let end = start + end_rel;
+            let raw = &pdf_bytes[start..end];
+
+            let mut decoder = flate2::read::ZlibDecoder::new(raw);
+            let mut decompressed = Vec::new();
+            if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok() {
+                out.extend_from_slice(&decompressed);
+            } else {
+                out.extend_from_slice(raw);
+            }
+            out.push(b'\n');
+
+            i = end + b"\nendstream".len();
+        }
+        out
+    }
+
     #[test]
     fn encodes_a_valid_pdf_with_embedded_font() {
         let dom = html::parse(b"<p>Hello, world!</p>");
@@ -1020,8 +1058,9 @@ mod tests {
 
         // 4辺分の塗りつぶし(`f`オペレータ)が追加されているはず(各辺は
         // 外形/内形の頂点を結ぶミトー結合済みの四角形として塗る)。
-        let fill_count_with = count_occurrences(bytes_with.as_slice(), b"\nf\n");
-        let fill_count_without = count_occurrences(bytes_without.as_slice(), b"\nf\n");
+        let fill_count_with = count_occurrences(&decompressed_stream_bytes(&bytes_with), b"\nf\n");
+        let fill_count_without =
+            count_occurrences(&decompressed_stream_bytes(&bytes_without), b"\nf\n");
         assert!(
             fill_count_with >= fill_count_without + 4,
             "solid border should add 4 filled mitered quads (with={fill_count_with}, without={fill_count_without})"
@@ -1047,8 +1086,8 @@ mod tests {
         let bytes_plain = encode_pdf(&pages_plain, &styles_plain, &fonts, &settings);
 
         assert!(
-            count_occurrences(bytes_decorated.as_slice(), b"\nS\n")
-                > count_occurrences(bytes_plain.as_slice(), b"\nS\n"),
+            count_occurrences(&decompressed_stream_bytes(&bytes_decorated), b"\nS\n")
+                > count_occurrences(&decompressed_stream_bytes(&bytes_plain), b"\nS\n"),
             "underline should add an extra stroke operator to the content stream"
         );
     }
@@ -1071,8 +1110,9 @@ mod tests {
         let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
 
         // 4辺 x 2帯(外側/内側) = 8回以上の塗りつぶしが追加されているはず。
-        let fill_count_with = count_occurrences(bytes_with.as_slice(), b"\nf\n");
-        let fill_count_without = count_occurrences(bytes_without.as_slice(), b"\nf\n");
+        let fill_count_with = count_occurrences(&decompressed_stream_bytes(&bytes_with), b"\nf\n");
+        let fill_count_without =
+            count_occurrences(&decompressed_stream_bytes(&bytes_without), b"\nf\n");
         assert!(
             fill_count_with >= fill_count_without + 8,
             "double border should fill two mitered bands per side"
@@ -1094,12 +1134,13 @@ mod tests {
 
         // 角丸パス(4角ぶんのベジェ曲線)を2周分ストロークするはず(背景色は
         // 未指定なので塗りつぶしはなし)。
+        let decompressed = decompressed_stream_bytes(&bytes);
         assert!(
-            count_occurrences(bytes.as_slice(), b" c\n") >= 8,
+            count_occurrences(&decompressed, b" c\n") >= 8,
             "double border with radius should draw two rounded stroke paths"
         );
         assert!(
-            count_occurrences(bytes.as_slice(), b"\nS\n") >= 2,
+            count_occurrences(&decompressed, b"\nS\n") >= 2,
             "double border with radius should stroke twice"
         );
     }
@@ -1115,7 +1156,7 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
-        let text = String::from_utf8_lossy(&bytes);
+        let text = String::from_utf8_lossy(&decompressed_stream_bytes(&bytes)).into_owned();
 
         assert!(text.contains(" J\n"), "dotted border should set a line cap");
         assert!(
@@ -1137,11 +1178,12 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
-        let text = String::from_utf8_lossy(&bytes);
+        let decompressed = decompressed_stream_bytes(&bytes);
+        let text = String::from_utf8_lossy(&decompressed);
 
         // 角丸パスはベジェ曲線オペレータ`c`を使う。
         assert!(
-            count_occurrences(bytes.as_slice(), b" c\n") >= 8,
+            count_occurrences(&decompressed, b" c\n") >= 8,
             "rounded corners should use cubic bezier curve operators (4 corners x fill+stroke)"
         );
         // 直線矩形の`re`は(角丸なので)使われないはず。
@@ -1168,12 +1210,13 @@ mod tests {
         // 4辺が不揃いなので角丸は諦め、直線4辺のフォールバックになるはず。
         // `border-style: solid dotted`は上下がsolid(塗り)、左右がdotted
         // (ストローク)に展開されるので、両方が現れるはず。
+        let decompressed = decompressed_stream_bytes(&bytes);
         assert!(
-            count_occurrences(bytes.as_slice(), b"\nf\n") >= 2,
+            count_occurrences(&decompressed, b"\nf\n") >= 2,
             "the two solid sides should fill mitered quads"
         );
         assert!(
-            count_occurrences(bytes.as_slice(), b"\nS\n") >= 2,
+            count_occurrences(&decompressed, b"\nS\n") >= 2,
             "the two dotted sides should still stroke a centerline"
         );
     }
@@ -1210,7 +1253,7 @@ mod tests {
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
-        let text = String::from_utf8_lossy(&bytes);
+        let text = String::from_utf8_lossy(&decompressed_stream_bytes(&bytes)).into_owned();
 
         // border-box: x∈[0,360](border-left 40 + width 300 + border-right 20)、
         // PDF空間でy_top=1000(border-top 10)、y_bottom=760(border-bottom 30)。
@@ -1286,7 +1329,7 @@ mod tests {
         let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
 
         assert!(
-            count_occurrences(&bytes, b"/ActualText") > 0,
+            count_occurrences(&decompressed_stream_bytes(&bytes), b"/ActualText") > 0,
             "a word boundary spanning a font switch should get an ActualText space marker"
         );
     }
@@ -1303,7 +1346,7 @@ mod tests {
         let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
 
         assert_eq!(
-            count_occurrences(&bytes, b"/ActualText"),
+            count_occurrences(&decompressed_stream_bytes(&bytes), b"/ActualText"),
             0,
             "a single word with no boundary needs no ActualText marker"
         );

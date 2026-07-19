@@ -144,8 +144,10 @@ pub fn embed_font(
     for (&old_gid, &(_, unicode)) in &usage.glyphs {
         cmap.pair(old_to_new[&old_gid], unicode);
     }
-    let cmap_bytes = cmap.finish();
-    pdf.cmap(ids.to_unicode, &cmap_bytes).finish();
+    let cmap_bytes = deflate(&cmap.finish());
+    let mut to_unicode = pdf.cmap(ids.to_unicode, &cmap_bytes);
+    to_unicode.filter(Filter::FlateDecode);
+    to_unicode.finish();
 
     pdf.type0_font(ids.type0_font)
         .base_font(Name(b"EmbeddedFont"))
@@ -157,7 +159,7 @@ pub fn embed_font(
 }
 
 /// zlib(`/FlateDecode`)圧縮する。
-fn deflate(data: &[u8]) -> Vec<u8> {
+pub(super) fn deflate(data: &[u8]) -> Vec<u8> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     encoder
         .write_all(data)
