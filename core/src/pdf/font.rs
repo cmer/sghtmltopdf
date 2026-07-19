@@ -6,10 +6,21 @@
 //!
 //! `subsetter::subset`はサブセット後のフォントから`cmap`テーブルを取り除く仕様
 //! (PDF埋め込み専用の割り切った設計)のため、サブセット後のグリフIDは元の
-//! グリフIDとは異なる(コンパクトに詰め直された)ものになる。そのため
-//! [`embed_font`]は「元のグリフID→サブセット後のグリフID(=CID)」の対応表を
-//! 返し、呼び出し側([`super::document`])はコンテンツストリームを書く際に
-//! この対応表でグリフIDを変換する必要がある。
+//! グリフIDとは異なる(コンパクトに詰め直された)ものになる。埋め込み方式は
+//! 2通りある:
+//!
+//! - [`embed_font`](一括処理・`pdf::document::encode_pdf`向け): コンテンツ
+//!   ストリームを書く前に全ページを見てグリフ使用状況を確定できるため、
+//!   CIDそのものをサブセット後のグリフIDに詰め替える(`/CIDToGIDMap
+//!   /Identity`)。「元のグリフID→サブセット後のグリフID(=CID)」の対応表を
+//!   返し、呼び出し側がコンテンツストリームを書く際にこの対応表でグリフIDを
+//!   変換する
+//! - [`embed_font_streaming_chunks`](ストリーミング処理向け、
+//!   [0004](../../../docs/decisions/0004-streaming-pdf-and-font-subsetting.md)
+//!   参照): コンテンツストリームは各ページ確定時点で即座に書き出すため、
+//!   CIDは常に元のグリフIDのまま(詰め替えない)。フォント埋め込み側だけ
+//!   全ページ処理後にサブセット化し、`/CIDToGIDMap`をCID(=元GID)→
+//!   サブセット後GIDの対応表を持つ明示的なストリームにすることで整合させる
 //!
 //! `pdf-writer`は圧縮を自前で行わないため、サブセット後のフォントバイト列は
 //! `flate2`でzlib(`/FlateDecode`)圧縮してから埋め込む。
@@ -20,12 +31,15 @@ use std::io::Write;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
-use pdf_writer::{Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
+use pdf_writer::{Chunk, Filter, Finish, Name, Pdf, Rect as PdfRect, Ref, Str};
 use subsetter::GlyphRemapper;
 
 use crate::fonts::Font;
 
 /// 埋め込むフォント一式のオブジェクトID。
+///
+/// `cid_to_gid_map`は[`embed_font_streaming_chunks`]専用(`embed_font`は
+/// `/CIDToGIDMap /Identity`を使うため参照しない)。
 #[derive(Debug, Clone, Copy)]
 pub struct FontIds {
     pub font_file: Ref,
@@ -33,6 +47,7 @@ pub struct FontIds {
     pub cid_font: Ref,
     pub type0_font: Ref,
     pub to_unicode: Ref,
+    pub cid_to_gid_map: Ref,
 }
 
 /// 1フォント分の使用状況(文書全体を1パス目で走査して集める)。
@@ -156,6 +171,137 @@ pub fn embed_font(
         .to_unicode(ids.to_unicode);
 
     old_to_new
+}
+
+/// [`embed_font`]のストリーミング版。CIDをサブセット後のグリフIDに詰め替えず、
+/// 常に元のグリフIDのまま扱う。かわりに`/CIDToGIDMap`を、CID(元GID)から
+/// サブセット後GIDへの対応を持つ明示的なストリームにする
+/// ([0004](../../../docs/decisions/0004-streaming-pdf-and-font-subsetting.md)
+/// で検証した設計)。
+///
+/// 返り値は、各オブジェクトを`(Ref, Chunk)`の列として返す。1つの`Chunk`には
+/// 1つの間接オブジェクトのみを含める(呼び出し側がオブジェクトごとに
+/// `Sink`へ書き出し、その開始オフセットをxrefのために記録できるようにする
+/// ため)。呼び出し順に書き出せば十分で、並べ替えは不要。
+pub fn embed_font_streaming_chunks(
+    font: &Font,
+    ids: FontIds,
+    usage: &FontUsage,
+) -> Vec<(Ref, Chunk)> {
+    let mut chunks = Vec::with_capacity(6);
+
+    let mut remapper = GlyphRemapper::new();
+    remapper.remap(0); // .notdef
+    for &old_gid in usage.glyphs.keys() {
+        remapper.remap(old_gid);
+    }
+    let subset_data = subsetter::subset(font.data(), font.face_index(), &remapper)
+        .unwrap_or_else(|_| font.data().to_vec());
+
+    let compressed_font = deflate(&subset_data);
+    let mut chunk = Chunk::new();
+    let mut font_file = chunk.stream(ids.font_file, &compressed_font);
+    font_file.filter(Filter::FlateDecode);
+    font_file.pair(Name(b"Length1"), subset_data.len() as i32);
+    font_file.finish();
+    chunks.push((ids.font_file, chunk));
+
+    let units_per_em = font.units_per_em() as f32;
+    let to_1000 = |font_units: f32| font_units * 1000.0 / units_per_em;
+    let bbox = font.bounding_box();
+
+    let mut chunk = Chunk::new();
+    chunk
+        .font_descriptor(ids.descriptor)
+        .name(Name(b"EmbeddedFont"))
+        .flags(FontFlags::NON_SYMBOLIC)
+        .bbox(PdfRect::new(
+            to_1000(bbox.x_min as f32),
+            to_1000(bbox.y_min as f32),
+            to_1000(bbox.x_max as f32),
+            to_1000(bbox.y_max as f32),
+        ))
+        .italic_angle(font.italic_angle())
+        .ascent(to_1000(font.ascender() as f32))
+        .descent(to_1000(font.descender() as f32))
+        .cap_height(to_1000(
+            font.capital_height().unwrap_or(font.ascender()) as f32
+        ))
+        .stem_v(if font.weight() >= 700 { 120.0 } else { 80.0 })
+        .font_file2(ids.font_file);
+    chunks.push((ids.descriptor, chunk));
+
+    // CIDToGIDMap: CID(=元GID)でインデックスした2バイトのGID値のテーブル。
+    // 未使用のCIDは0(.notdef)のままにする。
+    let max_gid = usage.glyphs.keys().copied().max().unwrap_or(0);
+    let mut cid_to_gid_bytes = vec![0u8; (max_gid as usize + 1) * 2];
+    for &old_gid in usage.glyphs.keys() {
+        let new_gid = remapper
+            .get(old_gid)
+            .expect("usageに記録済みのグリフは必ずremapされている");
+        let idx = old_gid as usize * 2;
+        cid_to_gid_bytes[idx..idx + 2].copy_from_slice(&new_gid.to_be_bytes());
+    }
+    let compressed_cid_to_gid = deflate(&cid_to_gid_bytes);
+    let mut chunk = Chunk::new();
+    let mut cid_to_gid_stream = chunk.stream(ids.cid_to_gid_map, &compressed_cid_to_gid);
+    cid_to_gid_stream.filter(Filter::FlateDecode);
+    cid_to_gid_stream.finish();
+    chunks.push((ids.cid_to_gid_map, chunk));
+
+    let mut chunk = Chunk::new();
+    let mut cid_font = chunk.cid_font(ids.cid_font);
+    cid_font.subtype(CidFontType::Type2);
+    cid_font.base_font(Name(b"EmbeddedFont"));
+    cid_font.system_info(SystemInfo {
+        registry: Str(b"Adobe"),
+        ordering: Str(b"Identity"),
+        supplement: 0,
+    });
+    cid_font.font_descriptor(ids.descriptor);
+    cid_font.default_width(0.0);
+    {
+        // /Wは元のグリフID(=CID)をキーに、サブセット前と同じ値をそのまま
+        // 書ける(幅はusage収集時点で元GIDベースに記録済みのため変換不要)。
+        let mut w = cid_font.widths();
+        for (&old_gid, &(width, _)) in &usage.glyphs {
+            w.same(old_gid, old_gid, width);
+        }
+        w.finish();
+    }
+    // Identityではなく、サブセット後の実グリフ位置への明示マップを使う。
+    cid_font.cid_to_gid_map_stream(ids.cid_to_gid_map);
+    cid_font.finish();
+    chunks.push((ids.cid_font, chunk));
+
+    let mut cmap = UnicodeCmap::<u16>::new(
+        Name(b"Custom"),
+        SystemInfo {
+            registry: Str(b"Adobe"),
+            ordering: Str(b"UCS"),
+            supplement: 0,
+        },
+    );
+    for (&old_gid, &(_, unicode)) in &usage.glyphs {
+        cmap.pair(old_gid, unicode);
+    }
+    let cmap_bytes = deflate(&cmap.finish());
+    let mut chunk = Chunk::new();
+    let mut to_unicode = chunk.cmap(ids.to_unicode, &cmap_bytes);
+    to_unicode.filter(Filter::FlateDecode);
+    to_unicode.finish();
+    chunks.push((ids.to_unicode, chunk));
+
+    let mut chunk = Chunk::new();
+    chunk
+        .type0_font(ids.type0_font)
+        .base_font(Name(b"EmbeddedFont"))
+        .encoding_predefined(Name(b"Identity-H"))
+        .descendant_font(ids.cid_font)
+        .to_unicode(ids.to_unicode);
+    chunks.push((ids.type0_font, chunk));
+
+    chunks
 }
 
 /// zlib(`/FlateDecode`)圧縮する。

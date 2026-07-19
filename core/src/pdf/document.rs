@@ -79,6 +79,10 @@ pub fn encode_pdf(
             cid_font: alloc.next(),
             type0_font: alloc.next(),
             to_unicode: alloc.next(),
+            // `encode_pdf`は`/CIDToGIDMap /Identity`(embed_font)を使うため
+            // 参照しないが、`FontIds`を`embed_font_streaming_chunks`と共通の
+            // 型に保つため確保だけしておく。
+            cid_to_gid_map: alloc.next(),
         })
         .collect();
     let font_resource_names: Vec<String> = (0..fonts.len()).map(|i| format!("F{i}")).collect();
@@ -115,7 +119,7 @@ pub fn encode_pdf(
                 styles,
                 fonts,
                 settings,
-                &remaps,
+                Some(&remaps),
                 &font_resource_names,
             );
         }
@@ -167,16 +171,16 @@ pub fn write_document<S: Sink>(
 }
 
 #[derive(Default)]
-struct RefAllocator(i32);
+pub(super) struct RefAllocator(i32);
 
 impl RefAllocator {
-    fn next(&mut self) -> Ref {
+    pub(super) fn next(&mut self) -> Ref {
         self.0 += 1;
         Ref::new(self.0)
     }
 }
 
-fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut [FontUsage]) {
+pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut [FontUsage]) {
     match &b.content {
         LaidOutContent::Blocks(children) => {
             for child in children {
@@ -209,13 +213,13 @@ fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut [FontUsage
     }
 }
 
-fn render_box(
+pub(super) fn render_box(
     content: &mut Content,
     b: &LaidOutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: &[HashMap<u16, u16>],
+    remaps: Option<&[HashMap<u16, u16>]>,
     font_resource_names: &[String],
 ) {
     let style = b
@@ -738,7 +742,7 @@ fn render_line(
     line: &LineBox,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: &[HashMap<u16, u16>],
+    remaps: Option<&[HashMap<u16, u16>]>,
     font_resource_names: &[String],
 ) {
     let Some(first_run) = line.runs.first() else {
@@ -765,8 +769,15 @@ fn render_line(
         if run.glyphs.is_empty() {
             continue;
         }
-        let Some(remap) = remaps.get(run.font_index) else {
-            continue;
+        // `remaps`が`Some`(一括処理)ならサブセット後のグリフIDへの変換表を
+        // 引く。`None`(ストリーミング処理)ならCIDは常に元のグリフIDのまま
+        // 使う([`super::font::embed_font_streaming_chunks`]参照)。
+        let remap = match remaps {
+            Some(remaps) => match remaps.get(run.font_index) {
+                Some(remap) => Some(remap),
+                None => continue,
+            },
+            None => None,
         };
         let Some(resource_name) = font_resource_names.get(run.font_index) else {
             continue;
@@ -790,7 +801,10 @@ fn render_line(
 
         let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
         for glyph in &run.glyphs {
-            let cid = remap.get(&glyph.glyph_id).copied().unwrap_or(0);
+            let cid = match remap {
+                Some(remap) => remap.get(&glyph.glyph_id).copied().unwrap_or(0),
+                None => glyph.glyph_id,
+            };
             glyph_bytes.extend_from_slice(&cid.to_be_bytes());
         }
 
