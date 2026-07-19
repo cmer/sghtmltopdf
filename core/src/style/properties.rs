@@ -4,7 +4,7 @@ use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
     BorderStyle, Color, Display, FontStyle, FontWeight, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto,
+    SpecifiedLengthPercentageOrAuto, TextDecorationLine,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +42,7 @@ pub enum PropertyDeclaration {
     FontStyle(FontStyle),
     Color(Color),
     BackgroundColor(Color),
+    TextDecorationLine(TextDecorationLine),
     /// `::before`/`::after`用の`content`。`None`は`none`/`normal`(生成ボックスなし)。
     /// 文字列リテラル1つのみ対応し、`attr()`/`counter()`/複数値の連結は非対応。
     Content(Option<String>),
@@ -72,6 +73,9 @@ pub fn parse_declaration<'i>(
         "font-style" => Ok(vec![D::FontStyle(parse_font_style(input)?)]),
         "color" => Ok(vec![D::Color(parse_color(input)?)]),
         "background-color" => Ok(vec![D::BackgroundColor(parse_color(input)?)]),
+        "text-decoration" | "text-decoration-line" => {
+            Ok(vec![D::TextDecorationLine(parse_text_decoration_line(input)?)])
+        },
         "content" => Ok(vec![D::Content(parse_content(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
@@ -279,6 +283,33 @@ fn parse_font_style<'i>(input: &mut Parser<'i, '_>) -> Result<FontStyle, ParseEr
         "italic" | "oblique" => FontStyle::Italic,
         _ => return Err(input.new_custom_error(())),
     })
+}
+
+/// `text-decoration`/`text-decoration-line`の簡易実装。`underline`/`line-through`は
+/// 併記可能(`underline line-through`)。`overline`/`blink`、`text-decoration`
+/// ショートハンドの`text-decoration-style`/`text-decoration-color`部分は非対応。
+fn parse_text_decoration_line<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<TextDecorationLine, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(TextDecorationLine::default());
+    }
+
+    let mut line = TextDecorationLine::default();
+    loop {
+        let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) else {
+            break;
+        };
+        match_ignore_ascii_case! { &ident,
+            "underline" => line.underline = true,
+            "line-through" => line.line_through = true,
+            _ => return Err(input.new_custom_error(())),
+        }
+    }
+    Ok(line)
 }
 
 fn parse_length_percentage<'i>(

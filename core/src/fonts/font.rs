@@ -91,6 +91,20 @@ impl Font {
         self.face().is_italic()
     }
 
+    /// 下線の中心位置(ベースラインからの符号付きオフセット、フォントユニット。
+    /// 上方向が正)と太さ。フォントが`post`テーブルを持たない場合は`None`。
+    pub fn underline_metrics(&self) -> Option<(i16, i16)> {
+        let metrics = self.face().underline_metrics()?;
+        Some((metrics.position, metrics.thickness))
+    }
+
+    /// 取り消し線の中心位置(ベースラインからの符号付きオフセット、フォントユニット。
+    /// 上方向が正)と太さ。フォントが`OS/2`テーブルを持たない場合は`None`。
+    pub fn strikeout_metrics(&self) -> Option<(i16, i16)> {
+        let metrics = self.face().strikeout_metrics()?;
+        Some((metrics.position, metrics.thickness))
+    }
+
     pub fn is_monospaced(&self) -> bool {
         self.face().is_monospaced()
     }

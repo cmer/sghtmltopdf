@@ -16,7 +16,7 @@ use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
     BorderStyle, Color, Display, FontStyle, FontWeight, Length, LengthPercentage,
     LengthPercentageOrAuto, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto,
+    SpecifiedLengthPercentageOrAuto, TextDecorationLine,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -70,6 +70,12 @@ pub struct ComputedStyle {
     /// 継承プロパティ。
     pub color: RgbaColor,
     pub background_color: RgbaColor,
+    /// `text-decoration-line`。仕様上は非継承プロパティだが、代わりに祖先の
+    /// 装飾線が子孫のボックスへ「伝播」する特殊規則を持つ。この伝播を
+    /// 別途実装する代わりに、継承プロパティとして扱うことで
+    /// (`<u>bold <b>text</b></u>`のような)一般的なネストケースで見た目を一致させる
+    /// 簡略実装。子孫側で明示的に上書きされれば通常の継承同様そちらが勝つ。
+    pub text_decoration_line: TextDecorationLine,
     /// `::before { content: "..." }`の生成コンテンツ。この要素自身のスタイルを
     /// そのまま流用して描画する(擬似要素専用の計算スタイルは持たない簡略実装)。
     pub pseudo_before_content: Option<String>,
@@ -149,6 +155,7 @@ impl Default for ComputedStyle {
                 blue: 0,
                 alpha: 0.0,
             },
+            text_decoration_line: TextDecorationLine::default(),
             pseudo_before_content: None,
             pseudo_after_content: None,
         }
@@ -281,6 +288,7 @@ fn compute_element_style(
     let mut font_style = None;
     let mut color = None;
     let mut background_color = None;
+    let mut text_decoration_line = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // インラインstyle属性はセレクタベースのどの宣言よりも優先度が高いため、最後に置く。
@@ -321,6 +329,7 @@ fn compute_element_style(
             PropertyDeclaration::FontStyle(v) => font_style = Some(*v),
             PropertyDeclaration::Color(v) => color = Some(*v),
             PropertyDeclaration::BackgroundColor(v) => background_color = Some(*v),
+            PropertyDeclaration::TextDecorationLine(v) => text_decoration_line = Some(*v),
             // `content`は`::before`/`::after`専用で、通常の要素では効果を持たない
             // (`matching_pseudo_content`が別途、擬似要素向けのマッチングを行う)。
             PropertyDeclaration::Content(_) => {}
@@ -334,6 +343,8 @@ fn compute_element_style(
     let inherited_font_weight = parent.map_or(initial.font_weight, |p| p.font_weight);
     let inherited_font_style = parent.map_or(initial.font_style, |p| p.font_style);
     let inherited_color = parent.map_or(initial.color, |p| p.color);
+    let inherited_text_decoration_line =
+        parent.map_or(initial.text_decoration_line, |p| p.text_decoration_line);
 
     // font-sizeは他の長さ系プロパティより先に解決する。`em`の基準は仕様上
     // 「親要素の計算済みfont-size」(自分自身の値ではない、循環を避けるため)。
@@ -423,6 +434,7 @@ fn compute_element_style(
         font_style: font_style.unwrap_or(inherited_font_style),
         color: resolved_color,
         background_color: resolved_background_color,
+        text_decoration_line: text_decoration_line.unwrap_or(inherited_text_decoration_line),
         pseudo_before_content,
         pseudo_after_content,
     }
@@ -717,6 +729,79 @@ mod tests {
         // <i>は<b>からfont-weight: boldを継承しつつ、自身のfont-style: italicを追加する。
         assert_eq!(styles[&i].font_weight, super::FontWeight::Bold);
         assert_eq!(styles[&i].font_style, super::FontStyle::Italic);
+    }
+
+    #[test]
+    fn text_decoration_line_parses_underline_and_line_through() {
+        let dom = html::parse(br#"<p>a</p>"#);
+
+        let underline = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { text-decoration: underline; }"),
+        );
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        assert!(underline[&p].text_decoration_line.underline);
+        assert!(!underline[&p].text_decoration_line.line_through);
+
+        let line_through = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { text-decoration-line: line-through; }"),
+        );
+        assert!(line_through[&p].text_decoration_line.line_through);
+        assert!(!line_through[&p].text_decoration_line.underline);
+
+        let both = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { text-decoration: underline line-through; }"),
+        );
+        assert!(both[&p].text_decoration_line.underline);
+        assert!(both[&p].text_decoration_line.line_through);
+    }
+
+    #[test]
+    fn text_decoration_line_propagates_to_descendants_like_font_weight() {
+        // 仕様上は非継承だが、祖先の装飾線が子孫へ伝播する特殊規則の代わりに
+        // このリポジトリでは継承として扱う簡略実装(computed.rsのコメント参照)。
+        let dom = html::parse(br#"<u>bold <b>text</b></u>"#);
+        let u = find(&dom, dom.document(), "u").expect("u not found");
+        let b = find(&dom, u, "b").expect("b not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("u { text-decoration: underline; }"),
+        );
+        assert!(styles[&u].text_decoration_line.underline);
+        assert!(styles[&b].text_decoration_line.underline);
+    }
+
+    #[test]
+    fn ua_stylesheet_gives_u_and_s_their_default_text_decoration() {
+        use super::super::ua::user_agent_stylesheet;
+
+        let dom = html::parse(br#"<p><u>underlined</u> <s>struck</s></p>"#);
+        let u = find(&dom, dom.document(), "u").expect("u not found");
+        let s = find(&dom, dom.document(), "s").expect("s not found");
+
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        assert!(styles[&u].text_decoration_line.underline);
+        assert!(styles[&s].text_decoration_line.line_through);
+    }
+
+    #[test]
+    fn text_decoration_none_overrides_inherited_underline() {
+        let dom = html::parse(br#"<u><span class="plain">text</span></u>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let ua = Stylesheet::default();
+        let author =
+            parse_stylesheet("u { text-decoration: underline; } .plain { text-decoration: none; }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert!(!styles[&span].text_decoration_line.underline);
     }
 
     #[test]

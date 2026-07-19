@@ -675,6 +675,59 @@ fn render_line(
     }
 
     content.end_text();
+
+    for run in &line.runs {
+        if !run.underline && !run.line_through {
+            continue;
+        }
+        let Some(font) = fonts.get(run.font_index) else {
+            continue;
+        };
+        let x = settings.margin.left + line.rect.x + run.x_offset;
+        if run.underline {
+            let (y, thickness) =
+                decoration_metrics(font, run.font_size, font.underline_metrics(), -0.1);
+            render_border_edge(
+                content,
+                thickness,
+                run.color,
+                BorderStyle::Solid,
+                (x, baseline_y + y),
+                (x + run.width, baseline_y + y),
+            );
+        }
+        if run.line_through {
+            let (y, thickness) =
+                decoration_metrics(font, run.font_size, font.strikeout_metrics(), 0.3);
+            render_border_edge(
+                content,
+                thickness,
+                run.color,
+                BorderStyle::Solid,
+                (x, baseline_y + y),
+                (x + run.width, baseline_y + y),
+            );
+        }
+    }
+}
+
+/// フォントの`post`(下線)/`OS2`(取り消し線)テーブルから、ベースラインからの
+/// 符号付きオフセットと線の太さをpx単位で求める。テーブルを持たないフォントでは
+/// `fallback_ratio`(フォントサイズに対する比率)をアセント基準の位置として使う。
+fn decoration_metrics(
+    font: &crate::fonts::Font,
+    font_size: f32,
+    metrics: Option<(i16, i16)>,
+    fallback_ratio: f32,
+) -> (f32, f32) {
+    let units_per_em = font.units_per_em() as f32;
+    match metrics {
+        Some((position, thickness)) if thickness > 0 => (
+            position as f32 / units_per_em * font_size,
+            thickness as f32 / units_per_em * font_size,
+        ),
+        _ => (font_size * fallback_ratio, font_size * 0.05),
+    }
 }
 
 /// フォントのアセント/ディセントから、行ボックス上端からベースラインまでの
@@ -847,6 +900,31 @@ mod tests {
         );
         // strokeの色(10/255, 20/255, 30/255)が`RG`オペレータで設定されているはず。
         assert!(text.contains(" RG\n"), "border color should be set via RG");
+    }
+
+    #[test]
+    fn text_decoration_underline_adds_stroke_operator() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom_decorated = html::parse(br#"<p class="u">underlined</p>"#);
+        let author = parse_stylesheet(".u { text-decoration: underline; }");
+        let styles_decorated = compute_styles(&dom_decorated, &ua, &author);
+        let pages_decorated =
+            paginate_document(&dom_decorated, &styles_decorated, &fonts, &settings);
+        let bytes_decorated = encode_pdf(&pages_decorated, &styles_decorated, &fonts, &settings);
+
+        let dom_plain = html::parse(br#"<p class="u">underlined</p>"#);
+        let styles_plain = compute_styles(&dom_plain, &ua, &Stylesheet::default());
+        let pages_plain = paginate_document(&dom_plain, &styles_plain, &fonts, &settings);
+        let bytes_plain = encode_pdf(&pages_plain, &styles_plain, &fonts, &settings);
+
+        assert!(
+            count_occurrences(bytes_decorated.as_slice(), b"\nS\n")
+                > count_occurrences(bytes_plain.as_slice(), b"\nS\n"),
+            "underline should add an extra stroke operator to the content stream"
+        );
     }
 
     #[test]

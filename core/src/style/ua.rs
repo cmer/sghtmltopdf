@@ -22,7 +22,8 @@ head, script, style, title, meta, link {
   display: none;
 }
 
-span, a, b, strong, i, em, small, code, label, abbr, sub, sup, u, s, mark {
+span, a, b, strong, i, em, small, code, label, abbr, sub, sup,
+u, s, strike, ins, del, mark {
   display: inline;
 }
 
@@ -32,6 +33,14 @@ b, strong {
 
 i, em {
   font-style: italic;
+}
+
+u, ins {
+  text-decoration: underline;
+}
+
+s, strike, del {
+  text-decoration: line-through;
 }
 
 body {

@@ -27,6 +27,8 @@ pub struct TextRun {
     pub color: RgbaColor,
     pub bold: bool,
     pub italic: bool,
+    pub underline: bool,
+    pub line_through: bool,
     /// この区間の元テキスト(`ShapedGlyph::cluster`から文字を逆引きするために保持する。
     /// PDF出力の`/ToUnicode`CMap生成で使う)。
     pub text: String,
@@ -212,6 +214,8 @@ fn shape_run(
         color: style.color,
         bold: style.font_weight == FontWeight::Bold,
         italic: style.font_style == FontStyle::Italic,
+        underline: style.text_decoration_line.underline,
+        line_through: style.text_decoration_line.line_through,
         text: text.to_string(),
         glyphs: shaped.glyphs,
         x_offset: 0.0,

@@ -30,6 +30,14 @@ pub enum FontStyle {
     Italic,
 }
 
+/// `text-decoration-line`。`underline`と`line-through`は同時指定可能
+/// (仕様通り)。`overline`(あまり使われないため)は非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextDecorationLine {
+    pub underline: bool,
+    pub line_through: bool,
+}
+
 /// `border-style`。M1では実線・破線・点線・二重線のみ対応。
 /// `groove`/`ridge`/`inset`/`outset`(border-colorから2階調の疑似立体陰影を
 /// 算出する必要がある)は、請求書・帳票用途での実用性に対して実装コストが
