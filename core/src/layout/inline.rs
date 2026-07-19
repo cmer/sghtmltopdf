@@ -164,7 +164,12 @@ fn split_word_into_runs(
     for sc in word {
         let style = &span_styles[sc.style_index];
         let font_index = fonts
-            .select_for_char(&style.font_family, sc.ch)
+            .select_for_char(
+                &style.font_family,
+                style.font_weight,
+                style.font_style,
+                sc.ch,
+            )
             .unwrap_or(0);
 
         match current {
@@ -208,12 +213,19 @@ fn shape_run(
     let font = fonts.get(font_index).expect("font_indexは常に有効な範囲");
     let font_size = style.font_size.0;
     let shaped = shape_text(font, text, font_size);
+    // 選択されたフォントが実際にBold/Italicであれば、疑似合成は不要
+    // (`fonts::FontCollection::select_for_char`が本物のBold/Italic面を優先して
+    // 選ぶため、`--font`/`@font-face`/システムフォントに実体があればここで
+    // 疑似合成をスキップできる)。
+    let needs_synthetic_bold = style.font_weight == FontWeight::Bold && !fonts.is_bold(font_index);
+    let needs_synthetic_italic =
+        style.font_style == FontStyle::Italic && !fonts.is_italic(font_index);
     TextRun {
         font_index,
         font_size,
         color: style.color,
-        bold: style.font_weight == FontWeight::Bold,
-        italic: style.font_style == FontStyle::Italic,
+        bold: needs_synthetic_bold,
+        italic: needs_synthetic_italic,
         underline: style.text_decoration_line.underline,
         line_through: style.text_decoration_line.line_through,
         text: text.to_string(),
@@ -258,6 +270,10 @@ mod tests {
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
 
     const DEJAVU_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+    const DEJAVU_BOLD_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fonts/DejaVuSans-Bold.ttf"
+    );
     const CJK_PATH: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fonts/NotoSansCJK-Regular.ttc"
@@ -265,6 +281,13 @@ mod tests {
 
     fn dejavu_only() -> FontCollection {
         FontCollection::new(vec![Font::load(DEJAVU_PATH).unwrap()])
+    }
+
+    fn dejavu_regular_and_bold() -> FontCollection {
+        FontCollection::new(vec![
+            Font::load(DEJAVU_PATH).unwrap(),
+            Font::load(DEJAVU_BOLD_PATH).unwrap(),
+        ])
     }
 
     fn dejavu_and_cjk() -> FontCollection {
@@ -426,6 +449,56 @@ mod tests {
         assert!(lines[0].runs[1].bold);
         assert_eq!(lines[0].runs[0].text, "bo");
         assert_eq!(lines[0].runs[1].text, "ld");
+    }
+
+    #[test]
+    fn bold_span_uses_the_real_bold_face_and_skips_synthetic_bold_when_available() {
+        // "bo"は通常、"ld"は<b>(太字)。フォントコレクションにDejaVu SansのBold版も
+        // 含まれている場合、疑似太字ではなく本物のBold面が選ばれるはず
+        // (family名を明示しないと既定の"sans-serif"はどちらのフォント名にも
+        // 一致せず、weight/styleを問わない先頭フォントへのフォールバックに
+        // 落ちてしまい本来テストしたい分岐を通らないため、明示的に指定する)。
+        let (_, spans, styles) = spans_for("bo<b>ld</b>", "p { font-family: 'DejaVu Sans'; }");
+        let fonts = dejavu_regular_and_bold();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].runs.len(), 2);
+        assert_eq!(
+            lines[0].runs[0].font_index, 0,
+            "\"bo\" (normal weight) should use the regular face"
+        );
+        assert!(!lines[0].runs[0].bold);
+        assert_eq!(
+            lines[0].runs[1].font_index, 1,
+            "\"ld\" (bold) should use the real bold face, not the regular one"
+        );
+        assert!(
+            !lines[0].runs[1].bold,
+            "no synthetic bold should be applied when a real bold face was selected"
+        );
+    }
+
+    #[test]
+    fn bold_span_prefers_the_real_bold_face_even_without_a_matching_font_family() {
+        // font-familyを一切指定しない(既定値"sans-serif")場合でも、familyの
+        // 一致を問わないグローバルフォールバック側でweight/style一致を優先し、
+        // 本物のBold面を選べるはず(family一致だけを見ていた旧実装だと、
+        // "sans-serif"はどのフォント名にも一致せずグリフ網羅性のみによる
+        // フォールバックに落ちてしまい、太字要求を無視して先頭のRegular面が
+        // 選ばれてしまっていた)。
+        let (_, spans, styles) = spans_for("bo<b>ld</b>", "");
+        let fonts = dejavu_regular_and_bold();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].runs.len(), 2);
+        assert_eq!(lines[0].runs[0].font_index, 0);
+        assert_eq!(
+            lines[0].runs[1].font_index, 1,
+            "bold text should still find the real bold face via the family-agnostic fallback"
+        );
+        assert!(!lines[0].runs[1].bold);
     }
 
     #[test]

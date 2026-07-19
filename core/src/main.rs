@@ -142,7 +142,12 @@ fn run(options: &Options) -> Result<usize, String> {
     // CSSの入力元のため)。
     let base_dir = options.input.parent().unwrap_or(std::path::Path::new("."));
     for loaded in load_font_faces(&author.font_faces, base_dir) {
-        fonts.push_font_face(loaded.family, loaded.font);
+        fonts.push_font_face(
+            loaded.family,
+            Some(loaded.weight),
+            Some(loaded.style),
+            loaded.font,
+        );
     }
 
     // `--font`/`@font-face`のどちらでも解決できなかった具体的なfont-family名を

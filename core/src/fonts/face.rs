@@ -6,13 +6,15 @@
 
 use std::path::Path;
 
-use crate::style::FontFaceRule;
+use crate::style::{FontFaceRule, FontStyle, FontWeight};
 
 use super::font::Font;
 
-/// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名の組。
+/// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style。
 pub struct LoadedFontFace {
     pub family: String,
+    pub weight: FontWeight,
+    pub style: FontStyle,
     pub font: Font,
 }
 
@@ -38,6 +40,8 @@ fn load_one(rule: &FontFaceRule, base_dir: &Path) -> Option<LoadedFontFace> {
         if let Ok(font) = Font::from_bytes(bytes, 0) {
             return Some(LoadedFontFace {
                 family: rule.family.clone(),
+                weight: rule.weight,
+                style: rule.style,
                 font,
             });
         }
