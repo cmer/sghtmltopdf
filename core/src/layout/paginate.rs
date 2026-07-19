@@ -1,30 +1,39 @@
-//! レイアウト済みのボックス木を、ページ残り高さに基づいて機械的に分割する。
+//! レイアウト済みのボックス木を、ページ残り高さに基づいて分割する。
 //!
-//! `break-before`/`break-after`/`orphans`/`widows`といったCSS Fragmentation
-//! 仕様のヒントは一切見ない(M2で対応)。ボックスがページに収まらない場合、
-//! 以下の優先順で分割を試みる:
-//! 1. ブロックコンテナなら、その子ボックス単位で置き直す
-//! 2. 複数行のインラインコンテンツなら、行(line box)単位で分割する
-//! 3. それでも分割できない最小単位(空の要素・1行のみの内容)は次ページの
+//! `break-before`/`break-after`/`break-inside`(`orphans`/`widows`はM2の別段階
+//! [T15]で対応)を尊重しつつ、ボックスがページに収まらない場合は以下の優先順で
+//! 分割を試みる:
+//! 1. `break-inside: avoid`かつ丸ごと1ページに収まる大きさなら、分割せず
+//!    次ページの先頭へまるごと送る
+//! 2. ブロックコンテナなら、その子ボックス単位で置き直す(各子の
+//!    `break-before`/`break-after: always`もこの単位で強制改ページとして働く)
+//! 3. 複数行のインラインコンテンツなら、行(line box)単位で分割する
+//! 4. それでも分割できない最小単位(空の要素・1行のみの内容)は次ページの
 //!    先頭にまるごと送る(1ページに収まらないほど巨大な場合はそのままはみ出す)
+//!
+//! 子孫の`break-before`/`break-after: always`は、祖先の部分木がページ残り高さに
+//! 収まる場合でも見逃してはならない(強制改ページはオーバーフローとは独立した
+//! 明示的な指定のため)。[`subtree_requires_child_walk`]が、部分木内にこうした
+//! 強制改ページが存在するかを事前に判定し、存在すれば「丸ごと1個のリーフとして
+//! 配置する」高速経路を使わずに子要素単位の配置へフォールバックする。
 //!
 //! コンテナ自身がページをまたいで分割される場合でも、そのコンテナの背景・枠線は
 //! 実際に子が配置された各ページごとに再現する(簡易的なボックスフラグメンテーション、
-//! [`place_split`]参照)。CSS Fragmentation仕様の`break-before`/`-after`/`-inside`や
-//! orphans/widowsのような「どこで分割するか」の制御はしないが、「すでに決まった
-//! 分割位置で、コンテナの装飾をどう引き継ぐか」は以下の簡易規則に従う:
+//! [`place_split`]参照)。「すでに決まった分割位置で、コンテナの装飾をどう
+//! 引き継ぐか」は以下の簡易規則に従う:
 //! - 上マージン/枠線/パディングは最初のフラグメントのみに適用する
 //! - 下マージン/枠線/パディングは最後のフラグメントのみに適用する
 //! - 左右の枠線/パディングは全フラグメントに適用する
 //! - 背景色は各フラグメントの実際の内容範囲に対してそれぞれ塗る
 //!
-//! ページをまたがず1ページに収まる部分木は、元の構造を保ったまま配置される。
+//! ページをまたがず1ページに収まり、かつ強制改ページも内包しない部分木は、
+//! 元の構造を保ったまま配置される。
 
 use std::collections::HashMap;
 
 use crate::fonts::FontCollection;
 use crate::html::{Dom, NodeId};
-use crate::style::ComputedStyle;
+use crate::style::{BreakBetween, BreakInside, ComputedStyle};
 
 use super::block::{layout_document, FragmentationHints, LaidOutBox, LaidOutContent};
 use super::box_tree::build_box_tree;
@@ -60,8 +69,26 @@ pub fn paginate_document(
 
 fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &mut f32) {
     let height = b.layout.margin_box_height();
+    let has_forced_break_inside = subtree_requires_child_walk(b);
 
-    if *cursor + height <= page_height {
+    if *cursor + height <= page_height && !has_forced_break_inside {
+        place_leaf(b, pages, cursor);
+        return;
+    }
+
+    // `break-inside: avoid`: 丸ごと(空の)1ページに収まる大きさで、かつ内部に
+    // 強制改ページを内包しない場合は、分割せず次ページの先頭へまるごと送る。
+    // 1ページに収まらないほど巨大な場合はこの限りではなく、best-effortで
+    // 通常通り分割する(無限ループ・出力不能を避けるための例外)。
+    // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
+    // 進んでいるだけの場合を含む)、移動しても無意味なのでそのまま現在の
+    // ページに置く。
+    if b.fragmentation.break_inside == BreakInside::Avoid
+        && current_page_has_content(pages)
+        && height <= page_height
+        && !has_forced_break_inside
+    {
+        new_page(pages, cursor);
         place_leaf(b, pages, cursor);
         return;
     }
@@ -74,6 +101,12 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
                 page_height,
                 pages,
                 cursor,
+                |child: &LaidOutBox| {
+                    (
+                        child.fragmentation.break_before == BreakBetween::Always,
+                        child.fragmentation.break_after == BreakBetween::Always,
+                    )
+                },
                 |child, ph, ps, c| {
                     place_box(child, ph, ps, c);
                 },
@@ -81,9 +114,19 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
             return;
         }
         LaidOutContent::Inline(lines) if lines.len() > 1 => {
-            place_split(b, lines, page_height, pages, cursor, |line, ph, ps, c| {
-                place_line(line, ph, ps, c);
-            });
+            place_split(
+                b,
+                lines,
+                page_height,
+                pages,
+                cursor,
+                // 行(line box)は`break-before`/`break-after`を持たない
+                // (これらはブロックレベルの兄弟間にのみ意味を持つ)。
+                |_| (false, false),
+                |line, ph, ps, c| {
+                    place_line(line, ph, ps, c);
+                },
+            );
             return;
         }
         _ => {}
@@ -97,17 +140,40 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
     place_leaf(b, pages, cursor);
 }
 
-/// `b`が1ページに収まらないため、子要素(`items`、`place_one`で1つずつ配置)単位で
-/// 分割配置する。分割後、`b`自身の背景・枠線を各ページの実際の内容範囲に対して
-/// 再現する装飾フラグメントを追加で挿入する(モジュールdoc参照)。
+/// `b`の部分木内(ブロックの子孫のみ、インライン行・テーブル内部は対象外)に、
+/// `break-before`/`break-after: always`を持つボックスが存在するかどうか。
+///
+/// これが`true`の場合、`b`自身がページ残り高さに収まっていても「丸ごと1個の
+/// リーフとして配置する」高速経路は使えない(強制改ページの位置を見逃して
+/// しまうため)。テーブルの内部行・インライン行の分割はM2のスコープ外
+/// (`0001-rest-of-m1.md`参照)なので、`Blocks`のみ再帰する。
+fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
+    match &b.content {
+        LaidOutContent::Blocks(children) => children.iter().any(|child| {
+            child.fragmentation.break_before == BreakBetween::Always
+                || child.fragmentation.break_after == BreakBetween::Always
+                || subtree_requires_child_walk(child)
+        }),
+        LaidOutContent::Inline(_) | LaidOutContent::Table(_) => false,
+    }
+}
+
+/// `b`が1ページに収まらない(または内部に強制改ページを内包する)ため、子要素
+/// (`items`、`place_one`で1つずつ配置)単位で分割配置する。分割後、`b`自身の
+/// 背景・枠線を各ページの実際の内容範囲に対して再現する装飾フラグメントを
+/// 追加で挿入する(モジュールdoc参照)。
 ///
 /// `items`は`LaidOutBox`(ブロック子要素)または[`LineBox`](インライン行)のどちらか。
+/// `break_hints`は各要素について`(直前に強制改ページが必要か, 直後に強制改ページが
+/// 必要か)`を返すコールバック(行には`break-before`/`break-after`の概念がないため、
+/// 呼び出し元は常に`(false, false)`を返すコールバックを渡す)。
 fn place_split<T>(
     b: &LaidOutBox,
     items: &[T],
     page_height: f32,
     pages: &mut Vec<Page>,
     cursor: &mut f32,
+    break_hints: impl Fn(&T) -> (bool, bool),
     place_one: impl Fn(&T, f32, &mut Vec<Page>, &mut f32),
 ) {
     let top_extra = b.layout.margin.top + b.layout.border.top + b.layout.padding.top;
@@ -129,7 +195,30 @@ fn place_split<T>(
         start_index: pages[current_page].boxes.len(),
     }];
 
-    for item in items {
+    // 強制改ページ(`break-before`/`break-after: always`)発生時、新しいページを
+    // 開始し対応するセグメントを追加する共通処理。オーバーフローによる自然な
+    // ページ送りとの二重計上を避けるため、`current_page`もその場で更新する。
+    let force_new_page = |pages: &mut Vec<Page>,
+                          cursor: &mut f32,
+                          current_page: &mut usize,
+                          segments: &mut Vec<Segment>| {
+        new_page(pages, cursor);
+        *current_page = pages.len() - 1;
+        segments.push(Segment {
+            page_index: *current_page,
+            start_index: 0,
+        });
+    };
+
+    for (i, item) in items.iter().enumerate() {
+        let (breaks_before, breaks_after) = break_hints(item);
+        // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
+        // 進んでいるだけの場合を含む)、改ページしても無意味な空ページを
+        // 作るだけなので何もしない。
+        if breaks_before && current_page_has_content(pages) {
+            force_new_page(pages, cursor, &mut current_page, &mut segments);
+        }
+
         place_one(item, page_height, pages, cursor);
         let now_page = pages.len() - 1;
         if now_page != current_page {
@@ -142,6 +231,12 @@ fn place_split<T>(
                 });
             }
             current_page = now_page;
+        }
+
+        // 次に置く要素がある場合のみ改ページする(末尾の要素の後ろに
+        // 空ページを作らないため)。
+        if breaks_after && i + 1 < items.len() {
+            force_new_page(pages, cursor, &mut current_page, &mut segments);
         }
     }
 
@@ -297,6 +392,19 @@ fn place_leaf(b: &LaidOutBox, pages: &mut [Page], cursor: &mut f32) {
 fn new_page(pages: &mut Vec<Page>, cursor: &mut f32) {
     pages.push(Page::default());
     *cursor = 0.0;
+}
+
+/// 現在のページに実際に配置されたボックスが1つでもあるか。`cursor`は祖先の
+/// マージン/枠線/パディング分だけ既に進んでいることがあるため(まだ何も
+/// 描画されていなくても`cursor > 0.0`になり得る)、「強制改ページが本当に
+/// 意味のある移動か(=現在のページを空のまま捨てずに済むか)」の判定には
+/// `cursor`ではなくこちらを使う。
+fn current_page_has_content(pages: &[Page]) -> bool {
+    !pages
+        .last()
+        .expect("paginateは常に1ページ以上を保持する")
+        .boxes
+        .is_empty()
 }
 
 /// `b`の部分木全体のY座標を`delta`だけ平行移動した複製を返す
@@ -620,5 +728,193 @@ mod tests {
                 assert_eq!(decoration.layout.padding.top, 0.0);
             }
         }
+    }
+
+    /// `target`をnodeに持ち、実際に内容を伴う(装飾専用フラグメントではない)
+    /// ボックスがそのページにあるか。
+    fn page_contains_content(page: &Page, target: NodeId) -> bool {
+        page.boxes.iter().any(|b| box_contains_node(b, target))
+    }
+
+    #[test]
+    fn break_before_always_forces_a_new_page_even_though_both_fit_on_one_page() {
+        let dom = html::parse(br#"<div><p class="a">A</p><p class="b">B</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".a { height: 50px; margin: 0; } \
+             .b { height: 50px; margin: 0; break-before: always; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(
+            pages.len(),
+            2,
+            "break-before: always should force a new page even though both \
+             paragraphs easily fit on a single page"
+        );
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let (a, b) = (ps[0], ps[1]);
+
+        assert!(page_contains_content(&pages[0], a));
+        assert!(!page_contains_content(&pages[0], b));
+        assert!(page_contains_content(&pages[1], b));
+        assert!(!page_contains_content(&pages[1], a));
+    }
+
+    #[test]
+    fn break_before_always_on_the_first_element_does_not_create_a_blank_leading_page() {
+        let dom = html::parse(br#"<p class="a">A</p>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".a { height: 50px; margin: 0; break-before: always; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(
+            pages.len(),
+            1,
+            "break-before: always on the very first element of the document \
+             should not produce a blank leading page"
+        );
+    }
+
+    #[test]
+    fn break_after_always_forces_a_new_page_before_the_next_sibling() {
+        let dom = html::parse(br#"<div><p class="a">A</p><p class="b">B</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".a { height: 50px; margin: 0; break-after: always; } \
+             .b { height: 50px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(pages.len(), 2);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let (a, b) = (ps[0], ps[1]);
+
+        assert!(page_contains_content(&pages[0], a));
+        assert!(page_contains_content(&pages[1], b));
+        assert!(!page_contains_content(&pages[0], b));
+    }
+
+    #[test]
+    fn break_after_always_on_the_last_element_does_not_create_a_trailing_blank_page() {
+        let dom = html::parse(br#"<p class="a">A</p>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".a { height: 50px; margin: 0; break-after: always; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(
+            pages.len(),
+            1,
+            "break-after: always on the very last element should not produce \
+             a trailing blank page"
+        );
+    }
+
+    #[test]
+    fn nested_break_before_is_honored_even_when_the_whole_subtree_fits_on_one_page() {
+        // wrapper divの中身は合計しても(既定のページ高さに比べれば)ごく小さく、
+        // 「丸ごと1個のリーフとして配置する」高速経路の対象になり得る。それでも
+        // 内部のbには`break-before: always`があるので見逃してはならない。
+        let dom = html::parse(br#"<div><p class="a">A</p><p class="b">B</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".a { height: 10px; margin: 0; } \
+             .b { height: 10px; margin: 0; break-before: always; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(pages.len(), 2);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        assert!(page_contains_content(&pages[0], ps[0]));
+        assert!(page_contains_content(&pages[1], ps[1]));
+    }
+
+    #[test]
+    fn break_inside_avoid_moves_the_whole_block_to_the_next_page_instead_of_splitting() {
+        let settings = PageSettings::default();
+        // fillerでページ残り高さを、wrapperの合計高さ(400px)より小さく
+        // (しかしwrapper単体は空のページになら丸ごと収まるように)調整する。
+        let filler_height = settings.content_height() - 200.0;
+        let html_src = r#"<div class="filler"></div>
+               <div class="wrapper">
+                   <p class="a">A</p><p class="b">B</p><p class="c">C</p><p class="d">D</p>
+               </div>"#;
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(&format!(
+            ".filler {{ height: {filler_height}px; margin: 0; }} \
+             .wrapper {{ break-inside: avoid; margin: 0; }} \
+             .a, .b, .c, .d {{ height: 100px; margin: 0; }}"
+        ));
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(
+            pages.len(),
+            2,
+            "the wrapper should move to a fresh second page instead of splitting"
+        );
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        for &p in &ps {
+            assert!(
+                page_contains_content(&pages[1], p),
+                "all paragraphs of the avoid-split wrapper should land on page 2"
+            );
+            assert!(!page_contains_content(&pages[0], p));
+        }
+    }
+
+    #[test]
+    fn break_inside_avoid_still_splits_when_the_element_is_taller_than_a_full_page() {
+        // avoidは「できれば分割しない」という指定であり、1ページに収まらない
+        // ほど巨大な場合はbest-effortで通常通り分割せざるを得ない。
+        let settings = PageSettings::default();
+        let mut html_src = String::from(r#"<div class="wrapper">"#);
+        for i in 0..30 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".wrapper { break-inside: avoid; margin: 0; } \
+             .item { height: 100px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert!(
+            pages.len() > 2,
+            "a wrapper taller than a full page must still be split across pages \
+             despite break-inside: avoid, got {} pages",
+            pages.len()
+        );
     }
 }
