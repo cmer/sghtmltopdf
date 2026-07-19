@@ -47,16 +47,154 @@ pub struct Page {
     pub boxes: Vec<LaidOutBox>,
 }
 
-/// `root`(通常は[`super::layout_document`]の返り値)を、高さ`page_content_height`の
-/// ページに分割する。
-pub fn paginate(root: &LaidOutBox, page_content_height: f32) -> Vec<Page> {
-    let mut pages = vec![Page::default()];
-    let mut cursor = 0.0f32;
-    place_box(root, page_content_height, &mut pages, &mut cursor);
-    pages
+/// ページ分割中の「未flushページバッファ + flush可否判定」を管理する状態。
+///
+/// [`place_split`]によるコンテナの装飾フラグメント(背景・枠線)挿入は、
+/// そのコンテナの子要素すべてを配置し終えてから、既に`push`済みの
+/// (一見「確定した」ように見える)ページへ**遡って**行われる(モジュールdoc
+/// 参照)。そのため「新しいページが始まったら直前のページは確定」という
+/// 単純な判定はできない。文書ルート自身もこの`place_split`を通るため、
+/// 何も対策しなければ「文書全体の処理が終わるまでどのページも確定しない」
+/// (=実質一括処理と同じ)になってしまう。
+///
+/// かわりに、現在処理中の(=呼び出しスタック上にある)`place_split`が
+/// それぞれ「最初に触れた絶対ページインデックス」を`active_min_page`に
+/// スタックとして積み、その最小値より前のページのみ安全にflushする
+/// ([`Self::try_flush`])。あるページより後に開始したどのコンテナも、
+/// そのページへ遡って書き込むことはない(`place_split`は自分がまたいだ
+/// 範囲より前のページを触らない)ため、この判定で安全性が保証される。
+struct PaginationState<'a> {
+    /// まだflushしていない(=これ以上書き込まれないことがまだ保証できない)
+    /// ページのバッファ。`buffer[0]`の絶対インデックスは`flushed`。
+    buffer: Vec<Page>,
+    /// これまでにflush済みのページ数(=次にflushすべきページの絶対
+    /// インデックス)。
+    flushed: usize,
+    /// 現在アクティブな`place_split`呼び出しが最初に触れた絶対ページ
+    /// インデックスのスタック(`enter_split`/`exit_split`でpush/pop)。
+    active_min_page: Vec<usize>,
+    on_flush: &'a mut dyn FnMut(Page),
 }
 
-/// DOM+計算スタイルから、ボックスツリー構築・レイアウト・ページ分割までを一括で行う。
+impl<'a> PaginationState<'a> {
+    fn new(on_flush: &'a mut dyn FnMut(Page)) -> Self {
+        Self {
+            buffer: vec![Page::default()],
+            flushed: 0,
+            active_min_page: Vec::new(),
+            on_flush,
+        }
+    }
+
+    /// 絶対インデックス(文書全体を通じた0-originの通し番号)での現在の
+    /// ページ数。
+    fn len(&self) -> usize {
+        self.flushed + self.buffer.len()
+    }
+
+    /// 現在アクティブな最後(最新)のページの絶対インデックス。
+    fn current_index(&self) -> usize {
+        self.len() - 1
+    }
+
+    fn last_mut(&mut self) -> &mut Page {
+        self.buffer
+            .last_mut()
+            .expect("バッファは常に1ページ以上を保持する")
+    }
+
+    fn last(&self) -> &Page {
+        self.buffer
+            .last()
+            .expect("バッファは常に1ページ以上を保持する")
+    }
+
+    /// 絶対インデックス`absolute`のページへの参照。まだflushされていない
+    /// (=バッファ内にある)ことは呼び出し側が保証する
+    /// (`active_min_page`で守られている範囲のみアクセスされる)。
+    fn get(&self, absolute: usize) -> &Page {
+        &self.buffer[absolute - self.flushed]
+    }
+
+    fn get_mut(&mut self, absolute: usize) -> &mut Page {
+        &mut self.buffer[absolute - self.flushed]
+    }
+
+    /// 新しいページを開始する。
+    fn push_new_page(&mut self) {
+        self.buffer.push(Page::default());
+    }
+
+    /// [`place_split`]に入る際、現在のページを「このコンテナが最初に
+    /// 触れたページ」として記録する。
+    fn enter_split(&mut self) {
+        self.active_min_page.push(self.current_index());
+    }
+
+    /// [`place_split`]を抜ける際に対応する記録を取り除き、flush可能な
+    /// ページがあれば`on_flush`へ渡す。
+    fn exit_split(&mut self) {
+        self.active_min_page.pop();
+        self.try_flush();
+    }
+
+    /// アクティブな`place_split`が1つもなければ最新ページ以外を、
+    /// あれば「現在アクティブな全コンテナが最初に触れたページ」の最小値
+    /// より前のページを、古い順に`on_flush`へ渡す。
+    fn try_flush(&mut self) {
+        let safe_until = self
+            .active_min_page
+            .iter()
+            .copied()
+            .min()
+            .unwrap_or_else(|| self.current_index());
+        while self.flushed < safe_until {
+            let page = self.buffer.remove(0);
+            (self.on_flush)(page);
+            self.flushed += 1;
+        }
+    }
+
+    /// 残っている全ページを(アクティブなコンテナが残っていないことを前提に)
+    /// flushする。`paginate_streaming`の最後に呼ぶ。
+    fn finish(mut self) {
+        debug_assert!(
+            self.active_min_page.is_empty(),
+            "finishはすべてのplace_split呼び出しを抜けた後に呼ばれるはず"
+        );
+        for page in self.buffer.drain(..) {
+            (self.on_flush)(page);
+        }
+    }
+}
+
+/// `root`(通常は[`super::layout_document`]の返り値)を、高さ`page_content_height`の
+/// ページに分割する(一括版)。内部的には[`paginate_streaming`]にすべての
+/// ページを`Vec`へ積ませるだけの薄いラッパー。
+pub fn paginate(root: &LaidOutBox, page_content_height: f32) -> Vec<Page> {
+    let mut result = Vec::new();
+    paginate_streaming(root, page_content_height, &mut |page| result.push(page));
+    result
+}
+
+/// [`paginate`]のストリーミング版。ページが確定するたびに`on_page`を呼ぶ。
+///
+/// 「確定」の判定は[`PaginationState`]のドキュメント参照。呼び出し元が
+/// `on_page`の中でそのページに対応するDOMサブツリーを
+/// [`crate::html::Dom::release_subtree`]で解放する、という使い方を想定する。
+pub fn paginate_streaming(
+    root: &LaidOutBox,
+    page_content_height: f32,
+    on_page: &mut dyn FnMut(Page),
+) {
+    let mut state = PaginationState::new(on_page);
+    let mut cursor = 0.0f32;
+    place_box(root, page_content_height, &mut state, &mut cursor);
+    state.finish();
+}
+
+/// DOM+計算スタイルから、ボックスツリー構築・レイアウト・ページ分割までを
+/// 一括で行う(一括版)。
 pub fn paginate_document(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -68,12 +206,12 @@ pub fn paginate_document(
     paginate(&laid_out, settings.content_height())
 }
 
-fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &mut f32) {
+fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, cursor: &mut f32) {
     let height = b.layout.margin_box_height();
     let has_forced_break_inside = subtree_requires_child_walk(b);
 
     if *cursor + height <= page_height && !has_forced_break_inside {
-        place_leaf(b, pages, cursor);
+        place_leaf(b, state, cursor);
         return;
     }
 
@@ -85,12 +223,12 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
     // 進んでいるだけの場合を含む)、移動しても無意味なのでそのまま現在の
     // ページに置く。
     if b.fragmentation.break_inside == BreakInside::Avoid
-        && current_page_has_content(pages)
+        && current_page_has_content(state)
         && height <= page_height
         && !has_forced_break_inside
     {
-        new_page(pages, cursor);
-        place_leaf(b, pages, cursor);
+        new_page(state, cursor);
+        place_leaf(b, state, cursor);
         return;
     }
 
@@ -100,7 +238,7 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
                 b,
                 children,
                 page_height,
-                pages,
+                state,
                 cursor,
                 |_i, child: &LaidOutBox| {
                     (
@@ -129,7 +267,7 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
                 b,
                 lines,
                 page_height,
-                pages,
+                state,
                 cursor,
                 // 行(line box)は`break-after`を持たない(次に置く場所は常に
                 // 直後の行であり、コンテナを跨ぐ兄弟関係が無いため)。
@@ -146,9 +284,9 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
     // これ以上分割できない最小単位。ページに余白を使ってしまっていれば
     // 次ページの先頭へ送る(まっさらなページの先頭ならそのまま置く)。
     if *cursor > 0.0 {
-        new_page(pages, cursor);
+        new_page(state, cursor);
     }
-    place_leaf(b, pages, cursor);
+    place_leaf(b, state, cursor);
 }
 
 /// コンテナ`b`自身の上マージン/枠線/パディングの合計(最初のフラグメントの前に
@@ -285,10 +423,10 @@ fn place_split<T>(
     b: &LaidOutBox,
     items: &[T],
     page_height: f32,
-    pages: &mut Vec<Page>,
+    state: &mut PaginationState<'_>,
     cursor: &mut f32,
     break_hints: impl Fn(usize, &T) -> (bool, bool),
-    place_one: impl Fn(&T, f32, &mut Vec<Page>, &mut f32),
+    place_one: impl Fn(&T, f32, &mut PaginationState<'_>, &mut f32),
 ) {
     let top_extra = container_top_extra(b);
     let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
@@ -298,30 +436,49 @@ fn place_split<T>(
     // 行わない: M1の機械的改ページの簡略化の範囲内)。
     *cursor += top_extra;
 
+    // `b`が実際に背景色・枠線を描画しないなら、そもそも装飾フラグメントを
+    // 生成する必要がない。この場合`segments`の追跡自体が不要で、
+    // `PaginationState`にページを保持させる理由もなくなる
+    // (`enter_split`/`exit_split`を呼ばない)。装飾を持たないコンテナ
+    // (`<html>`/`<body>`や大半のラッパー`<div>`)がこの高速経路を通ることで、
+    // ストリーミング時のflush頻度が大きく改善される([0007]参照)。
+    let needs_decoration = b.has_visible_decoration;
+    if needs_decoration {
+        // このコンテナが最初に触れる絶対ページインデックスを記録する
+        // (`PaginationState`のflush判定に使う。モジュールdoc参照)。
+        state.enter_split();
+    }
+
     struct Segment {
         page_index: usize,
         start_index: usize,
     }
 
-    let mut current_page = pages.len() - 1;
-    let mut segments = vec![Segment {
-        page_index: current_page,
-        start_index: pages[current_page].boxes.len(),
-    }];
+    let mut current_page = state.current_index();
+    let mut segments: Vec<Segment> = if needs_decoration {
+        vec![Segment {
+            page_index: current_page,
+            start_index: state.get(current_page).boxes.len(),
+        }]
+    } else {
+        Vec::new()
+    };
 
     // 強制改ページ(`break-before`/`break-after: always`)発生時、新しいページを
     // 開始し対応するセグメントを追加する共通処理。オーバーフローによる自然な
     // ページ送りとの二重計上を避けるため、`current_page`もその場で更新する。
-    let force_new_page = |pages: &mut Vec<Page>,
+    let force_new_page = |state: &mut PaginationState<'_>,
                           cursor: &mut f32,
                           current_page: &mut usize,
                           segments: &mut Vec<Segment>| {
-        new_page(pages, cursor);
-        *current_page = pages.len() - 1;
-        segments.push(Segment {
-            page_index: *current_page,
-            start_index: 0,
-        });
+        new_page(state, cursor);
+        *current_page = state.current_index();
+        if needs_decoration {
+            segments.push(Segment {
+                page_index: *current_page,
+                start_index: 0,
+            });
+        }
     };
 
     for (i, item) in items.iter().enumerate() {
@@ -329,20 +486,22 @@ fn place_split<T>(
         // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
         // 進んでいるだけの場合を含む)、改ページしても無意味な空ページを
         // 作るだけなので何もしない。
-        if breaks_before && current_page_has_content(pages) {
-            force_new_page(pages, cursor, &mut current_page, &mut segments);
+        if breaks_before && current_page_has_content(state) {
+            force_new_page(state, cursor, &mut current_page, &mut segments);
         }
 
-        place_one(item, page_height, pages, cursor);
-        let now_page = pages.len() - 1;
+        place_one(item, page_height, state, cursor);
+        let now_page = state.current_index();
         if now_page != current_page {
             // 新しいページへ進んだ。今回作られたページは、この`b`の内容以外が
             // 割り込む余地がないため、先頭(index 0)から始まる。
-            for p in (current_page + 1)..=now_page {
-                segments.push(Segment {
-                    page_index: p,
-                    start_index: 0,
-                });
+            if needs_decoration {
+                for p in (current_page + 1)..=now_page {
+                    segments.push(Segment {
+                        page_index: p,
+                        start_index: 0,
+                    });
+                }
             }
             current_page = now_page;
         }
@@ -350,18 +509,22 @@ fn place_split<T>(
         // 次に置く要素がある場合のみ改ページする(末尾の要素の後ろに
         // 空ページを作らないため)。
         if breaks_after && i + 1 < items.len() {
-            force_new_page(pages, cursor, &mut current_page, &mut segments);
+            force_new_page(state, cursor, &mut current_page, &mut segments);
         }
     }
 
     // 呼び出し元(兄弟要素)のため、下マージン/枠線/パディング分もカーソルへ加算する。
     *cursor += bottom_extra;
 
+    if !needs_decoration {
+        return;
+    }
+
     // 実際に内容が置かれたセグメントだけを残す(例: 最初の子がページ先頭で
     // 改ページを起こし、直前のページには何も置かれなかった場合など)。
     let valid: Vec<&Segment> = segments
         .iter()
-        .filter(|s| pages[s.page_index].boxes.len() > s.start_index)
+        .filter(|s| state.get(s.page_index).boxes.len() > s.start_index)
         .collect();
 
     let fragments: Vec<(usize, usize, LaidOutBox)> = valid
@@ -370,8 +533,9 @@ fn place_split<T>(
         .map(|(i, seg)| {
             let is_first = i == 0;
             let is_last = i == valid.len() - 1;
-            let end_index = pages[seg.page_index].boxes.len();
-            let (top, bottom) = extent_of(&pages[seg.page_index].boxes[seg.start_index..end_index]);
+            let end_index = state.get(seg.page_index).boxes.len();
+            let (top, bottom) =
+                extent_of(&state.get(seg.page_index).boxes[seg.start_index..end_index]);
             let layout = fragment_layout(&b.layout, top, bottom, is_first, is_last);
             let decoration = LaidOutBox {
                 node: b.node,
@@ -379,6 +543,10 @@ fn place_split<T>(
                 // 装飾専用フラグメントはこれ以上分割対象にならないため、
                 // fragmentationヒントは意味を持たない(初期値のまま)。
                 fragmentation: FragmentationHints::default(),
+                // `b`自身が装飾を持つ場合のみここに来るため`true`。この
+                // ボックス自体は`Blocks(Vec::new())`で子を持たず、再度
+                // `place_split`に渡されることもない。
+                has_visible_decoration: true,
                 content: LaidOutContent::Blocks(Vec::new()),
             };
             (seg.page_index, seg.start_index, decoration)
@@ -386,8 +554,15 @@ fn place_split<T>(
         .collect();
 
     for (page_index, insert_index, decoration) in fragments {
-        pages[page_index].boxes.insert(insert_index, decoration);
+        state
+            .get_mut(page_index)
+            .boxes
+            .insert(insert_index, decoration);
     }
+
+    // このコンテナの装飾フラグメント挿入がすべて終わったので、記録を外す。
+    // これでflush可能なページが増えていれば、ここで`on_flush`へ渡される。
+    state.exit_split();
 }
 
 /// `boxes`に実際に配置された子孫の、ページ内相対座標での垂直方向の union extent
@@ -460,9 +635,9 @@ fn fragment_layout(
     }
 }
 
-fn place_line(line: &LineBox, page_height: f32, pages: &mut Vec<Page>, cursor: &mut f32) {
+fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>, cursor: &mut f32) {
     if *cursor > 0.0 && *cursor + line.rect.height > page_height {
-        new_page(pages, cursor);
+        new_page(state, cursor);
     }
 
     let shift = line.rect.y - *cursor;
@@ -478,17 +653,14 @@ fn place_line(line: &LineBox, page_height: f32, pages: &mut Vec<Page>, cursor: &
         // 1行だけの合成ラッパーボックスなので、fragmentationヒントは持たない
         // (orphans/widowsの判断は呼び出し元(`place_split`)が行数単位で行う)。
         fragmentation: FragmentationHints::default(),
+        has_visible_decoration: false,
         content: LaidOutContent::Inline(vec![translated]),
     };
     *cursor += line.rect.height;
-    pages
-        .last_mut()
-        .expect("paginateは常に1ページ以上を保持する")
-        .boxes
-        .push(fragment);
+    state.last_mut().boxes.push(fragment);
 }
 
-fn place_leaf(b: &LaidOutBox, pages: &mut [Page], cursor: &mut f32) {
+fn place_leaf(b: &LaidOutBox, state: &mut PaginationState<'_>, cursor: &mut f32) {
     let margin_box_top =
         b.layout.content.y - b.layout.padding.top - b.layout.border.top - b.layout.margin.top;
     let shift = margin_box_top - *cursor;
@@ -496,15 +668,17 @@ fn place_leaf(b: &LaidOutBox, pages: &mut [Page], cursor: &mut f32) {
     let height = b.layout.margin_box_height();
 
     *cursor += height;
-    pages
-        .last_mut()
-        .expect("paginateは常に1ページ以上を保持する")
-        .boxes
-        .push(translated);
+    state.last_mut().boxes.push(translated);
 }
 
-fn new_page(pages: &mut Vec<Page>, cursor: &mut f32) {
-    pages.push(Page::default());
+fn new_page(state: &mut PaginationState<'_>, cursor: &mut f32) {
+    state.push_new_page();
+    // 装飾を持たないコンテナ(`enter_split`/`exit_split`を呼ばない)しか
+    // 呼び出しスタックに無い場合、`exit_split`経由のflushが一度も発生しない
+    // ため、新しいページが始まるたびにもここでflush判定を行う。これにより
+    // 「装飾のない構造ではページが確定するそばから即座にflushされる」
+    // 最も細かい粒度のストリーミングになる。
+    state.try_flush();
     *cursor = 0.0;
 }
 
@@ -513,12 +687,8 @@ fn new_page(pages: &mut Vec<Page>, cursor: &mut f32) {
 /// 描画されていなくても`cursor > 0.0`になり得る)、「強制改ページが本当に
 /// 意味のある移動か(=現在のページを空のまま捨てずに済むか)」の判定には
 /// `cursor`ではなくこちらを使う。
-fn current_page_has_content(pages: &[Page]) -> bool {
-    !pages
-        .last()
-        .expect("paginateは常に1ページ以上を保持する")
-        .boxes
-        .is_empty()
+fn current_page_has_content(state: &PaginationState<'_>) -> bool {
+    !state.last().boxes.is_empty()
 }
 
 /// `b`の部分木全体のY座標を`delta`だけ平行移動した複製を返す
@@ -812,11 +982,12 @@ mod tests {
     }
 
     #[test]
-    fn split_container_without_border_or_padding_still_gets_zero_sized_decoration() {
-        // 枠線もパディングもない場合でも、装飾フラグメント自体は追加されるが
-        // (背景色の有無をpaginateモジュールは判断しないため)、見た目には
-        // 一切影響しない(render_box側でbackground_color.alpha==0かつ
-        // border-style: noneなら何も描かれない)。
+    fn split_container_without_visible_decoration_gets_no_decoration_fragment() {
+        // 背景色も枠線もないコンテナは、装飾フラグメント自体を生成しない
+        // (ストリーミング時のflush頻度を上げるための最適化。
+        // `has_visible_decoration`参照)。かつては「装飾の有無を判断せず
+        // 常にゼロサイズのフラグメントを追加する」設計だったが、この
+        // テストが検証する仕様はその逆に変わった。
         let mut html_src = String::from("<div>");
         for i in 0..20 {
             html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
@@ -831,16 +1002,20 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert!(
+            pages.len() > 1,
+            "expected the wrapper to span multiple pages"
+        );
 
         let mut divs = Vec::new();
         find_all(&dom, dom.document(), "div", &mut divs);
         let wrapper = divs[0];
 
         for page in &pages {
-            if let Some(decoration) = find_decoration_fragment(page, wrapper) {
-                assert_eq!(decoration.layout.border.top, 0.0);
-                assert_eq!(decoration.layout.padding.top, 0.0);
-            }
+            assert!(
+                find_decoration_fragment(page, wrapper).is_none(),
+                "a wrapper without background/border should not get a decoration fragment"
+            );
         }
     }
 
@@ -1221,5 +1396,161 @@ mod tests {
             "a paragraph shorter than orphans + widows should never be split"
         );
         assert_eq!(lines_on_page(&pages[1]), n);
+    }
+
+    /// [`PaginationState`]と[`place_box`]を直接呼び出し、`finish()`を呼ぶ
+    /// 前の時点でバッファに何ページ残っているかを調べるテスト用ヘルパー。
+    fn unflushed_buffer_len_after_place_box(laid_out: &LaidOutBox, page_height: f32) -> usize {
+        let mut on_page = |_page: Page| {};
+        let mut state = PaginationState::new(&mut on_page);
+        let mut cursor = 0.0f32;
+        place_box(laid_out, page_height, &mut state, &mut cursor);
+        state.buffer.len()
+    }
+
+    #[test]
+    fn streaming_flushes_undecorated_content_incrementally_not_all_at_finish() {
+        // 装飾(背景色・枠線)を一切持たないコンテナだけの構造。
+        let mut html_src = String::from("<div>");
+        for i in 0..60 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let tree = build_box_tree(&dom, &styles);
+        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let page_height = settings.content_height();
+
+        let total_pages = paginate(&laid_out, page_height).len();
+        assert!(
+            total_pages >= 5,
+            "expected several pages, got {total_pages}"
+        );
+
+        // 装飾を持たないコンテナは`place_split`のenter_split/exit_splitを
+        // 呼ばないため、`new_page`のたびに`PaginationState::try_flush`が
+        // その場で発火し、直前のページが即座にflushされる(モジュールdoc・
+        // `has_visible_decoration`参照)。そのため`place_box`のトップレベル
+        // 呼び出しが完了した時点(`finish()`をまだ呼んでいない)でも、
+        // バッファには「まだ書き込み中の最後の1ページ」しか残らないはず。
+        // すべてのページが最後にまとめてflushされる実装だと、ここで
+        // `total_pages`になってしまう。
+        assert_eq!(
+            unflushed_buffer_len_after_place_box(&laid_out, page_height),
+            1,
+            "pages should already be flushed incrementally before finish() is even called"
+        );
+    }
+
+    #[test]
+    fn streaming_still_flushes_down_to_one_page_when_a_decorated_wrapper_spans_many_pages() {
+        // 背景・枠線を持つwrapperがページをまたぐ場合でも、`place_box`の
+        // トップレベル呼び出しが完了すれば、そのwrapperの`place_split`は
+        // 必ず自分のexit_splitまで実行し終えているはず(`place_split`は
+        // 自身の処理を終えてから`exit_split`を呼んでreturnするため)。
+        // そのため装飾の有無にかかわらず、`place_box`完了時点で
+        // バッファに残るのは最後の1ページだけになるという不変条件は保たれる。
+        let mut html_src = String::from(r#"<div class="wrapper">"#);
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".wrapper { border: 2px solid black; padding: 5px; margin: 0; } \
+             .item { height: 100px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let tree = build_box_tree(&dom, &styles);
+        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let page_height = settings.content_height();
+
+        let total_pages = paginate(&laid_out, page_height).len();
+        assert!(
+            total_pages >= 3,
+            "expected the wrapper to span multiple pages, got {total_pages}"
+        );
+
+        assert_eq!(
+            unflushed_buffer_len_after_place_box(&laid_out, page_height),
+            1,
+            "even a decorated wrapper should be fully resolved (and its earlier pages \
+             flushed) by the time the top-level place_box call returns"
+        );
+    }
+
+    #[test]
+    fn paginate_streaming_matches_the_batched_version_for_a_decorated_spanning_wrapper() {
+        // `PaginationState`のflush判定(モジュールdoc参照)が安全かどうかの
+        // 正確性検証: 装飾フラグメントの遡り挿入が絡む、最も際どいケース
+        // (`split_container_gets_a_decoration_fragment_on_every_page_it_spans`
+        // と同じシナリオ)で、ストリーミング版と一括版が完全に同じ結果を
+        // 返すことを確認する。もしflushが早すぎれば、装飾フラグメントの
+        // 挿入先ページが既にflush済みでpanicするか、挿入自体が欠落する。
+        let mut html_src = String::from(r#"<div class="wrapper">"#);
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".wrapper { border: 2px solid black; padding: 5px; margin: 0; } \
+             .item { height: 100px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let tree = build_box_tree(&dom, &styles);
+        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let page_height = settings.content_height();
+
+        let batched = paginate(&laid_out, page_height);
+        let mut streamed = Vec::new();
+        paginate_streaming(&laid_out, page_height, &mut |page| streamed.push(page));
+
+        assert_eq!(batched.len(), streamed.len());
+        assert!(batched.len() >= 3);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let wrapper = divs[0];
+
+        for (b_page, s_page) in batched.iter().zip(streamed.iter()) {
+            assert_eq!(b_page.boxes.len(), s_page.boxes.len());
+
+            let b_dec = find_decoration_fragment(b_page, wrapper);
+            let s_dec = find_decoration_fragment(s_page, wrapper);
+            assert_eq!(
+                b_dec.map(|d| d.layout.fragment),
+                s_dec.map(|d| d.layout.fragment)
+            );
+            assert_eq!(
+                b_dec.map(|d| d.layout.border.top),
+                s_dec.map(|d| d.layout.border.top)
+            );
+            assert_eq!(
+                b_dec.map(|d| d.layout.border.bottom),
+                s_dec.map(|d| d.layout.border.bottom)
+            );
+            assert_eq!(
+                b_dec.map(|d| d.layout.padding.top),
+                s_dec.map(|d| d.layout.padding.top)
+            );
+        }
     }
 }

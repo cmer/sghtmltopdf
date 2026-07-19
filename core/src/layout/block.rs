@@ -32,6 +32,16 @@ pub struct LaidOutBox {
     /// 計算値(ページ分割の判断にのみ使う。無名ボックスは`ComputedStyle`の
     /// 初期値=`auto`/`auto`/`auto`/2/2)。
     pub fragmentation: FragmentationHints,
+    /// このボックスが実際に描画される背景色・枠線を持つか。
+    ///
+    /// `paginate.rs`が、ページをまたいで分割されるコンテナの装飾フラグメント
+    /// (背景・枠線の再現、モジュールdoc参照)を生成する必要があるかどうかの
+    /// 判断に使う。`border-radius`の有無はここでは無関係(角丸があっても
+    /// 背景色・枠線が両方なければ何も描画されないため、`pdf::document`側の
+    /// 描画ロジックとは独立に判定してよい)。装飾フラグメント自体・行の
+    /// 合成ラッパーなど無名ボックスは常に`false`(それ自体が再帰的に装飾
+    /// フラグメントを持つことはない)。
+    pub has_visible_decoration: bool,
     pub content: LaidOutContent,
 }
 
@@ -214,8 +224,27 @@ fn layout_box_impl(
             fragment: FragmentPosition::Whole,
         },
         fragmentation: FragmentationHints::from(&style),
+        has_visible_decoration: has_visible_decoration(&style, &border),
         content,
     }
+}
+
+/// `style`/`border`(計算済みの太さ)の組み合わせが、実際に何か描画するか。
+/// 背景色があるか、4辺のいずれかで太さが正かつ`border-style`が`none`でない
+/// 場合に`true`(`pdf::document::render_box_decoration`が実際に描画する
+/// 条件と同じ)。
+fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) -> bool {
+    if style.background_color.alpha > 0.0 {
+        return true;
+    }
+    [
+        (border.top, style.border_top_style),
+        (border.right, style.border_right_style),
+        (border.bottom, style.border_bottom_style),
+        (border.left, style.border_left_style),
+    ]
+    .into_iter()
+    .any(|(width, border_style)| width > 0.0 && border_style != BorderStyle::None)
 }
 
 pub(super) fn box_style(b: &LayoutBox, styles: &HashMap<NodeId, ComputedStyle>) -> ComputedStyle {
