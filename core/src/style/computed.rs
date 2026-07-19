@@ -263,6 +263,7 @@ fn compute_element_style(
 ) -> ComputedStyle {
     let declarations = matching_declarations(dom, element, ua, author);
     let inline_declarations = inline_style_declarations(dom, element);
+    let attribute_sugar_declarations = data_page_break_declarations(dom, element);
     let pseudo_before_content =
         matching_pseudo_content(dom, element, PseudoElement::Before, ua, author);
     let pseudo_after_content =
@@ -309,8 +310,14 @@ fn compute_element_style(
     let mut widows = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
-    // インラインstyle属性はセレクタベースのどの宣言よりも優先度が高いため、最後に置く。
-    for decl in declarations.into_iter().chain(inline_declarations.iter()) {
+    // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
+    // という位置づけのため最も弱く先頭に置く。インラインstyle属性はセレクタベースの
+    // どの宣言よりも優先度が高いため、最後に置く。
+    for decl in attribute_sugar_declarations
+        .iter()
+        .chain(declarations)
+        .chain(inline_declarations.iter())
+    {
         match decl {
             PropertyDeclaration::Display(v) => display = Some(*v),
             PropertyDeclaration::Width(v) => width = Some(*v),
@@ -497,6 +504,27 @@ fn inline_style_declarations(dom: &Dom, element: NodeId) -> Vec<PropertyDeclarat
         .find(|attr| &*attr.name.local == "style")
         .map(|attr| parse_inline_style(&attr.value))
         .unwrap_or_default()
+}
+
+/// `data-page-break="before|after|avoid"`属性の糖衣API。対応する`break-before`/
+/// `break-after`/`break-inside: avoid`宣言へ変換する(値は大文字小文字を区別しない)。
+/// 認識できない値は無視する(通常のCSSの不正値と同様、宣言なしとして扱う)。
+fn data_page_break_declarations(dom: &Dom, element: NodeId) -> Vec<PropertyDeclaration> {
+    let NodeData::Element { attrs, .. } = &dom.node(element).data else {
+        return Vec::new();
+    };
+    let Some(attr) = attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "data-page-break")
+    else {
+        return Vec::new();
+    };
+    match attr.value.trim().to_ascii_lowercase().as_str() {
+        "before" => vec![PropertyDeclaration::BreakBefore(BreakBetween::Always)],
+        "after" => vec![PropertyDeclaration::BreakAfter(BreakBetween::Always)],
+        "avoid" => vec![PropertyDeclaration::BreakInside(BreakInside::Avoid)],
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]
@@ -1126,6 +1154,69 @@ mod tests {
         assert_eq!(styles[&div].orphans, 5);
         assert_eq!(styles[&p].break_before, BreakBetween::Auto);
         assert_eq!(styles[&p].orphans, 2);
+    }
+
+    #[test]
+    fn data_page_break_attribute_maps_to_break_properties() {
+        let dom = html::parse(
+            br#"<div><p id="a" data-page-break="before">a</p>
+                <p id="b" data-page-break="after">b</p>
+                <p id="c" data-page-break="avoid">c</p></div>"#,
+        );
+        let a = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&a].break_before, BreakBetween::Always);
+
+        let mut ps = Vec::new();
+        fn find_all(dom: &Dom, id: NodeId, out: &mut Vec<NodeId>) {
+            if let NodeData::Element { name, .. } = &dom.node(id).data {
+                if &*name.local == "p" {
+                    out.push(id);
+                }
+            }
+            for child in dom.children(id) {
+                find_all(dom, child, out);
+            }
+        }
+        find_all(&dom, dom.document(), &mut ps);
+        assert_eq!(styles[&ps[1]].break_after, BreakBetween::Always);
+        assert_eq!(styles[&ps[2]].break_inside, BreakInside::Avoid);
+    }
+
+    #[test]
+    fn data_page_break_ignores_unrecognized_values() {
+        let dom = html::parse(br#"<p data-page-break="sideways">a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&p].break_before, BreakBetween::Auto);
+        assert_eq!(styles[&p].break_after, BreakBetween::Auto);
+        assert_eq!(styles[&p].break_inside, BreakInside::Auto);
+    }
+
+    #[test]
+    fn stylesheet_rule_overrides_data_page_break_attribute() {
+        // 属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」という
+        // 位置づけなので、通常のCSSルールの方が優先される。
+        let dom = html::parse(br#"<p data-page-break="before">a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { break-before: auto; }"),
+        );
+        assert_eq!(styles[&p].break_before, BreakBetween::Auto);
+    }
+
+    #[test]
+    fn inline_style_overrides_data_page_break_attribute() {
+        let dom = html::parse(br#"<p data-page-break="before" style="break-before: auto;">a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&p].break_before, BreakBetween::Auto);
     }
 
     #[test]
