@@ -2,7 +2,10 @@
 //! ブロック要素の縦積み配置(CSS2.1 §10.3.3, §9.4.1の簡略版)。
 //!
 //! 既知の簡略化(将来のマイルストーンで見直す):
-//! - 隣接兄弟間のマージン相殺(margin collapsing)は行わない
+//! - マージン相殺(margin collapsing)は隣接兄弟間のみ対応する(CSS2.1 §8.3.1)。
+//!   親子間の相殺(親の上/下マージンと最初/最後の子のマージンの相殺)、および
+//!   高さ0・border/paddingなしの空ブロックを上下マージンが素通りする相殺は
+//!   未対応
 //! - 幅・水平マージンがすべて明示指定された場合の再調整(over-constrained時の
 //!   margin-right再計算)は行わない
 //! - 高さのパーセンテージ指定はcontaining blockの高さが不定なため`auto`として扱う
@@ -73,8 +76,20 @@ fn layout_box(
     let (content, content_height) = match &b.content {
         BoxContent::Blocks(children) => {
             let mut cursor_y = content_y;
-            let mut laid_children = Vec::with_capacity(children.len());
+            let mut laid_children: Vec<LaidOutBox> = Vec::with_capacity(children.len());
             for child in children {
+                let child_margin_top =
+                    resolve_lpa_or_zero(box_style(child, styles).margin_top, content_width);
+
+                // 隣接兄弟間のマージン相殺(CSS2.1 §8.3.1)。前の兄弟のmargin-bottomと
+                // この子のmargin-topを、単純な加算ではなく「正の最大値+負の最小値」
+                // で相殺した1つの間隔に置き換える。
+                if let Some(prev) = laid_children.last() {
+                    let prev_margin_bottom = prev.layout.margin.bottom;
+                    let collapsed = collapse_adjacent_margins(prev_margin_bottom, child_margin_top);
+                    cursor_y -= prev_margin_bottom + child_margin_top - collapsed;
+                }
+
                 let child_laid =
                     layout_box(child, styles, fonts, content_width, content_x, cursor_y);
                 cursor_y += child_laid.layout.margin_box_height();
@@ -170,6 +185,15 @@ fn resolve_height(style: &ComputedStyle) -> Option<f32> {
         LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(px)) => Some(px),
         LengthPercentageOrAuto::Auto | LengthPercentageOrAuto::LengthPercentage(_) => None,
     }
+}
+
+/// 2つの隣接するマージンを相殺(collapse)した結果の間隔を求める(CSS2.1 §8.3.1)。
+/// 両方が非負なら大きい方、両方が負なら小さい方(絶対値が大きい方)、
+/// 正負混在なら両者の単純な和(=正の最大値と負の最小値の和)になる。
+fn collapse_adjacent_margins(a: f32, b: f32) -> f32 {
+    let positive = a.max(0.0).max(b.max(0.0));
+    let negative = a.min(0.0).min(b.min(0.0));
+    positive + negative
 }
 
 /// CSS2.1 §10.3.3(block-level, non-replaced要素)の簡略版。
@@ -377,6 +401,106 @@ mod tests {
         assert_eq!(
             b.layout.content.y,
             a.layout.content.y + a.layout.content.height
+        );
+    }
+
+    #[test]
+    fn equal_adjacent_margins_collapse_to_a_single_gap_instead_of_summing() {
+        let dom = html::parse(br#"<div><p class="a">A</p><p class="b">B</p></div>"#);
+        let ua = user_agent_stylesheet();
+        // 両方とも上下16pxのマージン。相殺されていれば、border-box間の隙間は
+        // 32px(単純な加算)ではなく16pxになるはず。
+        let author = parse_stylesheet(
+            ".a { height: 20px; margin: 16px 0; } .b { height: 20px; margin: 16px 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let a = find_laid_out(&laid, ps[0]).expect("p.a not found");
+        let b = find_laid_out(&laid, ps[1]).expect("p.b not found");
+
+        let gap =
+            b.layout.border_box().y - (a.layout.border_box().y + a.layout.border_box().height);
+        assert_eq!(
+            gap, 16.0,
+            "equal adjacent margins should collapse to their shared value"
+        );
+    }
+
+    #[test]
+    fn unequal_adjacent_margins_collapse_to_the_larger_one() {
+        let dom = html::parse(br#"<div><p class="a">A</p><p class="b">B</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".a { height: 20px; margin: 0 0 10px 0; } .b { height: 20px; margin: 24px 0 0 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let a = find_laid_out(&laid, ps[0]).expect("p.a not found");
+        let b = find_laid_out(&laid, ps[1]).expect("p.b not found");
+
+        let gap =
+            b.layout.border_box().y - (a.layout.border_box().y + a.layout.border_box().height);
+        assert_eq!(
+            gap, 24.0,
+            "collapsed gap should be the larger of the two margins"
+        );
+    }
+
+    #[test]
+    fn a_negative_margin_reduces_the_collapsed_gap() {
+        let dom = html::parse(br#"<div><p class="a">A</p><p class="b">B</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".a { height: 20px; margin: 0 0 10px 0; } .b { height: 20px; margin: -4px 0 0 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let a = find_laid_out(&laid, ps[0]).expect("p.a not found");
+        let b = find_laid_out(&laid, ps[1]).expect("p.b not found");
+
+        let gap =
+            b.layout.border_box().y - (a.layout.border_box().y + a.layout.border_box().height);
+        assert_eq!(
+            gap, 6.0,
+            "positive + negative margins should sum (10 + (-4) = 6)"
+        );
+    }
+
+    #[test]
+    fn parent_and_first_child_margins_are_not_collapsed() {
+        // 親子間のマージン相殺は本実装のスコープ外(隣接兄弟間のみ対応)。
+        // 最初の子の上マージンは、親のcontent開始位置にそのまま加算されるはず。
+        let dom = html::parse(br#"<div class="outer"><p class="inner">x</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author =
+            parse_stylesheet(".outer { margin: 0; } .inner { height: 20px; margin: 12px 0; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let p = find_laid_out(&laid, ps[0]).expect("p not found");
+
+        assert_eq!(
+            p.layout.margin.top, 12.0,
+            "the child's own top margin should still apply in full (no parent-child collapsing)"
         );
     }
 
