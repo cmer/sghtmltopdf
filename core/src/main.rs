@@ -2,16 +2,18 @@
 //!
 //! M1では静的HTML一括変換(ストリーミングなし)のみ対応。フォントは
 //! `--font`での明示指定(必須、複数指定可)に加えて、HTML内`<style>`の
-//! `@font-face { src: url(...); }`もHTMLファイル自身のディレクトリを基準に
-//! 相対解決して読み込む(`local()`によるシステムフォント探索は未対応)。
-//! 複数フォントが対象になった場合、CSSの`font-family`と各フォントのグリフ
-//! カバレッジに基づいてフォールバック選択される
-//! ([`sghtmltopdf_core::fonts::FontCollection`])。
+//! `@font-face { src: url(...); }`(HTMLファイル自身のディレクトリ基準の相対解決)、
+//! およびOS標準フォントディレクトリのシステムフォント探索(`fontdb`。CSS汎用
+//! family名は対象外で、具体的なfont-family名のみ)にも対応する。複数フォントが
+//! 対象になった場合、CSSの`font-family`と各フォントのグリフカバレッジに基づいて
+//! フォールバック選択される([`sghtmltopdf_core::fonts::FontCollection`])。
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use sghtmltopdf_core::fonts::{load_font_faces, Font, FontCollection};
+use sghtmltopdf_core::fonts::{
+    load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts,
+};
 use sghtmltopdf_core::html;
 use sghtmltopdf_core::layout::{paginate_document, PageSettings};
 use sghtmltopdf_core::pdf::write_document;
@@ -142,6 +144,11 @@ fn run(options: &Options) -> Result<usize, String> {
     for loaded in load_font_faces(&author.font_faces, base_dir) {
         fonts.push_font_face(loaded.family, loaded.font);
     }
+
+    // `--font`/`@font-face`のどちらでも解決できなかった具体的なfont-family名を
+    // OS標準のフォントディレクトリから探す。
+    let system_fonts = SystemFonts::scan();
+    load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
 
     let settings = PageSettings::default();
     let pages = paginate_document(&dom, &styles, &fonts, &settings);

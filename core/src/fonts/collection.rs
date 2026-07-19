@@ -84,6 +84,15 @@ impl FontCollection {
         Some(0)
     }
 
+    /// `family`に一致するフォント(`--font`/`@font-face`/システムフォント問わず)が
+    /// 既にコレクションに含まれているか。
+    pub fn has_family(&self, family: &str) -> bool {
+        self.fonts
+            .iter()
+            .enumerate()
+            .any(|(i, f)| self.matches_family(i, f, family))
+    }
+
     fn matches_family(&self, index: usize, font: &Font, family: &str) -> bool {
         match &self.declared_families[index] {
             Some(declared) => declared.eq_ignore_ascii_case(family),
@@ -132,6 +141,16 @@ mod tests {
             .select_for_char(&["sans-serif".to_string()], '日')
             .unwrap();
         assert_eq!(index, 1);
+    }
+
+    #[test]
+    fn has_family_reflects_both_own_name_and_declared_overrides() {
+        let mut collection = FontCollection::new(vec![dejavu()]);
+        assert!(collection.has_family("DejaVu Sans"));
+        assert!(!collection.has_family("Custom Brand"));
+
+        collection.push_font_face("Custom Brand".to_string(), cjk());
+        assert!(collection.has_family("Custom Brand"));
     }
 
     #[test]
