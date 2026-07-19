@@ -14,12 +14,21 @@ use super::values::{FontStyle, FontWeight};
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontFaceRule {
     pub family: String,
-    /// `src`に列挙された`url(...)`のうち解決対象となるものだけを、記述順のまま保持する
-    /// (相対パスの解決は呼び出し側の責務)。`local(...)`(システムフォント名参照)は
-    /// システムフォント探索自体が未対応のため、構文としては受理しつつ捨てる。
-    pub src: Vec<String>,
+    /// `src`に列挙された`url(...)`/`local(...)`を、記述順のまま保持する
+    /// (実際の解決・優先順位判断は呼び出し側の責務)。
+    pub src: Vec<FontFaceSource>,
     pub weight: FontWeight,
     pub style: FontStyle,
+}
+
+/// `src`ディスクリプタの1エントリ。
+#[derive(Debug, Clone, PartialEq)]
+pub enum FontFaceSource {
+    /// `url(...)`。相対パスの解決は呼び出し側の責務(HTMLファイルの
+    /// ディレクトリ基準)。
+    Url(String),
+    /// `local(...)`。システムフォントのフルネームまたはPostScript名。
+    Local(String),
 }
 
 /// `@font-face { ... }`の宣言ブロックをパースし、`font-family`/`src`が
@@ -58,7 +67,7 @@ pub(super) fn parse_font_face_block<'i>(
 
 enum FontFaceDescriptor {
     Family(String),
-    Src(Vec<String>),
+    Src(Vec<FontFaceSource>),
     Weight(FontWeight),
     Style(FontStyle),
 }
@@ -110,21 +119,24 @@ impl<'i> RuleBodyItemParser<'i, FontFaceDescriptor, ()> for FontFaceDeclarationP
 /// `src`ディスクリプタ: `url(...)`/`local(...)`のカンマ区切りリスト。各エントリの
 /// 後ろに続く`format(...)`/`tech(...)`ヒントは中身を検証せず読み飛ばす(対応
 /// フォーマットかどうかの判定はロード時の実際のパース結果に委ねるため)。
-fn parse_font_face_src<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, ParseError<'i, ()>> {
-    let mut urls = Vec::new();
+fn parse_font_face_src<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<FontFaceSource>, ParseError<'i, ()>> {
+    let mut sources = Vec::new();
     input.parse_comma_separated(|input| {
         if let Ok(url) = input.try_parse(|input| input.expect_url_or_string()) {
-            urls.push(url.as_ref().to_string());
+            sources.push(FontFaceSource::Url(url.as_ref().to_string()));
         } else {
             input
                 .expect_function_matching("local")
                 .map_err(|_| input.new_custom_error(()))?;
-            input.parse_nested_block(|input| {
-                if input.expect_ident_or_string().is_err() {
+            let name = input.parse_nested_block(|input| {
+                let Ok(name) = input.expect_ident_or_string() else {
                     return Err(input.new_custom_error(()));
-                }
-                Ok(())
+                };
+                Ok(name.as_ref().to_string())
             })?;
+            sources.push(FontFaceSource::Local(name));
         }
 
         while let Ok(name) = input.try_parse(|input| input.expect_function().cloned()) {
@@ -138,7 +150,7 @@ fn parse_font_face_src<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, Pa
         }
         Ok(())
     })?;
-    Ok(urls)
+    Ok(sources)
 }
 
 #[cfg(test)]
@@ -154,7 +166,10 @@ mod tests {
         assert_eq!(sheet.font_faces.len(), 1);
         let rule = &sheet.font_faces[0];
         assert_eq!(rule.family, "My Brand");
-        assert_eq!(rule.src, vec!["fonts/brand.ttf".to_string()]);
+        assert_eq!(
+            rule.src,
+            vec![FontFaceSource::Url("fonts/brand.ttf".to_string())]
+        );
         assert_eq!(rule.weight, FontWeight::Normal);
         assert_eq!(rule.style, FontStyle::Normal);
     }
@@ -166,18 +181,27 @@ mod tests {
         );
         let rule = &sheet.font_faces[0];
         assert_eq!(rule.family, "Brand");
-        assert_eq!(rule.src, vec!["brand-bold.ttf".to_string()]);
+        assert_eq!(
+            rule.src,
+            vec![FontFaceSource::Url("brand-bold.ttf".to_string())]
+        );
         assert_eq!(rule.weight, FontWeight::Bold);
         assert_eq!(rule.style, FontStyle::Italic);
     }
 
     #[test]
-    fn keeps_only_url_sources_and_ignores_local() {
+    fn keeps_both_local_and_url_sources_in_order() {
         let sheet = parse_stylesheet(
             r#"@font-face { font-family: Brand; src: local("Brand Regular"), url("brand.ttf"); }"#,
         );
         let rule = &sheet.font_faces[0];
-        assert_eq!(rule.src, vec!["brand.ttf".to_string()]);
+        assert_eq!(
+            rule.src,
+            vec![
+                FontFaceSource::Local("Brand Regular".to_string()),
+                FontFaceSource::Url("brand.ttf".to_string()),
+            ]
+        );
     }
 
     #[test]

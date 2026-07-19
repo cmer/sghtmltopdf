@@ -2,7 +2,8 @@
 //!
 //! M1では静的HTML一括変換(ストリーミングなし)のみ対応。フォントは
 //! `--font`での明示指定(必須、複数指定可)に加えて、HTML内`<style>`の
-//! `@font-face { src: url(...); }`(HTMLファイル自身のディレクトリ基準の相対解決)、
+//! `@font-face { src: url(...); }`(HTMLファイル自身のディレクトリ基準の相対解決)/
+//! `src: local(...)`(システムフォントのフルネーム/PostScript名解決)、
 //! およびOS標準フォントディレクトリのシステムフォント探索(`fontdb`。CSS汎用
 //! family名は対象外で、具体的なfont-family名のみ)にも対応する。複数フォントが
 //! 対象になった場合、CSSの`font-family`と各フォントのグリフカバレッジに基づいて
@@ -137,11 +138,16 @@ fn run(options: &Options) -> Result<usize, String> {
     let author = extract_author_stylesheet(&dom);
     let styles = compute_styles(&dom, &ua, &author);
 
+    // システムフォントのスキャン(メタデータのみ)は、`@font-face`の
+    // `src: local(...)`解決でも使うため先に行っておく。
+    let system_fonts = SystemFonts::scan();
+
     // `@font-face`のsrc: url(...)は、HTMLファイル自身のディレクトリを基準に
     // 相対パス解決する(外部CSSファイルという概念が無く、HTMLの<style>のみが
-    // CSSの入力元のため)。
+    // CSSの入力元のため)。src: local(...)はシステムフォントのフルネーム/
+    // PostScript名として解決する。
     let base_dir = options.input.parent().unwrap_or(std::path::Path::new("."));
-    for loaded in load_font_faces(&author.font_faces, base_dir) {
+    for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
         fonts.push_font_face(
             loaded.family,
             Some(loaded.weight),
@@ -152,7 +158,6 @@ fn run(options: &Options) -> Result<usize, String> {
 
     // `--font`/`@font-face`のどちらでも解決できなかった具体的なfont-family名を
     // OS標準のフォントディレクトリから探す。
-    let system_fonts = SystemFonts::scan();
     load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
 
     let settings = PageSettings::default();

@@ -33,7 +33,7 @@ impl SystemFonts {
     }
 
     #[cfg(test)]
-    fn from_dir(dir: &std::path::Path) -> Self {
+    pub(super) fn from_dir(dir: &std::path::Path) -> Self {
         let mut db = fontdb::Database::new();
         db.load_fonts_dir(dir);
         Self { db }
@@ -65,6 +65,26 @@ impl SystemFonts {
         let id = self.db.query(&query)?;
         self.db
             .with_face_data(id, |data, index| {
+                Font::from_bytes(data.to_vec(), index).ok()
+            })
+            .flatten()
+    }
+
+    /// `@font-face`の`src: local(...)`用。`name`(フルネームまたはPostScript名、
+    /// 大文字小文字を区別しない)に一致する特定の面を1つ直接読み込む。
+    /// `load`(family名+weight/styleによるCSS的なフォールバック検索)とは異なり、
+    /// weight/styleによる曖昧なマッチングは行わない(名前で一意に指定された
+    /// 1つの面を指すのが`local()`の意味のため)。
+    pub fn load_by_full_name(&self, name: &str) -> Option<Font> {
+        let info = self.db.faces().find(|info| {
+            info.post_script_name.eq_ignore_ascii_case(name)
+                || info
+                    .families
+                    .iter()
+                    .any(|(family_name, _)| family_name.eq_ignore_ascii_case(name))
+        })?;
+        self.db
+            .with_face_data(info.id, |data, index| {
                 Font::from_bytes(data.to_vec(), index).ok()
             })
             .flatten()
