@@ -199,6 +199,50 @@ pub fn compute_styles(
     styles
 }
 
+/// [`compute_styles`]のバリアント: `dom`のルート(`document()`)から辿るの
+/// ではなく、任意の`root`(とその子孫)を、既知の親スタイル`parent_style`・
+/// 確定済みの`root_font_size`(`rem`の基準)を起点に計算する。
+///
+/// マイルストーン3のストリーミング処理で、`<body>`直下のトップレベル要素が
+/// 確定するたびに、そのノードだけを対象に、事前に計算済みの`<body>`の
+/// スタイルを引き継いでスタイル計算するために使う。`dom`自体は文書全体の
+/// ものをそのまま渡してよい(`root`とその子孫だけが辿られる)。`root`は
+/// `<html>`のようなルート候補ではないため、`rem`基準を上書きしない
+/// (`is_root_candidate: false`で呼ぶ)。
+pub fn compute_styles_with_parent(
+    dom: &Dom,
+    root: NodeId,
+    parent_style: &ComputedStyle,
+    root_font_size: f32,
+    ua: &Stylesheet,
+    author: &Stylesheet,
+) -> HashMap<NodeId, ComputedStyle> {
+    let mut styles = HashMap::new();
+    let ctx = StyleContext {
+        ua,
+        author,
+        root_font_size: Cell::new(root_font_size),
+    };
+    compute_recursive(dom, root, Some(parent_style), false, &ctx, &mut styles);
+    styles
+}
+
+/// `element`単体の計算スタイルを、既知の親スタイルを起点に計算する。
+///
+/// マイルストーン3のストリーミング処理で、`<html>`/`<body>`要素自身の
+/// スタイルを(それぞれの子孫全体を再帰的に辿ることなく)個別に確定させる
+/// ために使う。[`compute_element_style`]をそのまま公開したもの。
+pub fn compute_single_element_style(
+    dom: &Dom,
+    element: NodeId,
+    parent_style: Option<&ComputedStyle>,
+    root_font_size: f32,
+    ua: &Stylesheet,
+    author: &Stylesheet,
+) -> ComputedStyle {
+    compute_element_style(dom, element, parent_style, root_font_size, ua, author)
+}
+
 /// `compute_recursive`/`compute_element_style`の再帰全体で共有する、
 /// 木を辿る間変化しない(または`Cell`経由で一方向にのみ更新される)値。
 /// 引数の数を抑えるための単純なまとめ役。

@@ -1,6 +1,6 @@
 //! html5everの`TreeSink`実装。パース結果を[`Dom`]に組み立てる。
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 
 use html5ever::interface::tree_builder::{
     ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink,
@@ -32,19 +32,26 @@ pub fn parse(html: &[u8]) -> Dom {
 /// 呼び出し側がUTF-8境界に合わせる必要はない。
 pub struct StreamingParser {
     inner: Utf8LossyDecoder<Parser<Sink>>,
+    /// [`Self::take_completed_top_level_children`]がこれまでに返却済みの、
+    /// `<body>`直下の最後の子要素。次回呼び出し時、この続きから探索する。
+    last_yielded_top_level_child: Option<NodeId>,
 }
 
 impl StreamingParser {
     pub fn new() -> Self {
         let sink = Sink {
-            nodes: RefCell::new(vec![Node::new(NodeData::Document)]),
-            document: NodeId(0),
+            dom: RefCell::new(Dom {
+                nodes: vec![Node::new(NodeData::Document)],
+                document: NodeId(0),
+            }),
             quirks_mode: Cell::new(QuirksMode::NoQuirks),
             seen_body: Cell::new(false),
             late_style_detected: Cell::new(false),
+            body_id: Cell::new(None),
         };
         Self {
             inner: parse_document(sink, Default::default()).from_utf8(),
+            last_yielded_top_level_child: None,
         }
     }
 
@@ -61,13 +68,106 @@ impl StreamingParser {
     /// この値を無視してよい)。`<body>`の開始タグを見た時点以降に生成された
     /// `<style>`要素が1つでもあれば`true`になる。
     pub fn has_late_style_tag(&self) -> bool {
-        self.inner
-            .inner_sink
-            .tokenizer
-            .sink
-            .sink
-            .late_style_detected
-            .get()
+        self.sink().late_style_detected.get()
+    }
+
+    /// `<body>`要素の`NodeId`(まだパースされていなければ`None`)。
+    pub fn body_node(&self) -> Option<NodeId> {
+        self.sink().body_id.get()
+    }
+
+    /// パース中の(まだ`finish`されていない)[`Dom`]への読み取り専用アクセス。
+    ///
+    /// `Engine`の真のストリーミング処理が、`<body>`直下のトップレベル要素が
+    /// 確定するたびに、`finish`を待たずにそのサブツリーのスタイル計算・
+    /// ボックスツリー構築を行うために使う。
+    pub fn dom(&self) -> Ref<'_, Dom> {
+        self.sink().dom.borrow()
+    }
+
+    /// [`Self::dom`]の書き込み可能版。`Engine`が
+    /// [`crate::html::Dom::release_subtree`]でトップレベル要素のサブツリーを
+    /// 解放するために使う。
+    pub fn dom_mut(&self) -> RefMut<'_, Dom> {
+        self.sink().dom.borrow_mut()
+    }
+
+    /// `<body>`直下の子要素のうち、「もう変更されない」と判断できる
+    /// (=直後に別の兄弟が既に追加されている)ものの`NodeId`を、出現順に
+    /// 切り出して返す。呼び出しのたびに返却済み位置を進めるため、同じ
+    /// 要素が2回返されることはない。`<body>`がまだ存在しない、または
+    /// 対象がなければ空のベクタを返す。
+    ///
+    /// **安全性の前提**: 正しくネストされたHTML(不正なタグの入れ子や、
+    /// テーブル内の不正な要素がテーブルの外へ移動する「foster
+    /// parenting」等のhtml5everのエラー回復動作が発生しないこと)を想定
+    /// する。エラー回復によって`<body>`直下の要素構成が後から変わる
+    /// 場合、この判定は不正確になりうる(既知の限界)。
+    ///
+    /// 末尾の要素は「まだ子要素が追加され続けている可能性がある」ため、
+    /// 対象に含めない(次回以降の呼び出し、または[`Self::finish`]まで
+    /// 待つ)。
+    pub fn take_completed_top_level_children(&mut self) -> Vec<NodeId> {
+        let Some(body) = self.body_node() else {
+            return Vec::new();
+        };
+
+        let dom = self.dom();
+        let mut children: Vec<NodeId> = dom.children(body).collect();
+        drop(dom);
+
+        if children.len() < 2 {
+            // 末尾以外に確定した要素がない(0〜1個しかない)。
+            return Vec::new();
+        }
+
+        let start = match self.last_yielded_top_level_child {
+            Some(last) => match children.iter().position(|&id| id == last) {
+                Some(i) => i + 1,
+                None => 0,
+            },
+            None => 0,
+        };
+        // 最後の1要素は「まだ子要素が追加中かもしれない」ため除外する。
+        let end = children.len() - 1;
+        if start >= end {
+            return Vec::new();
+        }
+
+        children.truncate(end);
+        let result = children.split_off(start);
+        if let Some(&last) = result.last() {
+            self.last_yielded_top_level_child = Some(last);
+        }
+        result
+    }
+
+    /// [`Self::take_completed_top_level_children`]と同様だが、末尾の要素も
+    /// 保留せずすべて返す。「これ以上`<body>`に子要素が追加されない」ことが
+    /// 確定した状況(`Engine::finish`が呼ばれる直前)で使う。
+    pub fn take_all_remaining_top_level_children(&mut self) -> Vec<NodeId> {
+        let Some(body) = self.body_node() else {
+            return Vec::new();
+        };
+        let dom = self.dom();
+        let children: Vec<NodeId> = dom.children(body).collect();
+        drop(dom);
+
+        let start = match self.last_yielded_top_level_child {
+            Some(last) => children
+                .iter()
+                .position(|&id| id == last)
+                .map(|i| i + 1)
+                .unwrap_or(0),
+            None => 0,
+        };
+        let result = children[start..].to_vec();
+        self.last_yielded_top_level_child = children.last().copied();
+        result
+    }
+
+    fn sink(&self) -> &Sink {
+        &self.inner.inner_sink.tokenizer.sink.sink
     }
 
     /// これ以上チャンクがないことを伝え、パース済みの[`Dom`]を得る。
@@ -83,13 +183,14 @@ impl Default for StreamingParser {
 }
 
 struct Sink {
-    nodes: RefCell<Vec<Node>>,
-    document: NodeId,
+    dom: RefCell<Dom>,
     quirks_mode: Cell<QuirksMode>,
     /// `<body>`要素の開始タグを見たかどうか([`StreamingParser::has_late_style_tag`]参照)。
     seen_body: Cell<bool>,
     /// `<body>`より後に`<style>`要素が出現したかどうか。
     late_style_detected: Cell<bool>,
+    /// `<body>`要素の`NodeId`([`StreamingParser::body_node`]参照)。
+    body_id: Cell<Option<NodeId>>,
 }
 
 /// [`TreeSink::elem_name`]が返す、貸し出し元から独立した要素名。
@@ -112,9 +213,9 @@ impl ElemName for OwnedElemName {
 
 impl Sink {
     fn alloc(&self, data: NodeData) -> NodeId {
-        let mut nodes = self.nodes.borrow_mut();
-        nodes.push(Node::new(data));
-        NodeId(nodes.len() - 1)
+        let mut dom = self.dom.borrow_mut();
+        dom.nodes.push(Node::new(data));
+        NodeId(dom.nodes.len() - 1)
     }
 
     /// テキストは直前の兄弟がTextノードであれば連結する(html5everの規約通り)。
@@ -124,28 +225,27 @@ impl Sink {
         previous_sibling: impl FnOnce(&[Node]) -> Option<NodeId>,
         do_append: impl FnOnce(&mut [Node], NodeId),
     ) {
-        let mut nodes = self.nodes.borrow_mut();
+        let mut dom = self.dom.borrow_mut();
 
         let new_node = match child {
             NodeOrText::AppendText(text) => {
-                if let Some(prev) = previous_sibling(&nodes) {
-                    if let NodeData::Text { contents } = &mut nodes[prev.0].data {
+                if let Some(prev) = previous_sibling(&dom.nodes) {
+                    if let NodeData::Text { contents } = &mut dom.nodes[prev.0].data {
                         contents.push_str(&text);
                         return;
                     }
                 }
-                let mut nodes_for_alloc = nodes;
-                nodes_for_alloc.push(Node::new(NodeData::Text {
+                dom.nodes.push(Node::new(NodeData::Text {
                     contents: text.to_string(),
                 }));
-                let id = NodeId(nodes_for_alloc.len() - 1);
-                do_append(&mut nodes_for_alloc, id);
+                let id = NodeId(dom.nodes.len() - 1);
+                do_append(&mut dom.nodes, id);
                 return;
             }
             NodeOrText::AppendNode(id) => id,
         };
 
-        do_append(&mut nodes, new_node);
+        do_append(&mut dom.nodes, new_node);
     }
 }
 
@@ -155,28 +255,26 @@ impl TreeSink for Sink {
     type ElemName<'a> = OwnedElemName;
 
     fn finish(self) -> Dom {
-        Dom {
-            nodes: self.nodes.into_inner(),
-            document: self.document,
-        }
+        self.dom.into_inner()
     }
 
     fn parse_error(&self, _msg: std::borrow::Cow<'static, str>) {}
 
     fn get_document(&self) -> NodeId {
-        self.document
+        self.dom.borrow().document
     }
 
     fn elem_name<'a>(&'a self, target: &'a NodeId) -> OwnedElemName {
-        let nodes = self.nodes.borrow();
-        match &nodes[target.0].data {
+        let dom = self.dom.borrow();
+        match &dom.nodes[target.0].data {
             NodeData::Element { name, .. } => OwnedElemName(name.clone()),
             _ => panic!("not an element!"),
         }
     }
 
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> NodeId {
-        if &*name.local == "body" {
+        let is_body = &*name.local == "body";
+        if is_body {
             self.seen_body.set(true);
         } else if &*name.local == "style" && self.seen_body.get() {
             self.late_style_detected.set(true);
@@ -187,11 +285,15 @@ impl TreeSink for Sink {
         } else {
             None
         };
-        self.alloc(NodeData::Element {
+        let id = self.alloc(NodeData::Element {
             name,
             attrs,
             template_contents,
-        })
+        });
+        if is_body {
+            self.body_id.set(Some(id));
+        }
+        id
     }
 
     fn create_comment(&self, text: StrTendril) -> NodeId {
@@ -231,7 +333,7 @@ impl TreeSink for Sink {
         prev_element: &NodeId,
         child: NodeOrText<NodeId>,
     ) {
-        let has_parent = self.nodes.borrow()[element.0].parent.is_some();
+        let has_parent = self.dom.borrow().nodes[element.0].parent.is_some();
         if has_parent {
             self.append_before_sibling(element, child);
         } else {
@@ -248,11 +350,13 @@ impl TreeSink for Sink {
         let doctype = self.alloc(NodeData::Doctype {
             name: name.to_string(),
         });
-        append(&mut self.nodes.borrow_mut(), self.document, doctype);
+        let mut dom = self.dom.borrow_mut();
+        let document = dom.document;
+        append(&mut dom.nodes, document, doctype);
     }
 
     fn get_template_contents(&self, target: &NodeId) -> NodeId {
-        match &self.nodes.borrow()[target.0].data {
+        match &self.dom.borrow().nodes[target.0].data {
             NodeData::Element {
                 template_contents: Some(contents),
                 ..
@@ -270,10 +374,10 @@ impl TreeSink for Sink {
     }
 
     fn add_attrs_if_missing(&self, target: &NodeId, attrs: Vec<Attribute>) {
-        let mut nodes = self.nodes.borrow_mut();
+        let mut dom = self.dom.borrow_mut();
         let NodeData::Element {
             attrs: existing, ..
-        } = &mut nodes[target.0].data
+        } = &mut dom.nodes[target.0].data
         else {
             panic!("not an element");
         };
@@ -285,15 +389,15 @@ impl TreeSink for Sink {
     }
 
     fn remove_from_parent(&self, target: &NodeId) {
-        detach(&mut self.nodes.borrow_mut(), *target);
+        detach(&mut self.dom.borrow_mut().nodes, *target);
     }
 
     fn reparent_children(&self, node: &NodeId, new_parent: &NodeId) {
-        let mut nodes = self.nodes.borrow_mut();
-        let mut next_child = nodes[node.0].first_child;
+        let mut dom = self.dom.borrow_mut();
+        let mut next_child = dom.nodes[node.0].first_child;
         while let Some(child) = next_child {
-            next_child = nodes[child.0].next_sibling;
-            append(&mut nodes, *new_parent, child);
+            next_child = dom.nodes[child.0].next_sibling;
+            append(&mut dom.nodes, *new_parent, child);
         }
     }
 }
@@ -463,6 +567,68 @@ mod tests {
         assert!(
             parser.has_late_style_tag(),
             "should detect the <style> tag fed in a later chunk"
+        );
+    }
+
+    fn tag_of(parser: &StreamingParser, id: NodeId) -> String {
+        let dom = parser.dom();
+        match &dom.node(id).data {
+            NodeData::Element { name, .. } => name.local.to_string(),
+            _ => panic!("expected element"),
+        }
+    }
+
+    #[test]
+    fn take_completed_top_level_children_is_empty_before_body_exists() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<html><head><title>t</title></head>");
+        assert!(parser.take_completed_top_level_children().is_empty());
+    }
+
+    #[test]
+    fn take_completed_top_level_children_holds_back_the_last_child() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<body><div>a</div>");
+        assert!(
+            parser.take_completed_top_level_children().is_empty(),
+            "only one top-level child exists so far; it might still grow"
+        );
+    }
+
+    #[test]
+    fn take_completed_top_level_children_yields_once_a_sibling_follows() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<body><div>a</div><p>b</p>");
+        let completed = parser.take_completed_top_level_children();
+        assert_eq!(completed.len(), 1);
+        assert_eq!(tag_of(&parser, completed[0]), "div");
+
+        // まだ2つ目(p)はheldされたまま。
+        assert!(parser.take_completed_top_level_children().is_empty());
+    }
+
+    #[test]
+    fn take_completed_top_level_children_does_not_repeat_already_yielded_nodes() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<body><div>a</div><p>b</p><span>c</span>");
+        let first_batch = parser.take_completed_top_level_children();
+        assert_eq!(
+            first_batch
+                .iter()
+                .map(|&id| tag_of(&parser, id))
+                .collect::<Vec<_>>(),
+            vec!["div", "p"]
+        );
+
+        parser.feed(b"<footer>d</footer>");
+        let second_batch = parser.take_completed_top_level_children();
+        assert_eq!(
+            second_batch
+                .iter()
+                .map(|&id| tag_of(&parser, id))
+                .collect::<Vec<_>>(),
+            vec!["span"],
+            "should yield only newly-completed nodes, not repeat earlier ones"
         );
     }
 }

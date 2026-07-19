@@ -95,7 +95,28 @@ pub fn layout_document(
     fonts: &FontCollection,
     page_width: f32,
 ) -> LaidOutBox {
-    layout_box(root, styles, fonts, page_width, 0.0, 0.0)
+    layout_document_from(root, styles, fonts, page_width, 0.0, 0.0)
+}
+
+/// [`layout_document`]のバリアント: 原点`(0.0, 0.0)`からではなく、
+/// `(start_x, start_y)`からレイアウトを開始する。
+///
+/// マイルストーン3のストリーミング処理で、`<body>`直下のトップレベル要素を
+/// 1つずつレイアウトする際、前の要素までの累積高さを`start_y`として渡す
+/// ことで、複数回の呼び出しにまたがって「上から下に流れる」通常のブロック
+/// レイアウトを継続する。`start_x`/`containing_width`には、`<body>`自身の
+/// `margin`/`border`/`padding`を反映した値を渡すことを想定する(`<body>`
+/// 自体は個々のトップレベル要素とは別に扱われ、その内側がこの関数の
+/// containing blockになるため)。
+pub fn layout_document_from(
+    root: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    start_x: f32,
+    start_y: f32,
+) -> LaidOutBox {
+    layout_box(root, styles, fonts, containing_width, start_x, start_y)
 }
 
 fn layout_box(
@@ -232,8 +253,9 @@ fn layout_box_impl(
 /// `style`/`border`(計算済みの太さ)の組み合わせが、実際に何か描画するか。
 /// 背景色があるか、4辺のいずれかで太さが正かつ`border-style`が`none`でない
 /// 場合に`true`(`pdf::document::render_box_decoration`が実際に描画する
-/// 条件と同じ)。
-fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) -> bool {
+/// 条件と同じ)。マイルストーン3の`Engine`が、`<body>`自身に装飾がないか
+/// 判定する際にも使うため`pub(crate)`にしている。
+pub(crate) fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) -> bool {
     if style.background_color.alpha > 0.0 {
         return true;
     }
@@ -265,14 +287,14 @@ fn resolve_lp(lp: LengthPercentage, basis: f32) -> f32 {
     }
 }
 
-pub(super) fn resolve_lpa_or_zero(lpa: LengthPercentageOrAuto, basis: f32) -> f32 {
+pub(crate) fn resolve_lpa_or_zero(lpa: LengthPercentageOrAuto, basis: f32) -> f32 {
     match lpa {
         LengthPercentageOrAuto::Auto => 0.0,
         LengthPercentageOrAuto::LengthPercentage(lp) => resolve_lp(lp, basis),
     }
 }
 
-pub(super) fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
+pub(crate) fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
     EdgeSizes {
         top: resolve_lp(style.padding_top, basis),
         right: resolve_lp(style.padding_right, basis),
@@ -283,7 +305,7 @@ pub(super) fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
 
 /// `border-style: none`の辺は、`border-width`の指定に関わらず使用値が`0`になる
 /// (CSS2.1 8.5.3)。レイアウト(幅計算)にもこの丸めが反映される必要がある。
-pub(super) fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
+pub(crate) fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
     let width_or_zero = |width: Length, border_style: BorderStyle| {
         if border_style == BorderStyle::None {
             0.0
@@ -320,7 +342,7 @@ fn collapse_adjacent_margins(a: f32, b: f32) -> f32 {
 /// CSS2.1 §10.3.3(block-level, non-replaced要素)の簡略版。
 /// `margin-left + border-left + padding-left + width + padding-right + border-right + margin-right
 /// = containing blockの幅`という制約から、`auto`な項目を埋める。
-fn resolve_width_and_horizontal_margins(
+pub(crate) fn resolve_width_and_horizontal_margins(
     style: &ComputedStyle,
     containing_width: f32,
     padding_lr: f32,

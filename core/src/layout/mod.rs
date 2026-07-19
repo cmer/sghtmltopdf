@@ -8,11 +8,19 @@ mod page;
 mod paginate;
 mod table;
 
-pub use block::{layout_document, LaidOutBox, LaidOutContent, LaidOutTableRow};
+pub(crate) use block::{
+    has_visible_decoration, resolve_border, resolve_lpa_or_zero, resolve_padding,
+    resolve_width_and_horizontal_margins,
+};
+pub use block::{
+    layout_document, layout_document_from, LaidOutBox, LaidOutContent, LaidOutTableRow,
+};
+pub(crate) use box_tree::build_box_for_element;
 pub use box_tree::{build_box_tree, BoxContent, LayoutBox, TableBox, TableCell, TableRow};
 pub use geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 pub use inline::{layout_inline_content, LineBox, TextRun};
 pub use page::{PageSettings, PageSize};
 pub use paginate::{
     paginate, paginate_document, paginate_document_streaming, paginate_streaming, Page,
+    StreamingPaginator,
 };

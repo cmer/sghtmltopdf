@@ -80,7 +80,12 @@ pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>) -> Lay
     }
 }
 
-fn build_box_for_element(
+/// `node`単体(とその子孫)から[`LayoutBox`]を構築する。`build_box_tree`が
+/// 文書全体を辿る際の内部処理だが、マイルストーン3のストリーミング処理では
+/// 「切り出したトップレベル要素1つ分だけ」の`LayoutBox`を作るために直接使う
+/// (`build_box_tree`のように`dom.document()`の子全部を辿るのではなく、
+/// 特定の`node`だけを対象にする)。
+pub(crate) fn build_box_for_element(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
     node: NodeId,

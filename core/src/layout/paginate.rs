@@ -63,7 +63,11 @@ pub struct Page {
 /// ([`Self::try_flush`])。あるページより後に開始したどのコンテナも、
 /// そのページへ遡って書き込むことはない(`place_split`は自分がまたいだ
 /// 範囲より前のページを触らない)ため、この判定で安全性が保証される。
-struct PaginationState<'a> {
+/// [`PaginationState`]の永続部分。`on_flush`コールバック(ライフタイム付き)
+/// を持たないため、[`StreamingPaginator`]のフィールドとして、複数の
+/// `push_item`呼び出しをまたいで保持できる。
+#[derive(Default)]
+struct PaginationBuffer {
     /// まだflushしていない(=これ以上書き込まれないことがまだ保証できない)
     /// ページのバッファ。`buffer[0]`の絶対インデックスは`flushed`。
     buffer: Vec<Page>,
@@ -73,23 +77,49 @@ struct PaginationState<'a> {
     /// 現在アクティブな`place_split`呼び出しが最初に触れた絶対ページ
     /// インデックスのスタック(`enter_split`/`exit_split`でpush/pop)。
     active_min_page: Vec<usize>,
-    on_flush: &'a mut dyn FnMut(Page),
 }
 
-impl<'a> PaginationState<'a> {
-    fn new(on_flush: &'a mut dyn FnMut(Page)) -> Self {
+impl PaginationBuffer {
+    fn new() -> Self {
         Self {
             buffer: vec![Page::default()],
             flushed: 0,
             active_min_page: Vec::new(),
-            on_flush,
         }
+    }
+}
+
+/// [`PaginationBuffer`](永続部分)と、呼び出しごとに差し替え可能な
+/// `on_flush`コールバックをまとめた、`place_box`等が実際に操作する対象。
+///
+/// [`place_split`]によるコンテナの装飾フラグメント(背景・枠線)挿入は、
+/// そのコンテナの子要素すべてを配置し終えてから、既に`push`済みの
+/// (一見「確定した」ように見える)ページへ**遡って**行われる(モジュールdoc
+/// 参照)。そのため「新しいページが始まったら直前のページは確定」という
+/// 単純な判定はできない。文書ルート自身もこの`place_split`を通るため、
+/// 何も対策しなければ「文書全体の処理が終わるまでどのページも確定しない」
+/// (=実質一括処理と同じ)になってしまう。
+///
+/// かわりに、現在処理中の(=呼び出しスタック上にある)`place_split`が
+/// それぞれ「最初に触れた絶対ページインデックス」を`active_min_page`に
+/// スタックとして積み、その最小値より前のページのみ安全にflushする
+/// ([`Self::try_flush`])。あるページより後に開始したどのコンテナも、
+/// そのページへ遡って書き込むことはない(`place_split`は自分がまたいだ
+/// 範囲より前のページを触らない)ため、この判定で安全性が保証される。
+struct PaginationState<'a> {
+    inner: &'a mut PaginationBuffer,
+    on_flush: &'a mut dyn FnMut(Page),
+}
+
+impl<'a> PaginationState<'a> {
+    fn new(inner: &'a mut PaginationBuffer, on_flush: &'a mut dyn FnMut(Page)) -> Self {
+        Self { inner, on_flush }
     }
 
     /// 絶対インデックス(文書全体を通じた0-originの通し番号)での現在の
     /// ページ数。
     fn len(&self) -> usize {
-        self.flushed + self.buffer.len()
+        self.inner.flushed + self.inner.buffer.len()
     }
 
     /// 現在アクティブな最後(最新)のページの絶対インデックス。
@@ -98,13 +128,15 @@ impl<'a> PaginationState<'a> {
     }
 
     fn last_mut(&mut self) -> &mut Page {
-        self.buffer
+        self.inner
+            .buffer
             .last_mut()
             .expect("バッファは常に1ページ以上を保持する")
     }
 
     fn last(&self) -> &Page {
-        self.buffer
+        self.inner
+            .buffer
             .last()
             .expect("バッファは常に1ページ以上を保持する")
     }
@@ -113,28 +145,29 @@ impl<'a> PaginationState<'a> {
     /// (=バッファ内にある)ことは呼び出し側が保証する
     /// (`active_min_page`で守られている範囲のみアクセスされる)。
     fn get(&self, absolute: usize) -> &Page {
-        &self.buffer[absolute - self.flushed]
+        &self.inner.buffer[absolute - self.inner.flushed]
     }
 
     fn get_mut(&mut self, absolute: usize) -> &mut Page {
-        &mut self.buffer[absolute - self.flushed]
+        &mut self.inner.buffer[absolute - self.inner.flushed]
     }
 
     /// 新しいページを開始する。
     fn push_new_page(&mut self) {
-        self.buffer.push(Page::default());
+        self.inner.buffer.push(Page::default());
     }
 
     /// [`place_split`]に入る際、現在のページを「このコンテナが最初に
     /// 触れたページ」として記録する。
     fn enter_split(&mut self) {
-        self.active_min_page.push(self.current_index());
+        let idx = self.current_index();
+        self.inner.active_min_page.push(idx);
     }
 
     /// [`place_split`]を抜ける際に対応する記録を取り除き、flush可能な
     /// ページがあれば`on_flush`へ渡す。
     fn exit_split(&mut self) {
-        self.active_min_page.pop();
+        self.inner.active_min_page.pop();
         self.try_flush();
     }
 
@@ -143,27 +176,16 @@ impl<'a> PaginationState<'a> {
     /// より前のページを、古い順に`on_flush`へ渡す。
     fn try_flush(&mut self) {
         let safe_until = self
+            .inner
             .active_min_page
             .iter()
             .copied()
             .min()
             .unwrap_or_else(|| self.current_index());
-        while self.flushed < safe_until {
-            let page = self.buffer.remove(0);
+        while self.inner.flushed < safe_until {
+            let page = self.inner.buffer.remove(0);
             (self.on_flush)(page);
-            self.flushed += 1;
-        }
-    }
-
-    /// 残っている全ページを(アクティブなコンテナが残っていないことを前提に)
-    /// flushする。`paginate_streaming`の最後に呼ぶ。
-    fn finish(mut self) {
-        debug_assert!(
-            self.active_min_page.is_empty(),
-            "finishはすべてのplace_split呼び出しを抜けた後に呼ばれるはず"
-        );
-        for page in self.buffer.drain(..) {
-            (self.on_flush)(page);
+            self.inner.flushed += 1;
         }
     }
 }
@@ -187,10 +209,66 @@ pub fn paginate_streaming(
     page_content_height: f32,
     on_page: &mut dyn FnMut(Page),
 ) {
-    let mut state = PaginationState::new(on_page);
-    let mut cursor = 0.0f32;
-    place_box(root, page_content_height, &mut state, &mut cursor);
-    state.finish();
+    let mut paginator = StreamingPaginator::new(page_content_height);
+    for page in paginator.push_item(root) {
+        on_page(page);
+    }
+    for page in paginator.finish() {
+        on_page(page);
+    }
+}
+
+/// 複数の`LaidOutBox`(通常は文書のトップレベルブロック要素ごと)を順に
+/// [`Self::push_item`]で追加していき、[`Self::finish`]で残りのページを
+/// すべてflushする、ストリーミング版のページ分割器。
+///
+/// [`paginate_streaming`]は「1つの完成した`LaidOutBox`ツリー全体」を一度に
+/// 処理する前提だが、`StreamingPaginator`は複数回の呼び出しにまたがって、
+/// 上から下へ流れる通常のページ分割(`cursor`・[`PaginationBuffer`]の
+/// flush判定を含む)を継続できる。マイルストーン3の「真のストリーミング
+/// 入力」で、`<body>`直下のトップレベル要素が確定するたびに、その要素
+/// だけを`layout::layout_document_from`でレイアウトして`push_item`する、
+/// という使い方を想定する。
+///
+/// `on_page`コールバックをフィールドとして保持せず、`push_item`/`finish`が
+/// 確定したページを`Vec<Page>`として返す設計にしている(コールバックの
+/// ライフタイムを構造体に持たせると、`Engine`のように複数回の呼び出しを
+/// またいでこの構造体自体を保持したいユースケースで、自己参照的な借用の
+/// 問題が生じるため)。
+pub struct StreamingPaginator {
+    buffer: PaginationBuffer,
+    cursor: f32,
+    page_height: f32,
+}
+
+impl StreamingPaginator {
+    pub fn new(page_height: f32) -> Self {
+        Self {
+            buffer: PaginationBuffer::new(),
+            cursor: 0.0,
+            page_height,
+        }
+    }
+
+    /// 1つのアイテムを追加する。この呼び出しで確定したページを返す。
+    pub fn push_item(&mut self, item: &LaidOutBox) -> Vec<Page> {
+        let mut flushed = Vec::new();
+        {
+            let mut on_flush = |page: Page| flushed.push(page);
+            let mut state = PaginationState::new(&mut self.buffer, &mut on_flush);
+            place_box(item, self.page_height, &mut state, &mut self.cursor);
+        }
+        flushed
+    }
+
+    /// これ以上アイテムが無いことを伝え、残っている全ページを返す。
+    pub fn finish(mut self) -> Vec<Page> {
+        debug_assert!(
+            self.buffer.active_min_page.is_empty(),
+            "finishはすべてのplace_split呼び出しを抜けた後に呼ばれるはず"
+        );
+        self.buffer.buffer.drain(..).collect()
+    }
 }
 
 /// DOM+計算スタイルから、ボックスツリー構築・レイアウト・ページ分割までを
@@ -792,6 +870,8 @@ mod tests {
     use super::*;
     use crate::fonts::Font;
     use crate::html::{self, Dom, NodeData};
+    use crate::layout::block::layout_document_from;
+    use crate::layout::box_tree::build_box_for_element;
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet, Stylesheet};
 
     const TEST_FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
@@ -1464,11 +1544,12 @@ mod tests {
     /// [`PaginationState`]と[`place_box`]を直接呼び出し、`finish()`を呼ぶ
     /// 前の時点でバッファに何ページ残っているかを調べるテスト用ヘルパー。
     fn unflushed_buffer_len_after_place_box(laid_out: &LaidOutBox, page_height: f32) -> usize {
+        let mut buffer = PaginationBuffer::new();
         let mut on_page = |_page: Page| {};
-        let mut state = PaginationState::new(&mut on_page);
+        let mut state = PaginationState::new(&mut buffer, &mut on_page);
         let mut cursor = 0.0f32;
         place_box(laid_out, page_height, &mut state, &mut cursor);
-        state.buffer.len()
+        buffer.buffer.len()
     }
 
     #[test]
@@ -1801,5 +1882,73 @@ mod tests {
             }
             current_page_index += 1;
         });
+    }
+
+    #[test]
+    fn streaming_paginator_multiple_push_item_calls_match_a_single_combined_tree() {
+        // 20個の<p>を「1つのツリーとして一括で処理する」場合と「1個ずつ
+        // push_itemする」場合とで、最終的なページ数・内容が一致することを
+        // 確認する(マイルストーン3の「トップレベル要素単位のストリーミング
+        // 入力」で、この2つの経路が同じ結果になることの土台となる検証)。
+        let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        // 一括版: 20個の<p>を1つのdivにまとめてレイアウトする。
+        let mut combined_html = String::from("<div>");
+        for i in 0..20 {
+            combined_html.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        combined_html.push_str("</div>");
+        let combined_dom = html::parse(combined_html.as_bytes());
+        let combined_styles = compute_styles(&combined_dom, &ua, &author);
+        let combined_tree = build_box_tree(&combined_dom, &combined_styles);
+        let combined_laid_out = layout_document(
+            &combined_tree,
+            &combined_styles,
+            &fonts,
+            settings.content_width(),
+        );
+        let batched_pages = paginate(&combined_laid_out, settings.content_height());
+        assert!(batched_pages.len() > 1, "expected multiple pages");
+
+        // push_item版: 同じ`combined_dom`/`combined_styles`から、<p>要素
+        // それぞれのLayoutBoxを`build_box_for_element`で個別に切り出し、
+        // 都度push_itemする。`html::parse`を20回呼ぶ形にすると、各回で
+        // 独立した<html>/<body>が補完され、UAスタイルシートの
+        // `body { margin: 8px; }`が20回分累積してしまい、push_itemロジック
+        // 自体の検証にならないため、同じDOMから要素単位で切り出す。
+        let mut ps = Vec::new();
+        find_all(&combined_dom, combined_dom.document(), "p", &mut ps);
+        assert_eq!(ps.len(), 20);
+
+        let mut streamed_pages: Vec<Page> = Vec::new();
+        let mut paginator = StreamingPaginator::new(settings.content_height());
+        let mut start_y = 0.0f32;
+        for &p_node in &ps {
+            let item_box = build_box_for_element(&combined_dom, &combined_styles, p_node)
+                .expect("p element should produce a LayoutBox");
+            let item_laid_out = layout_document_from(
+                &item_box,
+                &combined_styles,
+                &fonts,
+                settings.content_width(),
+                0.0,
+                start_y,
+            );
+            start_y += item_laid_out.layout.margin_box_height();
+            streamed_pages.extend(paginator.push_item(&item_laid_out));
+        }
+        streamed_pages.extend(paginator.finish());
+
+        assert_eq!(
+            batched_pages.len(),
+            streamed_pages.len(),
+            "pushing items one at a time should yield the same page count as a single combined tree"
+        );
+        for (batched, streamed) in batched_pages.iter().zip(streamed_pages.iter()) {
+            assert_eq!(batched.boxes.len(), streamed.boxes.len());
+        }
     }
 }
