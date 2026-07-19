@@ -3,8 +3,8 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
-    BorderStyle, Color, Display, FontStyle, FontWeight, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, TextDecorationLine,
+    BorderStyle, BreakBetween, BreakInside, Color, Display, FontStyle, FontWeight, SpecifiedLength,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, TextDecorationLine,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +46,11 @@ pub enum PropertyDeclaration {
     /// `::before`/`::after`用の`content`。`None`は`none`/`normal`(生成ボックスなし)。
     /// 文字列リテラル1つのみ対応し、`attr()`/`counter()`/複数値の連結は非対応。
     Content(Option<String>),
+    BreakBefore(BreakBetween),
+    BreakAfter(BreakBetween),
+    BreakInside(BreakInside),
+    Orphans(u32),
+    Widows(u32),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -77,6 +82,19 @@ pub fn parse_declaration<'i>(
             Ok(vec![D::TextDecorationLine(parse_text_decoration_line(input)?)])
         },
         "content" => Ok(vec![D::Content(parse_content(input)?)]),
+        // `page-break-*`は旧世代のプロパティ名(wkhtmltopdf/wicked_pdf資産からの
+        // 移行コストを下げるため、`break-*`のエイリアスとして受理する)。
+        "break-before" | "page-break-before" => {
+            Ok(vec![D::BreakBefore(parse_break_between(input)?)])
+        },
+        "break-after" | "page-break-after" => {
+            Ok(vec![D::BreakAfter(parse_break_between(input)?)])
+        },
+        "break-inside" | "page-break-inside" => {
+            Ok(vec![D::BreakInside(parse_break_inside(input)?)])
+        },
+        "orphans" => Ok(vec![D::Orphans(parse_positive_integer(input)?)]),
+        "widows" => Ok(vec![D::Widows(parse_positive_integer(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -257,6 +275,37 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "none" => Display::None,
         _ => return Err(input.new_custom_error(())),
     })
+}
+
+/// `break-before`/`break-after`(および`page-break-before`/`-after`エイリアス)の値。
+/// `left`/`right`/`recto`/`verso`(見開き制御)は単一ページサイズ前提のため非対応。
+fn parse_break_between<'i>(input: &mut Parser<'i, '_>) -> Result<BreakBetween, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "auto" => BreakBetween::Auto,
+        "avoid" | "avoid-page" | "avoid-column" => BreakBetween::Avoid,
+        "always" | "page" => BreakBetween::Always,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `break-inside`(および`page-break-inside`エイリアス)の値。
+fn parse_break_inside<'i>(input: &mut Parser<'i, '_>) -> Result<BreakInside, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "auto" => BreakInside::Auto,
+        "avoid" | "avoid-page" | "avoid-column" => BreakInside::Avoid,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `orphans`/`widows`の値。0以下は無効(仕様上も1以上の整数のみ有効)。
+fn parse_positive_integer<'i>(input: &mut Parser<'i, '_>) -> Result<u32, ParseError<'i, ()>> {
+    let value = input.expect_integer()?;
+    if value < 1 {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(value as u32)
 }
 
 /// キーワード(`normal`/`bold`)と数値(`100`〜`900`)のどちらも受け付ける。

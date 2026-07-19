@@ -59,6 +59,26 @@ pub enum BorderStyle {
     Double,
 }
 
+/// `break-before`/`break-after`の値。CSS仕様上`page`は複数ページサイズ/
+/// 名前付きページ対応を見据えた別キーワードだが、単一ページサイズしか
+/// 扱わない現状のスコープでは`always`と同じ「強制的に新しいページへ送る」
+/// 効果として扱う。`left`/`right`/`recto`/`verso`(見開き制御)は非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BreakBetween {
+    #[default]
+    Auto,
+    Avoid,
+    Always,
+}
+
+/// `break-inside`の値。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BreakInside {
+    #[default]
+    Auto,
+    Avoid,
+}
+
 /// 長さ(px)またはパーセンテージ。カスケード解決済みの計算値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LengthPercentage {

@@ -14,8 +14,8 @@ use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    BorderStyle, Color, Display, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto, SpecifiedLength, SpecifiedLengthPercentage,
+    BorderStyle, BreakBetween, BreakInside, Color, Display, FontStyle, FontWeight, Length,
+    LengthPercentage, LengthPercentageOrAuto, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, TextDecorationLine,
 };
 
@@ -81,6 +81,14 @@ pub struct ComputedStyle {
     pub pseudo_before_content: Option<String>,
     /// `::after { content: "..." }`の生成コンテンツ。
     pub pseudo_after_content: Option<String>,
+    /// CSS Fragmentation。非継承プロパティ(仕様通り)。
+    pub break_before: BreakBetween,
+    pub break_after: BreakBetween,
+    pub break_inside: BreakInside,
+    /// ページ末尾に残せる最小行数。非継承プロパティ、初期値2(仕様通り)。
+    pub orphans: u32,
+    /// ページ先頭に送れる最小行数。非継承プロパティ、初期値2(仕様通り)。
+    pub widows: u32,
 }
 
 impl Default for ComputedStyle {
@@ -158,6 +166,11 @@ impl Default for ComputedStyle {
             text_decoration_line: TextDecorationLine::default(),
             pseudo_before_content: None,
             pseudo_after_content: None,
+            break_before: BreakBetween::Auto,
+            break_after: BreakBetween::Auto,
+            break_inside: BreakInside::Auto,
+            orphans: 2,
+            widows: 2,
         }
     }
 }
@@ -289,6 +302,11 @@ fn compute_element_style(
     let mut color = None;
     let mut background_color = None;
     let mut text_decoration_line = None;
+    let mut break_before = None;
+    let mut break_after = None;
+    let mut break_inside = None;
+    let mut orphans = None;
+    let mut widows = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // インラインstyle属性はセレクタベースのどの宣言よりも優先度が高いため、最後に置く。
@@ -333,6 +351,11 @@ fn compute_element_style(
             // `content`は`::before`/`::after`専用で、通常の要素では効果を持たない
             // (`matching_pseudo_content`が別途、擬似要素向けのマッチングを行う)。
             PropertyDeclaration::Content(_) => {}
+            PropertyDeclaration::BreakBefore(v) => break_before = Some(*v),
+            PropertyDeclaration::BreakAfter(v) => break_after = Some(*v),
+            PropertyDeclaration::BreakInside(v) => break_inside = Some(*v),
+            PropertyDeclaration::Orphans(v) => orphans = Some(*v),
+            PropertyDeclaration::Widows(v) => widows = Some(*v),
         }
     }
 
@@ -437,6 +460,11 @@ fn compute_element_style(
         text_decoration_line: text_decoration_line.unwrap_or(inherited_text_decoration_line),
         pseudo_before_content,
         pseudo_after_content,
+        break_before: break_before.unwrap_or(initial.break_before),
+        break_after: break_after.unwrap_or(initial.break_after),
+        break_inside: break_inside.unwrap_or(initial.break_inside),
+        orphans: orphans.unwrap_or(initial.orphans),
+        widows: widows.unwrap_or(initial.widows),
     }
 }
 
@@ -979,6 +1007,125 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         assert_eq!(styles[&p].border_top_style, super::BorderStyle::None);
         assert_eq!(styles[&p].border_top_width.0, 0.0);
+    }
+
+    #[test]
+    fn break_before_and_break_after_default_to_auto() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&p].break_before, BreakBetween::Auto);
+        assert_eq!(styles[&p].break_after, BreakBetween::Auto);
+        assert_eq!(styles[&p].break_inside, BreakInside::Auto);
+    }
+
+    #[test]
+    fn break_before_and_break_after_parse_avoid_and_always() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { break-before: avoid; break-after: always; }"),
+        );
+        assert_eq!(styles[&p].break_before, BreakBetween::Avoid);
+        assert_eq!(styles[&p].break_after, BreakBetween::Always);
+    }
+
+    #[test]
+    fn break_before_page_keyword_is_treated_as_always() {
+        // 単一ページサイズしか扱わないため、`page`は`always`と同じ効果として扱う。
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { break-before: page; }"),
+        );
+        assert_eq!(styles[&p].break_before, BreakBetween::Always);
+    }
+
+    #[test]
+    fn break_inside_parses_avoid() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { break-inside: avoid; }"),
+        );
+        assert_eq!(styles[&p].break_inside, BreakInside::Avoid);
+    }
+
+    #[test]
+    fn legacy_page_break_properties_are_aliases_for_break_properties() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "p { page-break-before: always; page-break-after: avoid; \
+                 page-break-inside: avoid; }",
+            ),
+        );
+        assert_eq!(styles[&p].break_before, BreakBetween::Always);
+        assert_eq!(styles[&p].break_after, BreakBetween::Avoid);
+        assert_eq!(styles[&p].break_inside, BreakInside::Avoid);
+    }
+
+    #[test]
+    fn orphans_and_widows_default_to_two_and_can_be_overridden() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&p].orphans, 2);
+        assert_eq!(defaults[&p].widows, 2);
+
+        let overridden = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { orphans: 3; widows: 4; }"),
+        );
+        assert_eq!(overridden[&p].orphans, 3);
+        assert_eq!(overridden[&p].widows, 4);
+    }
+
+    #[test]
+    fn orphans_rejects_non_positive_values() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        // 無効な値は宣言ごと無視され、初期値のままになる。
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { orphans: 0; }"),
+        );
+        assert_eq!(styles[&p].orphans, 2);
+    }
+
+    #[test]
+    fn break_properties_are_not_inherited() {
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { break-before: always; orphans: 5; }"),
+        );
+        assert_eq!(styles[&div].break_before, BreakBetween::Always);
+        assert_eq!(styles[&div].orphans, 5);
+        assert_eq!(styles[&p].break_before, BreakBetween::Auto);
+        assert_eq!(styles[&p].orphans, 2);
     }
 
     #[test]
