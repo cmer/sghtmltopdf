@@ -6,8 +6,8 @@
 //!   親子間の相殺(親の上/下マージンと最初/最後の子のマージンの相殺)、および
 //!   高さ0・border/paddingなしの空ブロックを上下マージンが素通りする相殺は
 //!   未対応
-//! - 幅・水平マージンがすべて明示指定された場合の再調整(over-constrained時の
-//!   margin-right再計算)は行わない
+//! - `direction: rtl`は未対応(常にltr前提。over-constrained時に再計算する辺は
+//!   margin-right固定)
 //! - 高さのパーセンテージ指定はcontaining blockの高さが不定なため`auto`として扱う
 //! - インラインコンテンツの行分割・実際の行数に応じた高さはT6([`super::inline`])が担う
 use std::collections::HashMap;
@@ -233,9 +233,14 @@ fn resolve_width_and_horizontal_margins(
             (width, margin_left, (remaining - margin_left).max(0.0))
         }
         (false, false) => {
-            // over-constrained: margin-rightの再調整は行わない(簡略化)。
+            // over-constrained(CSS2.1 §10.3.3): width/margin-left/margin-rightが
+            // 全て明示指定されている場合、指定されたmargin-rightの値は無視し、
+            // 等式(margin-left + border/padding + width + margin-right =
+            // containing width)がちょうど成り立つよう使用値を再計算する
+            // (負の値になることもある。`direction: rtl`時はmargin-left側を
+            // 再計算すべきだが、rtl自体が未対応のため常にltr前提)。
             let margin_left = resolve_lpa_or_zero(style.margin_left, containing_width);
-            let margin_right = resolve_lpa_or_zero(style.margin_right, containing_width);
+            let margin_right = containing_width - border_lr - padding_lr - width - margin_left;
             (width, margin_left, margin_right)
         }
     }
@@ -380,6 +385,54 @@ mod tests {
         assert_eq!(div_box.layout.content.width, 400.0);
         assert_eq!(div_box.layout.margin.left, div_box.layout.margin.right);
         assert_eq!(div_box.layout.margin.left, 192.0);
+    }
+
+    #[test]
+    fn over_constrained_box_recalculates_margin_right_to_fit_the_containing_block() {
+        // width/margin-left/margin-rightが全て明示指定され、かつ合計が
+        // containing widthと一致しない(over-constrained)場合、CSS2.1 §10.3.3
+        // に従い指定されたmargin-rightは無視され、等式が成り立つよう再計算される。
+        let dom = html::parse(br#"<div class="box"></div>"#);
+        let ua = user_agent_stylesheet();
+        // containing width = 784(html:800, body margin:8pxずつ)。
+        // width:300 + margin-left:50 + 指定margin-right:50 = 400 だが、
+        // 784になるようmargin-rightは434に再計算されるはず。
+        let author = parse_stylesheet(".box { width: 300px; margin: 0 50px 0 50px; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+
+        assert_eq!(div_box.layout.content.width, 300.0);
+        assert_eq!(div_box.layout.margin.left, 50.0);
+        assert_eq!(
+            div_box.layout.margin.right, 434.0,
+            "over-constrained margin-right should be recalculated, not the specified 50px"
+        );
+    }
+
+    #[test]
+    fn over_constrained_recalculation_can_produce_a_negative_margin_right() {
+        let dom = html::parse(br#"<div class="box"></div>"#);
+        let ua = user_agent_stylesheet();
+        // containing width = 784。width自体がそれを埋め尽くすので、margin-leftの
+        // 分だけ超過し、再計算後のmargin-rightは指定値(99px)と符号すら異なる
+        // 負の値になるはず。
+        let author = parse_stylesheet(".box { width: 784px; margin: 0 99px 0 30px; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+
+        assert_eq!(div_box.layout.margin.right, -30.0);
     }
 
     #[test]
