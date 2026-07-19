@@ -2,12 +2,17 @@
 //!
 //! 既知の簡略化(将来のマイルストーンで見直す):
 //! - `white-space: normal`相当の折り返し(連続する空白の畳み込み、単語単位の折り返し)
-//!   のみ対応。長い単語1つで行幅を超える場合でも単語内では分割しない。同様に、
-//!   1つの単語(空白で区切られたトークン)の途中でフォントやスタイルが切り替わる
-//!   場合でも、その単語自体は同じ行の中で分割しない(空白なしのCJK-Latin混在等での
-//!   行中分割は非対応)
+//!   のみ対応。長い単語1つで行幅を超える場合でも単語内では分割しない(ただし
+//!   CJK文字が絡む境界は例外、後述)
 //! - 単語間の空白の幅は、直前のテキストランのフォント・サイズを基準に測る
 //!   (前後で大きくフォントサイズが異なる境界では厳密ではない)
+//! - CJK文字(ひらがな・カタカナ・漢字・ハングル)が絡む境界は、空白が無くても
+//!   改行可能とみなす(分かち書きをしない言語のため)。この判定のためだけに
+//!   `split_word_into_runs`はスタイル/フォントが同じでもCJK境界では別ランに
+//!   分ける(1文字ごとの個別シェイピングになる分の非効率とのトレードオフ)。
+//!   UAX#14(Unicode Line Breaking Algorithm)の全面実装ではなく、
+//!   「CJK文字が隣接する境界は改行可、それ以外はスタイル変更のみでは改行不可」
+//!   という単純化した判定にとどめる
 
 use std::collections::HashMap;
 
@@ -79,34 +84,48 @@ pub fn layout_inline_content(
     let mut cursor_y = origin_y;
 
     for word in words {
-        let mut word_runs = split_word_into_runs(word, &span_styles, fonts);
-        let word_width: f32 = word_runs.iter().map(|r| r.width).sum();
+        let word_runs = split_word_into_runs(word, &span_styles, fonts);
 
-        let space_width = current_runs
-            .last()
-            .map(|last| measure_space_width(fonts, last.font_index, last.font_size))
-            .unwrap_or(0.0);
+        // 単語内であっても、CJK文字が絡む改行可能な境界ごとに「まとめて
+        // 1行に収まるか判定する最小単位」(chunk)へグループ化する。空白による
+        // 単語区切りは常に改行可能(次段の`is_first_chunk_of_word`で扱う)。
+        for (chunk_index, chunk) in group_into_chunks(word_runs).into_iter().enumerate() {
+            let chunk_width: f32 = chunk.iter().map(|r| r.width).sum();
+            let is_first_chunk_of_word = chunk_index == 0;
 
-        if !current_runs.is_empty() && current_width + space_width + word_width > available_width {
-            let line_height = line_height_for(&current_runs);
-            lines.push(finish_line(
-                std::mem::take(&mut current_runs),
-                current_width,
-                origin_x,
-                cursor_y,
-                line_height,
-            ));
-            cursor_y += line_height;
-            current_width = 0.0;
-        } else if !current_runs.is_empty() {
-            current_width += space_width;
+            // 単語の先頭のchunkにのみ、直前のランとの間に単語間スペースを
+            // 挟む。単語内のCJK境界で分かれた後続chunkは隙間0で直接続ける。
+            let gap_width = if is_first_chunk_of_word {
+                current_runs
+                    .last()
+                    .map(|last| measure_space_width(fonts, last.font_index, last.font_size))
+                    .unwrap_or(0.0)
+            } else {
+                0.0
+            };
+
+            if !current_runs.is_empty() && current_width + gap_width + chunk_width > available_width
+            {
+                let line_height = line_height_for(&current_runs);
+                lines.push(finish_line(
+                    std::mem::take(&mut current_runs),
+                    current_width,
+                    origin_x,
+                    cursor_y,
+                    line_height,
+                ));
+                cursor_y += line_height;
+                current_width = 0.0;
+            } else if !current_runs.is_empty() {
+                current_width += gap_width;
+            }
+
+            for mut run in chunk {
+                run.x_offset = current_width;
+                current_width += run.width;
+                current_runs.push(run);
+            }
         }
-
-        for run in &mut word_runs {
-            run.x_offset = current_width;
-            current_width += run.width;
-        }
-        current_runs.extend(word_runs);
     }
 
     if !current_runs.is_empty() {
@@ -152,6 +171,10 @@ fn split_into_words(chars: &[StyledChar]) -> Vec<&[StyledChar]> {
 }
 
 /// 単語を、(スタイル, フォント)が連続する区間ごとに[`TextRun`]へ分割する。
+/// CJK文字が絡む文字境界([`is_break_boundary`])では、スタイル/フォントが
+/// 同じであっても別ランに分ける(改行可能な境界にするため。1文字ごとの
+/// シェイピングになるが、CJK文字間の文脈依存シェイピングは通常無いため
+/// 見た目には影響しない)。
 fn split_word_into_runs(
     word: &[StyledChar],
     span_styles: &[ComputedStyle],
@@ -160,6 +183,7 @@ fn split_word_into_runs(
     let mut runs = Vec::new();
     let mut current: Option<(usize, usize)> = None;
     let mut current_text = String::new();
+    let mut last_char: Option<char> = None;
 
     for sc in word {
         let style = &span_styles[sc.style_index];
@@ -172,25 +196,30 @@ fn split_word_into_runs(
             )
             .unwrap_or(0);
 
-        match current {
-            Some((style_index, fi)) if style_index == sc.style_index && fi == font_index => {
-                current_text.push(sc.ch);
+        let continues_current = match (current, last_char) {
+            (Some((style_index, fi)), Some(prev_ch)) => {
+                style_index == sc.style_index
+                    && fi == font_index
+                    && !is_break_boundary(prev_ch, sc.ch)
             }
-            Some((style_index, fi)) => {
+            _ => false,
+        };
+
+        if continues_current {
+            current_text.push(sc.ch);
+        } else {
+            if let Some((style_index, fi)) = current {
                 runs.push(shape_run(
                     &current_text,
                     fi,
                     fonts,
                     &span_styles[style_index],
                 ));
-                current_text = sc.ch.to_string();
-                current = Some((sc.style_index, font_index));
             }
-            None => {
-                current_text.push(sc.ch);
-                current = Some((sc.style_index, font_index));
-            }
+            current_text = sc.ch.to_string();
+            current = Some((sc.style_index, font_index));
         }
+        last_char = Some(sc.ch);
     }
     if let Some((style_index, fi)) = current {
         runs.push(shape_run(
@@ -202,6 +231,51 @@ fn split_word_into_runs(
     }
 
     runs
+}
+
+/// `runs`を、改行可能な境界(先頭、またはCJK文字が絡むrun境界
+/// [`is_break_boundary`])ごとに分割不可能な塊(chunk)へグループ化する。
+/// 各chunkの内部境界はすべて改行不可(スタイル/フォント変更のみ)なので、
+/// 呼び出し側はchunk単位で「まとめて1行に収まるか」を判定できる。
+fn group_into_chunks(runs: Vec<TextRun>) -> Vec<Vec<TextRun>> {
+    let mut chunks: Vec<Vec<TextRun>> = Vec::new();
+    for run in runs {
+        let starts_new_chunk = match chunks.last().and_then(|chunk| chunk.last()) {
+            None => true,
+            Some(prev) => is_break_boundary(
+                prev.text.chars().last().unwrap_or(' '),
+                run.text.chars().next().unwrap_or(' '),
+            ),
+        };
+        if starts_new_chunk {
+            chunks.push(vec![run]);
+        } else {
+            chunks.last_mut().expect("just checked non-empty").push(run);
+        }
+    }
+    chunks
+}
+
+/// `prev`と`next`の間で(空白が無くても)改行してよいかどうか。
+/// どちらか一方がCJK文字([`is_cjk`])であれば改行可能とみなす簡略判定
+/// (UAX#14の全面実装ではない)。
+fn is_break_boundary(prev: char, next: char) -> bool {
+    is_cjk(prev) || is_cjk(next)
+}
+
+/// ひらがな・カタカナ・漢字(CJK統合漢字・拡張A・互換漢字)・ハングルなど、
+/// 分かち書きをしない(単語間に空白を置かない)スクリプトの文字かどうか。
+fn is_cjk(ch: char) -> bool {
+    matches!(ch as u32,
+        0x3000..=0x303F   // CJKの記号・句読点
+        | 0x3040..=0x30FF // ひらがな・カタカナ
+        | 0x31F0..=0x31FF // カタカナ拡張
+        | 0x3400..=0x4DBF // CJK統合漢字拡張A
+        | 0x4E00..=0x9FFF // CJK統合漢字
+        | 0xAC00..=0xD7A3 // ハングル音節
+        | 0xF900..=0xFAFF // CJK互換漢字
+        | 0xFF00..=0xFFEF // 全角形・半角形
+    )
 }
 
 fn shape_run(
@@ -399,28 +473,34 @@ mod tests {
 
     #[test]
     fn mixed_script_word_splits_into_separate_font_runs() {
-        // 空白なしでLatinとCJKが混在する1トークン。
+        // 空白なしでLatinとCJKが混在する1トークン。CJK文字(日本語)は
+        // 改行可能境界のため、スタイル/フォントが同じでも1文字ずつ別ランに
+        // 分かれる("café" + "日" + "本" + "語" = 4ラン)。
         let (_, spans, styles) = spans_for("café日本語", "");
         let fonts = dejavu_and_cjk();
 
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
 
         assert_eq!(lines.len(), 1);
-        assert_eq!(
-            lines[0].runs.len(),
-            2,
-            "should split into a Latin run and a CJK run"
-        );
+        assert_eq!(lines[0].runs.len(), 4, "café / 日 / 本 / 語 の4ラン");
         assert_eq!(
             lines[0].runs[0].font_index, 0,
             "café should use DejaVu Sans"
         );
-        assert_eq!(
-            lines[0].runs[1].font_index, 1,
-            "日本語 should use the CJK fallback font"
-        );
-        // 2つ目のランは1つ目の右側に続く。
-        assert!(lines[0].runs[1].x_offset >= lines[0].runs[0].x_offset + lines[0].runs[0].width);
+        assert_eq!(lines[0].runs[0].text, "café");
+        for (run, expected_char) in lines[0].runs[1..].iter().zip(['日', '本', '語']) {
+            assert_eq!(
+                run.font_index, 1,
+                "{expected_char} should use the CJK fallback font"
+            );
+            assert_eq!(run.text, expected_char.to_string());
+        }
+        // 各ランは隙間なく(単語内なので空白は挟まず)左から右へ連続する。
+        let mut prev_end = lines[0].runs[0].x_offset + lines[0].runs[0].width;
+        for run in &lines[0].runs[1..] {
+            assert_eq!(run.x_offset, prev_end);
+            prev_end = run.x_offset + run.width;
+        }
     }
 
     #[test]
@@ -431,9 +511,62 @@ mod tests {
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
 
         assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].runs.len(), 2);
+        // "Invoice"は1ラン、"請求書"はCJKなので1文字ずつ3ランに分かれる。
+        assert_eq!(lines[0].runs.len(), 4);
         assert_eq!(lines[0].runs[0].font_index, 0);
-        assert_eq!(lines[0].runs[1].font_index, 1);
+        assert_eq!(lines[0].runs[0].text, "Invoice");
+        for run in &lines[0].runs[1..] {
+            assert_eq!(run.font_index, 1);
+        }
+    }
+
+    #[test]
+    fn long_cjk_sequence_wraps_between_characters_without_whitespace() {
+        // 空白の無い長いCJK文字列でも、行幅に収まらなければ文字間で改行できる
+        // (分かち書きをしない言語のため)。
+        let (_, spans, styles) = spans_for("日本語のテスト文章です", "");
+        let fonts = dejavu_and_cjk();
+
+        let narrow = layout_inline_content(&spans, &styles, &fonts, 60.0, 0.0, 0.0);
+        assert!(
+            narrow.len() > 1,
+            "a narrow line width should force wrapping within the CJK sequence"
+        );
+        for line in &narrow {
+            assert!(
+                !line.runs.is_empty(),
+                "every wrapped line should contain at least one run"
+            );
+        }
+
+        let wide = layout_inline_content(&spans, &styles, &fonts, 2000.0, 0.0, 0.0);
+        assert_eq!(
+            wide.len(),
+            1,
+            "a wide enough line should keep the whole sequence on one line"
+        );
+    }
+
+    #[test]
+    fn cafe_nihongo_wraps_between_the_script_boundary_when_narrow() {
+        // タスクで名指しされていた具体例: "café日本語"のようにスペースが無い
+        // まま行幅を超える場合、Latin/CJKの境界(または日本語文字の間)で
+        // 改行できるはず(以前は1つの分割不能な単語として扱われ、行幅を
+        // 超えてもはみ出したまま単一行に配置されていた)。
+        let (_, spans, styles) = spans_for("café日本語", "");
+        let fonts = dejavu_and_cjk();
+
+        // "café"の幅ぎりぎりの行幅にすると、続く日本語部分は収まらないはず。
+        let single_line = layout_inline_content(&spans, &styles, &fonts, 10000.0, 0.0, 0.0);
+        let cafe_width = single_line[0].runs[0].width;
+
+        let lines = layout_inline_content(&spans, &styles, &fonts, cafe_width + 1.0, 0.0, 0.0);
+        assert!(
+            lines.len() > 1,
+            "should wrap at the café/日 boundary instead of overflowing as one unbreakable word"
+        );
+        assert_eq!(lines[0].runs.len(), 1);
+        assert_eq!(lines[0].runs[0].text, "café");
     }
 
     #[test]
