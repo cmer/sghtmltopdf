@@ -1,25 +1,23 @@
 //! sghtmltopdf CLI: HTMLファイルを一括変換してPDFを出力する。
 //!
-//! M1では静的HTML一括変換(ストリーミングなし)のみ対応。フォントは
-//! `--font`での明示指定(必須、複数指定可)に加えて、HTML内`<style>`の
+//! フォントは`--font`での明示指定(必須、複数指定可)に加えて、HTML内`<style>`の
 //! `@font-face { src: url(...); }`(HTMLファイル自身のディレクトリ基準の相対解決)/
 //! `src: local(...)`(システムフォントのフルネーム/PostScript名解決)、
 //! およびOS標準フォントディレクトリのシステムフォント探索(`fontdb`。CSS汎用
 //! family名は対象外で、具体的なfont-family名のみ)にも対応する。複数フォントが
 //! 対象になった場合、CSSの`font-family`と各フォントのグリフカバレッジに基づいて
 //! フォールバック選択される([`sghtmltopdf_core::fonts::FontCollection`])。
+//!
+//! マイルストーン3以降、内部実装は[`sghtmltopdf_core::engine::Engine`]
+//! (`Mode::Batch`)を経由する。CLIは常に入力ファイルを一括で`feed`するため、
+//! 挙動自体はM1時点の一括変換と変わらない。
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use sghtmltopdf_core::fonts::{
-    load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts,
-};
-use sghtmltopdf_core::html;
-use sghtmltopdf_core::layout::{paginate_document, PageSettings};
-use sghtmltopdf_core::pdf::write_document;
+use sghtmltopdf_core::engine::{Engine, EngineOptions, FontSpec as EngineFontSpec, Mode};
+use sghtmltopdf_core::layout::PageSettings;
 use sghtmltopdf_core::sink::FileSink;
-use sghtmltopdf_core::style::{compute_styles, extract_author_stylesheet, user_agent_stylesheet};
 
 struct FontSpec {
     path: PathBuf,
@@ -46,12 +44,8 @@ fn main() -> ExitCode {
     };
 
     match run(&options) {
-        Ok(page_count) => {
-            eprintln!(
-                "{}ページのPDFを書き出しました: {}",
-                page_count,
-                options.output.display()
-            );
+        Ok(()) => {
+            eprintln!("PDFを書き出しました: {}", options.output.display());
             ExitCode::SUCCESS
         }
         Err(message) => {
@@ -121,53 +115,41 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     })
 }
 
-fn run(options: &Options) -> Result<usize, String> {
+fn run(options: &Options) -> Result<(), String> {
     let html_bytes = std::fs::read(&options.input)
         .map_err(|e| format!("{}の読み込みに失敗しました: {e}", options.input.display()))?;
-    let dom = html::parse(&html_bytes);
 
-    let mut loaded_fonts = Vec::with_capacity(options.fonts.len());
-    for spec in &options.fonts {
-        let font = Font::load_indexed(&spec.path, spec.index)
-            .map_err(|e| format!("フォントの読み込みに失敗しました: {e}"))?;
-        loaded_fonts.push(font);
-    }
-    let mut fonts = FontCollection::new(loaded_fonts);
-
-    let ua = user_agent_stylesheet();
-    let author = extract_author_stylesheet(&dom);
-    let styles = compute_styles(&dom, &ua, &author);
-
-    // システムフォントのスキャン(メタデータのみ)は、`@font-face`の
-    // `src: local(...)`解決でも使うため先に行っておく。
-    let system_fonts = SystemFonts::scan();
+    let engine_fonts = options
+        .fonts
+        .iter()
+        .map(|spec| EngineFontSpec {
+            path: spec.path.clone(),
+            index: spec.index,
+        })
+        .collect();
 
     // `@font-face`のsrc: url(...)は、HTMLファイル自身のディレクトリを基準に
     // 相対パス解決する(外部CSSファイルという概念が無く、HTMLの<style>のみが
-    // CSSの入力元のため)。src: local(...)はシステムフォントのフルネーム/
-    // PostScript名として解決する。
-    let base_dir = options.input.parent().unwrap_or(std::path::Path::new("."));
-    for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
-        fonts.push_font_face(
-            loaded.family,
-            Some(loaded.weight),
-            Some(loaded.style),
-            loaded.font,
-        );
-    }
+    // CSSの入力元のため)。
+    let base_dir = options.input.parent().map(|p| p.to_path_buf());
 
-    // `--font`/`@font-face`のどちらでも解決できなかった具体的なfont-family名を
-    // OS標準のフォントディレクトリから探す。
-    load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
-
-    let settings = PageSettings::default();
-    let pages = paginate_document(&dom, &styles, &fonts, &settings);
-    let page_count = pages.len();
+    let engine_options = EngineOptions {
+        mode: Mode::Batch,
+        settings: PageSettings::default(),
+        fonts: engine_fonts,
+        base_dir,
+    };
 
     let sink = FileSink::create(&options.output)
         .map_err(|e| format!("{}の作成に失敗しました: {e}", options.output.display()))?;
-    write_document(&pages, &styles, &fonts, &settings, sink)
+
+    let mut engine = Engine::new(engine_options, sink);
+    engine
+        .feed(&html_bytes)
+        .map_err(|e| format!("HTMLの処理に失敗しました: {e}"))?;
+    engine
+        .finish()
         .map_err(|e| format!("PDFの書き込みに失敗しました: {e}"))?;
 
-    Ok(page_count)
+    Ok(())
 }

@@ -40,6 +40,8 @@ impl StreamingParser {
             nodes: RefCell::new(vec![Node::new(NodeData::Document)]),
             document: NodeId(0),
             quirks_mode: Cell::new(QuirksMode::NoQuirks),
+            seen_body: Cell::new(false),
+            late_style_detected: Cell::new(false),
         };
         Self {
             inner: parse_document(sink, Default::default()).from_utf8(),
@@ -49,6 +51,23 @@ impl StreamingParser {
     /// HTMLバイト列のチャンクを1つ投入する。何度でも呼べる。
     pub fn feed(&mut self, chunk: &[u8]) {
         self.inner.process(ByteTendril::from_slice(chunk));
+    }
+
+    /// `<body>`より後に`<style>`要素が出現したかどうか。
+    ///
+    /// `Engine`の`Mode::Streaming`が
+    /// [0006](../../../docs/decisions/0006-css-non-locality-scope.md)の
+    /// 方針に従ってエラーを返すかどうかの判定に使う(`Mode::Batch`では
+    /// この値を無視してよい)。`<body>`の開始タグを見た時点以降に生成された
+    /// `<style>`要素が1つでもあれば`true`になる。
+    pub fn has_late_style_tag(&self) -> bool {
+        self.inner
+            .inner_sink
+            .tokenizer
+            .sink
+            .sink
+            .late_style_detected
+            .get()
     }
 
     /// これ以上チャンクがないことを伝え、パース済みの[`Dom`]を得る。
@@ -67,6 +86,10 @@ struct Sink {
     nodes: RefCell<Vec<Node>>,
     document: NodeId,
     quirks_mode: Cell<QuirksMode>,
+    /// `<body>`要素の開始タグを見たかどうか([`StreamingParser::has_late_style_tag`]参照)。
+    seen_body: Cell<bool>,
+    /// `<body>`より後に`<style>`要素が出現したかどうか。
+    late_style_detected: Cell<bool>,
 }
 
 /// [`TreeSink::elem_name`]が返す、貸し出し元から独立した要素名。
@@ -153,6 +176,12 @@ impl TreeSink for Sink {
     }
 
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> NodeId {
+        if &*name.local == "body" {
+            self.seen_body.set(true);
+        } else if &*name.local == "style" && self.seen_body.get() {
+            self.late_style_detected.set(true);
+        }
+
         let template_contents = if flags.template {
             Some(self.alloc(NodeData::Document))
         } else {
@@ -406,5 +435,34 @@ mod tests {
             "text fed across multiple chunks should still merge into one node"
         );
         assert_eq!(text_of(&dom, p), "Hello, world!");
+    }
+
+    #[test]
+    fn has_late_style_tag_is_false_when_style_is_in_head() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<html><head><style>p{color:red}</style></head><body><p>x</p></body></html>");
+        assert!(!parser.has_late_style_tag());
+    }
+
+    #[test]
+    fn has_late_style_tag_is_true_when_style_appears_after_body_starts() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<body><p>x</p><style>p{color:red}</style></body>");
+        assert!(parser.has_late_style_tag());
+    }
+
+    #[test]
+    fn has_late_style_tag_updates_incrementally_across_feed_calls() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<body><p>x</p>");
+        assert!(
+            !parser.has_late_style_tag(),
+            "no <style> tag has appeared yet"
+        );
+        parser.feed(b"<style>p{color:red}</style>");
+        assert!(
+            parser.has_late_style_tag(),
+            "should detect the <style> tag fed in a later chunk"
+        );
     }
 }

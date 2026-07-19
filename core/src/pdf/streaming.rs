@@ -450,7 +450,7 @@ mod tests {
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         assert!(pages.len() > 1, "expected multiple pages");
 
-        // 実運用では`S3_MULTIPART_MIN_PART_SIZE`(5MB)を使うが、テストでは
+        // 実運用では`MULTIPART_MIN_PART_SIZE`(5MB)を使うが、テストでは
         // 複数パートへの分割を確実に起こすため小さい閾値にする。
         let mut uploaded_parts: Vec<usize> = Vec::new();
         let sink: BufferedSink<(), std::io::Error, _> = BufferedSink::new(2048, |part| {
