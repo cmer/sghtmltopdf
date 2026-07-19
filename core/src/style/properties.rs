@@ -259,7 +259,9 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
 /// キーワード(`normal`/`bold`)と数値(`100`〜`900`)のどちらも受け付ける。
 /// 数値は600以上を`Bold`とみなす簡略実装(実際の太字フォントを持たず、
 /// 描画時に疑似太字で表現するため、細かい太さの段階は区別しない)。
-fn parse_font_weight<'i>(input: &mut Parser<'i, '_>) -> Result<FontWeight, ParseError<'i, ()>> {
+pub(crate) fn parse_font_weight<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<FontWeight, ParseError<'i, ()>> {
     if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
         return Ok(match_ignore_ascii_case! { &ident,
             "normal" => FontWeight::Normal,
@@ -275,7 +277,9 @@ fn parse_font_weight<'i>(input: &mut Parser<'i, '_>) -> Result<FontWeight, Parse
     })
 }
 
-fn parse_font_style<'i>(input: &mut Parser<'i, '_>) -> Result<FontStyle, ParseError<'i, ()>> {
+pub(crate) fn parse_font_style<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<FontStyle, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
         "normal" => FontStyle::Normal,
@@ -432,15 +436,22 @@ fn parse_content<'i>(input: &mut Parser<'i, '_>) -> Result<Option<String>, Parse
 }
 
 fn parse_font_family<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, ParseError<'i, ()>> {
-    input.parse_comma_separated(|input| {
-        if let Ok(name) = input.try_parse(|input| input.expect_string_cloned()) {
-            return Ok(name.as_ref().to_string());
-        }
-        let mut name = input.expect_ident()?.as_ref().to_string();
-        while let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
-            name.push(' ');
-            name.push_str(&ident);
-        }
-        Ok(name)
-    })
+    input.parse_comma_separated(parse_family_name)
+}
+
+/// 単一の`<family-name>`(引用符付き文字列、または空白区切りの識別子の連なり)を
+/// パースする。`font-family`プロパティ(カンマ区切りリスト)と`@font-face`の
+/// `font-family`ディスクリプタ(単一値)の両方から呼ばれる。
+pub(crate) fn parse_family_name<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<String, ParseError<'i, ()>> {
+    if let Ok(name) = input.try_parse(|input| input.expect_string_cloned()) {
+        return Ok(name.as_ref().to_string());
+    }
+    let mut name = input.expect_ident()?.as_ref().to_string();
+    while let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+        name.push(' ');
+        name.push_str(&ident);
+    }
+    Ok(name)
 }

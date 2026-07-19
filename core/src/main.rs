@@ -1,15 +1,17 @@
 //! sghtmltopdf CLI: HTMLファイルを一括変換してPDFを出力する。
 //!
-//! M1では静的HTML一括変換(ストリーミングなし)のみ対応。フォントはローカル
-//! ファイルパス指定の最小実装(`--font`必須、複数指定可)で、システムフォント
-//! 探索・`@font-face`によるwebfont解決は将来のマイルストーンで対応する。
-//! 複数`--font`を指定した場合、CSSの`font-family`と各フォントのグリフカバレッジ
-//! に基づいてフォールバック選択される([`sghtmltopdf_core::fonts::FontCollection`])。
+//! M1では静的HTML一括変換(ストリーミングなし)のみ対応。フォントは
+//! `--font`での明示指定(必須、複数指定可)に加えて、HTML内`<style>`の
+//! `@font-face { src: url(...); }`もHTMLファイル自身のディレクトリを基準に
+//! 相対解決して読み込む(`local()`によるシステムフォント探索は未対応)。
+//! 複数フォントが対象になった場合、CSSの`font-family`と各フォントのグリフ
+//! カバレッジに基づいてフォールバック選択される
+//! ([`sghtmltopdf_core::fonts::FontCollection`])。
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use sghtmltopdf_core::fonts::{Font, FontCollection};
+use sghtmltopdf_core::fonts::{load_font_faces, Font, FontCollection};
 use sghtmltopdf_core::html;
 use sghtmltopdf_core::layout::{paginate_document, PageSettings};
 use sghtmltopdf_core::pdf::write_document;
@@ -127,11 +129,19 @@ fn run(options: &Options) -> Result<usize, String> {
             .map_err(|e| format!("フォントの読み込みに失敗しました: {e}"))?;
         loaded_fonts.push(font);
     }
-    let fonts = FontCollection::new(loaded_fonts);
+    let mut fonts = FontCollection::new(loaded_fonts);
 
     let ua = user_agent_stylesheet();
     let author = extract_author_stylesheet(&dom);
     let styles = compute_styles(&dom, &ua, &author);
+
+    // `@font-face`のsrc: url(...)は、HTMLファイル自身のディレクトリを基準に
+    // 相対パス解決する(外部CSSファイルという概念が無く、HTMLの<style>のみが
+    // CSSの入力元のため)。
+    let base_dir = options.input.parent().unwrap_or(std::path::Path::new("."));
+    for loaded in load_font_faces(&author.font_faces, base_dir) {
+        fonts.push_font_face(loaded.family, loaded.font);
+    }
 
     let settings = PageSettings::default();
     let pages = paginate_document(&dom, &styles, &fonts, &settings);

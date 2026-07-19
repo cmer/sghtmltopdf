@@ -6,6 +6,7 @@ use cssparser::{
 };
 use selectors::parser::{ParseRelative, SelectorList};
 
+use super::font_face::{parse_font_face_block, FontFaceRule};
 use super::properties::{parse_declaration, PropertyDeclaration};
 use super::selector_impl::{SelectorParser, SgSelectorImpl};
 
@@ -18,6 +19,15 @@ pub struct StyleRule {
 #[derive(Debug, Clone, Default)]
 pub struct Stylesheet {
     pub rules: Vec<StyleRule>,
+    pub font_faces: Vec<FontFaceRule>,
+}
+
+/// トップレベルルールの中間表現。通常のスタイルルールと`@font-face`は
+/// `StyleSheetParser`の型システム上、同じ`Prelude`/`Rule`型を共有する必要が
+/// あるため、この列挙型で束ねる([`parse_stylesheet`]で仕分ける)。
+enum TopLevelRule {
+    Style(StyleRule),
+    FontFace(FontFaceRule),
 }
 
 pub fn parse_stylesheet(css: &str) -> Stylesheet {
@@ -25,11 +35,16 @@ pub fn parse_stylesheet(css: &str) -> Stylesheet {
     let mut parser = Parser::new(&mut input);
     let mut rule_parser = TopLevelRuleParser;
 
-    let rules = StyleSheetParser::new(&mut parser, &mut rule_parser)
-        .filter_map(Result::ok)
-        .collect();
+    let mut rules = Vec::new();
+    let mut font_faces = Vec::new();
+    for result in StyleSheetParser::new(&mut parser, &mut rule_parser).flatten() {
+        match result {
+            TopLevelRule::Style(rule) => rules.push(rule),
+            TopLevelRule::FontFace(rule) => font_faces.push(rule),
+        }
+    }
 
-    Stylesheet { rules }
+    Stylesheet { rules, font_faces }
 }
 
 /// `style="..."`属性の値のような、セレクタを伴わない宣言リストをパースする。
@@ -50,7 +65,7 @@ struct TopLevelRuleParser;
 
 impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser {
     type Prelude = SelectorList<SgSelectorImpl>;
-    type QualifiedRule = StyleRule;
+    type QualifiedRule = TopLevelRule;
     type Error = ();
 
     fn parse_prelude<'t>(
@@ -72,17 +87,40 @@ impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser {
             .filter_map(Result::ok)
             .flatten()
             .collect();
-        Ok(StyleRule {
+        Ok(TopLevelRule::Style(StyleRule {
             selectors,
             declarations,
-        })
+        }))
     }
 }
 
+/// `@font-face`のみを認識する。それ以外のat-rule(`@media`等)は
+/// デフォルト実装により無視される。
 impl<'i> AtRuleParser<'i> for TopLevelRuleParser {
     type Prelude = ();
-    type AtRule = StyleRule;
+    type AtRule = TopLevelRule;
     type Error = ();
+
+    fn parse_prelude<'t>(
+        &mut self,
+        name: CowRcStr<'i>,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::Prelude, ParseError<'i, Self::Error>> {
+        if name.eq_ignore_ascii_case("font-face") {
+            Ok(())
+        } else {
+            Err(input.new_custom_error(()))
+        }
+    }
+
+    fn parse_block<'t>(
+        &mut self,
+        _prelude: Self::Prelude,
+        _start: &cssparser::ParserState,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self::AtRule, ParseError<'i, Self::Error>> {
+        Ok(TopLevelRule::FontFace(parse_font_face_block(input)?))
+    }
 }
 
 /// `{ }`内の宣言のみをパースする(ネストしたルールは扱わない)。

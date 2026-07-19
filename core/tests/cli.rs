@@ -12,6 +12,10 @@ use std::path::Path;
 use std::process::Command;
 
 const FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+const CJK_FONT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fonts/NotoSansCJK-Regular.ttc"
+);
 const SAMPLE_HTML: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/sample.html");
 const BIN: &str = env!("CARGO_BIN_EXE_sghtmltopdf");
 
@@ -78,6 +82,49 @@ fn defaults_output_path_to_input_with_pdf_extension() {
     assert!(
         expected_output.exists(),
         "default output path should be input path with .pdf extension"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn font_face_src_url_is_resolved_relative_to_the_html_file_and_embedded() {
+    // HTMLファイルと同じディレクトリに置いたフォントファイルを、
+    // `@font-face { src: url(...); }`の相対パスとして解決できることを確認する。
+    // `--font`ではDejaVu Sans(CJKグリフを持たない)のみを渡し、CJKテキストは
+    // `@font-face`経由で読み込んだフォントでのみ描画できるようにすることで、
+    // 単に`--font`だけで埋め込まれたのではないことを検証する。
+    let dir =
+        std::env::temp_dir().join(format!("sghtmltopdf-e2e-font-face-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(CJK_FONT_PATH, dir.join("cjk.ttc")).unwrap();
+
+    let input = dir.join("input.html");
+    std::fs::write(
+        &input,
+        r#"<html><head><style>
+            @font-face { font-family: "CJK Brand"; src: url("cjk.ttc"); }
+            p { font-family: "CJK Brand", sans-serif; }
+        </style></head><body><p>日本語のテスト</p></body></html>"#,
+    )
+    .unwrap();
+
+    let output = dir.join("output.pdf");
+    let status = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("-o")
+        .arg(&output)
+        .status()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(status.success(), "CLI should exit successfully");
+
+    let bytes = std::fs::read(&output).expect("output PDF should exist");
+    assert_eq!(
+        count_occurrences(&bytes, b"/Subtype /CIDFontType2"),
+        2,
+        "both the --font fallback and the @font-face font should be embedded"
     );
 
     std::fs::remove_dir_all(&dir).ok();

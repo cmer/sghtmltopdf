@@ -9,11 +9,27 @@ use super::font::Font;
 
 pub struct FontCollection {
     fonts: Vec<Font>,
+    /// `@font-face`から読み込んだフォントの、CSS上の宣言済みfamily名。
+    /// `None`の要素(`--font`等で明示指定されたフォント)はフォント自身の
+    /// `name`テーブル(`Font::family_name`)で照合する。
+    declared_families: Vec<Option<String>>,
 }
 
 impl FontCollection {
     pub fn new(fonts: Vec<Font>) -> Self {
-        Self { fonts }
+        let declared_families = vec![None; fonts.len()];
+        Self {
+            fonts,
+            declared_families,
+        }
+    }
+
+    /// `@font-face { font-family: ...; src: url(...); }`から読み込んだフォントを
+    /// 追加する。`family`はフォント自身の`name`テーブルより優先してマッチングに使う
+    /// (フォントファイルの内部名とCSS上の宣言名が異なりうるため)。
+    pub fn push_font_face(&mut self, family: String, font: Font) {
+        self.fonts.push(font);
+        self.declared_families.push(Some(family));
     }
 
     pub fn fonts(&self) -> &[Font] {
@@ -39,17 +55,22 @@ impl FontCollection {
     /// (2) 名前を問わず`c`を描画できる最初のフォント、
     /// (3) それでも見つからなければ先頭のフォント(tofu表示になる)。
     /// コレクションが空の場合のみ`None`。
+    ///
+    /// 既知の簡略化: `font-weight`/`font-style`は考慮しない(同じfamily名で
+    /// Regular/Boldを別々に`@font-face`登録していても、太字が要求される場面で
+    /// 自動選択はされない。太字/イタリックは引き続き疑似合成で描画される)。
     pub fn select_for_char(&self, families: &[String], c: char) -> Option<usize> {
         if self.fonts.is_empty() {
             return None;
         }
 
         for family in families {
-            if let Some(index) = self.fonts.iter().position(|f| {
-                f.family_name()
-                    .as_deref()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(family))
-            }) {
+            if let Some(index) = self
+                .fonts
+                .iter()
+                .enumerate()
+                .position(|(i, f)| self.matches_family(i, f, family))
+            {
                 if self.fonts[index].has_glyph(c) {
                     return Some(index);
                 }
@@ -61,6 +82,16 @@ impl FontCollection {
         }
 
         Some(0)
+    }
+
+    fn matches_family(&self, index: usize, font: &Font, family: &str) -> bool {
+        match &self.declared_families[index] {
+            Some(declared) => declared.eq_ignore_ascii_case(family),
+            None => font
+                .family_name()
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case(family)),
+        }
     }
 }
 
@@ -99,6 +130,22 @@ mod tests {
         // カバレッジだけで選ばれるはず。
         let index = collection
             .select_for_char(&["sans-serif".to_string()], '日')
+            .unwrap();
+        assert_eq!(index, 1);
+    }
+
+    #[test]
+    fn font_face_declared_family_takes_priority_over_the_fonts_own_name_table() {
+        // 同じDejaVu Sansを2つ登録する: index 0はプレーン(内部name "DejaVu Sans"で照合)、
+        // index 1は`@font-face { font-family: "Custom Brand"; }`として読み込んだ体で登録する。
+        // "Custom Brand"はどちらのフォントの内部nameとも一致しないので、宣言名の
+        // 上書きが効いていなければ名前一致では見つからず、カバレッジのみの
+        // フォールバック(先頭=index 0)に落ちてしまい、期待するindex 1にならない。
+        let mut collection = FontCollection::new(vec![dejavu()]);
+        collection.push_font_face("Custom Brand".to_string(), dejavu());
+
+        let index = collection
+            .select_for_char(&["Custom Brand".to_string()], 'A')
             .unwrap();
         assert_eq!(index, 1);
     }
