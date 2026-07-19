@@ -213,3 +213,44 @@ impl<'a> Element for ElementRef<'a> {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::html::parse;
+    use selectors::attr::AttrSelectorOperation;
+
+    fn find(dom: &Dom, id: NodeId, tag: &str) -> Option<NodeId> {
+        if let NodeData::Element { name, .. } = &dom.node(id).data {
+            if &*name.local == tag {
+                return Some(id);
+            }
+        }
+        dom.children(id).find_map(|child| find(dom, child, tag))
+    }
+
+    /// [`Dom::release_subtree`](crate::html::Dom::release_subtree)で解放済み
+    /// のノードは、`NodeData::Released`が既存のいずれの`match`パターンにも
+    /// 積極的にマッチしないため、要素として振る舞わなくなる(タグ名・属性・
+    /// クラス等の照会がすべて非マッチになる)ことを確認する。これは
+    /// [0006](../../docs/decisions/0006-css-non-locality-scope.md)が
+    /// 前提とする「解放済みノードは以後のセレクタマッチングで安全に無視
+    /// される」という性質の裏付け。
+    #[test]
+    fn released_node_no_longer_behaves_like_an_element() {
+        let mut dom = parse(br#"<div id="x" class="c"><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        dom.release_subtree(div);
+
+        let el = ElementRef::new(&dom, div);
+        assert!(!el.has_local_name(&"div".into()));
+        assert!(!el.has_id(&"x".into(), selectors::attr::CaseSensitivity::CaseSensitive));
+        assert!(!el.has_class(&"c".into(), selectors::attr::CaseSensitivity::CaseSensitive));
+        assert!(!el.attr_matches(
+            &selectors::attr::NamespaceConstraint::Any,
+            &"id".into(),
+            &AttrSelectorOperation::Exists,
+        ));
+    }
+}
