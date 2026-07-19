@@ -4,4 +4,4 @@ mod dom;
 mod parse;
 
 pub use dom::{Children, Dom, Node, NodeData, NodeId};
-pub use parse::parse;
+pub use parse::{parse, StreamingParser};

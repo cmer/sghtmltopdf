@@ -5,22 +5,62 @@ use std::cell::{Cell, RefCell};
 use html5ever::interface::tree_builder::{
     ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink,
 };
-use html5ever::tendril::{StrTendril, TendrilSink};
-use html5ever::{parse_document, Attribute, LocalName, Namespace, QualName};
+use html5ever::tendril::stream::Utf8LossyDecoder;
+use html5ever::tendril::{ByteTendril, StrTendril, TendrilSink};
+use html5ever::{parse_document, Attribute, LocalName, Namespace, Parser, QualName};
 
 use super::dom::{append, detach, insert_before, Dom, Node, NodeData, NodeId};
 
-/// HTMLバイト列をパースして[`Dom`]を構築する。
+/// HTMLバイト列をパースして[`Dom`]を構築する(一括変換)。
+///
+/// 内部的には[`StreamingParser`]に全バイト列を1回で`feed`するだけの
+/// 薄いラッパー。M1由来の一括処理APIとチャンク投入APIでロジックを
+/// 共有するための構成。
 pub fn parse(html: &[u8]) -> Dom {
-    let sink = Sink {
-        nodes: RefCell::new(vec![Node::new(NodeData::Document)]),
-        document: NodeId(0),
-        quirks_mode: Cell::new(QuirksMode::NoQuirks),
-    };
+    let mut parser = StreamingParser::new();
+    parser.feed(html);
+    parser.finish()
+}
 
-    parse_document(sink, Default::default())
-        .from_utf8()
-        .one(html)
+/// HTMLをチャンク単位で逐次投入できるパーサ。
+///
+/// html5everのトークナイザ自体がストリーミング設計であることに加え、
+/// [`Utf8LossyDecoder`](html5ever::driver::Utf8LossyDecoder)は`feed`の
+/// 呼び出し境界がUTF-8のマルチバイト文字の途中で分割されても、続きの
+/// バイト列と結合してから正しくデコードする(`tendril`クレートの
+/// インクリメンタルデコード機構)。そのためチャンクの区切り位置を
+/// 呼び出し側がUTF-8境界に合わせる必要はない。
+pub struct StreamingParser {
+    inner: Utf8LossyDecoder<Parser<Sink>>,
+}
+
+impl StreamingParser {
+    pub fn new() -> Self {
+        let sink = Sink {
+            nodes: RefCell::new(vec![Node::new(NodeData::Document)]),
+            document: NodeId(0),
+            quirks_mode: Cell::new(QuirksMode::NoQuirks),
+        };
+        Self {
+            inner: parse_document(sink, Default::default()).from_utf8(),
+        }
+    }
+
+    /// HTMLバイト列のチャンクを1つ投入する。何度でも呼べる。
+    pub fn feed(&mut self, chunk: &[u8]) {
+        self.inner.process(ByteTendril::from_slice(chunk));
+    }
+
+    /// これ以上チャンクがないことを伝え、パース済みの[`Dom`]を得る。
+    pub fn finish(self) -> Dom {
+        self.inner.finish()
+    }
+}
+
+impl Default for StreamingParser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 struct Sink {
@@ -303,5 +343,68 @@ mod tests {
         assert_eq!(text_of(&dom, lis[0]), "one");
         assert_eq!(text_of(&dom, lis[1]), "two");
         assert_eq!(text_of(&dom, lis[2]), "three");
+    }
+
+    /// バイト列を1バイトずつ`feed`しても、一括`parse`と同じDOMになることを
+    /// 確認する。タグの途中(`<p`/`>`)・属性の途中・テキストの途中など、
+    /// あらゆる位置でチャンクが分割されるケースを網羅する最も厳しい検証。
+    #[test]
+    fn streaming_parser_byte_by_byte_matches_one_shot_parse() {
+        let html = br#"<div class="a"><p>Hello <b>world</b></p></div>"#;
+
+        let mut parser = StreamingParser::new();
+        for byte in html {
+            parser.feed(std::slice::from_ref(byte));
+        }
+        let streamed = parser.finish();
+        let batched = parse(html);
+
+        let streamed_p = find(&streamed, streamed.document(), "p").expect("p not found");
+        let batched_p = find(&batched, batched.document(), "p").expect("p not found");
+        assert_eq!(text_of(&streamed, streamed_p), text_of(&batched, batched_p));
+
+        let streamed_div = find(&streamed, streamed.document(), "div").expect("div not found");
+        let NodeData::Element { attrs, .. } = &streamed.node(streamed_div).data else {
+            panic!("expected element")
+        };
+        assert_eq!(&*attrs[0].value, "a");
+    }
+
+    /// マルチバイトなUTF-8文字("日本語"の各文字は3バイト)がチャンク境界を
+    /// またいで分割されても、`Utf8LossyDecoder`のインクリメンタルデコードに
+    /// より文字化けせず正しく結合されることを確認する。
+    #[test]
+    fn streaming_parser_handles_utf8_multibyte_char_split_across_chunks() {
+        let html = "<p>日本語のテスト</p>".as_bytes();
+
+        let mut parser = StreamingParser::new();
+        for byte in html {
+            parser.feed(std::slice::from_ref(byte));
+        }
+        let dom = parser.finish();
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        assert_eq!(text_of(&dom, p), "日本語のテスト");
+    }
+
+    /// 複数回に分けて`feed`したテキストは、一括`parse`と同様に隣接テキスト
+    /// ノードとして1つに結合されることを確認する(`html::dom`側の結合ロジックが
+    /// チャンク分割の影響を受けないことの確認)。
+    #[test]
+    fn streaming_parser_merges_text_fed_across_multiple_chunks() {
+        let mut parser = StreamingParser::new();
+        parser.feed(b"<p>Hello");
+        parser.feed(b", ");
+        parser.feed(b"world!</p>");
+        let dom = parser.finish();
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let children: Vec<_> = dom.children(p).collect();
+        assert_eq!(
+            children.len(),
+            1,
+            "text fed across multiple chunks should still merge into one node"
+        );
+        assert_eq!(text_of(&dom, p), "Hello, world!");
     }
 }
