@@ -424,4 +424,59 @@ mod tests {
         assert!(page_count > 1);
         assert_eq!(count_occurrences(&bytes, b"/MediaBox"), page_count);
     }
+
+    #[test]
+    fn streaming_writer_works_through_a_buffered_s3_style_sink() {
+        // T26: `StreamingPdfWriter`が`BufferedSink`(S3マルチパート
+        // アップロード想定)を通しても、`Sink::write`が細切れ・多数回に
+        // 分けて呼ばれることに正しく対応できることを確認する。実際の
+        // S3向けバッファ付きSinkと同じ`crate::sink::BufferedSink`をここでも
+        // 使い、小さめの閾値でパート分割を強制する。
+        use crate::sink::BufferedSink;
+
+        let mut html_src = String::from("<div>");
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert!(pages.len() > 1, "expected multiple pages");
+
+        // 実運用では`S3_MULTIPART_MIN_PART_SIZE`(5MB)を使うが、テストでは
+        // 複数パートへの分割を確実に起こすため小さい閾値にする。
+        let mut uploaded_parts: Vec<usize> = Vec::new();
+        let sink: BufferedSink<(), std::io::Error, _> = BufferedSink::new(2048, |part| {
+            uploaded_parts.push(part.len());
+            Ok(())
+        });
+
+        let mut writer =
+            StreamingPdfWriter::new(&fonts, settings, sink).expect("new should not fail");
+        for page in &pages {
+            writer
+                .write_page(page, &styles, &fonts)
+                .expect("write_page should not fail");
+        }
+        writer.finish(&fonts).expect("finish should not fail");
+
+        assert!(
+            uploaded_parts.len() > 1,
+            "expected the PDF to be split into multiple upload parts, got {}",
+            uploaded_parts.len()
+        );
+        // 最後のパート以外はちょうど閾値サイズであるはず(S3の制約通り、
+        // 最後のパートのみ閾値未満が許される)。
+        for &len in &uploaded_parts[..uploaded_parts.len() - 1] {
+            assert_eq!(len, 2048);
+        }
+        assert!(uploaded_parts.last().copied().unwrap_or(0) <= 2048);
+    }
 }
