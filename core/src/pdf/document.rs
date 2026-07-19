@@ -44,7 +44,7 @@
 use std::collections::HashMap;
 
 use pdf_writer::types::{LineCapStyle, TextRenderingMode};
-use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref};
+use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
@@ -629,6 +629,12 @@ fn render_line(
 
     content.begin_text();
 
+    // ランどうしの間に、実際のグリフ幅の合計を超える隙間があれば単語境界
+    // (=空白1文字分)とみなす。単語内でスタイル/フォントが切り替わる場合の
+    // ラン境界は隙間0で連続しているため、ここでは誤って空白扱いにならない。
+    const WORD_GAP_EPSILON: f32 = 0.01;
+    let mut previous_run_end: Option<f32> = None;
+
     for run in &line.runs {
         if run.glyphs.is_empty() {
             continue;
@@ -639,6 +645,22 @@ fn render_line(
         let Some(resource_name) = font_resource_names.get(run.font_index) else {
             continue;
         };
+
+        // 単語間の空白は、レイアウト上は隙間(x_offsetの加算)としてのみ表現され、
+        // どの`TextRun.text`にも実際の空白文字を含めていない(フォント混在時の
+        // グリフ幅計測を単純にするため)。そのままではPDFからのテキスト抽出時、
+        // 特にフォント(リソース名)が切り替わるラン境界で空白が失われることが
+        // あるため、見た目に影響しない`ActualText`付きの空マーク付きコンテンツ
+        // 区間を挿入し、抽出用にスペースの存在を明示する。
+        if let Some(prev_end) = previous_run_end {
+            if run.x_offset > prev_end + WORD_GAP_EPSILON {
+                let mut marked = content.begin_marked_content_with_properties(Name(b"Span"));
+                marked.properties().actual_text(TextStr(" "));
+                marked.finish();
+                content.end_marked_content();
+            }
+        }
+        previous_run_end = Some(run.x_offset + run.width);
 
         let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
         for glyph in &run.glyphs {
@@ -1078,6 +1100,46 @@ mod tests {
         // 2つのフォント(DejaVu Sans, Noto Sans CJK JP)がそれぞれ埋め込まれているはず。
         assert_eq!(count_occurrences(&bytes, b"/FontFile2"), 2);
         assert_eq!(count_occurrences(&bytes, b"/Subtype /Type0"), 2);
+    }
+
+    #[test]
+    fn word_boundary_across_a_font_switch_gets_an_actual_text_space_marker() {
+        // "Invoice"(DejaVu)と"請求書"(CJK)はフォントが切り替わるラン境界に
+        // またがる単語境界で、どちらのTextRun.textにも実際の空白文字を含まない
+        // (単語間の空白はx_offsetの隙間としてのみ表現される)。座標ギャップに
+        // 頼るテキスト抽出はフォント切り替えを伴う境界で崩れることがあるため、
+        // 視覚描画に影響しない`ActualText`付きマーク区間で明示しているはず。
+        let dom = html::parse("<p>Invoice 請求書</p>".as_bytes());
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let fonts = test_fonts_with_cjk();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+
+        assert!(
+            count_occurrences(&bytes, b"/ActualText") > 0,
+            "a word boundary spanning a font switch should get an ActualText space marker"
+        );
+    }
+
+    #[test]
+    fn single_word_does_not_insert_an_actual_text_marker() {
+        let dom = html::parse(b"<p>hello</p>");
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+
+        assert_eq!(
+            count_occurrences(&bytes, b"/ActualText"),
+            0,
+            "a single word with no boundary needs no ActualText marker"
+        );
     }
 
     #[test]
