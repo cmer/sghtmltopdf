@@ -26,7 +26,7 @@ use crate::fonts::FontCollection;
 use crate::html::{Dom, NodeId};
 use crate::style::ComputedStyle;
 
-use super::block::{layout_document, LaidOutBox, LaidOutContent};
+use super::block::{layout_document, FragmentationHints, LaidOutBox, LaidOutContent};
 use super::box_tree::build_box_tree;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::LineBox;
@@ -167,6 +167,9 @@ fn place_split<T>(
             let decoration = LaidOutBox {
                 node: b.node,
                 layout,
+                // 装飾専用フラグメントはこれ以上分割対象にならないため、
+                // fragmentationヒントは意味を持たない(初期値のまま)。
+                fragmentation: FragmentationHints::default(),
                 content: LaidOutContent::Blocks(Vec::new()),
             };
             (seg.page_index, seg.start_index, decoration)
@@ -263,6 +266,9 @@ fn place_line(line: &LineBox, page_height: f32, pages: &mut Vec<Page>, cursor: &
             content: translated.rect,
             ..Layout::default()
         },
+        // 1行だけの合成ラッパーボックスなので、fragmentationヒントは持たない
+        // (orphans/widowsの判断は呼び出し元(`place_split`)が行数単位で行う)。
+        fragmentation: FragmentationHints::default(),
         content: LaidOutContent::Inline(vec![translated]),
     };
     *cursor += line.rect.height;

@@ -15,7 +15,8 @@ use std::collections::HashMap;
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::style::{
-    BorderStyle, ComputedStyle, Display, Length, LengthPercentage, LengthPercentageOrAuto,
+    BorderStyle, BreakBetween, BreakInside, ComputedStyle, Display, Length, LengthPercentage,
+    LengthPercentageOrAuto,
 };
 
 use super::box_tree::{BoxContent, LayoutBox};
@@ -27,7 +28,40 @@ use super::table::layout_table;
 pub struct LaidOutBox {
     pub node: Option<NodeId>,
     pub layout: Layout,
+    /// このボックスの`break-before`/`break-after`/`break-inside`/`orphans`/`widows`の
+    /// 計算値(ページ分割の判断にのみ使う。無名ボックスは`ComputedStyle`の
+    /// 初期値=`auto`/`auto`/`auto`/2/2)。
+    pub fragmentation: FragmentationHints,
     pub content: LaidOutContent,
+}
+
+/// [`LaidOutBox`]が持つCSS Fragmentation関連の計算値。ページ分割(`paginate.rs`)が
+/// どこで分割するかを決める際に参照する(レイアウト自体には影響しない)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FragmentationHints {
+    pub break_before: BreakBetween,
+    pub break_after: BreakBetween,
+    pub break_inside: BreakInside,
+    pub orphans: u32,
+    pub widows: u32,
+}
+
+impl From<&ComputedStyle> for FragmentationHints {
+    fn from(style: &ComputedStyle) -> Self {
+        Self {
+            break_before: style.break_before,
+            break_after: style.break_after,
+            break_inside: style.break_inside,
+            orphans: style.orphans,
+            widows: style.widows,
+        }
+    }
+}
+
+impl Default for FragmentationHints {
+    fn default() -> Self {
+        Self::from(&ComputedStyle::default())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +213,7 @@ fn layout_box_impl(
             margin,
             fragment: FragmentPosition::Whole,
         },
+        fragmentation: FragmentationHints::from(&style),
         content,
     }
 }
@@ -707,5 +742,60 @@ mod tests {
         assert_eq!(div_box.layout.border.left, 0.0);
         let border_box = div_box.layout.border_box();
         assert_eq!(border_box.width, 100.0);
+    }
+
+    #[test]
+    fn fragmentation_hints_reflect_the_elements_computed_style() {
+        let dom = html::parse(br#"<div class="box"></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".box { break-before: always; break-inside: avoid; orphans: 3; widows: 4; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+
+        assert_eq!(
+            div_box.fragmentation.break_before,
+            super::BreakBetween::Always
+        );
+        assert_eq!(div_box.fragmentation.break_after, super::BreakBetween::Auto);
+        assert_eq!(
+            div_box.fragmentation.break_inside,
+            super::BreakInside::Avoid
+        );
+        assert_eq!(div_box.fragmentation.orphans, 3);
+        assert_eq!(div_box.fragmentation.widows, 4);
+    }
+
+    #[test]
+    fn anonymous_boxes_get_default_fragmentation_hints() {
+        // 無名ボックス(混在コンテンツの折り返し等)は対応するDOM要素を持たないため、
+        // fragmentationヒントは常に初期値(auto/auto/auto/2/2)になるはず。
+        let dom = html::parse(br#"<div class="outer">before <p>P</p> after</div>"#);
+        let ua = user_agent_stylesheet();
+        let author = Stylesheet::default();
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+        let LaidOutContent::Blocks(children) = &div_box.content else {
+            panic!("expected block container")
+        };
+        let anonymous = children
+            .iter()
+            .find(|c| c.node.is_none())
+            .expect("expected an anonymous block wrapping the loose text");
+
+        assert_eq!(anonymous.fragmentation, FragmentationHints::default());
     }
 }
