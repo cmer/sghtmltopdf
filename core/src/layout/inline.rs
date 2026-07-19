@@ -375,6 +375,11 @@ mod tests {
         match &b.content {
             BoxContent::Inline(spans) => Some(spans),
             BoxContent::Blocks(children) => children.iter().find_map(find_inline_spans),
+            BoxContent::Table(table) => table
+                .rows
+                .iter()
+                .flat_map(|row| &row.cells)
+                .find_map(|cell| find_inline_spans(&cell.content)),
         }
     }
 

@@ -199,6 +199,13 @@ fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut [FontUsage
                 }
             }
         }
+        LaidOutContent::Table(rows) => {
+            for row in rows {
+                for cell in &row.cells {
+                    collect_usage(cell, fonts, usages);
+                }
+            }
+        }
     }
 }
 
@@ -236,6 +243,21 @@ fn render_box(
         LaidOutContent::Inline(lines) => {
             for line in lines {
                 render_line(content, line, fonts, settings, remaps, font_resource_names);
+            }
+        }
+        LaidOutContent::Table(rows) => {
+            for row in rows {
+                for cell in &row.cells {
+                    render_box(
+                        content,
+                        cell,
+                        styles,
+                        fonts,
+                        settings,
+                        remaps,
+                        font_resource_names,
+                    );
+                }
             }
         }
     }
@@ -1310,6 +1332,49 @@ mod tests {
         // 2つのフォント(DejaVu Sans, Noto Sans CJK JP)がそれぞれ埋め込まれているはず。
         assert_eq!(count_occurrences(&bytes, b"/FontFile2"), 2);
         assert_eq!(count_occurrences(&bytes, b"/Subtype /Type0"), 2);
+    }
+
+    #[test]
+    fn table_cells_render_text_borders_and_backgrounds() {
+        let dom = html::parse(
+            br#"<table>
+                <tr><th colspan="2">Header</th></tr>
+                <tr><td style="background-color: rgb(200,200,200);">Apple</td><td>100</td></tr>
+            </table>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet("td, th { border: 1px solid rgb(0,0,0); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+        let text = String::from_utf8_lossy(&decompressed);
+
+        // 各セルのテキストがコンテンツストリームに(グリフとして)出力されている
+        // ことを、フォント使用状況(グリフ数)経由で間接的に確認する。
+        // "Header"/"Apple"/"100"のテキストが1つのフォントに集約されているはず
+        // なので、埋め込みフォントは1つだけ。
+        assert_eq!(
+            count_occurrences(&bytes, b"/FontFile2"),
+            1,
+            "all table cell text should use the single loaded font"
+        );
+
+        // colspanで結合されたヘッダーセルの背景・枠線と、通常セルの背景・枠線を
+        // 合わせて複数の塗りつぶし(`f`)が出力されているはず(テーブル自身には
+        // 背景/枠線を指定していないので、セル由来のみ)。
+        assert!(
+            count_occurrences(&decompressed, b"\nf\n") >= 2,
+            "cell borders/backgrounds should produce fill operators"
+        );
+        // 明示的に指定したセル背景色がfillの色として現れるはず。
+        assert!(
+            text.contains("0.78431374 0.78431374 0.78431374 rg"),
+            "the explicit cell background-color should be painted"
+        );
     }
 
     #[test]

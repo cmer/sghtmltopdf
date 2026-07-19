@@ -6,9 +6,10 @@ mod geometry;
 mod inline;
 mod page;
 mod paginate;
+mod table;
 
-pub use block::{layout_document, LaidOutBox, LaidOutContent};
-pub use box_tree::{build_box_tree, BoxContent, LayoutBox};
+pub use block::{layout_document, LaidOutBox, LaidOutContent, LaidOutTableRow};
+pub use box_tree::{build_box_tree, BoxContent, LayoutBox, TableBox, TableCell, TableRow};
 pub use geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 pub use inline::{layout_inline_content, LineBox, TextRun};
 pub use page::{PageSettings, PageSize};

@@ -21,6 +21,7 @@ use crate::style::{
 use super::box_tree::{BoxContent, LayoutBox};
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::{layout_inline_content, LineBox};
+use super::table::layout_table;
 
 #[derive(Debug, Clone)]
 pub struct LaidOutBox {
@@ -33,6 +34,14 @@ pub struct LaidOutBox {
 pub enum LaidOutContent {
     Blocks(Vec<LaidOutBox>),
     Inline(Vec<LineBox>),
+    Table(Vec<LaidOutTableRow>),
+}
+
+/// レイアウト済みのテーブル行1行分。
+#[derive(Debug, Clone)]
+pub struct LaidOutTableRow {
+    pub node: NodeId,
+    pub cells: Vec<LaidOutBox>,
 }
 
 /// ページ幅を初期containing blockとして、ボックスツリー全体をレイアウトする。
@@ -53,16 +62,58 @@ fn layout_box(
     x: f32,
     y: f32,
 ) -> LaidOutBox {
+    layout_box_impl(b, styles, fonts, containing_width, None, x, y)
+}
+
+/// テーブルセルなど、通常の`width`解決(auto/margin計算)を経ずに
+/// content-boxの幅を直接指定してレイアウトしたい場合に使う
+/// ([`super::table`]専用)。
+pub(super) fn layout_box_with_forced_width(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    forced_content_width: f32,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
+    layout_box_impl(
+        b,
+        styles,
+        fonts,
+        containing_width,
+        Some(forced_content_width),
+        x,
+        y,
+    )
+}
+
+fn layout_box_impl(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    forced_content_width: Option<f32>,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
     let style = box_style(b, styles);
 
     let padding = resolve_padding(&style, containing_width);
     let border = resolve_border(&style);
-    let (content_width, margin_left, margin_right) = resolve_width_and_horizontal_margins(
-        &style,
-        containing_width,
-        padding.left + padding.right,
-        border.left + border.right,
-    );
+    let (content_width, margin_left, margin_right) = match forced_content_width {
+        Some(w) => (
+            w,
+            resolve_lpa_or_zero(style.margin_left, containing_width),
+            resolve_lpa_or_zero(style.margin_right, containing_width),
+        ),
+        None => resolve_width_and_horizontal_margins(
+            &style,
+            containing_width,
+            padding.left + padding.right,
+            border.left + border.right,
+        ),
+    };
     let margin = EdgeSizes {
         top: resolve_lpa_or_zero(style.margin_top, containing_width),
         right: margin_right,
@@ -106,6 +157,12 @@ fn layout_box(
             let height = resolve_height(&style).unwrap_or(lines_height);
             (LaidOutContent::Inline(lines), height)
         }
+        BoxContent::Table(table) => {
+            let (rows, table_height) =
+                layout_table(table, styles, fonts, content_width, content_x, content_y);
+            let height = resolve_height(&style).unwrap_or(table_height);
+            (LaidOutContent::Table(rows), height)
+        }
     };
 
     LaidOutBox {
@@ -126,7 +183,7 @@ fn layout_box(
     }
 }
 
-fn box_style(b: &LayoutBox, styles: &HashMap<NodeId, ComputedStyle>) -> ComputedStyle {
+pub(super) fn box_style(b: &LayoutBox, styles: &HashMap<NodeId, ComputedStyle>) -> ComputedStyle {
     match b.node {
         Some(node) => styles[&node].clone(),
         // 無名ボックス(CSS2.1 9.2.1.1)。マージン/パディング/枠線を持たないblock。
@@ -144,14 +201,14 @@ fn resolve_lp(lp: LengthPercentage, basis: f32) -> f32 {
     }
 }
 
-fn resolve_lpa_or_zero(lpa: LengthPercentageOrAuto, basis: f32) -> f32 {
+pub(super) fn resolve_lpa_or_zero(lpa: LengthPercentageOrAuto, basis: f32) -> f32 {
     match lpa {
         LengthPercentageOrAuto::Auto => 0.0,
         LengthPercentageOrAuto::LengthPercentage(lp) => resolve_lp(lp, basis),
     }
 }
 
-fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
+pub(super) fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
     EdgeSizes {
         top: resolve_lp(style.padding_top, basis),
         right: resolve_lp(style.padding_right, basis),
@@ -162,7 +219,7 @@ fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
 
 /// `border-style: none`の辺は、`border-width`の指定に関わらず使用値が`0`になる
 /// (CSS2.1 8.5.3)。レイアウト(幅計算)にもこの丸めが反映される必要がある。
-fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
+pub(super) fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
     let width_or_zero = |width: Length, border_style: BorderStyle| {
         if border_style == BorderStyle::None {
             0.0
@@ -339,7 +396,7 @@ mod tests {
         assert_eq!(children.len(), 3, "before-text / <p> / after-text");
         let joined_text = |content: &BoxContent| match content {
             BoxContent::Inline(spans) => spans.iter().map(|s| s.text.as_str()).collect::<String>(),
-            BoxContent::Blocks(_) => panic!("expected inline content"),
+            BoxContent::Blocks(_) | BoxContent::Table(_) => panic!("expected inline content"),
         };
         assert_eq!(joined_text(&children[0].content).trim(), "before");
         assert_eq!(children[1].node, Some(ps[0]));

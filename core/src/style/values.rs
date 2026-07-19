@@ -11,6 +11,13 @@
 pub enum Display {
     Block,
     Inline,
+    /// `table`要素専用。テーブルフォーマッティングコンテキストを確立する
+    /// (`table-row`/`table-cell`の子孫を集めて列幅アルゴリズムでレイアウトする)。
+    Table,
+    /// `tr`要素専用。`Display::Table`の祖先の下でのみ意味を持つ。
+    TableRow,
+    /// `td`/`th`要素専用。`Display::TableRow`の祖先の下でのみ意味を持つ。
+    TableCell,
     None,
 }
 

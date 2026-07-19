@@ -310,6 +310,13 @@ fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
                 shift_rect_y(&mut line.rect, delta);
             }
         }
+        LaidOutContent::Table(rows) => {
+            for row in rows.iter_mut() {
+                for cell in row.cells.iter_mut() {
+                    *cell = shift_box_y(cell, delta);
+                }
+            }
+        }
     }
 
     b

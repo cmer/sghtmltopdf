@@ -1,8 +1,10 @@
 //! UAデフォルトスタイルシート(最小限)。
 //!
-//! `table`関連要素は本来`display: table`等の専用フォーマッティングコンテキストを
-//! 持つが、M1のレイアウトはブロック/インラインのみに対応するため`block`として扱う
-//! (テーブルレイアウトへの対応は将来のマイルストーンで見直す)。
+//! `thead`/`tbody`/`tfoot`/`caption`は`display: block`のままで、専用の
+//! ボックスは持たない。テーブルの行収集([`crate::layout::box_tree`])が
+//! これらを透過的に素通りして`table-row`の子孫を探すため、実質的に
+//! 「テーブル本体との間の透明な入れ物」として扱われる(`caption`の内容は
+//! 現状レンダリングされない、既知の簡略化)。
 
 use super::stylesheet::{parse_stylesheet, Stylesheet};
 
@@ -10,12 +12,24 @@ const UA_CSS: &str = r#"
 html, body, div, p,
 h1, h2, h3, h4, h5, h6,
 ul, ol, li,
-table, thead, tbody, tfoot, tr, td, th,
+thead, tbody, tfoot, caption,
 header, footer, section, article,
 blockquote, figure, figcaption,
 form, fieldset, hr, pre, dl, dt, dd,
 address, main, nav, aside {
   display: block;
+}
+
+table {
+  display: table;
+}
+
+tr {
+  display: table-row;
+}
+
+td, th {
+  display: table-cell;
 }
 
 head, script, style, title, meta, link {
