@@ -1,13 +1,14 @@
 //! レイアウト済みのボックス木を、ページ残り高さに基づいて分割する。
 //!
-//! `break-before`/`break-after`/`break-inside`(`orphans`/`widows`はM2の別段階
-//! [T15]で対応)を尊重しつつ、ボックスがページに収まらない場合は以下の優先順で
-//! 分割を試みる:
+//! `break-before`/`break-after`/`break-inside`/`orphans`/`widows`を尊重しつつ、
+//! ボックスがページに収まらない場合は以下の優先順で分割を試みる:
 //! 1. `break-inside: avoid`かつ丸ごと1ページに収まる大きさなら、分割せず
 //!    次ページの先頭へまるごと送る
 //! 2. ブロックコンテナなら、その子ボックス単位で置き直す(各子の
 //!    `break-before`/`break-after: always`もこの単位で強制改ページとして働く)
 //! 3. 複数行のインラインコンテンツなら、行(line box)単位で分割する
+//!    (`orphans`/`widows`を満たすよう、[`compute_orphans_widows_breaks`]が
+//!    事前に分割点を調整する)
 //! 4. それでも分割できない最小単位(空の要素・1行のみの内容)は次ページの
 //!    先頭にまるごと送る(1ページに収まらないほど巨大な場合はそのままはみ出す)
 //!
@@ -101,7 +102,7 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
                 page_height,
                 pages,
                 cursor,
-                |child: &LaidOutBox| {
+                |_i, child: &LaidOutBox| {
                     (
                         child.fragmentation.break_before == BreakBetween::Always,
                         child.fragmentation.break_after == BreakBetween::Always,
@@ -114,15 +115,25 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
             return;
         }
         LaidOutContent::Inline(lines) if lines.len() > 1 => {
+            // `orphans`/`widows`を満たすため、行ごとの強制改ページ位置を
+            // 事前に(オーバーフローによる自然な分割をシミュレートしながら)
+            // 計算しておく。`place_split`が加える上マージン/枠線/パディング分
+            // (`container_top_extra`)を、シミュレーションの初期カーソルにも
+            // 反映しておかないと、実際の配置と分割点がずれてしまう。
+            let orphans = b.fragmentation.orphans as usize;
+            let widows = b.fragmentation.widows as usize;
+            let initial_cursor = *cursor + container_top_extra(b);
+            let forced_breaks =
+                compute_orphans_widows_breaks(lines, orphans, widows, page_height, initial_cursor);
             place_split(
                 b,
                 lines,
                 page_height,
                 pages,
                 cursor,
-                // 行(line box)は`break-before`/`break-after`を持たない
-                // (これらはブロックレベルの兄弟間にのみ意味を持つ)。
-                |_| (false, false),
+                // 行(line box)は`break-after`を持たない(次に置く場所は常に
+                // 直後の行であり、コンテナを跨ぐ兄弟関係が無いため)。
+                move |i, _line| (forced_breaks[i], false),
                 |line, ph, ps, c| {
                     place_line(line, ph, ps, c);
                 },
@@ -138,6 +149,13 @@ fn place_box(b: &LaidOutBox, page_height: f32, pages: &mut Vec<Page>, cursor: &m
         new_page(pages, cursor);
     }
     place_leaf(b, pages, cursor);
+}
+
+/// コンテナ`b`自身の上マージン/枠線/パディングの合計(最初のフラグメントの前に
+/// 確保すべきスペース)。`place_split`と、行分割前の`orphans`/`widows`事前計算
+/// (どちらも「このページの残り高さ」の起点を揃える必要がある)の双方で使う。
+fn container_top_extra(b: &LaidOutBox) -> f32 {
+    b.layout.margin.top + b.layout.border.top + b.layout.padding.top
 }
 
 /// `b`の部分木内(ブロックの子孫のみ、インライン行・テーブル内部は対象外)に、
@@ -158,25 +176,121 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
     }
 }
 
+/// 複数行のインラインコンテンツを行単位で分割する際、`orphans`/`widows`を
+/// 満たすよう、各行の直前に強制改ページを挿入すべきかを事前に計算する。
+/// 戻り値`v`は`v[i] == true`なら「`lines[i]`の直前で改ページする」を意味する
+/// (`place_split`の`break_hints`にそのまま渡す)。
+///
+/// オーバーフローによる自然な分割点(`place_line`が実際に行う判定と同じ、
+/// `cursor > 0.0 && cursor + line.height > page_height`)を`lines`全体について
+/// シミュレートしながら、各分割点で`orphans`(このページに残る行数)/`widows`
+/// (次ページへ送られる行数)が足りているかを確認する:
+/// - 両方満たされていれば、その自然な分割点をそのまま採用する(追加の
+///   マーカーは不要。`place_line`自身が同じ判定で改ページするため)
+/// - `orphans`が足りない場合、物理的にこのページへ収まる行を増やすことは
+///   できないため、このページに置く予定だった行をまるごと次ページへ送る
+///   (このページの先頭で強制改ページ)
+/// - `orphans`は足りるが`widows`が足りない場合、分割点を
+///   `lines.len() - widows`まで繰り上げる(まだ置いていない行を次ページへ
+///   回すことで`widows`を確保する)
+/// - 上記の繰り上げ後もなお`orphans`を満たせない場合は、`orphans`不足時と
+///   同様にまるごと次ページへ送る
+/// - 一度まるごと送った直後の分割点で再び条件を満たせない場合(1行だけで
+///   ページの大半を占めるほど巨大な行が続く等)は、無限ループを避けるため
+///   best-effortで自然な分割点を受け入れる(`orphans`/`widows`を諦める)
+///
+/// 行数が`orphans + widows`に満たないほど短い段落は、どの分割点を選んでも
+/// 両方は満たせないため、結果的に段落全体が(現在のページに実内容があれば)
+/// 次ページへまるごと送られる。
+fn compute_orphans_widows_breaks(
+    lines: &[LineBox],
+    orphans: usize,
+    widows: usize,
+    page_height: f32,
+    initial_cursor: f32,
+) -> Vec<bool> {
+    let n = lines.len();
+    let mut force_break_before = vec![false; n];
+
+    let mut cursor = initial_cursor;
+    let mut page_start = 0usize;
+    let mut i = 0usize;
+
+    while i < n {
+        let height = lines[i].rect.height;
+        if !(cursor > 0.0 && cursor + height > page_height) {
+            cursor += height;
+            i += 1;
+            continue;
+        }
+
+        let fit_count = i - page_start;
+        let remaining = n - i;
+        let orphans_ok = fit_count >= orphans;
+        let widows_ok = remaining >= widows;
+
+        if orphans_ok && widows_ok {
+            // 自然な分割点をそのまま採用する(マーカーは不要)。
+            page_start = i;
+            cursor = 0.0;
+            continue;
+        }
+
+        if force_break_before[page_start] {
+            // このページ開始位置では既に一度調整を試みたが解消できなかった
+            // (行が大きすぎる等)。無限ループを避けるため、これ以上は
+            // best-effortで自然な分割点を受け入れる。
+            page_start = i;
+            cursor = 0.0;
+            continue;
+        }
+
+        if !orphans_ok {
+            force_break_before[page_start] = true;
+            cursor = 0.0;
+            i = page_start;
+            continue;
+        }
+
+        // orphans_ok == true, widows_ok == false: 分割点を繰り上げてwidowsを
+        // 確保できないか試す。繰り上げ後もorphansを満たせないなら、
+        // orphans不足時と同様にまるごと次ページへ送る。
+        let candidate = n.saturating_sub(widows);
+        if candidate >= page_start + orphans && candidate < i {
+            force_break_before[candidate] = true;
+            page_start = candidate;
+            cursor = 0.0;
+            i = candidate;
+        } else {
+            force_break_before[page_start] = true;
+            cursor = 0.0;
+            i = page_start;
+        }
+    }
+
+    force_break_before
+}
+
 /// `b`が1ページに収まらない(または内部に強制改ページを内包する)ため、子要素
 /// (`items`、`place_one`で1つずつ配置)単位で分割配置する。分割後、`b`自身の
 /// 背景・枠線を各ページの実際の内容範囲に対して再現する装飾フラグメントを
 /// 追加で挿入する(モジュールdoc参照)。
 ///
 /// `items`は`LaidOutBox`(ブロック子要素)または[`LineBox`](インライン行)のどちらか。
-/// `break_hints`は各要素について`(直前に強制改ページが必要か, 直後に強制改ページが
-/// 必要か)`を返すコールバック(行には`break-before`/`break-after`の概念がないため、
-/// 呼び出し元は常に`(false, false)`を返すコールバックを渡す)。
+/// `break_hints`は各要素(とそのインデックス)について`(直前に強制改ページが
+/// 必要か, 直後に強制改ページが必要か)`を返すコールバック(行には
+/// `break-before`/`break-after`の概念がないため、呼び出し元は`orphans`/`widows`
+/// から事前計算した配列をインデックスで引くコールバックを渡す)。
 fn place_split<T>(
     b: &LaidOutBox,
     items: &[T],
     page_height: f32,
     pages: &mut Vec<Page>,
     cursor: &mut f32,
-    break_hints: impl Fn(&T) -> (bool, bool),
+    break_hints: impl Fn(usize, &T) -> (bool, bool),
     place_one: impl Fn(&T, f32, &mut Vec<Page>, &mut f32),
 ) {
-    let top_extra = b.layout.margin.top + b.layout.border.top + b.layout.padding.top;
+    let top_extra = container_top_extra(b);
     let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
 
     // 最初のフラグメントの前に、コンテナ自身の上マージン/枠線/パディング分の
@@ -211,7 +325,7 @@ fn place_split<T>(
     };
 
     for (i, item) in items.iter().enumerate() {
-        let (breaks_before, breaks_after) = break_hints(item);
+        let (breaks_before, breaks_after) = break_hints(i, item);
         // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
         // 進んでいるだけの場合を含む)、改ページしても無意味な空ページを
         // 作るだけなので何もしない。
@@ -916,5 +1030,196 @@ mod tests {
              despite break-inside: avoid, got {} pages",
             pages.len()
         );
+    }
+
+    /// `word_count`語からなる段落が、明示`width`(px)でどう行分割されるかを
+    /// 測定する(行数と、各行の高さが一様であること)。orphans/widowsの
+    /// テストは、この一様な行高さを基準に`filler`の高さを逆算してページ内の
+    /// 自然な分割点を狙い撃つ。実際のテスト本体でも対象の段落には同じ
+    /// `width: {width}px; margin: 0;`を指定するため、ここでの測定値が
+    /// そのまま使える(段落の`width`を明示指定するので、containing widthの
+    /// 値そのものは折り返しに影響しない)。
+    fn measure_paragraph_lines(word_count: usize, width: f32) -> (usize, f32) {
+        let words: Vec<String> = (0..word_count).map(|i| format!("word{i}")).collect();
+        let html_src = format!(r#"<p class="target">{}</p>"#, words.join(" "));
+        let dom = html::parse(html_src.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(&format!(".target {{ width: {width}px; margin: 0; }}"));
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let tree = build_box_tree(&dom, &styles);
+        let laid = layout_document(
+            &tree,
+            &styles,
+            &fonts,
+            PageSettings::default().content_width(),
+        );
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let lines = find_inline_lines(&laid, ps[0]).expect("expected inline content");
+        let height = lines[0].rect.height;
+        assert!(
+            lines.iter().all(|l| (l.rect.height - height).abs() < 0.01),
+            "this test relies on every wrapped line having the same height"
+        );
+        (lines.len(), height)
+    }
+
+    fn find_inline_lines(b: &LaidOutBox, target: NodeId) -> Option<&Vec<LineBox>> {
+        if b.node == Some(target) {
+            if let LaidOutContent::Inline(lines) = &b.content {
+                return Some(lines);
+            }
+        }
+        match &b.content {
+            LaidOutContent::Blocks(children) => {
+                children.iter().find_map(|c| find_inline_lines(c, target))
+            }
+            _ => None,
+        }
+    }
+
+    /// ページ分割後の行フラグメント(`place_line`が作る無名ラッパー)は元の
+    /// 段落のNodeIdを持たないため、ページ上の行数はnodeで絞り込まず単純に
+    /// 合計する(このテストのDOMには対象の段落以外にインライン内容を持つ
+    /// 要素がないため、これで対象段落の行数と一致する)。
+    fn count_inline_lines(b: &LaidOutBox) -> usize {
+        match &b.content {
+            LaidOutContent::Inline(lines) => lines.len(),
+            LaidOutContent::Blocks(children) => children.iter().map(count_inline_lines).sum(),
+            LaidOutContent::Table(_) => 0,
+        }
+    }
+
+    fn lines_on_page(page: &Page) -> usize {
+        page.boxes.iter().map(count_inline_lines).sum()
+    }
+
+    #[test]
+    fn orphans_defers_the_whole_paragraph_when_too_few_lines_would_fit() {
+        let word_count = 60;
+        let width = 200.0;
+        let (n, line_height) = measure_paragraph_lines(word_count, width);
+        assert!(n >= 4, "expected several wrapped lines, got {n}");
+
+        let settings = PageSettings::default();
+        let orphans = 3usize;
+        let widows = 1usize;
+        // fillerでページ残り高さを、ちょうど1行分+半行分だけ残るよう調整する
+        // (=自然には1行しか収まらない。orphans=3を満たせないはず)。
+        let target_fit = 1usize;
+        let desired_remaining = (target_fit as f32 + 0.5) * line_height;
+        let filler_height = settings.content_height() - 8.0 - desired_remaining;
+
+        let words: Vec<String> = (0..word_count).map(|i| format!("word{i}")).collect();
+        let full_html = format!(
+            r#"<div class="filler"></div><p class="target">{}</p>"#,
+            words.join(" ")
+        );
+        let dom = html::parse(full_html.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(&format!(
+            ".filler {{ height: {filler_height}px; margin: 0; }} \
+             .target {{ width: {width}px; margin: 0; orphans: {orphans}; widows: {widows}; }}"
+        ));
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(
+            pages.len(),
+            2,
+            "the paragraph should move entirely to a second page"
+        );
+
+        assert_eq!(
+            lines_on_page(&pages[0]),
+            0,
+            "orphans: {orphans} should prevent leaving only {target_fit} line(s) behind"
+        );
+        assert_eq!(lines_on_page(&pages[1]), n);
+    }
+
+    #[test]
+    fn widows_pulls_lines_forward_to_avoid_stranding_too_few_on_the_next_page() {
+        let word_count = 60;
+        let width = 200.0;
+        let (n, line_height) = measure_paragraph_lines(word_count, width);
+        assert!(n >= 8, "expected several wrapped lines, got {n}");
+
+        let settings = PageSettings::default();
+        let orphans = 1usize;
+        let widows = 3usize;
+        // 自然な分割点では(n - 1)行がこのページに収まり、次ページには1行しか
+        // 残らない想定(widows=3を満たせないはず)。
+        let target_fit = n - 1;
+        let desired_remaining = (target_fit as f32 + 0.5) * line_height;
+        let filler_height = settings.content_height() - 8.0 - desired_remaining;
+
+        let words: Vec<String> = (0..word_count).map(|i| format!("word{i}")).collect();
+        let full_html = format!(
+            r#"<div class="filler"></div><p class="target">{}</p>"#,
+            words.join(" ")
+        );
+        let dom = html::parse(full_html.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(&format!(
+            ".filler {{ height: {filler_height}px; margin: 0; }} \
+             .target {{ width: {width}px; margin: 0; orphans: {orphans}; widows: {widows}; }}"
+        ));
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(pages.len(), 2);
+
+        let on_page_2 = lines_on_page(&pages[1]);
+        assert!(
+            on_page_2 >= widows,
+            "widows: {widows} should keep at least that many lines together on page 2, got {on_page_2}"
+        );
+        assert_eq!(lines_on_page(&pages[0]) + on_page_2, n);
+    }
+
+    #[test]
+    fn paragraph_shorter_than_orphans_plus_widows_is_never_split() {
+        let word_count = 3;
+        // 幅を極端に狭くして、単語ごとに1行になるようにする(3行になるはず)。
+        let width = 10.0;
+        let (n, line_height) = measure_paragraph_lines(word_count, width);
+        assert_eq!(n, 3, "expected each word to wrap onto its own line");
+
+        let settings = PageSettings::default();
+        // orphans+widows(4) > n(3)なので、どこで分割しても両方は満たせない。
+        let orphans = 2usize;
+        let widows = 2usize;
+        let target_fit = 2usize;
+        let desired_remaining = (target_fit as f32 + 0.5) * line_height;
+        let filler_height = settings.content_height() - 8.0 - desired_remaining;
+
+        let words: Vec<String> = (0..word_count).map(|i| format!("word{i}")).collect();
+        let full_html = format!(
+            r#"<div class="filler"></div><p class="target">{}</p>"#,
+            words.join(" ")
+        );
+        let dom = html::parse(full_html.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(&format!(
+            ".filler {{ height: {filler_height}px; margin: 0; }} \
+             .target {{ width: {width}px; margin: 0; orphans: {orphans}; widows: {widows}; }}"
+        ));
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(pages.len(), 2);
+
+        assert_eq!(
+            lines_on_page(&pages[0]),
+            0,
+            "a paragraph shorter than orphans + widows should never be split"
+        );
+        assert_eq!(lines_on_page(&pages[1]), n);
     }
 }
