@@ -316,31 +316,46 @@ pub fn paginate_document_streaming(
 /// (`FragmentPosition::Whole`または`Last`)ものに対応するDOMサブツリーを
 /// [`Dom::release_subtree`]で解放する。
 fn release_completed_subtrees(dom: &mut Dom, page: &Page) {
-    for b in &page.boxes {
-        release_completed_subtrees_in_box(dom, b);
+    for root in collect_completed_subtree_roots(page) {
+        dom.release_subtree(root);
     }
 }
 
-fn release_completed_subtrees_in_box(dom: &mut Dom, b: &LaidOutBox) {
+/// `page`に含まれるボックスのうち、これ以上分割されない
+/// (`FragmentPosition::Whole`または`Last`)ものに対応するDOMサブツリーの
+/// ルートノードを集める。
+///
+/// [`release_completed_subtrees`](DOM解放)だけでなく、`Engine`が
+/// `ComputedStyle`のマップから不要になったエントリを取り除く際にも同じ
+/// 「もうこれ以上のページで参照されないノード」の判定が必要なため、
+/// `page`を辿るロジック自体を独立させている。
+pub(crate) fn collect_completed_subtree_roots(page: &Page) -> Vec<NodeId> {
+    let mut roots = Vec::new();
+    for b in &page.boxes {
+        collect_completed_subtree_roots_in_box(b, &mut roots);
+    }
+    roots
+}
+
+fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId>) {
     if let Some(node) = b.node {
         if matches!(
             b.layout.fragment,
             FragmentPosition::Whole | FragmentPosition::Last
         ) {
-            // このノード以下は`release_subtree`が再帰的に解放するため、
-            // 子への再帰は不要。
-            dom.release_subtree(node);
+            // このノード以下は呼び出し元が再帰的に辿るため、子への再帰は不要。
+            roots.push(node);
             return;
         }
     }
     // まだ完了していない(装飾フラグメントが`First`/`Middle`の)コンテナは
-    // それ自体を解放できないが、実際に子要素が配置されたボックス
+    // それ自体を完了扱いにできないが、実際に子要素が配置されたボックス
     // (`place_split`が生成する装飾フラグメントとは別に、そのページへ
     // 直接配置された子要素)は独立して完了している可能性があるため再帰する。
     match &b.content {
         LaidOutContent::Blocks(children) => {
             for child in children {
-                release_completed_subtrees_in_box(dom, child);
+                collect_completed_subtree_roots_in_box(child, roots);
             }
         }
         LaidOutContent::Inline(_) | LaidOutContent::Table(_) => {}

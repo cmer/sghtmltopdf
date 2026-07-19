@@ -44,11 +44,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
-use crate::html::{NodeId, StreamingParser};
+use crate::html::{Dom, NodeId, StreamingParser};
 use crate::layout::{
-    build_box_for_element, has_visible_decoration, layout_document_from,
-    paginate_document_streaming, resolve_border, resolve_lpa_or_zero, resolve_padding,
-    resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
+    build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
+    layout_document_from, paginate_document_streaming, resolve_border, resolve_lpa_or_zero,
+    resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
 };
 use crate::pdf::StreamingPdfWriter;
 use crate::sink::Sink;
@@ -366,13 +366,36 @@ impl<S: Sink> Engine<S> {
         // に別途保持済み)。
         parser.dom_mut().release_subtree(node);
 
+        // このトップレベル要素自体が装飾(背景・枠線)を持たない場合、
+        // `place_split`は装飾フラグメントを生成しないため、このノード
+        // 自体が`page.boxes`に現れることはない。つまり`node`自身の
+        // `ComputedStyle`はこの後`write_page`から一切参照されないため、
+        // ここで即座に削除してよい(装飾を持つ場合は、装飾フラグメントが
+        // 実際に配置されたページのflush時に、下の`collect_completed_
+        // subtree_roots`経由で削除される)。
+        if !laid_out.has_visible_decoration {
+            state.styles.remove(&node);
+        }
+
         let pages = state.paginator.push_item(&laid_out);
-        for page in pages {
+        for page in &pages {
             state
                 .writer
-                .write_page(&page, &state.styles, &state.fonts)
+                .write_page(page, &state.styles, &state.fonts)
                 .map_err(EngineError::Io)?;
         }
+
+        // 各ページに実際に配置され、これ以上分割されない
+        // (`FragmentPosition::Whole`/`Last`)子孫ノードの`ComputedStyle`を
+        // 解放する。DOM自体は上ですでにタブストーン化済みだが、木構造の
+        // リンクは保持されているため`Dom::children`で辿れる。
+        let dom = parser.dom();
+        for page in &pages {
+            for root in collect_completed_subtree_roots(page) {
+                remove_subtree_styles(&dom, root, &mut state.styles);
+            }
+        }
+        drop(dom);
 
         Ok(())
     }
@@ -480,6 +503,17 @@ impl<S: Sink> Engine<S> {
     }
 }
 
+/// `root`以下のサブツリーに属するノードの`ComputedStyle`を`styles`から
+/// 取り除く。`dom`は`root`以下がすでに[`Dom::release_subtree`]で解放済み
+/// (タブストーン化済み)でもよい(木構造のリンク自体は保持されるため)。
+fn remove_subtree_styles(dom: &Dom, root: NodeId, styles: &mut HashMap<NodeId, ComputedStyle>) {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        stack.extend(dom.children(id));
+        styles.remove(&id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -501,6 +535,97 @@ mod tests {
             .windows(needle.len())
             .filter(|w| *w == needle)
             .count()
+    }
+
+    /// PDFバイト列中の全`stream`〜`endstream`区間を展開して連結したものを
+    /// 返す。各ストリームの`/Length N`をパースし、`stream\n`直後から正確に
+    /// `N`バイトを切り出す(`core/src/pdf/document.rs`の同名ヘルパーは
+    /// `\nendstream`という文字列を素朴に探すだけで、フォント埋め込み
+    /// バイナリ中に偶然そのバイト列が出現すると誤って区切ってしまい
+    /// 後続のストリームを取りこぼす。それを踏んで`sanity check: batched
+    /// output should draw strokes`が誤って失敗することを実際に確認した
+    /// ため、ここでは`/Length`を使う正確な実装にしている)。
+    fn decompressed_stream_bytes(pdf_bytes: &[u8]) -> Vec<u8> {
+        fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+            haystack.windows(needle.len()).position(|w| w == needle)
+        }
+
+        let mut out = Vec::new();
+        let mut i = 0;
+        // 末尾の空白で`/Length1`(フォントの元サイズ)と区別する。
+        while let Some(pos) = find_subslice(&pdf_bytes[i..], b"/Length ") {
+            let len_start = i + pos + b"/Length ".len();
+            let mut len_end = len_start;
+            while len_end < pdf_bytes.len() && pdf_bytes[len_end].is_ascii_digit() {
+                len_end += 1;
+            }
+            let Some(length) = std::str::from_utf8(&pdf_bytes[len_start..len_end])
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+            else {
+                i = len_end.max(i + pos + 1);
+                continue;
+            };
+            let Some(stream_rel) = find_subslice(&pdf_bytes[len_end..], b"stream\n") else {
+                break;
+            };
+            let data_start = len_end + stream_rel + b"stream\n".len();
+            let data_end = data_start + length;
+            if data_end > pdf_bytes.len() {
+                i = len_end;
+                continue;
+            }
+            let raw = &pdf_bytes[data_start..data_end];
+
+            let mut decoder = flate2::read::ZlibDecoder::new(raw);
+            let mut decompressed = Vec::new();
+            if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok() {
+                out.extend_from_slice(&decompressed);
+            } else {
+                out.extend_from_slice(raw);
+            }
+            out.push(b'\n');
+
+            i = data_end;
+        }
+        out
+    }
+
+    #[test]
+    fn streaming_mode_releases_computed_styles_for_flushed_pages() {
+        // 装飾のない200個の<p>。全要素分の`ComputedStyle`を`finish`まで
+        // 保持し続けるなら、200要素分(400エントリ超)が`styles`に残るはず。
+        // ページがflushされるたびに解放されていれば、直近の未flushページ
+        // 分程度(数十エントリ)に収まる。
+        let mut html_src = String::from("<style>.item { height: 100px; margin: 0; }</style><body>");
+        for i in 0..200 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</body>");
+
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            settings: PageSettings::default(),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html_src.as_bytes()).unwrap();
+
+        let styles_len = engine
+            .streaming
+            .as_ref()
+            .expect("<body> should have been detected by now")
+            .styles
+            .len();
+        assert!(
+            styles_len < 50,
+            "expected the styles map to stay small while streaming (pages should \
+             release their entries once flushed), but it grew to {styles_len} entries"
+        );
+
+        let bytes = engine.finish().unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
     }
 
     #[test]
@@ -531,6 +656,80 @@ mod tests {
         let bytes = engine.finish().unwrap();
 
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn streaming_mode_matches_batch_mode_for_a_decorated_wrapper_spanning_pages() {
+        // 単一のトップレベル要素(背景色・枠線を持つwrapper)が複数ページに
+        // またがるケース。`process_top_level_element`は1回しか呼ばれない
+        // ため、`push_item`の1回の呼び出し内で複数ページがflushされる。
+        // `styles`解放ロジック(`collect_completed_subtree_roots`)が、
+        // wrapper自身の`ComputedStyle`をまだ必要な間に誤って消していないか
+        // どうかは、`render_box`が`styles.get`の失敗をサイレントに
+        // `ComputedStyle::default()`へフォールバックしてしまう
+        // (`core/src/pdf/document.rs`)ため、ページ数の一致だけでは検出
+        // できない可能性がある。出力バイト列そのものを一括APIと比較する。
+        let mut html_src = String::from(r#"<div class="wrapper">"#);
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+
+        let author_css = ".wrapper { border: 2px solid black; padding: 5px; margin: 0; } \
+             .item { height: 100px; margin: 0; }";
+        let settings = PageSettings::default();
+
+        let dom = crate::html::parse(html_src.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = crate::style::parse_stylesheet(author_css);
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = FontCollection::new(vec![Font::load(DEJAVU_PATH).unwrap()]);
+        let batched_pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert!(batched_pages.len() > 1, "expected multiple pages");
+        let batched_bytes = write_document(
+            &batched_pages,
+            &styles,
+            &fonts,
+            &settings,
+            MemorySink::new(),
+        )
+        .unwrap();
+
+        let html_with_style = format!("<style>{author_css}</style>{html_src}");
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            settings,
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html_with_style.as_bytes()).unwrap();
+        let streamed_bytes = engine.finish().unwrap();
+
+        assert_eq!(
+            count_occurrences(&streamed_bytes, b"/MediaBox"),
+            count_occurrences(&batched_bytes, b"/MediaBox"),
+        );
+        // 描画コンテンツ(枠線描画で使われる`closepath`+`fill`の出現数)も
+        // 一致するはず。`styles`から早すぎるタイミングでwrapperの
+        // `ComputedStyle`が失われていれば、装飾(枠線)の描画コマンドが欠落
+        // しこの数が変わる。コンテンツストリームは`/FlateDecode`で圧縮
+        // されているため、圧縮後の`bytes`を直接文字列検索しても意味が
+        // なく、展開してから比較する必要がある(`solid_border_fills_a_
+        // mitered_quad_per_side`が示す通り、単色borderは`stroke`ではなく
+        // 辺ごとの塗りつぶしパスとして描画される実装のため`h\nf\n`を数える)。
+        let streamed_stream = decompressed_stream_bytes(&streamed_bytes);
+        let batched_stream = decompressed_stream_bytes(&batched_bytes);
+        let streamed_fills = count_occurrences(&streamed_stream, b"h\nf\n");
+        let batched_fills = count_occurrences(&batched_stream, b"h\nf\n");
+        assert!(
+            batched_fills > 0,
+            "sanity check: batched output should draw border fill paths"
+        );
+        assert_eq!(
+            streamed_fills, batched_fills,
+            "border fill path count should match (border rendering should be identical)"
+        );
     }
 
     #[test]

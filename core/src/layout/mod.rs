@@ -20,6 +20,7 @@ pub use box_tree::{build_box_tree, BoxContent, LayoutBox, TableBox, TableCell, T
 pub use geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 pub use inline::{layout_inline_content, LineBox, TextRun};
 pub use page::{PageSettings, PageSize};
+pub(crate) use paginate::collect_completed_subtree_roots;
 pub use paginate::{
     paginate, paginate_document, paginate_document_streaming, paginate_streaming, Page,
     StreamingPaginator,
