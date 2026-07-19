@@ -17,13 +17,16 @@
 //! ごとに異なりうる)なので、ページ分割で無名化されたインライン断片
 //! (`node: None`)であっても正しい見た目で描画される。
 //!
-//! 枠線は`border-style`が`none`でなく、かつ幅が0より大きい辺のみ、その辺の
-//! 太さの中心線をストロークすることで描画する(`double`は太さを3等分し、
-//! 外側1/3・内側1/3にそれぞれ細い線を2本ストロークして表現する)。
+//! 枠線は`border-style`が`none`でなく、かつ幅が0より大きい辺のみ描画する。
+//! `solid`/`double`は、border-box外周から内周までを辺ごとの四角形(太さが
+//! 不揃いなら台形)として塗りつぶす。隣接する2辺は共有する頂点(外側の角・
+//! 内側の角)から独立に頂点を計算するため、太さ・色が異なっていても角が
+//! 斜めにミトー結合される(ピクチャーフレームと同じ要領)。`dashed`/`dotted`
+//! はダッシュパターンをストロークで表現する都合上、太さの中心線を
+//! ストロークする従来方式のまま(ミトー結合はしない)。
 //! `border-radius`が指定されておらず、かつ4辺すべての太さ・スタイル・色が
 //! 同一の場合は角丸のベジェ曲線パスでまとめてストロークし、それ以外
-//! (角丸なし、または4辺が不揃い)は4辺を独立にストロークする(角の
-//! ミトー結合はせず、単純な突き合わせ)。
+//! (角丸なし、または4辺が不揃い)は上記の辺ごとの描画にフォールバックする。
 //!
 //! ページ分割で断片化したボックス([`crate::layout::FragmentPosition`]参照)は、
 //! 継続中の辺(分割位置に接する辺)に`border-radius`を適用しない
@@ -485,8 +488,15 @@ fn shrink_radii(radii: (f32, f32, f32, f32), inset: f32) -> (f32, f32, f32, f32)
 }
 
 /// 4辺それぞれの`border-width`/`border-style`/`border-color`に従って枠線を描く。
-/// 各辺は独立に、太さの中心線をストロークすることで表現する
-/// (角のミトー結合はせず、単純に線分を突き合わせる簡略実装)。
+///
+/// `solid`/`double`は、外形(border-box外周)から内形(border-box内周)まで
+/// 各辺を四角形(太さが辺ごとに異なれば台形)として直接塗りつぶす。隣接する
+/// 2辺は角の頂点(例: 右上なら`(x1, y_top)`と`(x1 - border.right, y_top -
+/// border.top)`)を共有するため、太さ・色が異なっていても角が斜めに
+/// ミトー結合される(ピクチャーフレームと同じ要領)。`dashed`/`dotted`は
+/// ダッシュパターンをストロークで表現する都合上、従来通り太さの中心線を
+/// ストロークする(ダッシュの境界はどのみち辺ごとに揃わないため、ミトー結合の
+/// 恩恵が薄く実装コストに見合わない簡略化)。
 fn render_border(
     content: &mut Content,
     layout: &Layout,
@@ -498,86 +508,177 @@ fn render_border(
     let x1 = x0 + border_box.width;
     let y_top = to_pdf_y(settings, border_box.y);
     let y_bottom = to_pdf_y(settings, border_box.y + border_box.height);
+    let t = layout.border;
 
-    render_border_edge(
+    let tl_outer = (x0, y_top);
+    let tr_outer = (x1, y_top);
+    let br_outer = (x1, y_bottom);
+    let bl_outer = (x0, y_bottom);
+    let tl_inner = (x0 + t.left, y_top - t.top);
+    let tr_inner = (x1 - t.right, y_top - t.top);
+    let br_inner = (x1 - t.right, y_bottom + t.bottom);
+    let bl_inner = (x0 + t.left, y_bottom + t.bottom);
+
+    render_border_side(
         content,
-        layout.border.top,
-        style.border_top_color,
         style.border_top_style,
-        (x0, y_top - layout.border.top / 2.0),
-        (x1, y_top - layout.border.top / 2.0),
+        style.border_top_color,
+        t.top,
+        BorderSideCorners::new(tl_outer, tr_outer, tr_inner, tl_inner),
     );
-    render_border_edge(
+    render_border_side(
         content,
-        layout.border.bottom,
-        style.border_bottom_color,
-        style.border_bottom_style,
-        (x0, y_bottom + layout.border.bottom / 2.0),
-        (x1, y_bottom + layout.border.bottom / 2.0),
-    );
-    render_border_edge(
-        content,
-        layout.border.left,
-        style.border_left_color,
-        style.border_left_style,
-        (x0 + layout.border.left / 2.0, y_top),
-        (x0 + layout.border.left / 2.0, y_bottom),
-    );
-    render_border_edge(
-        content,
-        layout.border.right,
-        style.border_right_color,
         style.border_right_style,
-        (x1 - layout.border.right / 2.0, y_top),
-        (x1 - layout.border.right / 2.0, y_bottom),
+        style.border_right_color,
+        t.right,
+        BorderSideCorners::new(tr_outer, br_outer, br_inner, tr_inner),
+    );
+    render_border_side(
+        content,
+        style.border_bottom_style,
+        style.border_bottom_color,
+        t.bottom,
+        BorderSideCorners::new(br_outer, bl_outer, bl_inner, br_inner),
+    );
+    render_border_side(
+        content,
+        style.border_left_style,
+        style.border_left_color,
+        t.left,
+        BorderSideCorners::new(bl_outer, tl_outer, tl_inner, bl_inner),
     );
 }
 
-fn render_border_edge(
+/// 1辺分の枠線を構成する4頂点。`outer_a`→`outer_b`が外形の辺、
+/// `inner_b`→`inner_a`が内形の辺(`outer_b`/`inner_b`が隣の辺と共有する角)。
+struct BorderSideCorners {
+    outer_a: (f32, f32),
+    outer_b: (f32, f32),
+    inner_b: (f32, f32),
+    inner_a: (f32, f32),
+}
+
+impl BorderSideCorners {
+    fn new(
+        outer_a: (f32, f32),
+        outer_b: (f32, f32),
+        inner_b: (f32, f32),
+        inner_a: (f32, f32),
+    ) -> Self {
+        Self {
+            outer_a,
+            outer_b,
+            inner_b,
+            inner_a,
+        }
+    }
+}
+
+/// 1辺分の枠線を描く。
+fn render_border_side(
     content: &mut Content,
-    thickness: f32,
-    color: RgbaColor,
     border_style: BorderStyle,
-    from: (f32, f32),
-    to: (f32, f32),
+    color: RgbaColor,
+    thickness: f32,
+    corners: BorderSideCorners,
 ) {
     if thickness <= 0.0 || border_style == BorderStyle::None {
         return;
     }
+    let BorderSideCorners {
+        outer_a,
+        outer_b,
+        inner_b,
+        inner_a,
+    } = corners;
 
+    match border_style {
+        BorderStyle::Solid => {
+            content.set_fill_rgb(
+                color.red as f32 / 255.0,
+                color.green as f32 / 255.0,
+                color.blue as f32 / 255.0,
+            );
+            fill_quad(content, outer_a, outer_b, inner_b, inner_a);
+        }
+        BorderStyle::Double => {
+            // 太さを3等分し、外側1/3・内側1/3それぞれをミトー結合済みの帯として
+            // 塗る(中央の1/3は空白として残る)。外形/内形の頂点間を線形補間して
+            // 各帯の境界を求める(辺ごとに太さが異なっていても、隣接辺との
+            // 境界は共有する頂点から計算されるため引き続き綺麗に合う)。
+            content.set_fill_rgb(
+                color.red as f32 / 255.0,
+                color.green as f32 / 255.0,
+                color.blue as f32 / 255.0,
+            );
+            const BAND: f32 = 1.0 / 3.0;
+            for (t0, t1) in [(0.0, BAND), (1.0 - BAND, 1.0)] {
+                fill_quad(
+                    content,
+                    lerp(outer_a, inner_a, t0),
+                    lerp(outer_b, inner_b, t0),
+                    lerp(outer_b, inner_b, t1),
+                    lerp(outer_a, inner_a, t1),
+                );
+            }
+        }
+        BorderStyle::Dashed | BorderStyle::Dotted => {
+            // ダッシュパターンはストロークでのみ表現できるため、太さの中心線を
+            // 従来通りストロークする(ミトー結合はしない)。
+            content.set_stroke_rgb(
+                color.red as f32 / 255.0,
+                color.green as f32 / 255.0,
+                color.blue as f32 / 255.0,
+            );
+            content.set_line_width(thickness);
+            apply_border_style_dash(content, border_style, thickness);
+            let from = lerp(outer_a, inner_a, 0.5);
+            let to = lerp(outer_b, inner_b, 0.5);
+            content.move_to(from.0, from.1);
+            content.line_to(to.0, to.1);
+            content.stroke();
+        }
+        BorderStyle::None => {}
+    }
+}
+
+/// 単純な実線を太さ・色を指定してストロークする(text-decorationの下線・
+/// 取り消し線用。border描画とは異なりミトー結合等は関係ない単発の直線)。
+fn stroke_line(
+    content: &mut Content,
+    thickness: f32,
+    color: RgbaColor,
+    from: (f32, f32),
+    to: (f32, f32),
+) {
+    if thickness <= 0.0 {
+        return;
+    }
     content.set_stroke_rgb(
         color.red as f32 / 255.0,
         color.green as f32 / 255.0,
         color.blue as f32 / 255.0,
     );
-
-    if border_style == BorderStyle::Double {
-        // 太さを3等分し、中心線から外側・内側へそれぞれ1/3だけオフセットした
-        // 1/3幅の線を2本描く(中央の1/3は空白として残る)。
-        let band = thickness / 3.0;
-        let is_horizontal = (from.1 - to.1).abs() < f32::EPSILON;
-        content.set_line_cap(LineCapStyle::ButtCap);
-        content.set_dash_pattern([], 0.0);
-        content.set_line_width(band);
-        for sign in [-1.0, 1.0] {
-            let (dx, dy) = if is_horizontal {
-                (0.0, sign * band)
-            } else {
-                (sign * band, 0.0)
-            };
-            content.move_to(from.0 + dx, from.1 + dy);
-            content.line_to(to.0 + dx, to.1 + dy);
-            content.stroke();
-        }
-        return;
-    }
-
     content.set_line_width(thickness);
-    apply_border_style_dash(content, border_style, thickness);
-
+    content.set_line_cap(LineCapStyle::ButtCap);
+    content.set_dash_pattern([], 0.0);
     content.move_to(from.0, from.1);
     content.line_to(to.0, to.1);
     content.stroke();
+}
+
+fn lerp(a: (f32, f32), b: (f32, f32), t: f32) -> (f32, f32) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
+}
+
+/// 4頂点(a→b→c→d→閉じる)の四角形パスを構築して塗りつぶす。
+fn fill_quad(content: &mut Content, a: (f32, f32), b: (f32, f32), c: (f32, f32), d: (f32, f32)) {
+    content.move_to(a.0, a.1);
+    content.line_to(b.0, b.1);
+    content.line_to(c.0, c.1);
+    content.line_to(d.0, d.1);
+    content.close_path();
+    content.fill_nonzero();
 }
 
 /// `border-style`に応じたダッシュパターン/線キャップを設定する。
@@ -709,11 +810,10 @@ fn render_line(
         if run.underline {
             let (y, thickness) =
                 decoration_metrics(font, run.font_size, font.underline_metrics(), -0.1);
-            render_border_edge(
+            stroke_line(
                 content,
                 thickness,
                 run.color,
-                BorderStyle::Solid,
                 (x, baseline_y + y),
                 (x + run.width, baseline_y + y),
             );
@@ -721,11 +821,10 @@ fn render_line(
         if run.line_through {
             let (y, thickness) =
                 decoration_metrics(font, run.font_size, font.strikeout_metrics(), 0.3);
-            render_border_edge(
+            stroke_line(
                 content,
                 thickness,
                 run.color,
-                BorderStyle::Solid,
                 (x, baseline_y + y),
                 (x + run.width, baseline_y + y),
             );
@@ -903,25 +1002,30 @@ mod tests {
     }
 
     #[test]
-    fn solid_border_adds_stroke_operators_to_content_stream() {
+    fn solid_border_fills_a_mitered_quad_per_side() {
         let ua = user_agent_stylesheet();
         let fonts = test_fonts();
         let settings = PageSettings::default();
 
-        let dom = html::parse(br#"<div class="box">x</div>"#);
-        let author = parse_stylesheet(".box { border: 2px solid rgb(10, 20, 30); }");
-        let styles = compute_styles(&dom, &ua, &author);
-        let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
-        let text = String::from_utf8_lossy(&bytes);
+        let dom_with = html::parse(br#"<div class="box">x</div>"#);
+        let author_with = parse_stylesheet(".box { border: 2px solid rgb(10, 20, 30); }");
+        let styles_with = compute_styles(&dom_with, &ua, &author_with);
+        let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
 
-        // 4辺分のストローク描画(`S`オペレータ)が追加されているはず。
+        let dom_without = html::parse(br#"<div class="box">x</div>"#);
+        let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
+        let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+
+        // 4辺分の塗りつぶし(`f`オペレータ)が追加されているはず(各辺は
+        // 外形/内形の頂点を結ぶミトー結合済みの四角形として塗る)。
+        let fill_count_with = count_occurrences(bytes_with.as_slice(), b"\nf\n");
+        let fill_count_without = count_occurrences(bytes_without.as_slice(), b"\nf\n");
         assert!(
-            count_occurrences(bytes.as_slice(), b"\nS\n") >= 4,
-            "solid border should stroke all four sides"
+            fill_count_with >= fill_count_without + 4,
+            "solid border should add 4 filled mitered quads (with={fill_count_with}, without={fill_count_without})"
         );
-        // strokeの色(10/255, 20/255, 30/255)が`RG`オペレータで設定されているはず。
-        assert!(text.contains(" RG\n"), "border color should be set via RG");
     }
 
     #[test]
@@ -950,21 +1054,28 @@ mod tests {
     }
 
     #[test]
-    fn double_border_strokes_two_lines_per_side() {
+    fn double_border_fills_two_bands_per_side() {
         let ua = user_agent_stylesheet();
         let fonts = test_fonts();
         let settings = PageSettings::default();
 
-        let dom = html::parse(br#"<div class="box">x</div>"#);
-        let author = parse_stylesheet(".box { border: 9px double rgb(0, 0, 0); }");
-        let styles = compute_styles(&dom, &ua, &author);
-        let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let dom_with = html::parse(br#"<div class="box">x</div>"#);
+        let author_with = parse_stylesheet(".box { border: 9px double rgb(0, 0, 0); }");
+        let styles_with = compute_styles(&dom_with, &ua, &author_with);
+        let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
 
-        // 4辺 x 2本 = 8回以上のストロークがあるはず。
+        let dom_without = html::parse(br#"<div class="box">x</div>"#);
+        let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
+        let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+
+        // 4辺 x 2帯(外側/内側) = 8回以上の塗りつぶしが追加されているはず。
+        let fill_count_with = count_occurrences(bytes_with.as_slice(), b"\nf\n");
+        let fill_count_without = count_occurrences(bytes_without.as_slice(), b"\nf\n");
         assert!(
-            count_occurrences(bytes.as_slice(), b"\nS\n") >= 8,
-            "double border should stroke two lines per side"
+            fill_count_with >= fill_count_without + 8,
+            "double border should fill two mitered bands per side"
         );
     }
 
@@ -1054,10 +1165,66 @@ mod tests {
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
 
-        // 4辺が不揃いなので角丸は諦め、直線4辺のストローク(`S`x4)にフォールバックする。
+        // 4辺が不揃いなので角丸は諦め、直線4辺のフォールバックになるはず。
+        // `border-style: solid dotted`は上下がsolid(塗り)、左右がdotted
+        // (ストローク)に展開されるので、両方が現れるはず。
         assert!(
-            count_occurrences(bytes.as_slice(), b"\nS\n") >= 4,
-            "non-uniform border should fall back to 4 independent straight strokes"
+            count_occurrences(bytes.as_slice(), b"\nf\n") >= 2,
+            "the two solid sides should fill mitered quads"
+        );
+        assert!(
+            count_occurrences(bytes.as_slice(), b"\nS\n") >= 2,
+            "the two dotted sides should still stroke a centerline"
+        );
+    }
+
+    #[test]
+    fn non_uniform_solid_border_corners_share_exact_miter_vertices() {
+        use crate::layout::{EdgeSizes, PageSize};
+
+        // ページ余白0・丸い数値のPageSettingsを使い、座標を手計算で予測できる
+        // ようにする。4辺の太さ・色をすべて不揃いにし、隣接する2辺が
+        // 「内側の角の頂点」を正確に共有する(=斜めにミトー結合される)ことを、
+        // 生成された実際のコンテンツストリームの座標列で確認する。
+        let settings = PageSettings {
+            size: PageSize {
+                width: 800.0,
+                height: 1000.0,
+            },
+            margin: EdgeSizes {
+                top: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0,
+            },
+        };
+        let fonts = test_fonts();
+
+        let dom = html::parse(br#"<div class="box">x</div>"#);
+        let author = parse_stylesheet(
+            "html, body { margin: 0; } \
+             .box { border-style: solid; border-width: 10px 20px 30px 40px; \
+             border-color: rgb(255,0,0) rgb(0,255,0) rgb(0,0,255) rgb(255,255,0); \
+             width: 300px; height: 200px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let text = String::from_utf8_lossy(&bytes);
+
+        // border-box: x∈[0,360](border-left 40 + width 300 + border-right 20)、
+        // PDF空間でy_top=1000(border-top 10)、y_bottom=760(border-bottom 30)。
+        // 右上の外側の角(360,1000)と内側の角(340,990)は、top/rightの両方の
+        // パスに現れるはず(top側は終端、right側は始端として)。
+        assert_eq!(
+            count_occurrences(text.as_bytes(), b"360 1000"),
+            2,
+            "the top-right outer corner should be shared by the top and right quads"
+        );
+        assert_eq!(
+            count_occurrences(text.as_bytes(), b"340 990"),
+            2,
+            "the top-right inner (mitered) corner should be shared by the top and right quads"
         );
     }
 
