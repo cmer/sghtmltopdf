@@ -206,6 +206,69 @@ pub fn paginate_document(
     paginate(&laid_out, settings.content_height())
 }
 
+/// [`paginate_document`]のストリーミング版。ページが確定するたびに、
+/// そのページに完全に収まった(これ以上分割されない)DOMサブツリーを
+/// [`Dom::release_subtree`]で解放してから`on_page`を呼ぶ。
+///
+/// 現状のパイプライン(`compute_styles`→`build_box_tree`→`layout_document`は
+/// いずれもDOM全体を一括で読む)では、この時点でスタイル計算・レイアウトは
+/// 両方とも完了済みで、以後どのページの処理も`dom`を読み返すことはない。
+/// そのため[0006](../../docs/decisions/0006-css-non-locality-scope.md)が
+/// 定める「兄弟・子孫セレクタの参照範囲を跨がない」制約は、ここでは常に
+/// 満たされている(まだパースされていない後続要素が存在しないため)。
+/// 将来ストリーミングHTMLパース([`crate::html::StreamingParser`])と統合し、
+/// スタイル計算自体も段階的に行うようになった場合は、この前提が崩れるため
+/// 解放タイミングを再検討する必要がある。
+pub fn paginate_document_streaming(
+    dom: &mut Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    on_page: &mut dyn FnMut(Page),
+) {
+    let tree = build_box_tree(dom, styles);
+    let laid_out = layout_document(&tree, styles, fonts, settings.content_width());
+    paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
+        release_completed_subtrees(dom, &page);
+        on_page(page);
+    });
+}
+
+/// `page`に含まれるボックスのうち、これ以上分割されない
+/// (`FragmentPosition::Whole`または`Last`)ものに対応するDOMサブツリーを
+/// [`Dom::release_subtree`]で解放する。
+fn release_completed_subtrees(dom: &mut Dom, page: &Page) {
+    for b in &page.boxes {
+        release_completed_subtrees_in_box(dom, b);
+    }
+}
+
+fn release_completed_subtrees_in_box(dom: &mut Dom, b: &LaidOutBox) {
+    if let Some(node) = b.node {
+        if matches!(
+            b.layout.fragment,
+            FragmentPosition::Whole | FragmentPosition::Last
+        ) {
+            // このノード以下は`release_subtree`が再帰的に解放するため、
+            // 子への再帰は不要。
+            dom.release_subtree(node);
+            return;
+        }
+    }
+    // まだ完了していない(装飾フラグメントが`First`/`Middle`の)コンテナは
+    // それ自体を解放できないが、実際に子要素が配置されたボックス
+    // (`place_split`が生成する装飾フラグメントとは別に、そのページへ
+    // 直接配置された子要素)は独立して完了している可能性があるため再帰する。
+    match &b.content {
+        LaidOutContent::Blocks(children) => {
+            for child in children {
+                release_completed_subtrees_in_box(dom, child);
+            }
+        }
+        LaidOutContent::Inline(_) | LaidOutContent::Table(_) => {}
+    }
+}
+
 fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, cursor: &mut f32) {
     let height = b.layout.margin_box_height();
     let has_forced_break_inside = subtree_requires_child_walk(b);
@@ -1552,5 +1615,191 @@ mod tests {
                 s_dec.map(|d| d.layout.padding.top)
             );
         }
+    }
+
+    #[test]
+    fn paginate_document_streaming_releases_paragraphs_as_their_page_flushes() {
+        // 装飾のない20個の独立した<p>要素。各ページがflushされるたびに、
+        // そのページに配置された<p>要素(とテキスト子孫)が解放されている
+        // ことを確認する。
+        let mut html_src = String::from("<div>");
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let mut dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        assert_eq!(ps.len(), 20);
+
+        let mut flushed_pages = 0usize;
+        paginate_document_streaming(&mut dom, &styles, &fonts, &settings, &mut |_page| {
+            flushed_pages += 1;
+        });
+        assert!(flushed_pages > 1, "expected multiple pages");
+
+        // 全ページ処理後、20個の<p>要素すべてが解放されているはず
+        // (装飾のないラッパーdivも、最後のページのflushで解放される)。
+        for &p in &ps {
+            assert!(
+                dom.is_released(p),
+                "paragraph {p:?} should be released once its page has flushed"
+            );
+        }
+    }
+
+    #[test]
+    fn paginate_document_streaming_eventually_releases_a_spanning_wrapper() {
+        // 背景・枠線を持つwrapperが複数ページにまたがる場合でも、
+        // `paginate_document_streaming`(公開API)を通した全処理完了後には
+        // wrapper自身のノードも解放されているはず(装飾フラグメントが
+        // 最後のページで`Last`になった時点で解放される)。「最後のページ
+        // より前では解放されない」という中間状態の直接検証は、下の
+        // `wrapper_node_is_not_released_before_its_last_fragment_flushes`
+        // で行う。
+        let mut html_src = String::from(r#"<div class="wrapper">"#);
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let mut dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".wrapper { border: 2px solid black; padding: 5px; margin: 0; } \
+             .item { height: 100px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let wrapper = divs[0];
+
+        let mut flushed_pages = 0usize;
+        paginate_document_streaming(&mut dom, &styles, &fonts, &settings, &mut |_page| {
+            flushed_pages += 1;
+        });
+        assert!(
+            flushed_pages >= 3,
+            "expected the wrapper to span at least 3 pages, got {flushed_pages}"
+        );
+
+        assert!(
+            dom.is_released(wrapper),
+            "the wrapper should be released once its final page has flushed"
+        );
+    }
+
+    #[test]
+    fn wrapper_node_is_not_released_before_its_last_fragment_flushes() {
+        // 1ページ目がflushされた時点で、wrapperノードはまだ解放されて
+        // いないことを`on_page`のコールバック内から直接観測する。
+        let mut html_src = String::from(r#"<div class="wrapper">"#);
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let mut dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".wrapper { border: 2px solid black; padding: 5px; margin: 0; } \
+             .item { height: 100px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let wrapper = divs[0];
+
+        let tree = build_box_tree(&dom, &styles);
+        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let page_height = settings.content_height();
+        let total_pages = paginate(&laid_out, page_height).len();
+        assert!(total_pages >= 3);
+
+        let mut flushed_pages = 0usize;
+        let mut observed_mid_release = Vec::new();
+        paginate_streaming(&laid_out, page_height, &mut |page| {
+            flushed_pages += 1;
+            release_completed_subtrees(&mut dom, &page);
+            if flushed_pages < total_pages {
+                observed_mid_release.push(dom.is_released(wrapper));
+            }
+        });
+
+        assert!(
+            observed_mid_release.iter().all(|&released| !released),
+            "the wrapper must stay alive until its last fragment flushes, observed: \
+             {observed_mid_release:?}"
+        );
+        assert!(dom.is_released(wrapper));
+    }
+
+    #[test]
+    fn paragraphs_on_a_later_page_are_not_released_before_their_own_page_flushes() {
+        // 早すぎる解放(まだ登場していないノードを誤って解放してしまう
+        // バグ)がないことを、各<p>が実際にどのページに配置されるかを
+        // 一括版で事前計算し、そのページより前の時点ではまだ解放されて
+        // いないことを`on_page`のたびに確認する。
+        let mut html_src = String::from("<div>");
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div>");
+        let mut dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        assert_eq!(ps.len(), 20);
+
+        let tree = build_box_tree(&dom, &styles);
+        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let page_height = settings.content_height();
+
+        let batched = paginate(&laid_out, page_height);
+        assert!(batched.len() > 1, "expected multiple pages");
+        let page_of: HashMap<NodeId, usize> = ps
+            .iter()
+            .map(|&p| {
+                let idx = batched
+                    .iter()
+                    .position(|page| page.boxes.iter().any(|b| box_contains_node(b, p)))
+                    .expect("every paragraph should land on some page");
+                (p, idx)
+            })
+            .collect();
+
+        let mut current_page_index = 0usize;
+        paginate_streaming(&laid_out, page_height, &mut |page| {
+            release_completed_subtrees(&mut dom, &page);
+            for (&p, &expected_page) in &page_of {
+                if expected_page > current_page_index {
+                    assert!(
+                        !dom.is_released(p),
+                        "paragraph destined for page {expected_page} must not be released \
+                         while only page {current_page_index} has flushed"
+                    );
+                }
+            }
+            current_page_index += 1;
+        });
     }
 }
