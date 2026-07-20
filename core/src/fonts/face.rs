@@ -10,6 +10,7 @@ use std::path::Path;
 
 use cssparser::UnicodeRange;
 
+use crate::img::resolve_local_asset_path;
 use crate::style::{FontFaceRule, FontFaceSource, FontStyle, FontWeight};
 
 use super::font::Font;
@@ -45,7 +46,9 @@ pub fn load_font_faces(
 fn load_one(rule: &FontFaceRule, base_dir: &Path, system: &SystemFonts) -> Option<LoadedFontFace> {
     for src in &rule.src {
         let font = match src {
-            FontFaceSource::Url(path) => std::fs::read(base_dir.join(path))
+            // T61: root-relativeな`url("/fonts/brand.ttf")`もbase_dir相対
+            // として扱う(`resolve_local_asset_path`、`img/resolve.rs`参照)。
+            FontFaceSource::Url(path) => std::fs::read(resolve_local_asset_path(base_dir, path))
                 .ok()
                 .and_then(|bytes| Font::from_bytes(bytes, 0).ok()),
             FontFaceSource::Local(name) => system.load_by_full_name(name),
@@ -95,6 +98,21 @@ mod tests {
         let rules = vec![rule(
             "Custom Brand",
             vec![FontFaceSource::Url("DejaVuSans.ttf".to_string())],
+        )];
+        let loaded = load_font_faces(&rules, Path::new(DEJAVU_PATH), &no_system_fonts());
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].family, "Custom Brand");
+    }
+
+    #[test]
+    fn resolves_a_root_relative_url_within_base_dir() {
+        // T61: `url("/DejaVuSans.ttf")`のようなroot-relativeな書き方も
+        // base_dir配下のファイルとして解決されるはず(OSのファイルシステム
+        // ルートへ逃げない)。
+        let rules = vec![rule(
+            "Custom Brand",
+            vec![FontFaceSource::Url("/DejaVuSans.ttf".to_string())],
         )];
         let loaded = load_font_faces(&rules, Path::new(DEJAVU_PATH), &no_system_fonts());
 

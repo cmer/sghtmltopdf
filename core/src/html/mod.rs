@@ -3,5 +3,5 @@
 mod dom;
 mod parse;
 
-pub use dom::{Children, Dom, Node, NodeData, NodeId};
+pub use dom::{is_stylesheet_link, Children, Dom, Node, NodeData, NodeId};
 pub use parse::{parse, StreamingParser};

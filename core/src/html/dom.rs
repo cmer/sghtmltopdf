@@ -75,6 +75,23 @@ pub enum NodeData {
     Released,
 }
 
+/// `<link>`要素が`rel="stylesheet"`かどうかを判定する。
+///
+/// HTML仕様上`rel`は空白区切りのトークン列(`rel="stylesheet preload"`も
+/// 有効)であり、単純な文字列完全一致では`stylesheet`以外のトークンが
+/// 混ざったケースを見逃す。`class`属性のトークンマッチング
+/// (`style/element_ref.rs`の`has_class`)と同種の注意点。
+pub fn is_stylesheet_link(attrs: &[Attribute]) -> bool {
+    attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "rel")
+        .is_some_and(|attr| {
+            attr.value
+                .split_ascii_whitespace()
+                .any(|token| token.eq_ignore_ascii_case("stylesheet"))
+        })
+}
+
 /// パース済みのDOM木。
 pub struct Dom {
     pub(crate) nodes: Vec<Node>,

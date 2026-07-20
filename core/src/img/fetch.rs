@@ -19,7 +19,7 @@ use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver
 use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 use ureq::{Agent, Error as UreqError};
 
-use super::ImgSrc;
+use super::{resolve_local_asset_path, ImgSrc};
 
 /// 取得したバイト列の既定上限(20MiB)。ローカル/リモート/data:のいずれの
 /// 取得元にも同じ上限を適用する(軽量・低メモリという設計方針上、非HTTP
@@ -93,12 +93,13 @@ impl ImageFetcher {
     }
 
     /// `base_dir`相対のローカルファイルを読む。`@font-face`の`url()`解決
-    /// (`fonts/face.rs`の`load_one`)と同じ`base_dir.join(path)`パターンを
-    /// 踏襲しており、`..`によるディレクトリトラバーサルの制限は同様に
-    /// 行っていない(既存のfont読み込みと対称的な挙動に揃えている。
-    /// より厳格にするならfont側と合わせて別途検討する)。
+    /// (`fonts/face.rs`の`load_one`)と同じ[`resolve_local_asset_path`]を
+    /// 使う(root-relativeな`/foo`もbase_dir相対として扱う、T61)。`..`に
+    /// よるディレクトリトラバーサルの制限は行っていない(既存のfont読み込み
+    /// と対称的な挙動に揃えている。より厳格にするならfont側と合わせて
+    /// 別途検討する)。
     fn read_local(&self, path: &str) -> Result<Vec<u8>, FetchError> {
-        let full_path = self.base_dir.join(path);
+        let full_path = resolve_local_asset_path(&self.base_dir, path);
         let metadata = std::fs::metadata(&full_path)
             .map_err(|e| FetchError(format!("{}: {e}", full_path.display())))?;
         self.ensure_within_limit(metadata.len()).map_err(|_| {
@@ -232,6 +233,24 @@ mod tests {
         let bytes = fetcher
             .fetch(&ImgSrc::LocalPath("logo.png".to_string()))
             .expect("local read should succeed");
+        assert_eq!(bytes, b"fake png bytes");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_root_relative_local_path_stays_inside_base_dir() {
+        // T61: `/logo.png`のようなroot-relativeなsrc(CLAUDE.mdの
+        // `<link href="/stylesheets/main.css" />`と同種の書き方)が
+        // base_dirの外(OSのファイルシステムルート)へ逃げず、base_dir配下の
+        // ファイルとして読めることを確認する。
+        let dir = temp_dir("root_relative");
+        std::fs::write(dir.join("logo.png"), b"fake png bytes").unwrap();
+        let fetcher = ImageFetcher::new(dir.clone(), false);
+
+        let bytes = fetcher
+            .fetch(&ImgSrc::LocalPath("/logo.png".to_string()))
+            .expect("root-relative local read should succeed within base_dir");
         assert_eq!(bytes, b"fake png bytes");
 
         std::fs::remove_dir_all(&dir).unwrap();

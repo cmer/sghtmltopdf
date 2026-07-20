@@ -46,7 +46,7 @@ impl StreamingParser {
             }),
             quirks_mode: Cell::new(QuirksMode::NoQuirks),
             seen_body: Cell::new(false),
-            late_style_detected: Cell::new(false),
+            late_css_source_detected: Cell::new(false),
             body_id: Cell::new(None),
         };
         Self {
@@ -60,15 +60,17 @@ impl StreamingParser {
         self.inner.process(ByteTendril::from_slice(chunk));
     }
 
-    /// `<body>`より後に`<style>`要素が出現したかどうか。
+    /// `<body>`より後にCSSソース(`<style>`または`rel="stylesheet"`の
+    /// `<link>`)が出現したかどうか。
     ///
     /// `Engine`の`Mode::Streaming`が
-    /// [0006](../../../docs/decisions/0006-css-non-locality-scope.md)の
-    /// 方針に従ってエラーを返すかどうかの判定に使う(`Mode::Batch`では
+    /// [0006](../../../docs/decisions/0006-css-non-locality-scope.md)・
+    /// [0015](../../../docs/decisions/0015-external-stylesheet-fetch-design.md)
+    /// の方針に従ってエラーを返すかどうかの判定に使う(`Mode::Batch`では
     /// この値を無視してよい)。`<body>`の開始タグを見た時点以降に生成された
-    /// `<style>`要素が1つでもあれば`true`になる。
-    pub fn has_late_style_tag(&self) -> bool {
-        self.sink().late_style_detected.get()
+    /// `<style>`/`<link rel=stylesheet>`要素が1つでもあれば`true`になる。
+    pub fn has_late_css_source(&self) -> bool {
+        self.sink().late_css_source_detected.get()
     }
 
     /// `<body>`要素の`NodeId`(まだパースされていなければ`None`)。
@@ -185,12 +187,21 @@ impl Default for StreamingParser {
 struct Sink {
     dom: RefCell<Dom>,
     quirks_mode: Cell<QuirksMode>,
-    /// `<body>`要素の開始タグを見たかどうか([`StreamingParser::has_late_style_tag`]参照)。
+    /// `<body>`要素の開始タグを見たかどうか([`StreamingParser::has_late_css_source`]参照)。
     seen_body: Cell<bool>,
-    /// `<body>`より後に`<style>`要素が出現したかどうか。
-    late_style_detected: Cell<bool>,
+    /// `<body>`より後にCSSソース(`<style>`または`<link rel=stylesheet>`)が
+    /// 出現したかどうか。
+    late_css_source_detected: Cell<bool>,
     /// `<body>`要素の`NodeId`([`StreamingParser::body_node`]参照)。
     body_id: Cell<Option<NodeId>>,
+}
+
+/// `name`/`attrs`が「CSSソースとして扱う要素」(`<style>`または
+/// `rel="stylesheet"`の`<link>`)かどうかを判定する
+/// ([0015](../../../docs/decisions/0015-external-stylesheet-fetch-design.md)
+/// 決定5、`<body>`より後の出現を`<style>`と同様にエラーにするため)。
+fn is_late_css_source(local_name: &str, attrs: &[Attribute]) -> bool {
+    local_name == "style" || (local_name == "link" && super::dom::is_stylesheet_link(attrs))
 }
 
 /// [`TreeSink::elem_name`]が返す、貸し出し元から独立した要素名。
@@ -276,8 +287,8 @@ impl TreeSink for Sink {
         let is_body = &*name.local == "body";
         if is_body {
             self.seen_body.set(true);
-        } else if &*name.local == "style" && self.seen_body.get() {
-            self.late_style_detected.set(true);
+        } else if self.seen_body.get() && is_late_css_source(&name.local, &attrs) {
+            self.late_css_source_detected.set(true);
         }
 
         let template_contents = if flags.template {
@@ -542,32 +553,64 @@ mod tests {
     }
 
     #[test]
-    fn has_late_style_tag_is_false_when_style_is_in_head() {
+    fn has_late_css_source_is_false_when_style_is_in_head() {
         let mut parser = StreamingParser::new();
         parser.feed(b"<html><head><style>p{color:red}</style></head><body><p>x</p></body></html>");
-        assert!(!parser.has_late_style_tag());
+        assert!(!parser.has_late_css_source());
     }
 
     #[test]
-    fn has_late_style_tag_is_true_when_style_appears_after_body_starts() {
+    fn has_late_css_source_is_true_when_style_appears_after_body_starts() {
         let mut parser = StreamingParser::new();
         parser.feed(b"<body><p>x</p><style>p{color:red}</style></body>");
-        assert!(parser.has_late_style_tag());
+        assert!(parser.has_late_css_source());
     }
 
     #[test]
-    fn has_late_style_tag_updates_incrementally_across_feed_calls() {
+    fn has_late_css_source_updates_incrementally_across_feed_calls() {
         let mut parser = StreamingParser::new();
         parser.feed(b"<body><p>x</p>");
         assert!(
-            !parser.has_late_style_tag(),
+            !parser.has_late_css_source(),
             "no <style> tag has appeared yet"
         );
         parser.feed(b"<style>p{color:red}</style>");
         assert!(
-            parser.has_late_style_tag(),
+            parser.has_late_css_source(),
             "should detect the <style> tag fed in a later chunk"
         );
+    }
+
+    #[test]
+    fn has_late_css_source_is_false_when_stylesheet_link_is_in_head() {
+        let mut parser = StreamingParser::new();
+        parser.feed(
+            br#"<html><head><link rel="stylesheet" href="a.css"></head><body><p>x</p></body></html>"#,
+        );
+        assert!(!parser.has_late_css_source());
+    }
+
+    #[test]
+    fn has_late_css_source_is_true_when_stylesheet_link_appears_after_body_starts() {
+        let mut parser = StreamingParser::new();
+        parser.feed(br#"<body><p>x</p><link rel="stylesheet" href="a.css"></body>"#);
+        assert!(parser.has_late_css_source());
+    }
+
+    #[test]
+    fn has_late_css_source_ignores_a_late_link_that_is_not_a_stylesheet() {
+        let mut parser = StreamingParser::new();
+        parser.feed(br#"<body><p>x</p><link rel="icon" href="favicon.ico"></body>"#);
+        assert!(!parser.has_late_css_source());
+    }
+
+    #[test]
+    fn has_late_css_source_detects_stylesheet_among_multiple_rel_tokens() {
+        // relは空白区切りのトークン列(rel="preload stylesheet"のような
+        // 書き方も有効)。
+        let mut parser = StreamingParser::new();
+        parser.feed(br#"<body><p>x</p><link rel="preload stylesheet" href="a.css"></body>"#);
+        assert!(parser.has_late_css_source());
     }
 
     fn tag_of(parser: &StreamingParser, id: NodeId) -> String {

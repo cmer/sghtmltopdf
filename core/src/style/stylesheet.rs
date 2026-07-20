@@ -182,6 +182,45 @@ mod tests {
     }
 
     #[test]
+    fn parse_stylesheet_ignores_at_import_and_keeps_subsequent_rules() {
+        // T63(M6): `@import`は`@font-face`以外のat-ruleとして
+        // `TopLevelRuleParser::parse_prelude`が拒否し、cssparserの
+        // `StyleSheetParser`のエラー回復で読み飛ばされる想定。フェッチした
+        // 外部CSSに`@import`が含まれていても、それ以降の通常ルールの
+        // パースが継続されることを確認する(追加実装なしで安全、という
+        // T59/T63の前提調査を実際に検証する)。
+        let sheet = parse_stylesheet(
+            r#"@import url("other.css"); p { color: rgb(1, 2, 3); } div { color: rgb(4, 5, 6); }"#,
+        );
+        assert_eq!(
+            sheet.rules.len(),
+            2,
+            "both rules after the ignored @import should still be parsed"
+        );
+    }
+
+    #[test]
+    fn parse_stylesheet_ignores_unrecognized_properties_with_url_values() {
+        // T63: `background-image: url(...)`のような、本実装が対応して
+        // いないプロパティ(`url()`参照を含む値)があっても、そのプロパティ
+        // 宣言だけが無視され、同じルール内の他の宣言・後続のルールは
+        // 正常にパースされることを確認する。
+        let sheet =
+            parse_stylesheet(r#"div { background-image: url("bg.png"); color: rgb(1, 2, 3); }"#);
+        assert_eq!(sheet.rules.len(), 1);
+        assert_eq!(
+            sheet.rules[0].declarations.len(),
+            1,
+            "the unrecognized background-image declaration should be skipped, \
+             leaving only the color declaration"
+        );
+        assert!(matches!(
+            sheet.rules[0].declarations[0],
+            PropertyDeclaration::Color(_)
+        ));
+    }
+
+    #[test]
     fn parse_inline_style_handles_empty_string() {
         assert!(parse_inline_style("").is_empty());
     }

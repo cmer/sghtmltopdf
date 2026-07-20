@@ -5,6 +5,8 @@
 //! 実際に取得を試みる前に判別する。判別のみを行い、実際のフェッチ/読み込み
 //! (T46)は行わない。
 
+use std::path::{Path, PathBuf};
+
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
 use base64::engine::general_purpose::GeneralPurposeConfig;
 use base64::engine::{DecodePaddingMode, GeneralPurpose};
@@ -95,6 +97,25 @@ fn lenient_base64() -> GeneralPurpose {
         &BASE64_STANDARD_ALPHABET,
         GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
     )
+}
+
+/// [`ImgSrc::LocalPath`](や`@font-face`の`url()`・`<link href>`等、同じ
+/// 性質を持つ他のローカル資産参照)を`base_dir`基準で実際のファイルパスへ
+/// 解決する。
+///
+/// `raw`の先頭が`/`(root-relative、`<link href="/stylesheets/main.css" />`
+/// のようなRailsのアセットパイプラインでよくある書き方)の場合、これを
+/// "サイトルート"の意味と解釈し`base_dir`相対として扱う。素朴に
+/// `base_dir.join(raw)`すると、`Path::join`は引数が絶対パスの場合
+/// (Unix)`base_dir`を丸ごと捨ててしまい、OSのファイルシステムルートを
+/// 読みに行ってしまう(意図しない・環境依存の挙動)ため、先頭の`/`を
+/// 明示的に取り除いてから結合する。
+///
+/// `..`によるディレクトリトラバーサルの制限は行わない(`base_dir.join`を
+/// 使う既存のローカルパス解決全般と対称的な、意図的な簡略化。
+/// `core/src/img/fetch.rs`の`read_local`のドキュメント参照)。
+pub fn resolve_local_asset_path(base_dir: &Path, raw: &str) -> PathBuf {
+    base_dir.join(raw.trim_start_matches('/'))
 }
 
 #[cfg(test)]
@@ -198,5 +219,37 @@ mod tests {
     #[test]
     fn rejects_a_data_uri_missing_a_comma() {
         assert_eq!(classify_img_src("data:image/png;base64"), None);
+    }
+
+    #[test]
+    fn resolve_local_asset_path_joins_a_plain_relative_path() {
+        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "logo.png");
+        assert_eq!(resolved, Path::new("/var/www/app/logo.png"));
+    }
+
+    #[test]
+    fn resolve_local_asset_path_treats_a_leading_slash_as_relative_to_base_dir() {
+        // 素朴な`base_dir.join(raw)`だと、Path::joinは絶対パスを渡されると
+        // base_dirを丸ごと捨ててしまう(Unix)。root-relativeなhref
+        // (CLAUDE.mdの`<link href="/stylesheets/main.css" />`の例)が
+        // base_dirの外(OSのファイルシステムルート)へ逃げないことを確認する。
+        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "/stylesheets/main.css");
+        assert_eq!(
+            resolved,
+            Path::new("/var/www/app/stylesheets/main.css"),
+            "a root-relative href must stay inside base_dir, not escape to the OS filesystem root"
+        );
+    }
+
+    #[test]
+    fn resolve_local_asset_path_strips_multiple_leading_slashes() {
+        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "//evil.example/x");
+        assert_eq!(resolved, Path::new("/var/www/app/evil.example/x"));
+    }
+
+    #[test]
+    fn resolve_local_asset_path_leaves_dot_relative_paths_unchanged() {
+        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "./assets/x.css");
+        assert_eq!(resolved, Path::new("/var/www/app/./assets/x.css"));
     }
 }

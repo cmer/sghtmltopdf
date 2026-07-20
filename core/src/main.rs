@@ -29,7 +29,7 @@ struct Options {
     input: PathBuf,
     fonts: Vec<FontSpec>,
     output: PathBuf,
-    allow_remote_images: bool,
+    allow_remote_assets: bool,
 }
 
 fn main() -> ExitCode {
@@ -58,13 +58,13 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "使い方: sghtmltopdf <input.html> --font <font.ttf> [--font <font2.ttf> [--font-index N]]... [-o <output.pdf>] [--allow-remote-images]"
+        "使い方: sghtmltopdf <input.html> --font <font.ttf> [--font <font2.ttf> [--font-index N]]... [-o <output.pdf>] [--allow-remote-assets]"
     );
     eprintln!(
         "  --font-indexは直前の--fontに対して、TrueType Collection(.ttc)内のフェイス番号を指定する(既定は0)"
     );
     eprintln!(
-        "  --allow-remote-imagesは<img src>のhttp(s)絶対URLフェッチを許可する(既定は無効。ローカル相対パス/data:URIは常に許可)"
+        "  --allow-remote-assetsは<img src>/<link rel=stylesheet href>のhttp(s)絶対URLフェッチを許可する(既定は無効。ローカル相対パス/data:URIは常に許可)"
     );
 }
 
@@ -72,7 +72,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut input = None;
     let mut fonts: Vec<FontSpec> = Vec::new();
     let mut output = None;
-    let mut allow_remote_images = false;
+    let mut allow_remote_assets = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -101,8 +101,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 let value = args.get(i).ok_or("-o/--outputには値が必要です")?;
                 output = Some(PathBuf::from(value));
             }
-            "--allow-remote-images" => {
-                allow_remote_images = true;
+            "--allow-remote-assets" => {
+                allow_remote_assets = true;
             }
             other if input.is_none() => input = Some(PathBuf::from(other)),
             other => return Err(format!("不明な引数です: {other}")),
@@ -120,7 +120,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         input,
         fonts,
         output,
-        allow_remote_images,
+        allow_remote_assets,
     })
 }
 
@@ -137,9 +137,8 @@ fn run(options: &Options) -> Result<(), String> {
         })
         .collect();
 
-    // `@font-face`のsrc: url(...)は、HTMLファイル自身のディレクトリを基準に
-    // 相対パス解決する(外部CSSファイルという概念が無く、HTMLの<style>のみが
-    // CSSの入力元のため)。
+    // `@font-face`のsrc: url()・<img src>・<link rel=stylesheet href>いずれの
+    // ローカル相対パスも、HTMLファイル自身のディレクトリを基準に解決する。
     let base_dir = options.input.parent().map(|p| p.to_path_buf());
 
     let engine_options = EngineOptions {
@@ -147,7 +146,7 @@ fn run(options: &Options) -> Result<(), String> {
         settings: PageSettings::default(),
         fonts: engine_fonts,
         base_dir,
-        allow_remote_images: options.allow_remote_images,
+        allow_remote_assets: options.allow_remote_assets,
     };
 
     let sink = FileSink::create(&options.output)

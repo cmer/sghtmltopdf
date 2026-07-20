@@ -45,6 +45,7 @@ use std::path::{Path, PathBuf};
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
 use crate::html::{Dom, NodeId, StreamingParser};
+use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
     layout_document_from, paginate_document_streaming, resolve_border, resolve_images,
@@ -91,11 +92,12 @@ pub struct EngineOptions {
     /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
     /// 相対パス解決にも同じ基準ディレクトリを使う。
     pub base_dir: Option<PathBuf>,
-    /// `<img src>`のhttp(s)絶対URLフェッチを許可するか。既定`false`
-    /// ([0013](../docs/decisions/0013-image-fetch-security.md)の
-    /// 「既定無効・明示オプトイン」方針)。ローカル相対パス・`data:`URIは
-    /// この値に関わらず常に許可する。
-    pub allow_remote_images: bool,
+    /// `<img src>`・`<link rel=stylesheet href>`のhttp(s)絶対URLフェッチを
+    /// 許可するか。既定`false`([0013](../docs/decisions/0013-image-fetch-security.md)
+    /// の「既定無効・明示オプトイン」方針。[0015](../docs/decisions/0015-external-stylesheet-fetch-design.md)
+    /// 決定2により、画像・外部スタイルシート双方をこの1つのフラグで
+    /// 統括する)。ローカル相対パス・`data:`URIはこの値に関わらず常に許可する。
+    pub allow_remote_assets: bool,
 }
 
 /// `Engine`が返すエラー。`Sink`からのエラー(`Io`)、コア自身が判定する
@@ -184,9 +186,9 @@ impl<S: Sink> Engine<S> {
     /// 要素をこの中で処理する。
     pub fn feed(&mut self, chunk: &[u8]) -> Result<(), EngineError<S::Error>> {
         self.parser.feed(chunk);
-        if self.options.mode == Mode::Streaming && self.parser.has_late_style_tag() {
+        if self.options.mode == Mode::Streaming && self.parser.has_late_css_source() {
             return Err(EngineError::UnsupportedInStreamingMode(
-                "<style> after <body> is not supported in streaming mode",
+                "<style>/<link rel=stylesheet> after <body> is not supported in streaming mode",
             ));
         }
 
@@ -232,9 +234,21 @@ impl<S: Sink> Engine<S> {
         sink: S,
     ) -> Result<StreamingState<S>, EngineError<S::Error>> {
         let ua = user_agent_stylesheet();
+        let base_dir = self
+            .options
+            .base_dir
+            .as_deref()
+            .unwrap_or_else(|| Path::new("."));
+        // 外部スタイルシート(`<link>`)取得用のフェッチャー/キャッシュ。
+        // 画像用の`ImageAssetCache`(下の`image_cache`)とは別インスタンスを
+        // 持つ([0015](../docs/decisions/0015-external-stylesheet-fetch-design.md)
+        // 決定3)。
+        let css_fetcher =
+            ImageFetcher::new(base_dir.to_path_buf(), self.options.allow_remote_assets);
+        let css_cache = DocumentImageCache::new();
         let author = {
             let dom = self.parser.dom();
-            extract_author_stylesheet(&dom)
+            extract_author_stylesheet(&dom, &css_fetcher, &css_cache)
         };
 
         let mut loaded_fonts = Vec::with_capacity(self.options.fonts.len());
@@ -246,11 +260,6 @@ impl<S: Sink> Engine<S> {
         let mut fonts = FontCollection::new(loaded_fonts);
 
         let system_fonts = SystemFonts::scan();
-        let base_dir = self
-            .options
-            .base_dir
-            .as_deref()
-            .unwrap_or_else(|| Path::new("."));
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
@@ -314,7 +323,7 @@ impl<S: Sink> Engine<S> {
         let writer = StreamingPdfWriter::new(&fonts, self.options.settings, sink)
             .map_err(EngineError::Io)?;
         let image_cache =
-            ImageAssetCache::new(base_dir.to_path_buf(), self.options.allow_remote_images);
+            ImageAssetCache::new(base_dir.to_path_buf(), self.options.allow_remote_assets);
 
         Ok(StreamingState {
             ua,
@@ -481,14 +490,16 @@ impl<S: Sink> Engine<S> {
         let mut fonts = FontCollection::new(loaded_fonts);
 
         let ua = user_agent_stylesheet();
-        let author = extract_author_stylesheet(&dom);
-        let styles = compute_styles(&dom, &ua, &author);
-
-        let system_fonts = SystemFonts::scan();
         let base_dir = options
             .base_dir
             .as_deref()
             .unwrap_or_else(|| Path::new("."));
+        let css_fetcher = ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets);
+        let css_cache = DocumentImageCache::new();
+        let author = extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
+        let styles = compute_styles(&dom, &ua, &author);
+
+        let system_fonts = SystemFonts::scan();
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
@@ -502,7 +513,7 @@ impl<S: Sink> Engine<S> {
 
         let mut writer =
             StreamingPdfWriter::new(&fonts, options.settings, sink).map_err(EngineError::Io)?;
-        let image_cache = ImageAssetCache::new(base_dir.to_path_buf(), options.allow_remote_images);
+        let image_cache = ImageAssetCache::new(base_dir.to_path_buf(), options.allow_remote_assets);
 
         let mut write_error: Option<S::Error> = None;
         paginate_document_streaming(
@@ -770,7 +781,9 @@ mod tests {
         // 既存の一括API経由。
         let dom = crate::html::parse(html_src.as_bytes());
         let ua = user_agent_stylesheet();
-        let author = crate::style::extract_author_stylesheet(&dom);
+        let css_fetcher = ImageFetcher::new(std::path::PathBuf::from("."), false);
+        let css_cache = DocumentImageCache::new();
+        let author = crate::style::extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
         let styles = compute_styles(&dom, &ua, &author);
         let fonts = FontCollection::new(vec![Font::load(DEJAVU_PATH).unwrap()]);
         let batched_pages = paginate_document(&dom, &styles, &fonts, &settings);
@@ -1156,5 +1169,131 @@ mod tests {
             0,
             "no image XObject should have been written for the failed fetch"
         );
+    }
+
+    #[test]
+    fn external_stylesheet_via_link_is_applied_end_to_end() {
+        // M6のパイプライン全体(<link>検出→fetch→parse→cascade)を、
+        // 実際にfont-sizeの違いとしてPDFコンテンツストリームに現れるかで
+        // 検証する。
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-engine-test-{}-external_stylesheet",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.css"), b"p { font-size: 40px; }").unwrap();
+
+        let html = r#"<html><head><link rel="stylesheet" href="main.css"></head>
+            <body><p>hello</p></body></html>"#;
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            base_dir: Some(dir.clone()),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        let stream = decompressed_stream_bytes(&bytes);
+        assert!(
+            count_occurrences(&stream, b"/F0 40 Tf") > 0,
+            "the font-size from the fetched external stylesheet should apply"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn external_stylesheet_matches_between_batch_and_streaming_mode() {
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-engine-test-{}-external_stylesheet_parity",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.css"), b"p { font-size: 40px; }").unwrap();
+
+        let html = r#"<html><head><link rel="stylesheet" href="main.css"></head>
+            <body><p>hello</p></body></html>"#;
+
+        let run = |mode: Mode| {
+            let options = EngineOptions {
+                mode,
+                fonts: vec![font_spec()],
+                base_dir: Some(dir.clone()),
+                ..EngineOptions::default()
+            };
+            let mut engine = Engine::new(options, MemorySink::new());
+            engine.feed(html.as_bytes()).unwrap();
+            engine.finish().unwrap()
+        };
+
+        let batch_bytes = run(Mode::Batch);
+        let streaming_bytes = run(Mode::Streaming);
+
+        for (label, bytes) in [("batch", &batch_bytes), ("streaming", &streaming_bytes)] {
+            assert!(
+                bytes.starts_with(b"%PDF-"),
+                "{label} output should be a valid PDF"
+            );
+            let stream = decompressed_stream_bytes(bytes);
+            assert!(
+                count_occurrences(&stream, b"/F0 40 Tf") > 0,
+                "{label}: the fetched external stylesheet's font-size should apply"
+            );
+        }
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn streaming_mode_rejects_a_late_link_stylesheet_after_body_starts() {
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(b"<body><p>x</p>").unwrap();
+
+        match engine.feed(br#"<link rel="stylesheet" href="late.css">"#) {
+            Err(EngineError::UnsupportedInStreamingMode(_)) => {}
+            other => panic!("expected UnsupportedInStreamingMode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn streaming_mode_allows_a_late_link_that_is_not_a_stylesheet() {
+        // rel="stylesheet"以外のlink(favicon等)は、<body>より後に
+        // 出現してもストリーミングモードの制約対象外のはず。
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(b"<body><p>x</p>").unwrap();
+        engine
+            .feed(br#"<link rel="icon" href="favicon.ico">"#)
+            .expect("a non-stylesheet <link> after <body> should not be rejected");
+    }
+
+    #[test]
+    fn a_failed_external_stylesheet_does_not_fail_the_whole_document() {
+        // 0015/T66: 外部スタイルシートの取得失敗はそのスタイルシートだけを
+        // 無視し、文書生成全体は止めない(画像[0014]と同じ方針)。
+        let html = r#"<html><head><link rel="stylesheet" href="does-not-exist.css"></head>
+            <body><p>hello</p></body></html>"#;
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine
+            .finish()
+            .expect("a broken external stylesheet must not fail the whole document");
+
+        assert!(bytes.starts_with(b"%PDF-"));
     }
 }
