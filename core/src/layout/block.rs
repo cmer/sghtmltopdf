@@ -17,11 +17,12 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::pdf::PreparedImage;
 use crate::style::{
-    BorderStyle, BreakBetween, BreakInside, ComputedStyle, Display, Length, LengthPercentage,
-    LengthPercentageOrAuto,
+    BorderStyle, BreakBetween, BreakInside, Clear, ComputedStyle, Display, Float, Length,
+    LengthPercentage, LengthPercentageOrAuto, Position,
 };
 
 use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
+use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::{layout_inline_content, LineBox};
 use super::table::layout_table;
@@ -44,6 +45,11 @@ pub struct LaidOutBox {
     /// 合成ラッパーなど無名ボックスは常に`false`(それ自体が再帰的に装飾
     /// フラグメントを持つことはない)。
     pub has_visible_decoration: bool,
+    /// `float: left/right`が指定されている要素かどうか。`paginate.rs`が
+    /// フロー外要素として特別扱いする判定に使う
+    /// ([0019](../../../docs/decisions/0019-float-clear-position-relative-design.md)
+    /// 決定3/決定5)。
+    pub is_float: bool,
     pub content: LaidOutContent,
 }
 
@@ -121,7 +127,18 @@ pub fn layout_document_from(
     start_x: f32,
     start_y: f32,
 ) -> LaidOutBox {
-    layout_box(root, styles, fonts, containing_width, start_x, start_y)
+    // `layout_document`/`layout_document_from`1回の呼び出し全体で1つの
+    // `FloatContext`を共有する([0019]決定1)。
+    let mut float_ctx = FloatContext::new();
+    layout_box(
+        root,
+        styles,
+        fonts,
+        containing_width,
+        &mut float_ctx,
+        start_x,
+        start_y,
+    )
 }
 
 fn layout_box(
@@ -129,21 +146,24 @@ fn layout_box(
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
     containing_width: f32,
+    float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
 ) -> LaidOutBox {
-    layout_box_impl(b, styles, fonts, containing_width, None, x, y)
+    layout_box_impl(b, styles, fonts, containing_width, None, float_ctx, x, y)
 }
 
 /// テーブルセルなど、通常の`width`解決(auto/margin計算)を経ずに
 /// content-boxの幅を直接指定してレイアウトしたい場合に使う
 /// ([`super::table`]専用)。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_with_forced_width(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: f32,
+    float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
 ) -> LaidOutBox {
@@ -153,20 +173,21 @@ pub(super) fn layout_box_with_forced_width(
         fonts,
         containing_width,
         Some(forced_content_width),
+        float_ctx,
         x,
         y,
     )
 }
 
-fn layout_box_impl(
+/// `b`のcontent幅・margin・padding・borderを解決する(置換要素のauto-size適用込み)。
+/// `layout_box_impl`本体と、float配置のための事前幅計算(`layout_float_child`)の
+/// 両方から呼ばれる共通ロジック。
+fn resolve_box_geometry(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
-    fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: Option<f32>,
-    x: f32,
-    y: f32,
-) -> LaidOutBox {
+) -> (ComputedStyle, EdgeSizes, EdgeSizes, EdgeSizes, f32) {
     let mut style = box_style(b, styles);
     if let BoxContent::Image(image_content) = &b.content {
         apply_replaced_element_auto_size(&mut style, image_content);
@@ -180,6 +201,23 @@ fn layout_box_impl(
             resolve_lpa_or_zero(style.margin_left, containing_width),
             resolve_lpa_or_zero(style.margin_right, containing_width),
         ),
+        // floatが明示`width`を持つ場合は`resolve_width_and_horizontal_margins`を
+        // 使わない: あの関数の「over-constrained」規則(width/margin-left/
+        // margin-right全てが非auto=`margin`省略時のデフォルト0も含むときに
+        // margin-rightを残り幅いっぱいに再計算する、CSS2.1 §10.3.3の通常フロー
+        // 用ルール)を素通しすると、再計算後の巨大なmargin-rightが
+        // `margin_box_width`(float配置計算に使う占有幅)に混入してしまう。
+        // floatにはこの再計算規則が無い(CSS2.1 §10.3.5、auto marginは単純に0)
+        // ため、ここでは迂回する([0019]決定4)。
+        None if style.float != Float::None
+            && !matches!(style.width, LengthPercentageOrAuto::Auto) =>
+        {
+            (
+                resolve_lpa_or_zero(style.width, containing_width),
+                resolve_lpa_or_zero(style.margin_left, containing_width),
+                resolve_lpa_or_zero(style.margin_right, containing_width),
+            )
+        }
         None => resolve_width_and_horizontal_margins(
             &style,
             containing_width,
@@ -194,43 +232,111 @@ fn layout_box_impl(
         left: margin_left,
     };
 
+    (style, padding, border, margin, content_width)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn layout_box_impl(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    forced_content_width: Option<f32>,
+    float_ctx: &mut FloatContext,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
+    let (style, padding, border, margin, content_width) =
+        resolve_box_geometry(b, styles, containing_width, forced_content_width);
+
     let content_x = x + margin.left + border.left + padding.left;
     let content_y = y + margin.top + border.top + padding.top;
 
     let (content, content_height) = match &b.content {
         BoxContent::Blocks(children) => {
             let mut cursor_y = content_y;
+            let mut max_float_bottom = content_y;
             let mut laid_children: Vec<LaidOutBox> = Vec::with_capacity(children.len());
             for child in children {
-                let child_margin_top =
-                    resolve_lpa_or_zero(box_style(child, styles).margin_top, content_width);
+                let child_style = box_style(child, styles);
+
+                if child_style.clear != Clear::None {
+                    cursor_y = float_ctx.clearance(child_style.clear, cursor_y);
+                }
+
+                if child_style.float != Float::None {
+                    // floatはフローに参加しない(CSS2.1 9.5): マージン相殺の対象外、
+                    // `cursor_y`は進めない。`float_ctx`は子・孫にも共有されるため、
+                    // このBFC内の以降の通常フロー・インラインコンテンツから
+                    // 回り込み判定に見える([0019]決定1/決定3)。
+                    let child_laid = layout_float_child(
+                        child,
+                        &child_style,
+                        styles,
+                        fonts,
+                        content_width,
+                        float_ctx,
+                        content_x,
+                        cursor_y,
+                    );
+                    let float_top = child_laid.layout.content.y
+                        - child_laid.layout.padding.top
+                        - child_laid.layout.border.top
+                        - child_laid.layout.margin.top;
+                    max_float_bottom =
+                        max_float_bottom.max(float_top + child_laid.layout.margin_box_height());
+                    laid_children.push(child_laid);
+                    continue;
+                }
+
+                let child_margin_top = resolve_lpa_or_zero(child_style.margin_top, content_width);
 
                 // 隣接兄弟間のマージン相殺(CSS2.1 §8.3.1)。前の兄弟のmargin-bottomと
                 // この子のmargin-topを、単純な加算ではなく「正の最大値+負の最小値」
-                // で相殺した1つの間隔に置き換える。
-                if let Some(prev) = laid_children.last() {
+                // で相殺した1つの間隔に置き換える。floatはフローに参加しないため
+                // 対象外(直前の非float子を探す)。
+                if let Some(prev) = laid_children.iter().rev().find(|c| !c.is_float) {
                     let prev_margin_bottom = prev.layout.margin.bottom;
                     let collapsed = collapse_adjacent_margins(prev_margin_bottom, child_margin_top);
                     cursor_y -= prev_margin_bottom + child_margin_top - collapsed;
                 }
 
-                let child_laid =
-                    layout_box(child, styles, fonts, content_width, content_x, cursor_y);
+                let child_laid = layout_box(
+                    child,
+                    styles,
+                    fonts,
+                    content_width,
+                    float_ctx,
+                    content_x,
+                    cursor_y,
+                );
                 cursor_y += child_laid.layout.margin_box_height();
                 laid_children.push(child_laid);
             }
-            let auto_height = cursor_y - content_y;
+            // 直接の子floatが通常フローより下に伸びていれば、その分だけ
+            // auto-heightを拡張する(CSS2.1 10.6.7の浅い実装、孫要素には
+            // 伝播しない、既知の簡略化。[0019]参照)。
+            let auto_height = cursor_y.max(max_float_bottom) - content_y;
             let height = resolve_height(&style).unwrap_or(auto_height);
             (LaidOutContent::Blocks(laid_children), height)
         }
         BoxContent::Inline(spans) => {
-            let lines =
-                layout_inline_content(spans, styles, fonts, content_width, content_x, content_y);
+            let lines = layout_inline_content(
+                spans,
+                styles,
+                fonts,
+                content_width,
+                content_x,
+                content_y,
+                Some(&*float_ctx),
+            );
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
             let height = resolve_height(&style).unwrap_or(lines_height);
             (LaidOutContent::Inline(lines), height)
         }
         BoxContent::Table(table) => {
+            // `display: table`のセルは新しいBlock Formatting Contextを確立する
+            // (CSS2.1 9.4.1)ため、外側の`float_ctx`とは独立させる([0019]決定1)。
             let (rows, table_height) =
                 layout_table(table, styles, fonts, content_width, content_x, content_y);
             let height = resolve_height(&style).unwrap_or(table_height);
@@ -246,12 +352,21 @@ fn layout_box_impl(
         }
     };
 
+    // `position: relative`の視覚的オフセット。後続兄弟の`cursor_y`計算は
+    // `margin_box_height()`(座標に依存しない)を使うため、ここでcontent座標を
+    // ずらしても後続要素のフローには影響しない([0019]決定6)。
+    let (offset_x, offset_y) = if style.position == Position::Relative {
+        resolve_relative_offset(&style, content_width)
+    } else {
+        (0.0, 0.0)
+    };
+
     LaidOutBox {
         node: b.node,
         layout: Layout {
             content: Rect {
-                x: content_x,
-                y: content_y,
+                x: content_x + offset_x,
+                y: content_y + offset_y,
                 width: content_width,
                 height: content_height,
             },
@@ -262,8 +377,81 @@ fn layout_box_impl(
         },
         fragmentation: FragmentationHints::from(&style),
         has_visible_decoration: has_visible_decoration(&style, &border),
+        is_float: style.float != Float::None,
         content,
     }
+}
+
+/// float子要素を配置する。幅解決は`resolve_box_geometry`で(実際のレイアウトと)
+/// 二重に行う——`float_ctx.place`が配置座標を決めるにはmargin box幅が先に
+/// 必要なため([`<img>`]のような置換要素のauto-size解決も含めて正確な幅を
+/// 得る必要があり、事前計算を省略できない)。
+#[allow(clippy::too_many_arguments)]
+fn layout_float_child(
+    child: &LayoutBox,
+    child_style: &ComputedStyle,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    float_ctx: &mut FloatContext,
+    containing_left: f32,
+    preferred_top: f32,
+) -> LaidOutBox {
+    let (_, padding, border, margin, child_content_width) =
+        resolve_box_geometry(child, styles, containing_width, None);
+    let margin_box_width = margin.left
+        + border.left
+        + padding.left
+        + child_content_width
+        + padding.right
+        + border.right
+        + margin.right;
+
+    let (float_x, float_y) = float_ctx.place(
+        child_style.float,
+        preferred_top,
+        containing_left,
+        containing_left + containing_width,
+        margin_box_width,
+    );
+
+    let child_laid = layout_box(
+        child,
+        styles,
+        fonts,
+        containing_width,
+        float_ctx,
+        float_x,
+        float_y,
+    );
+    float_ctx.register(
+        child_style.float,
+        float_x,
+        float_y,
+        margin_box_width,
+        child_laid.layout.margin_box_height(),
+    );
+    child_laid
+}
+
+/// `position: relative`のtop/right/bottom/leftから視覚的オフセット`(dx, dy)`を
+/// 解決する。優先順位はCSS仕様通り`top` > `bottom`、`left` > `right`。
+/// `top`/`bottom`のパーセンテージ指定はcontaining blockの高さが不定なため`0`を
+/// 基準に解決する(既知の簡略化)。
+fn resolve_relative_offset(style: &ComputedStyle, containing_width: f32) -> (f32, f32) {
+    let resolve =
+        |primary: LengthPercentageOrAuto, secondary: LengthPercentageOrAuto, basis: f32| {
+            match primary {
+                LengthPercentageOrAuto::LengthPercentage(lp) => resolve_lp(lp, basis),
+                LengthPercentageOrAuto::Auto => match secondary {
+                    LengthPercentageOrAuto::LengthPercentage(lp) => -resolve_lp(lp, basis),
+                    LengthPercentageOrAuto::Auto => 0.0,
+                },
+            }
+        };
+    let dx = resolve(style.left, style.right, containing_width);
+    let dy = resolve(style.top, style.bottom, 0.0);
+    (dx, dy)
 }
 
 /// `style`/`border`(計算済みの太さ)の組み合わせが、実際に何か描画するか。
@@ -703,6 +891,185 @@ mod tests {
             gap, 16.0,
             "equal adjacent margins should collapse to their shared value"
         );
+    }
+
+    #[test]
+    fn left_float_is_removed_from_normal_flow_and_placed_at_containing_left() {
+        let dom = html::parse(
+            br#"<div class="outer"><div class="f">F</div><div class="after">after</div></div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .f { float: left; width: 100px; height: 50px; } \
+             .after { height: 20px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let float_box = find_laid_out(&laid, divs[1]).expect("float box not found");
+        let after_box = find_laid_out(&laid, divs[2]).expect("after box not found");
+
+        assert!(float_box.is_float);
+        assert_eq!(float_box.layout.content.x, 0.0);
+        assert_eq!(float_box.layout.content.y, 0.0);
+        // floatはフローに参加しないため、後続のブロックはfloatの高さ(50px)を
+        // 無視してcontaining blockの先頭からすぐ配置される([0019]決定5前提)。
+        assert_eq!(after_box.layout.content.y, 0.0);
+    }
+
+    #[test]
+    fn right_float_is_placed_against_the_containing_right_edge() {
+        let dom = html::parse(br#"<div class="outer"><div class="f">F</div></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } .f { float: right; width: 100px; height: 50px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let float_box = find_laid_out(&laid, divs[1]).expect("float box not found");
+
+        assert_eq!(float_box.layout.content.x, 700.0);
+        assert_eq!(float_box.layout.content.y, 0.0);
+    }
+
+    #[test]
+    fn second_left_float_packs_next_to_the_first_instead_of_stacking() {
+        let dom = html::parse(
+            br#"<div class="outer"><div class="a">A</div><div class="b">B</div></div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .a { float: left; width: 100px; height: 50px; } \
+             .b { float: left; width: 100px; height: 30px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let a_box = find_laid_out(&laid, divs[1]).expect("a not found");
+        let b_box = find_laid_out(&laid, divs[2]).expect("b not found");
+
+        assert_eq!(a_box.layout.content.x, 0.0);
+        assert_eq!(b_box.layout.content.x, 100.0);
+        assert_eq!(b_box.layout.content.y, 0.0);
+    }
+
+    #[test]
+    fn clear_pushes_the_element_below_the_float() {
+        let dom = html::parse(
+            br#"<div class="outer"><div class="f">F</div><div class="c">after</div></div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .f { float: left; width: 100px; height: 50px; } \
+             .c { clear: left; height: 20px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let cleared_box = find_laid_out(&laid, divs[2]).expect("cleared box not found");
+
+        assert_eq!(cleared_box.layout.content.y, 50.0);
+    }
+
+    #[test]
+    fn float_does_not_participate_in_adjacent_margin_collapsing() {
+        let dom = html::parse(
+            br#"<div class="outer">
+                <div class="a">a</div><div class="f">F</div><div class="b">b</div>
+                </div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .a { height: 10px; margin: 0 0 20px 0; } \
+             .f { float: left; width: 30px; height: 5px; } \
+             .b { height: 10px; margin: 30px 0 0 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let a_box = find_laid_out(&laid, divs[1]).expect("a not found");
+        let b_box = find_laid_out(&laid, divs[3]).expect("b not found");
+
+        assert_eq!(a_box.layout.content.y, 0.0);
+        // aとbの間にfloatを挟んでいても、直前の非float子(a)とのマージン相殺が
+        // そのまま働く: max(20, 30) = 30。floatをマージン相殺の対象に含めて
+        // しまうと(floatはmarginを持たないため0とみなされ)この値がずれる。
+        assert_eq!(b_box.layout.content.y, 40.0);
+    }
+
+    #[test]
+    fn container_auto_height_expands_to_include_a_taller_float_child() {
+        let dom = html::parse(br#"<div class="outer"><div class="f">F</div></div>"#);
+        let ua = user_agent_stylesheet();
+        let author =
+            parse_stylesheet("body { margin: 0; } .f { float: left; width: 50px; height: 200px; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let outer_box = find_laid_out(&laid, divs[0]).expect("outer not found");
+
+        assert_eq!(outer_box.layout.content.height, 200.0);
+    }
+
+    #[test]
+    fn position_relative_offsets_visual_position_without_affecting_siblings() {
+        let dom = html::parse(
+            br#"<div class="outer">
+                <div class="a">a</div><div class="rel">b</div><div class="c">c</div>
+                </div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .a { height: 10px; } \
+             .rel { position: relative; top: 5px; left: 7px; height: 20px; } \
+             .c { height: 10px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let rel_box = find_laid_out(&laid, divs[2]).expect("rel not found");
+        let c_box = find_laid_out(&laid, divs[3]).expect("c not found");
+
+        // 通常位置はx=0, y=10(aの下)だが、top:5px/left:7pxのオフセットが加わる。
+        assert_eq!(rel_box.layout.content.x, 7.0);
+        assert_eq!(rel_box.layout.content.y, 15.0);
+        // cはrel要素本来の(オフセット前の)下端(10+20=30)を基準に配置され、
+        // 視覚的オフセットの影響を受けない([0019]決定6)。
+        assert_eq!(c_box.layout.content.y, 30.0);
     }
 
     #[test]

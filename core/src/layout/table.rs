@@ -25,6 +25,7 @@ use super::block::{
     box_style, layout_box_with_forced_width, resolve_border, resolve_padding, LaidOutTableRow,
 };
 use super::box_tree::{BoxContent, TableBox, TableCell};
+use super::float_ctx::FloatContext;
 use super::inline::layout_inline_content;
 
 /// 折り返し計算を無効化するために使う、実質無限大とみなせる幅。
@@ -78,12 +79,17 @@ pub(super) fn layout_table(
                 - cell_border.right)
                 .max(0.0);
 
+            // `display: table`のセルは新しいBlock Formatting Contextを確立する
+            // (CSS2.1 9.4.1)ため、外側のfloatとは独立した空のコンテキストを渡す
+            // ([0019](../../../docs/decisions/0019-float-clear-position-relative-design.md)決定1)。
+            let mut cell_float_ctx = FloatContext::new();
             let laid_cell = layout_box_with_forced_width(
                 &cell.content,
                 styles,
                 fonts,
                 outer_width,
                 content_width,
+                &mut cell_float_ctx,
                 cell_x,
                 cursor_y,
             );
@@ -193,7 +199,8 @@ fn measure_natural_content_width(
 ) -> f32 {
     match content {
         BoxContent::Inline(spans) => {
-            let lines = layout_inline_content(spans, styles, fonts, UNCONSTRAINED_WIDTH, 0.0, 0.0);
+            let lines =
+                layout_inline_content(spans, styles, fonts, UNCONSTRAINED_WIDTH, 0.0, 0.0, None);
             lines.iter().map(|l| l.rect.width).fold(0.0f32, f32::max)
         }
         BoxContent::Blocks(children) => children

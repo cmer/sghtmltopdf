@@ -1,0 +1,335 @@
+//! `float`/`clear`/`position:relative`のE2Eテスト(M8 Phase 1)。
+//!
+//! `fragmentation.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
+//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。テキスト
+//! 回り込み・複数float配置・改ページ跨ぎといった座標の詳細な検証は
+//! `layout_document`(ページ分割前)の結果に対して行い、PDFエンコードまでの
+//! パイプライン全体がクラッシュせず妥当な出力になることは`build_pdf`で
+//! 別途確認する。詳細設計は
+//! [0019](../../docs/decisions/0019-float-clear-position-relative-design.md)参照。
+
+use std::collections::HashMap;
+
+use sghtmltopdf_core::fonts::{Font, FontCollection};
+use sghtmltopdf_core::html::{self, Dom, NodeData, NodeId};
+use sghtmltopdf_core::layout::{
+    build_box_tree, layout_document, paginate_document, LaidOutBox, LaidOutContent, PageSettings,
+};
+use sghtmltopdf_core::pdf::encode_pdf;
+use sghtmltopdf_core::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
+
+const FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+
+fn test_fonts() -> FontCollection {
+    FontCollection::new(vec![
+        Font::load(FONT_PATH).expect("should load bundled test font")
+    ])
+}
+
+fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
+    haystack
+        .windows(needle.len())
+        .filter(|w| *w == needle)
+        .count()
+}
+
+fn page_count_in_pdf(bytes: &[u8]) -> usize {
+    count_occurrences(bytes, b"/MediaBox")
+}
+
+/// HTML+CSSから、実際のパイプライン(パース→カスケード→ページ分割→PDF
+/// エンコード)を一通り実行する(`fragmentation.rs::build_pdf`と同じ)。
+fn build_pdf(html_src: &str, css: &str) -> (usize, Vec<u8>) {
+    let dom = html::parse(html_src.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = parse_stylesheet(css);
+    let styles = compute_styles(&dom, &ua, &author);
+    let fonts = test_fonts();
+    let settings = PageSettings::default();
+
+    let pages = paginate_document(&dom, &styles, &fonts, &settings);
+    let engine_page_count = pages.len();
+    let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(count_occurrences(&bytes, b"%%EOF") > 0);
+    assert_eq!(
+        page_count_in_pdf(&bytes),
+        engine_page_count,
+        "PDF page count should match the layout engine's own page count"
+    );
+
+    (engine_page_count, bytes)
+}
+
+fn find_tag(dom: &Dom, id: NodeId, tag: &str) -> Option<NodeId> {
+    if let NodeData::Element { name, .. } = &dom.node(id).data {
+        if &*name.local == tag {
+            return Some(id);
+        }
+    }
+    dom.children(id).find_map(|child| find_tag(dom, child, tag))
+}
+
+fn find_all_tags(dom: &Dom, id: NodeId, tag: &str, out: &mut Vec<NodeId>) {
+    if let NodeData::Element { name, .. } = &dom.node(id).data {
+        if &*name.local == tag {
+            out.push(id);
+        }
+    }
+    for child in dom.children(id) {
+        find_all_tags(dom, child, tag, out);
+    }
+}
+
+fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
+    if b.node == Some(target) {
+        return Some(b);
+    }
+    if let LaidOutContent::Blocks(children) = &b.content {
+        for child in children {
+            if let Some(found) = find_laid_out(child, target) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+fn box_contains_node(b: &LaidOutBox, target: NodeId) -> bool {
+    if b.node == Some(target) {
+        return true;
+    }
+    if let LaidOutContent::Blocks(children) = &b.content {
+        return children
+            .iter()
+            .any(|child| box_contains_node(child, target));
+    }
+    false
+}
+
+/// `layout_document`まで(ページ分割前)を実行する共通ヘルパー。
+fn layout(html_src: &str, css: &str) -> (Dom, LaidOutBox) {
+    let dom = html::parse(html_src.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = parse_stylesheet(css);
+    let styles = compute_styles(&dom, &ua, &author);
+    let fonts = test_fonts();
+    let tree = build_box_tree(&dom, &styles);
+    let laid = layout_document(
+        &tree,
+        &styles,
+        &fonts,
+        PageSettings::default().content_width(),
+    );
+    (dom, laid)
+}
+
+#[test]
+fn left_float_with_text_wrap_narrows_the_first_line_and_renders_a_valid_pdf() {
+    let html_src = r#"<div><div class="f"></div>
+        <p class="text">hello world foo bar baz qux quux corge grault garply</p></div>"#;
+    let css = "body { margin: 0; } \
+               .f { float: left; width: 100px; height: 15px; } \
+               .text { margin: 0; width: 300px; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let p = find_tag(&dom, dom.document(), "p").expect("p not found");
+    let p_box = find_laid_out(&laid, p).expect("p box not found");
+    let LaidOutContent::Inline(lines) = &p_box.content else {
+        panic!("expected inline content");
+    };
+
+    assert!(
+        lines.len() >= 2,
+        "narrowing the first line beside the float should force wrapping"
+    );
+    assert_eq!(
+        lines[0].rect.x, 100.0,
+        "first line should be pushed to the right of the 100px-wide float"
+    );
+    // floatの高さ(15px、1行の高さ19.2pxより低い)を過ぎた行は元の左端
+    // (pのcontent.x)に戻るはず。
+    let below_float_line = lines
+        .iter()
+        .find(|l| l.rect.y >= 15.0)
+        .expect("expected at least one line below the float");
+    assert_eq!(below_float_line.rect.x, p_box.layout.content.x);
+
+    // pのボックス自体(ブロックレベル)はfloatの回り込み対象ではない
+    // (CSS2.1: floatが影響するのはinlineコンテンツのみ)。
+    assert_eq!(p_box.layout.content.x, 0.0);
+
+    let (page_count, _) = build_pdf(html_src, css);
+    assert_eq!(page_count, 1);
+}
+
+#[test]
+fn right_float_with_text_wrap_narrows_the_first_line() {
+    // floatとテキストを同じcontaining width(親divのwidth:300px)基準にする。
+    // `.text`側だけにwidthを指定すると、floatは親divのcontent_width
+    // (ページ全体の幅)基準で配置されてしまい、`.text`のより狭いwidthの
+    // 範囲外にfloatが来てしまう(right floatの内側エッジは配置先の
+    // containing widthに依存するため、leftの0固定とは違いこの非対称が起きる)。
+    let html_src = r#"<div class="outer"><div class="f"></div>
+        <p class="text">hello world foo bar baz qux quux corge grault garply</p></div>"#;
+    let css = "body { margin: 0; } \
+               .outer { width: 300px; } \
+               .f { float: right; width: 250px; height: 15px; } \
+               .text { margin: 0; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let p = find_tag(&dom, dom.document(), "p").expect("p not found");
+    let p_box = find_laid_out(&laid, p).expect("p box not found");
+    let LaidOutContent::Inline(lines) = &p_box.content else {
+        panic!("expected inline content");
+    };
+
+    assert!(lines.len() >= 2);
+    assert_eq!(lines[0].rect.x, 0.0, "first line starts at the left edge");
+    assert!(
+        lines[0].rect.width <= 50.0 + 0.01,
+        "first line should be narrowed to fit beside the 250px right float \
+         (containing width 300 - 250 = 50), got {}",
+        lines[0].rect.width
+    );
+}
+
+#[test]
+fn two_left_floats_pack_side_by_side_and_text_flows_around_both() {
+    let html_src = r#"<div><div class="a"></div><div class="b"></div>
+        <p class="text">hello world foo bar baz qux quux</p></div>"#;
+    let css = "body { margin: 0; } \
+               .a { float: left; width: 100px; height: 30px; } \
+               .b { float: left; width: 80px; height: 30px; } \
+               .text { margin: 0; width: 300px; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let p = find_tag(&dom, dom.document(), "p").expect("p not found");
+    let p_box = find_laid_out(&laid, p).expect("p box not found");
+
+    let a = find_tag(&dom, dom.document(), "div").expect("div not found");
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let a_box = find_laid_out(&laid, divs[1]).expect("a not found");
+    let b_box = find_laid_out(&laid, divs[2]).expect("b not found");
+    let _ = a;
+
+    // 2つの左floatは横に並ぶはず(a: 0-100, b: 100-180)。
+    assert_eq!(a_box.layout.content.x, 0.0);
+    assert_eq!(b_box.layout.content.x, 100.0);
+
+    let LaidOutContent::Inline(lines) = &p_box.content else {
+        panic!("expected inline content");
+    };
+    assert_eq!(
+        lines[0].rect.x, 180.0,
+        "first line should start after both floats (0 + 100 + 80)"
+    );
+}
+
+#[test]
+fn clear_pushes_content_below_the_float_end_to_end() {
+    let html_src = r#"<div><div class="f"></div><p class="c">after</p></div>"#;
+    let css = "body { margin: 0; } \
+               .f { float: left; width: 100px; height: 50px; } \
+               .c { clear: left; height: 20px; margin: 0; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let p = find_tag(&dom, dom.document(), "p").expect("p not found");
+    let p_box = find_laid_out(&laid, p).expect("p box not found");
+
+    assert_eq!(p_box.layout.content.y, 50.0);
+
+    let (page_count, _) = build_pdf(html_src, css);
+    assert_eq!(page_count, 1);
+}
+
+#[test]
+fn float_taller_than_a_page_spans_multiple_pages_end_to_end() {
+    let mut inner = String::new();
+    for i in 0..20 {
+        inner.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+    }
+    let html_src = format!(r#"<div><div class="f">{inner}</div></div>"#);
+    let css = "body { margin: 0; } \
+               .f { float: left; width: 100px; } \
+               .item { height: 100px; margin: 0; }";
+
+    let (page_count, bytes) = build_pdf(&html_src, css);
+    assert!(
+        page_count > 1,
+        "a float containing 20 items of 100px should overflow a single page \
+         ([0019]決定5: floatのページ跨ぎを許容する)"
+    );
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn position_relative_offset_does_not_shift_subsequent_siblings_end_to_end() {
+    let html_src =
+        r#"<div><div class="a">a</div><div class="rel">b</div><div class="c">c</div></div>"#;
+    let css = "body { margin: 0; } \
+               .a { height: 10px; margin: 0; } \
+               .rel { position: relative; top: 5px; left: 7px; height: 20px; margin: 0; } \
+               .c { height: 10px; margin: 0; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let rel_box = find_laid_out(&laid, divs[2]).expect("rel not found");
+    let c_box = find_laid_out(&laid, divs[3]).expect("c not found");
+
+    assert_eq!(rel_box.layout.content.x, 7.0);
+    assert_eq!(rel_box.layout.content.y, 15.0);
+    // cはrel要素の(オフセット前の)通常の下端(10+20=30)を基準に配置される。
+    assert_eq!(c_box.layout.content.y, 30.0);
+
+    let (page_count, bytes) = build_pdf(html_src, css);
+    assert_eq!(page_count, 1);
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn float_none_regression_keeps_ordinary_block_flow_unaffected() {
+    let html_src = r#"<div><p class="a">A</p><p class="b">B</p></div>"#;
+    let css = ".a, .b { height: 50px; margin: 0; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let mut ps = Vec::new();
+    find_all_tags(&dom, dom.document(), "p", &mut ps);
+    let a = find_laid_out(&laid, ps[0]).expect("a not found");
+    let b = find_laid_out(&laid, ps[1]).expect("b not found");
+
+    assert!(!a.is_float);
+    assert!(!b.is_float);
+    assert_eq!(
+        b.layout.content.y,
+        a.layout.content.y + a.layout.content.height
+    );
+
+    let (page_count, _) = build_pdf(html_src, css);
+    assert_eq!(page_count, 1);
+}
+
+#[test]
+fn float_content_is_reachable_on_the_page_it_spans() {
+    // 折り返しではなくページ分割後の到達性(`box_contains_node`)を、
+    // `fragmentation.rs`と同じ方式で確認する。
+    let html_src = r#"<div><div class="f"><p class="item">inside float</p></div></div>"#;
+    let css = "body { margin: 0; } .f { float: left; width: 100px; height: 30px; }";
+
+    let dom = html::parse(html_src.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = parse_stylesheet(css);
+    let styles = compute_styles(&dom, &ua, &author);
+    let fonts = test_fonts();
+    let settings = PageSettings::default();
+    let pages = paginate_document(&dom, &styles, &fonts, &settings);
+
+    let item = find_tag(&dom, dom.document(), "p").expect("p not found");
+    let found = pages
+        .iter()
+        .any(|page| page.boxes.iter().any(|b| box_contains_node(b, item)));
+    assert!(found, "content inside a float should still be reachable");
+}

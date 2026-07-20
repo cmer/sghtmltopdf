@@ -21,6 +21,7 @@ use crate::html::NodeId;
 use crate::style::{ComputedStyle, FontStyle, FontWeight, RgbaColor};
 
 use super::box_tree::InlineSpan;
+use super::float_ctx::FloatContext;
 use super::geometry::Rect;
 
 /// 同一スタイル・同一フォントで連続する区間(1単語の一部、または1単語全体)。
@@ -60,13 +61,21 @@ struct StyledChar {
 /// `(origin_x, origin_y)`を起点に縦に積んだ行ボックス列を返す。単語の途中で
 /// スタイル(`<b>`等)やフォント(CSSの`font-family`フォールバック)が切り替わる
 /// 場合は、その単語を複数の[`TextRun`]に分けてシェイピングする。
-pub fn layout_inline_content(
+///
+/// `float_ctx`が`Some`の場合、各行の開始時点でその行のY位置における
+/// float占有帯を問い合わせ、`available_width`/`origin_x`を動的に狭める
+/// (float周りのテキスト回り込み、[0019](
+/// ../../../docs/decisions/0019-float-clear-position-relative-design.md)参照)。
+/// `None`(floatが無い、またはテーブル列幅の事前測定など無関係な呼び出し)なら
+/// 固定の`available_width`/`origin_x`のまま(既存動作)。
+pub(crate) fn layout_inline_content(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
     available_width: f32,
     origin_x: f32,
     origin_y: f32,
+    float_ctx: Option<&FloatContext>,
 ) -> Vec<LineBox> {
     if fonts.is_empty() || spans.is_empty() {
         return Vec::new();
@@ -82,6 +91,8 @@ pub fn layout_inline_content(
     let mut current_runs: Vec<TextRun> = Vec::new();
     let mut current_width = 0.0f32;
     let mut cursor_y = origin_y;
+    let mut line_left = origin_x;
+    let mut line_available_width = available_width;
 
     for word in words {
         let word_runs = split_word_into_runs(word, &span_styles, fonts);
@@ -92,6 +103,17 @@ pub fn layout_inline_content(
         for (chunk_index, chunk) in group_into_chunks(word_runs).into_iter().enumerate() {
             let chunk_width: f32 = chunk.iter().map(|r| r.width).sum();
             let is_first_chunk_of_word = chunk_index == 0;
+            let starting_new_line = current_runs.is_empty();
+
+            if starting_new_line {
+                // 新しい行の先頭: floatに応じた帯を、このchunkのフォントサイズ
+                // から近似した行高さ(`line_height_for`と同じ*1.2)で問い合わせる
+                // (既知の簡略化: 行内でフォントサイズが極端に混在する場合は
+                // 帯判定がわずかに不正確になり得るが、帳票用途では稀)。
+                let hint = line_height_hint_for_chunk(&chunk);
+                (line_left, line_available_width) =
+                    line_band(float_ctx, cursor_y, hint, origin_x, available_width);
+            }
 
             // 単語の先頭のchunkにのみ、直前のランとの間に単語間スペースを
             // 挟む。単語内のCJK境界で分かれた後続chunkは隙間0で直接続ける。
@@ -104,19 +126,23 @@ pub fn layout_inline_content(
                 0.0
             };
 
-            if !current_runs.is_empty() && current_width + gap_width + chunk_width > available_width
+            if !starting_new_line && current_width + gap_width + chunk_width > line_available_width
             {
                 let line_height = line_height_for(&current_runs);
                 lines.push(finish_line(
                     std::mem::take(&mut current_runs),
                     current_width,
-                    origin_x,
+                    line_left,
                     cursor_y,
                     line_height,
                 ));
                 cursor_y += line_height;
                 current_width = 0.0;
-            } else if !current_runs.is_empty() {
+
+                let hint = line_height_hint_for_chunk(&chunk);
+                (line_left, line_available_width) =
+                    line_band(float_ctx, cursor_y, hint, origin_x, available_width);
+            } else if !starting_new_line {
                 current_width += gap_width;
             }
 
@@ -133,13 +159,35 @@ pub fn layout_inline_content(
         lines.push(finish_line(
             current_runs,
             current_width,
-            origin_x,
+            line_left,
             cursor_y,
             line_height,
         ));
     }
 
     lines
+}
+
+/// `chunk`最初のランのフォントサイズから、`line_height_for`と同じ係数(*1.2)で
+/// 行高さを近似する(帯を問い合わせる時点ではまだ行全体のランが確定していない
+/// ため)。
+fn line_height_hint_for_chunk(chunk: &[TextRun]) -> f32 {
+    chunk.first().map(|r| r.font_size * 1.2).unwrap_or(0.0)
+}
+
+/// `float_ctx`があれば`y`〜`y+height`の帯を問い合わせ、無ければ固定の
+/// `(origin_x, available_width)`を返す。
+fn line_band(
+    float_ctx: Option<&FloatContext>,
+    y: f32,
+    height: f32,
+    origin_x: f32,
+    available_width: f32,
+) -> (f32, f32) {
+    match float_ctx {
+        Some(ctx) => ctx.available_band(y, height, origin_x, origin_x + available_width),
+        None => (origin_x, available_width),
+    }
 }
 
 /// `spans`を1文字単位に展開し、各文字が元のどの[`ComputedStyle`]に属するかの
@@ -406,24 +454,24 @@ mod tests {
     fn empty_or_whitespace_only_text_produces_no_lines() {
         let (_, spans, styles) = spans_for("", "");
         let fonts = dejavu_only();
-        assert!(layout_inline_content(&spans, &styles, &fonts, 200.0, 0.0, 0.0).is_empty());
+        assert!(layout_inline_content(&spans, &styles, &fonts, 200.0, 0.0, 0.0, None).is_empty());
 
         let (_, spans, styles) = spans_for("   \n\t  ", "");
-        assert!(layout_inline_content(&spans, &styles, &fonts, 200.0, 0.0, 0.0).is_empty());
+        assert!(layout_inline_content(&spans, &styles, &fonts, 200.0, 0.0, 0.0, None).is_empty());
     }
 
     #[test]
     fn empty_font_collection_produces_no_lines() {
         let (_, spans, styles) = spans_for("hello", "");
         let fonts = FontCollection::new(vec![]);
-        assert!(layout_inline_content(&spans, &styles, &fonts, 200.0, 0.0, 0.0).is_empty());
+        assert!(layout_inline_content(&spans, &styles, &fonts, 200.0, 0.0, 0.0, None).is_empty());
     }
 
     #[test]
     fn text_that_fits_stays_on_a_single_line() {
         let (_, spans, styles) = spans_for("hello world", "");
         let fonts = dejavu_only();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 10.0, 20.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 10.0, 20.0, None);
 
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].rect.x, 10.0);
@@ -443,10 +491,10 @@ mod tests {
         let fonts = dejavu_only();
 
         let (_, spans, styles) = spans_for("hello world foo bar", "");
-        let one_line = layout_inline_content(&spans, &styles, &fonts, 1000.0, 0.0, 0.0);
+        let one_line = layout_inline_content(&spans, &styles, &fonts, 1000.0, 0.0, 0.0, None);
         assert_eq!(one_line.len(), 1);
 
-        let wrapped = layout_inline_content(&spans, &styles, &fonts, 60.0, 0.0, 0.0);
+        let wrapped = layout_inline_content(&spans, &styles, &fonts, 60.0, 0.0, 0.0, None);
         assert!(wrapped.len() > 1);
 
         let line_height = ComputedStyle::default().font_size.0 * 1.2;
@@ -454,10 +502,69 @@ mod tests {
     }
 
     #[test]
+    fn float_narrows_the_band_for_lines_overlapping_it() {
+        use crate::style::Float;
+
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for("hello world foo bar", "");
+
+        // 左に400px幅・十分な高さのfloatを置き、全ての行がその右側
+        // (x=400以降、幅100)に押し込まれることを確認する。
+        let mut ctx = FloatContext::new();
+        ctx.register(Float::Left, 0.0, 0.0, 400.0, 1000.0);
+
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, Some(&ctx));
+        assert!(!lines.is_empty());
+        for line in &lines {
+            assert_eq!(line.rect.x, 400.0);
+            assert!(
+                line.rect.width <= 100.0,
+                "line width {} should not exceed the 100px band beside the float",
+                line.rect.width
+            );
+        }
+    }
+
+    #[test]
+    fn line_widens_back_after_passing_the_bottom_of_the_float() {
+        use crate::style::Float;
+
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for("hello world foo bar baz", "");
+        let line_height = ComputedStyle::default().font_size.0 * 1.2;
+
+        // floatの高さは1行分だけ: 1行目はfloatの右に押し込まれ、2行目以降は
+        // floatの下に出るため元の幅・左端に戻るはず。
+        let mut ctx = FloatContext::new();
+        ctx.register(Float::Left, 0.0, 0.0, 400.0, line_height);
+
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, Some(&ctx));
+        assert!(lines.len() >= 2, "expected wrapping to at least 2 lines");
+        assert_eq!(lines[0].rect.x, 400.0);
+        assert_eq!(
+            lines[1].rect.x, 0.0,
+            "second line should return to the full width once below the float"
+        );
+    }
+
+    #[test]
+    fn no_float_context_behaves_like_the_unconstrained_case() {
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for("hello world", "");
+
+        let with_none = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let empty_ctx = FloatContext::new();
+        let with_empty_ctx =
+            layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, Some(&empty_ctx));
+
+        assert_eq!(with_none, with_empty_ctx);
+    }
+
+    #[test]
     fn overlong_single_word_is_not_split_and_still_placed() {
         let (_, spans, styles) = spans_for("supercalifragilisticexpialidocious", "");
         let fonts = dejavu_only();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 10.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 10.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         assert!(
@@ -470,7 +577,7 @@ mod tests {
     fn collapses_runs_of_whitespace_between_words() {
         let (_, spans, styles) = spans_for("a    b\n\tc", "");
         let fonts = dejavu_only();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         // 3単語、それぞれ1ランク。
@@ -485,7 +592,7 @@ mod tests {
         let (_, spans, styles) = spans_for("café日本語", "");
         let fonts = dejavu_and_cjk();
 
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].runs.len(), 4, "café / 日 / 本 / 語 の4ラン");
@@ -514,7 +621,7 @@ mod tests {
         let (_, spans, styles) = spans_for("Invoice 請求書", "");
         let fonts = dejavu_and_cjk();
 
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         // "Invoice"は1ラン、"請求書"はCJKなので1文字ずつ3ランに分かれる。
@@ -533,7 +640,7 @@ mod tests {
         let (_, spans, styles) = spans_for("日本語のテスト文章です", "");
         let fonts = dejavu_and_cjk();
 
-        let narrow = layout_inline_content(&spans, &styles, &fonts, 60.0, 0.0, 0.0);
+        let narrow = layout_inline_content(&spans, &styles, &fonts, 60.0, 0.0, 0.0, None);
         assert!(
             narrow.len() > 1,
             "a narrow line width should force wrapping within the CJK sequence"
@@ -545,7 +652,7 @@ mod tests {
             );
         }
 
-        let wide = layout_inline_content(&spans, &styles, &fonts, 2000.0, 0.0, 0.0);
+        let wide = layout_inline_content(&spans, &styles, &fonts, 2000.0, 0.0, 0.0, None);
         assert_eq!(
             wide.len(),
             1,
@@ -563,10 +670,11 @@ mod tests {
         let fonts = dejavu_and_cjk();
 
         // "café"の幅ぎりぎりの行幅にすると、続く日本語部分は収まらないはず。
-        let single_line = layout_inline_content(&spans, &styles, &fonts, 10000.0, 0.0, 0.0);
+        let single_line = layout_inline_content(&spans, &styles, &fonts, 10000.0, 0.0, 0.0, None);
         let cafe_width = single_line[0].runs[0].width;
 
-        let lines = layout_inline_content(&spans, &styles, &fonts, cafe_width + 1.0, 0.0, 0.0);
+        let lines =
+            layout_inline_content(&spans, &styles, &fonts, cafe_width + 1.0, 0.0, 0.0, None);
         assert!(
             lines.len() > 1,
             "should wrap at the café/日 boundary instead of overflowing as one unbreakable word"
@@ -580,7 +688,7 @@ mod tests {
         // "bo"は通常、"ld"は<b>(太字)というスタイル境界が単語の途中にある。
         let (_, spans, styles) = spans_for("bo<b>ld</b>", "");
         let fonts = dejavu_only();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].runs.len(), 2, "should split at the <b> boundary");
@@ -599,7 +707,7 @@ mod tests {
         // 落ちてしまい本来テストしたい分岐を通らないため、明示的に指定する)。
         let (_, spans, styles) = spans_for("bo<b>ld</b>", "p { font-family: 'DejaVu Sans'; }");
         let fonts = dejavu_regular_and_bold();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].runs.len(), 2);
@@ -628,7 +736,7 @@ mod tests {
         // 選ばれてしまっていた)。
         let (_, spans, styles) = spans_for("bo<b>ld</b>", "");
         let fonts = dejavu_regular_and_bold();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].runs.len(), 2);
@@ -647,7 +755,7 @@ mod tests {
             "",
         );
         let fonts = dejavu_only();
-        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0);
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
         let plain_run = lines[0]

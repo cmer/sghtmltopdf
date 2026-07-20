@@ -407,6 +407,8 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
                         child.fragmentation.break_after == BreakBetween::Always,
                     )
                 },
+                |child: &LaidOutBox| child.is_float,
+                margin_box_top,
                 |child, ph, ps, c| {
                     place_box(child, ph, ps, c);
                 },
@@ -433,6 +435,9 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
                 // 行(line box)は`break-after`を持たない(次に置く場所は常に
                 // 直後の行であり、コンテナを跨ぐ兄弟関係が無いため)。
                 move |i, _line| (forced_breaks[i], false),
+                // 行にfloatの概念は無い。
+                |_line: &LineBox| false,
+                |_line: &LineBox| 0.0,
                 |line, ph, ps, c| {
                     place_line(line, ph, ps, c);
                 },
@@ -455,6 +460,12 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
 /// (どちらも「このページの残り高さ」の起点を揃える必要がある)の双方で使う。
 fn container_top_extra(b: &LaidOutBox) -> f32 {
     b.layout.margin.top + b.layout.border.top + b.layout.padding.top
+}
+
+/// `b`のmargin boxの上端の絶対Y座標(`content.y`からmargin/border/padding分を
+/// 引いたもの)。`place_leaf`/`extent_of`/`place_split`のfloat分岐が共通して使う。
+fn margin_box_top(b: &LaidOutBox) -> f32 {
+    b.layout.content.y - b.layout.padding.top - b.layout.border.top - b.layout.margin.top
 }
 
 /// `b`の部分木内(ブロックの子孫のみ、インライン行・テーブル内部は対象外)に、
@@ -580,6 +591,15 @@ fn compute_orphans_widows_breaks(
 /// 必要か, 直後に強制改ページが必要か)`を返すコールバック(行には
 /// `break-before`/`break-after`の概念がないため、呼び出し元は`orphans`/`widows`
 /// から事前計算した配列をインデックスで引くコールバックを渡す)。
+///
+/// `is_float`/`item_margin_box_top`は、`items`のうちフロー外の要素(`float`)を
+/// 判定するためのコールバック(`LineBox`側は常に`false`/`0.0`のダミー実装を渡す。
+/// 行にfloatの概念は無い)。float項目は共有`cursor`を変更せず、
+/// `shift_reference`(絶対Y→ページ内相対Yの変換係数)でシードした一時カーソルを
+/// 使って`place_one`へ再帰させる([0019](
+/// ../../../docs/decisions/0019-float-clear-position-relative-design.md)決定5、
+/// `place_leaf`/`place_line`/`new_page`はこの分岐のために一切変更しない)。
+#[allow(clippy::too_many_arguments)]
 fn place_split<T>(
     b: &LaidOutBox,
     items: &[T],
@@ -587,6 +607,8 @@ fn place_split<T>(
     state: &mut PaginationState<'_>,
     cursor: &mut f32,
     break_hints: impl Fn(usize, &T) -> (bool, bool),
+    is_float: impl Fn(&T) -> bool,
+    item_margin_box_top: impl Fn(&T) -> f32,
     place_one: impl Fn(&T, f32, &mut PaginationState<'_>, &mut f32),
 ) {
     let top_extra = container_top_extra(b);
@@ -596,6 +618,13 @@ fn place_split<T>(
     // スペースを確保する(この余白がページの残りを超える極端なケースの調整は
     // 行わない: M1の機械的改ページの簡略化の範囲内)。
     *cursor += top_extra;
+
+    // 絶対Y座標(`b.layout.content.y`)→ページ内相対Y座標(`*cursor`)への
+    // 変換係数。コンテナの最初の子(通常フロー)の絶対Y位置は、コンテナ自身の
+    // content領域の絶対Y位置(`b.layout.content.y`)に一致するため、これを
+    // 初期値として使える。非float項目を配置するたびに更新する(改ページで
+    // `*cursor`がリセットされても追従できるようにするため)。
+    let mut shift_reference = b.layout.content.y - *cursor;
 
     // `b`が実際に背景色・枠線を描画しないなら、そもそも装飾フラグメントを
     // 生成する必要がない。この場合`segments`の追跡自体が不要で、
@@ -651,20 +680,35 @@ fn place_split<T>(
             force_new_page(state, cursor, &mut current_page, &mut segments);
         }
 
-        place_one(item, page_height, state, cursor);
-        let now_page = state.current_index();
-        if now_page != current_page {
-            // 新しいページへ進んだ。今回作られたページは、この`b`の内容以外が
-            // 割り込む余地がないため、先頭(index 0)から始まる。
-            if needs_decoration {
-                for p in (current_page + 1)..=now_page {
-                    segments.push(Segment {
-                        page_index: p,
-                        start_index: 0,
-                    });
+        if is_float(item) {
+            // floatはフローに参加しないため共有`cursor`を変更しない。
+            // `shift_reference`でシードした一時カーソルを使うことで、
+            // `place_one`(=`place_box`)内部の`shift = margin_box_top -
+            // *cursor`計算が周囲の通常フローと同じ平行移動になり、
+            // 正しいページ内相対位置に配置される。floatの配置自体が改ページを
+            // 誘発した場合、以降の通常フローにも影響し得るのは既知の限界
+            // ([0019]決定5)。
+            let mut local_cursor = item_margin_box_top(item) - shift_reference;
+            place_one(item, page_height, state, &mut local_cursor);
+        } else {
+            let cursor_before_item = *cursor;
+            place_one(item, page_height, state, cursor);
+            shift_reference = item_margin_box_top(item) - cursor_before_item;
+
+            let now_page = state.current_index();
+            if now_page != current_page {
+                // 新しいページへ進んだ。今回作られたページは、この`b`の内容以外が
+                // 割り込む余地がないため、先頭(index 0)から始まる。
+                if needs_decoration {
+                    for p in (current_page + 1)..=now_page {
+                        segments.push(Segment {
+                            page_index: p,
+                            start_index: 0,
+                        });
+                    }
                 }
+                current_page = now_page;
             }
-            current_page = now_page;
         }
 
         // 次に置く要素がある場合のみ改ページする(末尾の要素の後ろに
@@ -708,6 +752,10 @@ fn place_split<T>(
                 // ボックス自体は`Blocks(Vec::new())`で子を持たず、再度
                 // `place_split`に渡されることもない。
                 has_visible_decoration: true,
+                // 装飾フラグメント自体はfloatではない(`b`自身がfloatでも、この
+                // 断片は通常フローの一部として`place_split`の残りのループに
+                // 混在するため`false`にしておく必要がある)。
+                is_float: false,
                 content: LaidOutContent::Blocks(Vec::new()),
             };
             (seg.page_index, seg.start_index, decoration)
@@ -732,8 +780,7 @@ fn extent_of(boxes: &[LaidOutBox]) -> (f32, f32) {
     let mut top = f32::INFINITY;
     let mut bottom = f32::NEG_INFINITY;
     for b in boxes {
-        let box_top =
-            b.layout.content.y - b.layout.padding.top - b.layout.border.top - b.layout.margin.top;
+        let box_top = margin_box_top(b);
         let box_bottom = box_top + b.layout.margin_box_height();
         top = top.min(box_top);
         bottom = bottom.max(box_bottom);
@@ -815,6 +862,8 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
         // (orphans/widowsの判断は呼び出し元(`place_split`)が行数単位で行う)。
         fragmentation: FragmentationHints::default(),
         has_visible_decoration: false,
+        // 行(line box)にfloatの概念はない。
+        is_float: false,
         content: LaidOutContent::Inline(vec![translated]),
     };
     *cursor += line.rect.height;
@@ -822,9 +871,7 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
 }
 
 fn place_leaf(b: &LaidOutBox, state: &mut PaginationState<'_>, cursor: &mut f32) {
-    let margin_box_top =
-        b.layout.content.y - b.layout.padding.top - b.layout.border.top - b.layout.margin.top;
-    let shift = margin_box_top - *cursor;
+    let shift = margin_box_top(b) - *cursor;
     let translated = shift_box_y(b, shift);
     let height = b.layout.margin_box_height();
 
@@ -931,8 +978,7 @@ mod tests {
     /// ページ内のボックスがページ高さの範囲内(多少の誤差を許容)に収まっているか
     /// を再帰的に確認する。
     fn assert_within_page(b: &LaidOutBox, page_height: f32) {
-        let top =
-            b.layout.content.y - b.layout.padding.top - b.layout.border.top - b.layout.margin.top;
+        let top = margin_box_top(b);
         assert!(top >= -0.01, "box top {top} should not be negative");
         assert!(
             top + b.layout.margin_box_height() <= page_height + 0.01,
@@ -1019,6 +1065,99 @@ mod tests {
                 assert_within_page(b, settings.content_height());
             }
         }
+    }
+
+    #[test]
+    fn float_taller_than_a_page_splits_across_pages_without_losing_items() {
+        let mut html_src = String::from(r#"<div><div class="f">"#);
+        for i in 0..20 {
+            html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
+        }
+        html_src.push_str("</div></div>");
+        let dom = html::parse(html_src.as_bytes());
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .f { float: left; width: 100px; } \
+             .item { height: 100px; margin: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert!(
+            pages.len() > 1,
+            "a float containing 20 items of 100px should overflow a single page \
+             ([0019]決定5: floatのページ跨ぎを許容する)"
+        );
+
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        assert_eq!(ps.len(), 20);
+        for &p_id in &ps {
+            let found_on_some_page = pages
+                .iter()
+                .any(|page| page.boxes.iter().any(|b| box_contains_node(b, p_id)));
+            assert!(
+                found_on_some_page,
+                "p {p_id:?} inside the float should be placed on some page"
+            );
+        }
+
+        for page in &pages {
+            for b in &page.boxes {
+                assert_within_page(b, settings.content_height());
+            }
+        }
+    }
+
+    #[test]
+    fn float_is_translated_to_page_relative_coordinates_consistently_with_siblings() {
+        let dom = html::parse(br#"<div><div class="a">a</div><div class="f">F</div></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .a { height: 50px; margin: 0; } \
+             .f { float: left; width: 30px; height: 20px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(pages.len(), 1);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+
+        fn find_box(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
+            if b.node == Some(target) {
+                return Some(b);
+            }
+            if let LaidOutContent::Blocks(children) = &b.content {
+                for child in children {
+                    if let Some(found) = find_box(child, target) {
+                        return Some(found);
+                    }
+                }
+            }
+            None
+        }
+
+        let float_box = pages[0]
+            .boxes
+            .iter()
+            .find_map(|b| find_box(b, divs[2]))
+            .expect("float box not found on the page");
+
+        // block.rs側でfloatは、直前の兄弟`a`(height:50px)が通常フローで
+        // 進めた`cursor_y`=50の地点(=`a`の直後)に配置される(floatはDOM順で
+        // 見つかった時点のcursor_yを起点にするため)。改ページが発生していない
+        // ため、この絶対Y座標がそのままページ内相対Y座標になるはず
+        // (shift_referenceが正しく機能していれば、floatの位置がずれない)。
+        assert_eq!(float_box.layout.content.y, 50.0);
     }
 
     #[test]

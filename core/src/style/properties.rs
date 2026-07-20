@@ -3,8 +3,9 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
-    BorderStyle, BreakBetween, BreakInside, Color, Display, FontStyle, FontWeight, SpecifiedLength,
-    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, TextDecorationLine,
+    BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
+    Position, SpecifiedLength, SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto,
+    TextDecorationLine,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,6 +57,17 @@ pub enum PropertyDeclaration {
     BreakInside(BreakInside),
     Orphans(u32),
     Widows(u32),
+    Float(Float),
+    Clear(Clear),
+    /// `absolute`/`fixed`は非対応
+    /// ([0018](../../../docs/decisions/0018-css21-css3-coverage-strategy.md))。
+    /// `parse_position`がこれらのキーワードをパースエラーとして拒否するため、
+    /// このバリアントは常に`Static`/`Relative`のいずれかを持つ。
+    Position(Position),
+    Top(SpecifiedLengthPercentageOrAuto),
+    Right(SpecifiedLengthPercentageOrAuto),
+    Bottom(SpecifiedLengthPercentageOrAuto),
+    Left(SpecifiedLengthPercentageOrAuto),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -101,6 +113,13 @@ pub fn parse_declaration<'i>(
         },
         "orphans" => Ok(vec![D::Orphans(parse_positive_integer(input)?)]),
         "widows" => Ok(vec![D::Widows(parse_positive_integer(input)?)]),
+        "float" => Ok(vec![D::Float(parse_float(input)?)]),
+        "clear" => Ok(vec![D::Clear(parse_clear(input)?)]),
+        "position" => Ok(vec![D::Position(parse_position(input)?)]),
+        "top" => Ok(vec![D::Top(parse_length_percentage_or_auto(input)?)]),
+        "right" => Ok(vec![D::Right(parse_length_percentage_or_auto(input)?)]),
+        "bottom" => Ok(vec![D::Bottom(parse_length_percentage_or_auto(input)?)]),
+        "left" => Ok(vec![D::Left(parse_length_percentage_or_auto(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -279,6 +298,39 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "table-row" => Display::TableRow,
         "table-cell" => Display::TableCell,
         "none" => Display::None,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_float<'i>(input: &mut Parser<'i, '_>) -> Result<Float, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "none" => Float::None,
+        "left" => Float::Left,
+        "right" => Float::Right,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_clear<'i>(input: &mut Parser<'i, '_>) -> Result<Clear, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "none" => Clear::None,
+        "left" => Clear::Left,
+        "right" => Clear::Right,
+        "both" => Clear::Both,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `position`。`absolute`/`fixed`は既知の未対応キーワードとしてパースエラーに
+/// する(`border-style`のgroove/ridge等と同じパターン。宣言ごと無視され、他の
+/// 宣言には影響しない)。
+fn parse_position<'i>(input: &mut Parser<'i, '_>) -> Result<Position, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "static" => Position::Static,
+        "relative" => Position::Relative,
         _ => return Err(input.new_custom_error(())),
     })
 }

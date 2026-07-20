@@ -24,7 +24,32 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 マイルストーン3(ストリーミング入出力対応)・マイルストーン4(Webfont対応)・
 マイルストーン5(画像埋め込み)・マイルストーン6(外部スタイルシート)・
 マイルストーン7(`@import`/`background-image`のurl()対応)
-ともに完了。
+ともに完了。マイルストーン8(CSS2.1対応)は、Positioning & Float
+(`float`/`clear`/`position: relative`)まで完了(Typography詳細・Table layout
+完全対応・Listsは未着手)。
+
+### `float`/`clear`/`position: relative`
+
+CSS2.1の`float`(left/right)・`clear`(left/right/both)、および
+`position: relative`(top/right/bottom/leftによる視覚的オフセット)に対応している。
+`position: absolute`/`fixed`は非対応。
+
+* floatの周りのinlineコンテンツ(テキスト)は回り込む。floatの高さを過ぎた行は
+  元の幅に復帰する
+* 同方向の複数floatは横に並び、幅が足りなければ次の空きY位置に折り返す
+  (CSS2.1 9.5.1の簡略版、厳密な最小隙間探索ではない)
+* floatはブロックレベルの通常フローには寄与しない(後続のブロック要素はfloatの
+  下を素通りして配置され、floatと重なり得る)。直接の子floatがコンテナの
+  auto-heightより下に伸びていれば、その分だけ高さを拡張する(孫要素には伝播
+  しない浅い実装)
+* floatの`width: auto`はshrink-to-fit非対応。明示`width`を推奨(`<img>`のように
+  内在サイズを持つ要素以外をfloatさせる場合)
+* floatがページの残り高さに収まらない場合、複数ページに跨ることを許容する
+* `position: relative`のオフセットは後続要素のフローに影響しない(視覚的位置の
+  みずれる)。改ページ判定はオフセット適用後の座標で行う(既知の簡略化)
+
+詳細は[docs/decisions/0019-float-clear-position-relative-design.md](docs/decisions/0019-float-clear-position-relative-design.md)
+参照。
 
 ### 外部スタイルシート
 

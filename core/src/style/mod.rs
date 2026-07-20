@@ -25,6 +25,6 @@ pub use selector_impl::SgSelectorImpl;
 pub use stylesheet::{parse_stylesheet, StyleRule, Stylesheet};
 pub use ua::user_agent_stylesheet;
 pub use values::{
-    BorderStyle, BreakBetween, BreakInside, Color, Display, FontStyle, FontWeight, Length,
-    LengthPercentage, LengthPercentageOrAuto,
+    BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
+    Length, LengthPercentage, LengthPercentageOrAuto, Position,
 };

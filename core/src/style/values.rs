@@ -79,6 +79,37 @@ pub enum BreakInside {
     Avoid,
 }
 
+/// `float`(CSS2.1 9.5.1)。`inline-start`/`inline-end`論理値はCSS2.1の
+/// スコープ外のため非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Float {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
+/// `clear`(CSS2.1 9.5.2)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Clear {
+    #[default]
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+/// `position`。`absolute`/`fixed`は
+/// [0018](../../../docs/decisions/0018-css21-css3-coverage-strategy.md)で
+/// 帳票用途での必要性が`relative`より低いと判断し非対応(既存の`border-style`
+/// groove/ridge等と同じパターンで、パース時に宣言ごと無視する)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Position {
+    #[default]
+    Static,
+    Relative,
+}
+
 /// 長さ(px)またはパーセンテージ。カスケード解決済みの計算値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LengthPercentage {

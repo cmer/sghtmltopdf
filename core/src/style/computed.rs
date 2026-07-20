@@ -14,9 +14,9 @@ use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    BorderStyle, BreakBetween, BreakInside, Color, Display, FontStyle, FontWeight, Length,
-    LengthPercentage, LengthPercentageOrAuto, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, TextDecorationLine,
+    BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
+    Length, LengthPercentage, LengthPercentageOrAuto, Position, SpecifiedLength,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, TextDecorationLine,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -92,6 +92,18 @@ pub struct ComputedStyle {
     pub orphans: u32,
     /// ページ先頭に送れる最小行数。非継承プロパティ、初期値2(仕様通り)。
     pub widows: u32,
+    /// `float`。非継承プロパティ。`none`以外なら`display`はblock-levelとして
+    /// 計算される(CSS2.1 9.7、下記`compute_element_style`で適用)。
+    pub float: Float,
+    /// `clear`。非継承プロパティ。
+    pub clear: Clear,
+    /// `position`。非継承プロパティ。`absolute`/`fixed`は非対応
+    /// ([0018](../../../docs/decisions/0018-css21-css3-coverage-strategy.md))。
+    pub position: Position,
+    pub top: LengthPercentageOrAuto,
+    pub right: LengthPercentageOrAuto,
+    pub bottom: LengthPercentageOrAuto,
+    pub left: LengthPercentageOrAuto,
 }
 
 impl Default for ComputedStyle {
@@ -175,6 +187,13 @@ impl Default for ComputedStyle {
             break_inside: BreakInside::Auto,
             orphans: 2,
             widows: 2,
+            float: Float::None,
+            clear: Clear::None,
+            position: Position::Static,
+            top: LengthPercentageOrAuto::Auto,
+            right: LengthPercentageOrAuto::Auto,
+            bottom: LengthPercentageOrAuto::Auto,
+            left: LengthPercentageOrAuto::Auto,
         }
     }
 }
@@ -357,6 +376,13 @@ fn compute_element_style(
     let mut break_inside = None;
     let mut orphans = None;
     let mut widows = None;
+    let mut float = None;
+    let mut clear = None;
+    let mut position = None;
+    let mut top = None;
+    let mut right = None;
+    let mut bottom = None;
+    let mut left = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -413,6 +439,13 @@ fn compute_element_style(
             PropertyDeclaration::BreakInside(v) => break_inside = Some(*v),
             PropertyDeclaration::Orphans(v) => orphans = Some(*v),
             PropertyDeclaration::Widows(v) => widows = Some(*v),
+            PropertyDeclaration::Float(v) => float = Some(*v),
+            PropertyDeclaration::Clear(v) => clear = Some(*v),
+            PropertyDeclaration::Position(v) => position = Some(*v),
+            PropertyDeclaration::Top(v) => top = Some(*v),
+            PropertyDeclaration::Right(v) => right = Some(*v),
+            PropertyDeclaration::Bottom(v) => bottom = Some(*v),
+            PropertyDeclaration::Left(v) => left = Some(*v),
         }
     }
 
@@ -471,8 +504,19 @@ fn compute_element_style(
     let resolved_border_bottom_color = resolve_color(border_bottom_color, resolved_color);
     let resolved_border_left_color = resolve_color(border_left_color, resolved_color);
 
+    let resolved_float = float.unwrap_or(initial.float);
+    // CSS2.1 9.7: floatが`none`以外なら要素は自動的にblock-levelとして計算される
+    // (`display: inline`でも)。これにより`box_tree.rs::child_kind`の既存の
+    // `Display::Block => ChildKind::Block`分岐がそのまま機能し、box tree構築側に
+    // floatの特殊扱いを持ち込む必要がなくなる([0019](
+    // ../../../docs/decisions/0019-float-clear-position-relative-design.md)決定2)。
+    let resolved_display = match display.unwrap_or(initial.display) {
+        Display::Inline if resolved_float != Float::None => Display::Block,
+        other => other,
+    };
+
     ComputedStyle {
-        display: display.unwrap_or(initial.display),
+        display: resolved_display,
         width: resolve_lp_or_auto(width, initial.width),
         height: resolve_lp_or_auto(height, initial.height),
         margin_top: resolve_lp_or_auto(margin_top, initial.margin_top),
@@ -523,6 +567,13 @@ fn compute_element_style(
         break_inside: break_inside.unwrap_or(initial.break_inside),
         orphans: orphans.unwrap_or(initial.orphans),
         widows: widows.unwrap_or(initial.widows),
+        float: resolved_float,
+        clear: clear.unwrap_or(initial.clear),
+        position: position.unwrap_or(initial.position),
+        top: resolve_lp_or_auto(top, initial.top),
+        right: resolve_lp_or_auto(right, initial.right),
+        bottom: resolve_lp_or_auto(bottom, initial.bottom),
+        left: resolve_lp_or_auto(left, initial.left),
     }
 }
 
@@ -1348,6 +1399,119 @@ mod tests {
 
         let styles = compute_styles(&dom, &ua, &author);
         assert_eq!(styles[&span].pseudo_before_content, None);
+    }
+
+    #[test]
+    fn float_left_and_right_parse_and_are_not_inherited() {
+        let dom = html::parse(br#"<div><img></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let img = find(&dom, div, "img").expect("img not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { float: left; } img { float: right; }"),
+        );
+        assert_eq!(styles[&div].float, super::Float::Left);
+        assert_eq!(styles[&img].float, super::Float::Right);
+    }
+
+    #[test]
+    fn float_forces_inline_display_to_block() {
+        let dom = html::parse(br#"<span>text</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("span { float: left; }"),
+        );
+        assert_eq!(
+            styles[&span].display,
+            Display::Block,
+            "CSS2.1 9.7: floatが指定された要素は自動的にblock-levelになる"
+        );
+    }
+
+    #[test]
+    fn float_none_does_not_affect_display() {
+        let dom = html::parse(br#"<span>text</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&span].display, Display::Inline);
+    }
+
+    #[test]
+    fn clear_parses_all_keywords() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for (value, expected) in [
+            ("left", super::Clear::Left),
+            ("right", super::Clear::Right),
+            ("both", super::Clear::Both),
+            ("none", super::Clear::None),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ clear: {value}; }}")),
+            );
+            assert_eq!(styles[&div].clear, expected, "clear: {value}");
+        }
+    }
+
+    #[test]
+    fn position_relative_parses_with_offsets() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { position: relative; top: 5px; left: 10px; }"),
+        );
+        assert_eq!(styles[&div].position, super::Position::Relative);
+        assert_eq!(
+            styles[&div].top,
+            LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(5.0))
+        );
+        assert_eq!(
+            styles[&div].left,
+            LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(10.0))
+        );
+    }
+
+    #[test]
+    fn position_absolute_and_fixed_are_rejected_as_unsupported() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for value in ["absolute", "fixed"] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ position: {value}; }}")),
+            );
+            assert_eq!(
+                styles[&div].position,
+                super::Position::Static,
+                "position: {value} should be ignored as an unsupported declaration"
+            );
+        }
+    }
+
+    #[test]
+    fn top_right_bottom_left_default_to_auto() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&div].top, LengthPercentageOrAuto::Auto);
+        assert_eq!(styles[&div].right, LengthPercentageOrAuto::Auto);
+        assert_eq!(styles[&div].bottom, LengthPercentageOrAuto::Auto);
+        assert_eq!(styles[&div].left, LengthPercentageOrAuto::Auto);
     }
 
     #[test]

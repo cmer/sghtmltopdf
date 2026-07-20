@@ -2,6 +2,7 @@
 
 mod block;
 mod box_tree;
+mod float_ctx;
 mod geometry;
 mod inline;
 mod page;
@@ -21,7 +22,7 @@ pub use box_tree::{
     LayoutBox, TableBox, TableCell, TableRow,
 };
 pub use geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
-pub use inline::{layout_inline_content, LineBox, TextRun};
+pub use inline::{LineBox, TextRun};
 pub use page::{PageSettings, PageSize};
 pub(crate) use paginate::collect_completed_subtree_roots;
 pub use paginate::{
