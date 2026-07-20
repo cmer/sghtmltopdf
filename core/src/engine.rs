@@ -42,17 +42,18 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
 use crate::html::{Dom, NodeId, StreamingParser};
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
-    layout_document_from, paginate_document_streaming, resolve_border, resolve_images,
-    resolve_lpa_or_zero, resolve_padding, resolve_width_and_horizontal_margins, PageSettings,
-    StreamingPaginator,
+    layout_document_from, paginate_document_streaming, resolve_background_images, resolve_border,
+    resolve_images, resolve_lpa_or_zero, resolve_padding, resolve_width_and_horizontal_margins,
+    PageSettings, StreamingPaginator,
 };
-use crate::pdf::{ImageAssetCache, StreamingPdfWriter};
+use crate::pdf::{ImageAssetCache, PreparedImage, StreamingPdfWriter};
 use crate::sink::Sink;
 use crate::style::{
     compute_single_element_style, compute_styles, compute_styles_with_parent,
@@ -138,6 +139,10 @@ struct StreamingState<S: Sink> {
     /// 1ページに複数のトップレベル要素のボックスが混在しうるため、
     /// `StreamingPdfWriter::write_page`はこの全体を必要とする。
     styles: HashMap<NodeId, ComputedStyle>,
+    /// `background-image`を持つ要素の、デコード済み画像を`NodeId`キーで
+    /// 引けるようにする側マップ。`styles`と同じく処理済みトップレベル要素
+    /// ぶんを蓄積する([0017](../docs/decisions/0017-background-image-design.md)決定2)。
+    background_images: HashMap<NodeId, Rc<PreparedImage>>,
     root_font_size: f32,
     /// `<body>`要素自身の計算スタイル。各トップレベル要素のスタイル計算の
     /// 親スタイルとして使う。
@@ -330,6 +335,7 @@ impl<S: Sink> Engine<S> {
             author,
             fonts,
             styles: HashMap::new(),
+            background_images: HashMap::new(),
             root_font_size,
             body_style,
             content_width: body_content_width,
@@ -367,6 +373,9 @@ impl<S: Sink> Engine<S> {
             }
             (sub_styles, item_box)
         };
+        state
+            .background_images
+            .extend(resolve_background_images(&sub_styles, &state.image_cache));
         state.styles.extend(sub_styles);
 
         let Some(item_box) = item_box else {
@@ -391,33 +400,35 @@ impl<S: Sink> Engine<S> {
         // に別途保持済み)。
         parser.dom_mut().release_subtree(node);
 
-        // このトップレベル要素自体が装飾(背景・枠線)を持たない場合、
-        // `place_split`は装飾フラグメントを生成しないため、このノード
-        // 自体が`page.boxes`に現れることはない。つまり`node`自身の
-        // `ComputedStyle`はこの後`write_page`から一切参照されないため、
-        // ここで即座に削除してよい(装飾を持つ場合は、装飾フラグメントが
-        // 実際に配置されたページのflush時に、下の`collect_completed_
-        // subtree_roots`経由で削除される)。
+        // このトップレベル要素自体が装飾(背景・枠線・background-image、
+        // [0017]決定2により`has_visible_decoration`はbackground-imageも
+        // 見る)を持たない場合、`place_split`は装飾フラグメントを生成しない
+        // ため、このノード自体が`page.boxes`に現れることはない。つまり
+        // `node`自身の`ComputedStyle`/背景画像はこの後`write_page`から
+        // 一切参照されないため、ここで即座に削除してよい(装飾を持つ場合は、
+        // 装飾フラグメントが実際に配置されたページのflush時に、下の
+        // `collect_completed_subtree_roots`経由で削除される)。
         if !laid_out.has_visible_decoration {
             state.styles.remove(&node);
+            state.background_images.remove(&node);
         }
 
         let pages = state.paginator.push_item(&laid_out);
         for page in &pages {
             state
                 .writer
-                .write_page(page, &state.styles, &state.fonts)
+                .write_page(page, &state.styles, &state.background_images, &state.fonts)
                 .map_err(EngineError::Io)?;
         }
 
         // 各ページに実際に配置され、これ以上分割されない
-        // (`FragmentPosition::Whole`/`Last`)子孫ノードの`ComputedStyle`を
-        // 解放する。DOM自体は上ですでにタブストーン化済みだが、木構造の
-        // リンクは保持されているため`Dom::children`で辿れる。
+        // (`FragmentPosition::Whole`/`Last`)子孫ノードの`ComputedStyle`/
+        // 背景画像を解放する。DOM自体は上ですでにタブストーン化済みだが、
+        // 木構造のリンクは保持されているため`Dom::children`で辿れる。
         let dom = parser.dom();
         for page in &pages {
             for root in collect_completed_subtree_roots(page) {
-                remove_subtree_styles(&dom, root, &mut state.styles);
+                remove_subtree_styles(&dom, root, &mut state.styles, &mut state.background_images);
             }
         }
         drop(dom);
@@ -446,6 +457,7 @@ impl<S: Sink> Engine<S> {
             Some(state) => {
                 let StreamingState {
                     styles,
+                    background_images,
                     fonts,
                     mut writer,
                     paginator,
@@ -453,7 +465,7 @@ impl<S: Sink> Engine<S> {
                 } = state;
                 for page in paginator.finish() {
                     writer
-                        .write_page(&page, &styles, &fonts)
+                        .write_page(&page, &styles, &background_images, &fonts)
                         .map_err(EngineError::Io)?;
                 }
                 writer.finish(&fonts).map_err(EngineError::Io)
@@ -514,6 +526,10 @@ impl<S: Sink> Engine<S> {
         let mut writer =
             StreamingPdfWriter::new(&fonts, options.settings, sink).map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::new(base_dir.to_path_buf(), options.allow_remote_assets);
+        // `background-image`はレイアウトのサイズ計算に影響しない描画専用の
+        // 情報なので、`resolve_images`(box tree構築)とは独立に、文書全体の
+        // `styles`から一度だけ構築できる([0017]決定2)。
+        let background_images = resolve_background_images(&styles, &image_cache);
 
         let mut write_error: Option<S::Error> = None;
         paginate_document_streaming(
@@ -526,7 +542,7 @@ impl<S: Sink> Engine<S> {
                 if write_error.is_some() {
                     return;
                 }
-                if let Err(e) = writer.write_page(&page, &styles, &fonts) {
+                if let Err(e) = writer.write_page(&page, &styles, &background_images, &fonts) {
                     write_error = Some(e);
                 }
             },
@@ -542,11 +558,17 @@ impl<S: Sink> Engine<S> {
 /// `root`以下のサブツリーに属するノードの`ComputedStyle`を`styles`から
 /// 取り除く。`dom`は`root`以下がすでに[`Dom::release_subtree`]で解放済み
 /// (タブストーン化済み)でもよい(木構造のリンク自体は保持されるため)。
-fn remove_subtree_styles(dom: &Dom, root: NodeId, styles: &mut HashMap<NodeId, ComputedStyle>) {
+fn remove_subtree_styles(
+    dom: &Dom,
+    root: NodeId,
+    styles: &mut HashMap<NodeId, ComputedStyle>,
+    background_images: &mut HashMap<NodeId, Rc<PreparedImage>>,
+) {
     let mut stack = vec![root];
     while let Some(id) = stack.pop() {
         stack.extend(dom.children(id));
         styles.remove(&id);
+        background_images.remove(&id);
     }
 }
 
@@ -725,6 +747,7 @@ mod tests {
         let batched_bytes = write_document(
             &batched_pages,
             &styles,
+            &HashMap::new(),
             &fonts,
             &settings,
             MemorySink::new(),
@@ -791,6 +814,7 @@ mod tests {
         let batched_bytes = write_document(
             &batched_pages,
             &styles,
+            &HashMap::new(),
             &fonts,
             &settings,
             MemorySink::new(),
@@ -1146,6 +1170,95 @@ mod tests {
     }
 
     #[test]
+    fn background_image_on_a_plain_div_is_embedded_as_a_dctdecode_xobject_end_to_end() {
+        // M7(T80-83)のパイプライン全体(パース→カスケード→
+        // `resolve_background_images`→PDF XObject書き出し)を検証する。
+        // `<div>`は`background-color`も枠線も持たない
+        // (`has_visible_decoration`がbackground-imageも見るよう修正した
+        // 効果を確認する。修正前は装飾フラグメントが生成されず、この
+        // 背景画像は`page.boxes`に一切現れなかった)。
+        let html = format!(
+            r#"<html><body><div style="background-image: url('{}'); width: 32px; height: 24px;"></div></body></html>"#,
+            data_uri(JPEG_FIXTURE_PATH, "image/jpeg")
+        );
+
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        let jpeg_bytes = std::fs::read(JPEG_FIXTURE_PATH).unwrap();
+        assert!(count_occurrences(&bytes, b"/DCTDecode") > 0);
+        assert!(
+            count_occurrences(&bytes, &jpeg_bytes) > 0,
+            "the background-image's original JPEG bytes should be embedded verbatim"
+        );
+    }
+
+    #[test]
+    fn background_image_rendering_matches_between_batch_and_streaming_mode() {
+        let html = format!(
+            r#"<html><body><p>before</p><div style="background-image: url('{}'); width: 32px; height: 24px;"></div><p>after</p></body></html>"#,
+            data_uri(JPEG_FIXTURE_PATH, "image/jpeg")
+        );
+
+        let run = |mode: Mode| {
+            let options = EngineOptions {
+                mode,
+                fonts: vec![font_spec()],
+                ..EngineOptions::default()
+            };
+            let mut engine = Engine::new(options, MemorySink::new());
+            engine.feed(html.as_bytes()).unwrap();
+            engine.finish().unwrap()
+        };
+
+        let batch_bytes = run(Mode::Batch);
+        let streaming_bytes = run(Mode::Streaming);
+
+        for (label, bytes) in [("batch", &batch_bytes), ("streaming", &streaming_bytes)] {
+            assert!(
+                bytes.starts_with(b"%PDF-"),
+                "{label} output should be a valid PDF"
+            );
+            assert!(
+                count_occurrences(bytes, b"/DCTDecode") > 0,
+                "{label}: background image should be embedded"
+            );
+        }
+    }
+
+    #[test]
+    fn a_broken_background_image_url_degrades_gracefully_instead_of_failing_the_whole_document() {
+        // [0014]/[0017]の方針: 取得・デコード失敗はその要素の背景画像だけ
+        // 空扱いにして、文書生成全体は止めない。
+        let html = r#"<html><body><p>before</p>
+            <div style="background-image: url('does-not-exist-anywhere.png'); width: 50px; height: 50px;"></div>
+            <p>after</p></body></html>"#;
+
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine
+            .finish()
+            .expect("a broken background-image url must not fail the whole document");
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert_eq!(
+            count_occurrences(&bytes, b"/DCTDecode"),
+            0,
+            "no image XObject should have been written for the failed fetch"
+        );
+    }
+
+    #[test]
     fn a_broken_image_src_degrades_to_an_empty_box_instead_of_failing_the_whole_document() {
         // [0014]の方針: 取得・デコード失敗はその要素だけ空扱いにして、
         // 文書生成全体は止めない(壊れたURLがDoSベクタにならないように)。
@@ -1240,6 +1353,83 @@ mod tests {
             assert!(
                 count_occurrences(&stream, b"/F0 40 Tf") > 0,
                 "{label}: the fetched external stylesheet's font-size should apply"
+            );
+        }
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn at_import_inside_an_external_stylesheet_is_applied_end_to_end() {
+        // M7のパイプライン全体(<link>のfetch→@importの検出・再帰フェッチ→
+        // 展開→parse→cascade)を、実際にfont-sizeの違いとしてPDFコンテンツ
+        // ストリームに現れるかで検証する。
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-engine-test-{}-at_import",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.css"), br#"@import url("base.css");"#).unwrap();
+        std::fs::write(dir.join("base.css"), b"p { font-size: 40px; }").unwrap();
+
+        let html = r#"<html><head><link rel="stylesheet" href="main.css"></head>
+            <body><p>hello</p></body></html>"#;
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            base_dir: Some(dir.clone()),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        let stream = decompressed_stream_bytes(&bytes);
+        assert!(
+            count_occurrences(&stream, b"/F0 40 Tf") > 0,
+            "the font-size from the @import-ed stylesheet should apply"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn at_import_matches_between_batch_and_streaming_mode() {
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-engine-test-{}-at_import_parity",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.css"), br#"@import url("base.css");"#).unwrap();
+        std::fs::write(dir.join("base.css"), b"p { font-size: 40px; }").unwrap();
+
+        let html = r#"<html><head><link rel="stylesheet" href="main.css"></head>
+            <body><p>hello</p></body></html>"#;
+
+        let run = |mode: Mode| {
+            let options = EngineOptions {
+                mode,
+                fonts: vec![font_spec()],
+                base_dir: Some(dir.clone()),
+                ..EngineOptions::default()
+            };
+            let mut engine = Engine::new(options, MemorySink::new());
+            engine.feed(html.as_bytes()).unwrap();
+            engine.finish().unwrap()
+        };
+
+        let batch_bytes = run(Mode::Batch);
+        let streaming_bytes = run(Mode::Streaming);
+
+        for (label, bytes) in [("batch", &batch_bytes), ("streaming", &streaming_bytes)] {
+            assert!(
+                bytes.starts_with(b"%PDF-"),
+                "{label} output should be a valid PDF"
+            );
+            let stream = decompressed_stream_bytes(bytes);
+            assert!(
+                count_occurrences(&stream, b"/F0 40 Tf") > 0,
+                "{label}: the @import-ed stylesheet's font-size should apply"
             );
         }
 

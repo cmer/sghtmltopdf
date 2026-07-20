@@ -65,6 +65,7 @@ use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, Prep
 pub fn encode_pdf(
     pages: &[Page],
     styles: &HashMap<NodeId, ComputedStyle>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
 ) -> Vec<u8> {
@@ -119,7 +120,7 @@ pub fn encode_pdf(
 
         let mut used_images = Vec::new();
         for b in &page.boxes {
-            collect_image_uses(b, &mut used_images);
+            collect_image_uses(b, background_images, &mut used_images);
         }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
@@ -141,6 +142,7 @@ pub fn encode_pdf(
                 Some(&remaps),
                 &font_resource_names,
                 &image_ids,
+                background_images,
             );
         }
         let content_bytes = content.finish();
@@ -186,11 +188,12 @@ pub fn encode_pdf(
 pub fn write_document<S: Sink>(
     pages: &[Page],
     styles: &HashMap<NodeId, ComputedStyle>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     mut sink: S,
 ) -> Result<S::Output, S::Error> {
-    let bytes = encode_pdf(pages, styles, fonts, settings);
+    let bytes = encode_pdf(pages, styles, background_images, fonts, settings);
     sink.write(&bytes)?;
     sink.finish()
 }
@@ -239,29 +242,41 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
     }
 }
 
-/// ページ(群)を再帰的に走査し、実際に使われている画像を`Rc`のポインタ
-/// アイデンティティで重複排除して集める。フォントの`collect_usage`と同じ
-/// 「使用状況を先に集めてからRefを払い出す」構造。
-pub(super) fn collect_image_uses(b: &LaidOutBox, out: &mut Vec<Rc<PreparedImage>>) {
+/// ページ(群)を再帰的に走査し、実際に使われている画像(`<img>`本体と
+/// `background-image`の両方)を`Rc`のポインタアイデンティティで重複排除して
+/// 集める。フォントの`collect_usage`と同じ「使用状況を先に集めてから
+/// Refを払い出す」構造。`background_images`は[0017](../../../docs/decisions/0017-background-image-design.md)
+/// 決定2の`NodeId → Rc<PreparedImage>`側マップ。
+pub(super) fn collect_image_uses(
+    b: &LaidOutBox,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    out: &mut Vec<Rc<PreparedImage>>,
+) {
+    if let Some(image) = b.node.and_then(|n| background_images.get(&n)) {
+        push_unique_image(out, image);
+    }
+
     match &b.content {
         LaidOutContent::Blocks(children) => {
             for child in children {
-                collect_image_uses(child, out);
+                collect_image_uses(child, background_images, out);
             }
         }
         LaidOutContent::Table(rows) => {
             for row in rows {
                 for cell in &row.cells {
-                    collect_image_uses(cell, out);
+                    collect_image_uses(cell, background_images, out);
                 }
             }
         }
-        LaidOutContent::Image(Some(image)) => {
-            if !out.iter().any(|existing| Rc::ptr_eq(existing, image)) {
-                out.push(image.clone());
-            }
-        }
+        LaidOutContent::Image(Some(image)) => push_unique_image(out, image),
         LaidOutContent::Image(None) | LaidOutContent::Inline(_) => {}
+    }
+}
+
+fn push_unique_image(out: &mut Vec<Rc<PreparedImage>>, image: &Rc<PreparedImage>) {
+    if !out.iter().any(|existing| Rc::ptr_eq(existing, image)) {
+        out.push(image.clone());
     }
 }
 
@@ -275,6 +290,7 @@ pub(super) fn render_box(
     remaps: Option<&[HashMap<u16, u16>]>,
     font_resource_names: &[String],
     image_ids: &HashMap<usize, ImageIds>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
 ) {
     let style = b
         .node
@@ -282,7 +298,15 @@ pub(super) fn render_box(
         .cloned()
         .unwrap_or_default();
 
-    render_box_decoration(content, &b.layout, &style, settings);
+    // `background-image`は`<img>`と異なりboxの中身ではなく装飾なので、
+    // `b.node`から側マップを引いて`Ref`を解決する([0017]決定2)。
+    let background_image_ref = b
+        .node
+        .and_then(|n| background_images.get(&n))
+        .and_then(|image| image_ids.get(&(Rc::as_ptr(image) as usize)))
+        .map(|ids| ids.color);
+
+    render_box_decoration(content, &b.layout, &style, settings, background_image_ref);
 
     match &b.content {
         LaidOutContent::Blocks(children) => {
@@ -296,6 +320,7 @@ pub(super) fn render_box(
                     remaps,
                     font_resource_names,
                     image_ids,
+                    background_images,
                 );
             }
         }
@@ -323,6 +348,7 @@ pub(super) fn render_box(
                         remaps,
                         font_resource_names,
                         image_ids,
+                        background_images,
                     );
                 }
             }
@@ -332,18 +358,29 @@ pub(super) fn render_box(
 
 /// 背景・枠線を描画する。角丸(`border-radius`)が指定されていなければ従来通り
 /// 直線の矩形/4辺独立ストロークで描き、指定されていれば[`render_rounded_decoration`]
-/// に委譲する。
+/// に委譲する。`background_image_ref`はborder-boxいっぱいにストレッチ表示する
+/// 背景画像のXObject Ref([0017](../../../docs/decisions/0017-background-image-design.md)
+/// 決定3、`border-radius`によるクリップは非対応)。背景色→背景画像→枠線の順で
+/// 描画する。
 fn render_box_decoration(
     content: &mut Content,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
+    background_image_ref: Option<Ref>,
 ) {
     let radii = effective_radii(layout, style);
     let has_radius = radii.0 > 0.0 || radii.1 > 0.0 || radii.2 > 0.0 || radii.3 > 0.0;
 
     if has_radius {
-        render_rounded_decoration(content, layout, style, settings, radii);
+        render_rounded_decoration(
+            content,
+            layout,
+            style,
+            settings,
+            radii,
+            background_image_ref,
+        );
         return;
     }
 
@@ -354,6 +391,9 @@ fn render_box_decoration(
             style.background_color,
             settings,
         );
+    }
+    if let Some(image_ref) = background_image_ref {
+        render_image(content, layout.border_box(), settings, image_ref);
     }
     render_border(content, layout, style, settings);
 }
@@ -412,10 +452,11 @@ fn render_background(
     content.fill_nonzero();
 }
 
-/// `<img>`のcontent box(`rect`)いっぱいに画像XObjectを描画する。
-/// `resource_ref`が指すXObjectは、呼び出し元がページの`/Resources
-/// /XObject`辞書へ既に登録済みであること([`image_resource_name`]と同じ
-/// 命名規則でリソース名を導出する)。
+/// `rect`いっぱいに画像XObjectを描画する。`<img>`(content box)・
+/// `background-image`(border-box、[0017]決定3)いずれの呼び出し元からも
+/// 使う共通ヘルパー。`resource_ref`が指すXObjectは、呼び出し元がページの
+/// `/Resources/XObject`辞書へ既に登録済みであること
+/// ([`image_resource_name`]と同じ命名規則でリソース名を導出する)。
 fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, resource_ref: Ref) {
     let x = settings.margin.left + rect.x;
     let y = to_pdf_y(settings, rect.y + rect.height);
@@ -433,12 +474,14 @@ fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, reso
 /// (辺ごとに異なる太さ・色・スタイルと角丸の組み合わせは、角での複雑な
 /// ブレンド処理が必要になるためM1では非対応。その場合は角丸を諦め、
 /// 直線4辺の[`render_border`]にフォールバックする)。
+#[allow(clippy::too_many_arguments)]
 fn render_rounded_decoration(
     content: &mut Content,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
     radii: (f32, f32, f32, f32),
+    background_image_ref: Option<Ref>,
 ) {
     let border_box = layout.border_box();
     let x0 = settings.margin.left + border_box.x;
@@ -454,6 +497,11 @@ fn render_rounded_decoration(
         );
         rounded_rect_path(content, x0, y_top, x1, y_bottom, radii);
         content.fill_nonzero();
+    }
+    // 角丸パスへのクリップは行わず、常に直線の矩形として描画する
+    // (border-radiusとの組み合わせは非対応、[0017]決定3の既知の簡略化)。
+    if let Some(image_ref) = background_image_ref {
+        render_image(content, border_box, settings, image_ref);
     }
 
     if !is_uniform_border(style) {
@@ -1063,7 +1111,7 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         assert!(bytes.starts_with(b"%PDF-"));
         assert!(count_occurrences(&bytes, b"%%EOF") > 0);
@@ -1093,7 +1141,7 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         let cjk_font_size = std::fs::metadata(CJK_PATH).unwrap().len() as usize;
         assert!(
@@ -1125,7 +1173,7 @@ mod tests {
             "expected pagination to produce multiple pages"
         );
 
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
         assert_eq!(count_occurrences(&bytes, b"/MediaBox"), pages.len());
     }
 
@@ -1139,12 +1187,24 @@ mod tests {
         let author_with_bg = parse_stylesheet(".box { background-color: rgb(10, 20, 30); }");
         let styles_with = compute_styles(&dom_with_bg, &ua, &author_with_bg);
         let pages_with = paginate_document(&dom_with_bg, &styles_with, &fonts, &settings);
-        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(
+            &pages_with,
+            &styles_with,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         let dom_without_bg = html::parse(br#"<div class="box">x</div>"#);
         let styles_without = compute_styles(&dom_without_bg, &ua, &Stylesheet::default());
         let pages_without = paginate_document(&dom_without_bg, &styles_without, &fonts, &settings);
-        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(
+            &pages_without,
+            &styles_without,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         assert!(
             bytes_with.len() > bytes_without.len(),
@@ -1162,12 +1222,24 @@ mod tests {
         let author_with = parse_stylesheet(".box { border: 2px solid rgb(10, 20, 30); }");
         let styles_with = compute_styles(&dom_with, &ua, &author_with);
         let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
-        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(
+            &pages_with,
+            &styles_with,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         let dom_without = html::parse(br#"<div class="box">x</div>"#);
         let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
         let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
-        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(
+            &pages_without,
+            &styles_without,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         // 4辺分の塗りつぶし(`f`オペレータ)が追加されているはず(各辺は
         // 外形/内形の頂点を結ぶミトー結合済みの四角形として塗る)。
@@ -1191,12 +1263,24 @@ mod tests {
         let styles_decorated = compute_styles(&dom_decorated, &ua, &author);
         let pages_decorated =
             paginate_document(&dom_decorated, &styles_decorated, &fonts, &settings);
-        let bytes_decorated = encode_pdf(&pages_decorated, &styles_decorated, &fonts, &settings);
+        let bytes_decorated = encode_pdf(
+            &pages_decorated,
+            &styles_decorated,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         let dom_plain = html::parse(br#"<p class="u">underlined</p>"#);
         let styles_plain = compute_styles(&dom_plain, &ua, &Stylesheet::default());
         let pages_plain = paginate_document(&dom_plain, &styles_plain, &fonts, &settings);
-        let bytes_plain = encode_pdf(&pages_plain, &styles_plain, &fonts, &settings);
+        let bytes_plain = encode_pdf(
+            &pages_plain,
+            &styles_plain,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         assert!(
             count_occurrences(&decompressed_stream_bytes(&bytes_decorated), b"\nS\n")
@@ -1215,12 +1299,24 @@ mod tests {
         let author_with = parse_stylesheet(".box { border: 9px double rgb(0, 0, 0); }");
         let styles_with = compute_styles(&dom_with, &ua, &author_with);
         let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
-        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(
+            &pages_with,
+            &styles_with,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         let dom_without = html::parse(br#"<div class="box">x</div>"#);
         let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
         let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
-        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(
+            &pages_without,
+            &styles_without,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         // 4辺 x 2帯(外側/内側) = 8回以上の塗りつぶしが追加されているはず。
         let fill_count_with = count_occurrences(&decompressed_stream_bytes(&bytes_with), b"\nf\n");
@@ -1243,7 +1339,7 @@ mod tests {
             parse_stylesheet(".box { border: 9px double rgb(0, 0, 0); border-radius: 10px; }");
         let styles = compute_styles(&dom, &ua, &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         // 角丸パス(4角ぶんのベジェ曲線)を2周分ストロークするはず(背景色は
         // 未指定なので塗りつぶしはなし)。
@@ -1268,7 +1364,7 @@ mod tests {
         let author = parse_stylesheet(".box { border: 1px dotted rgb(0, 0, 0); }");
         let styles = compute_styles(&dom, &ua, &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
         let text = String::from_utf8_lossy(&decompressed_stream_bytes(&bytes)).into_owned();
 
         assert!(text.contains(" J\n"), "dotted border should set a line cap");
@@ -1290,7 +1386,7 @@ mod tests {
         );
         let styles = compute_styles(&dom, &ua, &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
         let decompressed = decompressed_stream_bytes(&bytes);
         let text = String::from_utf8_lossy(&decompressed);
 
@@ -1318,7 +1414,7 @@ mod tests {
         );
         let styles = compute_styles(&dom, &ua, &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         // 4辺が不揃いなので角丸は諦め、直線4辺のフォールバックになるはず。
         // `border-style: solid dotted`は上下がsolid(塗り)、左右がdotted
@@ -1365,7 +1461,7 @@ mod tests {
         );
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &author);
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
         let text = String::from_utf8_lossy(&decompressed_stream_bytes(&bytes)).into_owned();
 
         // border-box: x∈[0,360](border-left 40 + width 300 + border-right 20)、
@@ -1394,12 +1490,24 @@ mod tests {
         let author_with = parse_stylesheet(".box { border-width: 5px; border-style: none; }");
         let styles_with = compute_styles(&dom_with, &ua, &author_with);
         let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
-        let bytes_with = encode_pdf(&pages_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(
+            &pages_with,
+            &styles_with,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         let dom_without = html::parse(br#"<div class="box">x</div>"#);
         let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
         let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
-        let bytes_without = encode_pdf(&pages_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(
+            &pages_without,
+            &styles_without,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
 
         assert_eq!(
             bytes_with.len(),
@@ -1418,7 +1526,7 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         // 2つのフォント(DejaVu Sans, Noto Sans CJK JP)がそれぞれ埋め込まれているはず。
         assert_eq!(count_occurrences(&bytes, b"/FontFile2"), 2);
@@ -1440,7 +1548,7 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
         let decompressed = decompressed_stream_bytes(&bytes);
         let text = String::from_utf8_lossy(&decompressed);
 
@@ -1482,7 +1590,7 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         assert!(
             count_occurrences(&decompressed_stream_bytes(&bytes), b"/ActualText") > 0,
@@ -1499,7 +1607,7 @@ mod tests {
         let settings = PageSettings::default();
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
-        let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
         assert_eq!(
             count_occurrences(&decompressed_stream_bytes(&bytes), b"/ActualText"),
@@ -1518,7 +1626,15 @@ mod tests {
         let settings = PageSettings::default();
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
 
-        let bytes = write_document(&pages, &styles, &fonts, &settings, MemorySink::new()).unwrap();
+        let bytes = write_document(
+            &pages,
+            &styles,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+            MemorySink::new(),
+        )
+        .unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
     }
 }

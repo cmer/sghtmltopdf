@@ -189,6 +189,13 @@ mod tests {
         // 外部CSSに`@import`が含まれていても、それ以降の通常ルールの
         // パースが継続されることを確認する(追加実装なしで安全、という
         // T59/T63の前提調査を実際に検証する)。
+        //
+        // M7(T73-76)で`@import`を実際にフェッチ・展開する機能を追加したが、
+        // それは`style::extract::extract_author_stylesheet`が`parse_stylesheet`
+        // を呼ぶ「前」にCSSテキストを展開する形で実装されている
+        // (`style::import::resolve_imports`、[0016](../../../docs/decisions/0016-at-import-resolution-design.md)参照)。
+        // `parse_stylesheet`自体は今も`@import`を知らないままであり、この
+        // テストが検証する「安全に無視される」という挙動は変わらず正しい。
         let sheet = parse_stylesheet(
             r#"@import url("other.css"); p { color: rgb(1, 2, 3); } div { color: rgb(4, 5, 6); }"#,
         );
@@ -201,17 +208,22 @@ mod tests {
 
     #[test]
     fn parse_stylesheet_ignores_unrecognized_properties_with_url_values() {
-        // T63: `background-image: url(...)`のような、本実装が対応して
-        // いないプロパティ(`url()`参照を含む値)があっても、そのプロパティ
-        // 宣言だけが無視され、同じルール内の他の宣言・後続のルールは
-        // 正常にパースされることを確認する。
+        // T63: `url()`参照を含む値を持つが、本実装が対応していないプロパティが
+        // あっても、そのプロパティ宣言だけが無視され、同じルール内の他の宣言・
+        // 後続のルールは正常にパースされることを確認する。
+        //
+        // 元々は`background-image: url(...)`をこの「未対応プロパティ」の例に
+        // 使っていたが、M7(T80)で`background-image`自体を実装したため、
+        // 今も非対応の`border-image`に差し替えた(`background-position`等の
+        // 他のbackground-*系プロパティと同じく、マイルストーン8/9のCSS3対応へ
+        // 先送り)。
         let sheet =
-            parse_stylesheet(r#"div { background-image: url("bg.png"); color: rgb(1, 2, 3); }"#);
+            parse_stylesheet(r#"div { border-image: url("border.png") 30; color: rgb(1, 2, 3); }"#);
         assert_eq!(sheet.rules.len(), 1);
         assert_eq!(
             sheet.rules[0].declarations.len(),
             1,
-            "the unrecognized background-image declaration should be skipped, \
+            "the unrecognized border-image declaration should be skipped, \
              leaving only the color declaration"
         );
         assert!(matches!(

@@ -22,7 +22,8 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 
 マイルストーン1(静的HTML一括変換)・マイルストーン2(CSS Fragmentation)・
 マイルストーン3(ストリーミング入出力対応)・マイルストーン4(Webfont対応)・
-マイルストーン5(画像埋め込み)・マイルストーン6(外部スタイルシート)
+マイルストーン5(画像埋め込み)・マイルストーン6(外部スタイルシート)・
+マイルストーン7(`@import`/`background-image`のurl()対応)
 ともに完了。
 
 ### 外部スタイルシート
@@ -44,10 +45,46 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
   解決する(スタイルシートごとの基準切り替えは非対応の簡略化)。この
   制約の影響を受けないよう、外部スタイルシート内のフォント参照には
   root-relativeなパス(例: `url("/fonts/brand.woff2")`)を使うことを推奨する
-* `@import`、および`background-image`のようなCSSプロパティ値としての
-  `url()`参照の再帰フェッチは非対応(非目標)
 
 詳細は[docs/decisions/0015-external-stylesheet-fetch-design.md](docs/decisions/0015-external-stylesheet-fetch-design.md)
+参照。
+
+### `@import`
+
+`<style>`・外部スタイルシート(`<link>`)いずれの中に書かれた
+`@import url(...)`にも対応している。パース前のCSSテキストに対する
+展開処理として実装されており(`parse_stylesheet`自体は`@import`を
+知らない)、`@import`文があった位置にそのままimport先の内容を差し込む
+(hoistして先頭にまとめるのではない)。
+
+* import先のCSSにさらに`@import`が含まれる多段importにも対応する。
+  循環import(`a.css`が`b.css`をimportし`b.css`が`a.css`をimportする等)は
+  再帰深さの上限(16階層)でガードし、無限再帰にはならない
+* メディアクエリ付きの`@import url(...) screen;`は、`@media`自体が
+  非対応スコープのため無条件importとして扱う
+* import先の取得に失敗した場合(ネットワークエラー・SSRFブロック・
+  非2xxステータス・不正なUTF-8)は、その`@import`文だけ無視して警告を出し、
+  残りのCSSは正常にパースを継続する
+
+詳細は[docs/decisions/0016-at-import-resolution-design.md](docs/decisions/0016-at-import-resolution-design.md)
+参照。
+
+### `background-image`
+
+`url(...)`によるCSSプロパティ値としての背景画像指定に対応している
+(`<img>`の埋め込みと同じフェッチ層・SSRF対策・`--allow-remote-assets`
+フラグを共有する)。
+
+* `background-position`/`background-size`/`background-repeat`/
+  `background-attachment`は非対応(非目標)。指定された画像はborder-box
+  全体を覆うよう常にストレッチ表示するのみの最小実装
+* `border-radius`が指定されていても、背景画像は角丸にクリップされず
+  常に直線の矩形として描画される(既知の簡略化)
+* 取得・デコードに失敗した背景画像は、その要素だけ背景画像なし扱いにし、
+  文書全体の生成は止めない(`<img>`と同じフォールバック方針)
+* 背景色→背景画像→枠線の順で描画する
+
+詳細は[docs/decisions/0017-background-image-design.md](docs/decisions/0017-background-image-design.md)
 参照。
 
 ### 画像埋め込み
@@ -110,8 +147,9 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 
 `Mode::Streaming`は以下の制約を伴う:
 
-* `<body>`より後に現れる`<style>`タグは非サポート(エラーになる)
-* `<html>`/`<body>`自身に背景色・枠線がある場合は非サポート
+* `<body>`より後に現れる`<style>`/`<link rel=stylesheet>`タグは非サポート
+  (エラーになる)
+* `<html>`/`<body>`自身に背景色・背景画像・枠線がある場合は非サポート
 * `nth-last-child`等、後続要素への参照が必要なセレクタは常に非マッチになる
 * フォントは`--font`または`@font-face`で明示する必要がある
   (システムフォントの自動探索は`Mode::Batch`のみ)

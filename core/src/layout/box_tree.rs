@@ -19,9 +19,10 @@
 //! ままに保ちたいため([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::html::{Dom, NodeData, NodeId};
-use crate::pdf::ImageAssetCache;
+use crate::pdf::{ImageAssetCache, PreparedImage};
 use crate::style::{ComputedStyle, Display};
 
 #[derive(Debug, Clone)]
@@ -185,6 +186,31 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
         }
         BoxContent::Inline(_) | BoxContent::Image(_) => {}
     }
+}
+
+/// `background-image`が指定された要素の、デコード済み画像を`NodeId`キーで
+/// 引けるようにする側マップを構築する。[0017](../../../docs/decisions/0017-background-image-design.md)
+/// 決定2により、`<img>`の[`resolve_images`]と異なりbox tree(`LayoutBox`)の
+/// 中身は一切変更しない(背景画像はレイアウトのサイズ計算に影響しない、
+/// 描画専用の情報のため)。DOM木の再走査も不要で、カスケード計算済みの
+/// `styles`を`background_image.is_some()`でフィルタするだけで済む。
+///
+/// フェッチ・デコードに失敗した要素は、その要素だけ背景画像なし扱いにして
+/// マップに含めない(0014と同じフォールバック方針、文書全体は止めない)。
+pub fn resolve_background_images(
+    styles: &HashMap<NodeId, ComputedStyle>,
+    image_cache: &ImageAssetCache,
+) -> HashMap<NodeId, Rc<PreparedImage>> {
+    let mut out = HashMap::new();
+    for (&node, style) in styles {
+        let Some(url) = &style.background_image else {
+            continue;
+        };
+        if let Ok(image) = image_cache.get_or_decode(url) {
+            out.insert(node, image);
+        }
+    }
+    out
 }
 
 fn build_image_box_content(
@@ -407,7 +433,9 @@ fn push_after_content(
 mod tests {
     use super::*;
     use crate::html;
-    use crate::style::{compute_styles, user_agent_stylesheet, RgbaColor, Stylesheet};
+    use crate::style::{
+        compute_styles, parse_stylesheet, user_agent_stylesheet, RgbaColor, Stylesheet,
+    };
 
     fn find(dom: &Dom, id: NodeId, tag: &str) -> Option<NodeId> {
         if let NodeData::Element { name, .. } = &dom.node(id).data {
@@ -634,5 +662,61 @@ mod tests {
             }
         }
         None
+    }
+
+    fn jpeg_data_uri() -> String {
+        use base64::engine::general_purpose::STANDARD;
+        use base64::Engine;
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/images/spike_gradient.jpg"
+        );
+        let bytes = std::fs::read(path).unwrap();
+        format!("data:image/jpeg;base64,{}", STANDARD.encode(bytes))
+    }
+
+    #[test]
+    fn resolve_background_images_decodes_only_nodes_with_background_image_set() {
+        // [0017]決定2: `resolve_background_images`はDOM木の再走査をせず、
+        // カスケード計算済みの`styles`を`background_image.is_some()`で
+        // フィルタするだけで側マップを構築できるはず。
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(&format!(
+            r#"div {{ background-image: url("{}"); }}"#,
+            jpeg_data_uri()
+        ));
+        let styles = compute_styles(&dom, &ua, &author);
+
+        let image_cache = ImageAssetCache::new(std::path::PathBuf::from("."), false);
+        let background_images = resolve_background_images(&styles, &image_cache);
+
+        assert!(
+            background_images.contains_key(&div),
+            "div should have a decoded background image"
+        );
+        assert!(
+            !background_images.contains_key(&p),
+            "p has no background-image declared and should not be in the map"
+        );
+    }
+
+    #[test]
+    fn resolve_background_images_skips_a_failed_fetch_without_panicking() {
+        let dom = html::parse(br#"<div></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(r#"div { background-image: url("does-not-exist.png"); }"#);
+        let styles = compute_styles(&dom, &ua, &author);
+
+        let image_cache = ImageAssetCache::new(std::path::PathBuf::from("."), false);
+        let background_images = resolve_background_images(&styles, &image_cache);
+
+        assert!(
+            background_images.is_empty(),
+            "a failed background-image fetch should be skipped, not panic"
+        );
     }
 }

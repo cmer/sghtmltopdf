@@ -9,10 +9,17 @@
 //! document順に連結してから`parse_stylesheet`を1回だけ呼ぶため、
 //! フェッチした外部CSS内の相対`url()`は常に元HTMLの`base_dir`基準で
 //! 解決される(0015 決定6、スタイルシートごとの基準切り替えは非対応)。
+//!
+//! 各CSSソースのテキストは、連結する前に[`resolve_imports`]で`@import`を
+//! 再帰展開する([0016](../../../docs/decisions/0016-at-import-resolution-design.md)参照)。
+//! `parse_stylesheet`自体は`@import`を知らないまま(cssparserのエラー回復で
+//! 無視される)なので、`extract_author_stylesheet`を経由しない直接呼び出しでは
+//! 従来通り`@import`は展開されず単に無視される。
 
 use crate::html::{is_stylesheet_link, Dom, NodeData, NodeId};
 use crate::img::{DocumentImageCache, ImageFetcher};
 
+use super::import::resolve_imports;
 use super::stylesheet::{parse_stylesheet, Stylesheet};
 
 /// DOM中のCSSソース1件(document順)。
@@ -41,13 +48,13 @@ pub fn extract_author_stylesheet(
     for source in collect_css_sources(dom) {
         match source {
             CssSource::Inline(text) => {
-                css.push_str(&text);
+                css.push_str(&resolve_imports(&text, fetcher, cache, 0));
                 css.push('\n');
             }
             CssSource::External(href) => match cache.get_or_fetch(fetcher, &href) {
                 Ok(bytes) => match std::str::from_utf8(&bytes) {
                     Ok(text) => {
-                        css.push_str(text);
+                        css.push_str(&resolve_imports(text, fetcher, cache, 0));
                         css.push('\n');
                     }
                     Err(_) => {
@@ -245,5 +252,56 @@ mod tests {
 
         let sheet = extract_author_stylesheet(&dom, &fetcher, &cache);
         assert!(sheet.rules.is_empty());
+    }
+
+    #[test]
+    fn expands_at_import_inside_a_style_tag() {
+        let dir = temp_dir("import_in_style_tag");
+        std::fs::write(dir.join("imported.css"), b"p { color: rgb(1, 2, 3); }").unwrap();
+        let dom = html::parse(
+            br#"<html><head><style>@import url("imported.css"); div { color: rgb(4, 5, 6); }</style></head>
+                <body></body></html>"#,
+        );
+        let fetcher = ImageFetcher::new(dir.clone(), false);
+        let cache = DocumentImageCache::new();
+
+        let sheet = extract_author_stylesheet(&dom, &fetcher, &cache);
+        assert_eq!(sheet.rules.len(), 2);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn expands_at_import_inside_a_fetched_external_stylesheet() {
+        let dir = temp_dir("import_in_external");
+        std::fs::write(
+            dir.join("main.css"),
+            br#"@import url("base.css"); p { color: rgb(1, 2, 3); }"#,
+        )
+        .unwrap();
+        std::fs::write(dir.join("base.css"), b"div { color: rgb(4, 5, 6); }").unwrap();
+        let dom = html::parse(
+            br#"<html><head><link rel="stylesheet" href="main.css"></head><body></body></html>"#,
+        );
+        let fetcher = ImageFetcher::new(dir.clone(), false);
+        let cache = DocumentImageCache::new();
+
+        let sheet = extract_author_stylesheet(&dom, &fetcher, &cache);
+        assert_eq!(sheet.rules.len(), 2);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_failed_at_import_is_skipped_without_failing_the_whole_stylesheet() {
+        let dom = html::parse(
+            br#"<html><head><style>@import url("does-not-exist.css"); p { color: rgb(1, 2, 3); }</style></head>
+                <body></body></html>"#,
+        );
+        let fetcher = no_remote_fetcher();
+        let cache = DocumentImageCache::new();
+
+        let sheet = extract_author_stylesheet(&dom, &fetcher, &cache);
+        assert_eq!(sheet.rules.len(), 1);
     }
 }

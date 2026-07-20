@@ -70,6 +70,9 @@ pub struct ComputedStyle {
     /// 継承プロパティ。
     pub color: RgbaColor,
     pub background_color: RgbaColor,
+    /// `url(...)`(生の値、解決は呼び出し側任せ)。非継承プロパティ、初期値`None`。
+    /// [0017](../../../docs/decisions/0017-background-image-design.md)参照。
+    pub background_image: Option<String>,
     /// `text-decoration-line`。仕様上は非継承プロパティだが、代わりに祖先の
     /// 装飾線が子孫のボックスへ「伝播」する特殊規則を持つ。この伝播を
     /// 別途実装する代わりに、継承プロパティとして扱うことで
@@ -163,6 +166,7 @@ impl Default for ComputedStyle {
                 blue: 0,
                 alpha: 0.0,
             },
+            background_image: None,
             text_decoration_line: TextDecorationLine::default(),
             pseudo_before_content: None,
             pseudo_after_content: None,
@@ -346,6 +350,7 @@ fn compute_element_style(
     let mut font_style = None;
     let mut color = None;
     let mut background_color = None;
+    let mut background_image = None;
     let mut text_decoration_line = None;
     let mut break_before = None;
     let mut break_after = None;
@@ -398,6 +403,7 @@ fn compute_element_style(
             PropertyDeclaration::FontStyle(v) => font_style = Some(*v),
             PropertyDeclaration::Color(v) => color = Some(*v),
             PropertyDeclaration::BackgroundColor(v) => background_color = Some(*v),
+            PropertyDeclaration::BackgroundImage(v) => background_image = v.clone(),
             PropertyDeclaration::TextDecorationLine(v) => text_decoration_line = Some(*v),
             // `content`は`::before`/`::after`専用で、通常の要素では効果を持たない
             // (`matching_pseudo_content`が別途、擬似要素向けのマッチングを行う)。
@@ -508,6 +514,7 @@ fn compute_element_style(
         font_style: font_style.unwrap_or(inherited_font_style),
         color: resolved_color,
         background_color: resolved_background_color,
+        background_image: background_image.or(initial.background_image),
         text_decoration_line: text_decoration_line.unwrap_or(inherited_text_decoration_line),
         pseudo_before_content,
         pseudo_after_content,
@@ -662,6 +669,44 @@ mod tests {
         assert_eq!(
             styles[&p].background_color,
             ComputedStyle::default().background_color
+        );
+    }
+
+    #[test]
+    fn background_image_is_parsed_and_not_inherited() {
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(r#"div { background-image: url("bg.png"); }"#);
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].background_image.as_deref(),
+            Some("bg.png"),
+            "background-image should be parsed and reach ComputedStyle"
+        );
+        assert_eq!(
+            styles[&p].background_image, None,
+            "background-image should not be inherited"
+        );
+    }
+
+    #[test]
+    fn background_image_none_overrides_an_earlier_url_in_the_cascade() {
+        let dom = html::parse(br#"<div class="a b"></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(
+            r#".a { background-image: url("bg.png"); } .b { background-image: none; }"#,
+        );
+
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].background_image, None,
+            "a later `background-image: none` should win the cascade over an earlier url()"
         );
     }
 

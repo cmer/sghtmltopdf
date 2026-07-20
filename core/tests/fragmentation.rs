@@ -14,6 +14,8 @@
 //! `paginate.rs`のユニットテストに譲り、ここではパイプライン全体が
 //! クラッシュせず妥当なページ数のPDFを生成できることの確認に留める。
 
+use std::collections::HashMap;
+
 use sghtmltopdf_core::fonts::{Font, FontCollection};
 use sghtmltopdf_core::html::{self, Dom, NodeData, NodeId};
 use sghtmltopdf_core::layout::{
@@ -54,7 +56,7 @@ fn build_pdf(html_src: &str, css: &str) -> (usize, Vec<u8>) {
 
     let pages = paginate_document(&dom, &styles, &fonts, &settings);
     let engine_page_count = pages.len();
-    let bytes = encode_pdf(&pages, &styles, &fonts, &settings);
+    let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
 
     assert!(bytes.starts_with(b"%PDF-"));
     assert!(count_occurrences(&bytes, b"%%EOF") > 0);

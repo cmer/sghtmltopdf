@@ -275,6 +275,13 @@ pub(crate) fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) 
     if style.background_color.alpha > 0.0 {
         return true;
     }
+    // `background-image`のみを持つ要素(背景色・枠線なし)も、`place_split`が
+    // 装飾フラグメント(`node`付きの`LaidOutBox`)を生成する対象に含めない
+    // 限り`collect_image_uses`/`render_box`から参照できず描画されない
+    // ([0017](../../../docs/decisions/0017-background-image-design.md)決定2)。
+    if style.background_image.is_some() {
+        return true;
+    }
     [
         (border.top, style.border_top_style),
         (border.right, style.border_right_style),

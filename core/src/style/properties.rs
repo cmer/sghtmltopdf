@@ -42,6 +42,11 @@ pub enum PropertyDeclaration {
     FontStyle(FontStyle),
     Color(Color),
     BackgroundColor(Color),
+    /// `url(...)`(生の値、解決は呼び出し側任せ、`FontFaceSource::Url`と
+    /// 同じ方針)。`None`は`none`(背景画像なし)を表す。
+    /// `background-position`/`-size`/`-repeat`/`-attachment`は非対応
+    /// ([0017](../../../docs/decisions/0017-background-image-design.md)決定3)。
+    BackgroundImage(Option<String>),
     TextDecorationLine(TextDecorationLine),
     /// `::before`/`::after`用の`content`。`None`は`none`/`normal`(生成ボックスなし)。
     /// 文字列リテラル1つのみ対応し、`attr()`/`counter()`/複数値の連結は非対応。
@@ -78,6 +83,7 @@ pub fn parse_declaration<'i>(
         "font-style" => Ok(vec![D::FontStyle(parse_font_style(input)?)]),
         "color" => Ok(vec![D::Color(parse_color(input)?)]),
         "background-color" => Ok(vec![D::BackgroundColor(parse_color(input)?)]),
+        "background-image" => Ok(vec![D::BackgroundImage(parse_background_image(input)?)]),
         "text-decoration" | "text-decoration-line" => {
             Ok(vec![D::TextDecorationLine(parse_text_decoration_line(input)?)])
         },
@@ -485,6 +491,24 @@ fn parse_content<'i>(input: &mut Parser<'i, '_>) -> Result<Option<String>, Parse
         };
     }
     Ok(Some(input.expect_string()?.as_ref().to_string()))
+}
+
+/// `background-image`の簡易実装。`url(...)`1つのみ受け付ける
+/// (`linear-gradient()`等の非`url()`値、複数背景のカンマ区切りは非対応)。
+/// `none`は「背景画像なし」を表す`None`として扱う。
+fn parse_background_image<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Option<String>, ParseError<'i, ()>> {
+    if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+        return match_ignore_ascii_case! { &ident,
+            "none" => Ok(None),
+            _ => Err(input.new_custom_error(())),
+        };
+    }
+    let url = input
+        .expect_url_or_string()
+        .map_err(|_| input.new_custom_error(()))?;
+    Ok(Some(url.as_ref().to_string()))
 }
 
 fn parse_font_family<'i>(input: &mut Parser<'i, '_>) -> Result<Vec<String>, ParseError<'i, ()>> {

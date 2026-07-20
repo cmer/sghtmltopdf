@@ -16,6 +16,7 @@
 //! でxref/trailerを組み立てる。
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use pdf_writer::writers::Catalog;
 use pdf_writer::{Chunk, Content, Filter, Finish, Name, Rect as PdfRect, Ref};
@@ -28,7 +29,9 @@ use crate::style::ComputedStyle;
 
 use super::document::{collect_image_uses, collect_usage, render_box, RefAllocator};
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
-use super::img::{embed_image_streaming_chunks, ids_for_image, image_resource_name, ImageIds};
+use super::img::{
+    embed_image_streaming_chunks, ids_for_image, image_resource_name, ImageIds, PreparedImage,
+};
 
 const PDF_HEADER: &[u8] = b"%PDF-1.7\n%\x80\x80\x80\x80\n\n";
 
@@ -104,6 +107,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         &mut self,
         page: &Page,
         styles: &HashMap<NodeId, ComputedStyle>,
+        background_images: &HashMap<NodeId, Rc<PreparedImage>>,
         fonts: &FontCollection,
     ) -> Result<(), S::Error> {
         for b in &page.boxes {
@@ -112,10 +116,11 @@ impl<S: Sink> StreamingPdfWriter<S> {
 
         // 画像はフォントと違いページをまたいだ使用状況集計(サブセット化)が
         // 不要なため、このページで初出のものはこの時点で即座にXObjectとして
-        // 書き出し切る([0014]参照)。
+        // 書き出し切る([0014]参照)。`<img>`本体と`background-image`
+        // ([0017]決定2)の両方をここで一括して集める。
         let mut used_images = Vec::new();
         for b in &page.boxes {
-            collect_image_uses(b, &mut used_images);
+            collect_image_uses(b, background_images, &mut used_images);
         }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
@@ -144,6 +149,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 None,
                 &self.font_resource_names,
                 &self.image_ids,
+                background_images,
             );
         }
         let content_bytes = content.finish();
@@ -303,7 +309,7 @@ mod tests {
             .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -346,7 +352,7 @@ mod tests {
             .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -370,7 +376,7 @@ mod tests {
             .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -407,12 +413,12 @@ mod tests {
             .expect("new should not fail");
         for page in &pages1 {
             writer
-                .write_page(page, &styles1, &fonts)
+                .write_page(page, &styles1, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
         }
         for page in &pages2 {
             writer
-                .write_page(page, &styles2, &fonts)
+                .write_page(page, &styles2, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -446,7 +452,7 @@ mod tests {
         let mut page_count = 0usize;
         paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
             writer
-                .write_page(&page, &styles, &fonts)
+                .write_page(&page, &styles, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
             page_count += 1;
         });
@@ -493,7 +499,7 @@ mod tests {
             StreamingPdfWriter::new(&fonts, settings, sink).expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts)
                 .expect("write_page should not fail");
         }
         writer.finish(&fonts).expect("finish should not fail");

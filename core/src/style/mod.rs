@@ -5,6 +5,7 @@ mod computed;
 mod element_ref;
 mod extract;
 mod font_face;
+mod import;
 mod properties;
 mod selector_impl;
 mod stylesheet;
