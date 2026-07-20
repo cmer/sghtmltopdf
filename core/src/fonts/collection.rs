@@ -5,6 +5,8 @@
 //! [`super::system`]が担う。ここでは呼び出し側が明示的に読み込んだフォントの
 //! 中から選ぶだけの、いわば「手動フォールバックチェーン」を提供する。
 
+use cssparser::UnicodeRange;
+
 use crate::style::{FontStyle, FontWeight};
 
 use super::font::Font;
@@ -25,6 +27,11 @@ pub struct FontCollection {
     /// `Font::is_italic`)で判定する(`--font`/システムフォントはこちら)。
     declared_weights: Vec<Option<FontWeight>>,
     declared_styles: Vec<Option<FontStyle>>,
+    /// `@font-face`の`unicode-range`ディスクリプタ。空`Vec`の要素
+    /// (`--font`/システムフォント、または`unicode-range`未指定の
+    /// `@font-face`)は全域(U+0-10FFFF)を暗黙にカバーするものとして扱う
+    /// (0011参照)。
+    declared_unicode_ranges: Vec<Vec<UnicodeRange>>,
 }
 
 impl FontCollection {
@@ -35,6 +42,7 @@ impl FontCollection {
             declared_families: vec![None; len],
             declared_weights: vec![None; len],
             declared_styles: vec![None; len],
+            declared_unicode_ranges: vec![Vec::new(); len],
         }
     }
 
@@ -43,18 +51,22 @@ impl FontCollection {
     /// 優先してマッチングに使う(フォントファイルの内部名とCSS上の宣言名が
     /// 異なりうるため)。`weight`/`style`は`@font-face`のディスクリプタ値
     /// (CSS側の申告)を渡す。システムフォントのようにCSS側の申告が無い場合は
-    /// `None`を渡し、フォント自身の実メトリクスで判定させる。
+    /// `None`を渡し、フォント自身の実メトリクスで判定させる。`unicode_range`は
+    /// `@font-face`の`unicode-range`ディスクリプタ値で、空`Vec`は
+    /// 「未指定(全域カバー)」を意味する。
     pub fn push_font_face(
         &mut self,
         family: String,
         weight: Option<FontWeight>,
         style: Option<FontStyle>,
+        unicode_range: Vec<UnicodeRange>,
         font: Font,
     ) {
         self.fonts.push(font);
         self.declared_families.push(Some(family));
         self.declared_weights.push(weight);
         self.declared_styles.push(style);
+        self.declared_unicode_ranges.push(unicode_range);
     }
 
     pub fn fonts(&self) -> &[Font] {
@@ -115,9 +127,16 @@ impl FontCollection {
         Some(0)
     }
 
-    /// `eligible`を満たし、かつ`c`のグリフを持つフォントの中から、`weight`/`style`
-    /// も実際に満たすものを優先して選ぶ(`Self::is_bold`/`Self::is_italic`で判定)。
-    /// 一致するものが無ければ、`eligible`かつグリフを持つ最初のフォントを返す。
+    /// `eligible`を満たし、`unicode-range`(宣言されていれば)が`c`を含み、
+    /// かつ`c`のグリフを持つフォントの中から、`weight`/`style`も実際に
+    /// 満たすものを優先して選ぶ(`Self::is_bold`/`Self::is_italic`で判定)。
+    /// 一致するものが無ければ、条件を満たす最初のフォントを返す。
+    ///
+    /// `unicode-range`はハードフィルタとして働く: 宣言されたrangeに`c`が
+    /// 含まれない場合、そのフォントが実際に`c`のグリフを持っていても候補
+    /// から除外する(0011参照)。走査順(=登録順=CSSソース順)で最初に
+    /// 条件を満たしたフォントを採用するため、同じfamily/weight/styleで
+    /// rangeが重複する場合は自然に「宣言順(先勝ち)」になる。
     fn best_match(
         &self,
         weight: FontWeight,
@@ -127,7 +146,7 @@ impl FontCollection {
     ) -> Option<usize> {
         let mut first_match = None;
         for (i, f) in self.fonts.iter().enumerate() {
-            if !eligible(i, f) || !f.has_glyph(c) {
+            if !eligible(i, f) || !self.in_unicode_range(i, c) || !f.has_glyph(c) {
                 continue;
             }
             first_match.get_or_insert(i);
@@ -138,6 +157,20 @@ impl FontCollection {
             }
         }
         first_match
+    }
+
+    /// `index`のフォントの宣言済み`unicode-range`(あれば)に`c`が含まれるか。
+    /// `unicode-range`が未宣言(空`Vec`)の場合は常に`true`(全域カバー)。
+    fn in_unicode_range(&self, index: usize, c: char) -> bool {
+        match self.declared_unicode_ranges.get(index) {
+            Some(ranges) if !ranges.is_empty() => {
+                let code_point = c as u32;
+                ranges
+                    .iter()
+                    .any(|range| range.start <= code_point && code_point <= range.end)
+            }
+            _ => true,
+        }
     }
 
     /// `family`に一致するフォント(`--font`/`@font-face`/システムフォント問わず)が
@@ -267,7 +300,7 @@ mod tests {
         assert!(collection.has_family("DejaVu Sans"));
         assert!(!collection.has_family("Custom Brand"));
 
-        collection.push_font_face("Custom Brand".to_string(), None, None, cjk());
+        collection.push_font_face("Custom Brand".to_string(), None, None, Vec::new(), cjk());
         assert!(collection.has_family("Custom Brand"));
     }
 
@@ -289,7 +322,7 @@ mod tests {
         // 上書きが効いていなければ名前一致では見つからず、カバレッジのみの
         // フォールバック(先頭=index 0)に落ちてしまい、期待するindex 1にならない。
         let mut collection = FontCollection::new(vec![dejavu()]);
-        collection.push_font_face("Custom Brand".to_string(), None, None, dejavu());
+        collection.push_font_face("Custom Brand".to_string(), None, None, Vec::new(), dejavu());
 
         let index = select(
             &collection,
@@ -342,6 +375,7 @@ mod tests {
             "Declared Brand".to_string(),
             Some(FontWeight::Bold),
             Some(FontStyle::Italic),
+            Vec::new(),
             dejavu(),
         );
         assert!(collection.is_bold(0));
@@ -379,5 +413,197 @@ mod tests {
         .unwrap();
         assert_eq!(index, 0);
         assert!(!collection.is_bold(index));
+    }
+
+    #[test]
+    fn unicode_range_excludes_a_font_even_when_it_has_the_glyph() {
+        // index 0はグリフとしては'é'(U+00E9)を実際に持つDejaVu Sansだが、
+        // `unicode-range: U+0-7F`(Basic Latinのみ)を宣言しているため対象外。
+        // index 1は同じDejaVu Sansをrange指定なしで再登録したもの。
+        // ハードフィルタが効いていれば、グリフの有無に関わらずindex 0は
+        // 除外されindex 1が選ばれるはず。
+        let mut collection = FontCollection::new(vec![]);
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0x7F,
+            }],
+            dejavu(),
+        );
+        collection.push_font_face("Brand".to_string(), None, None, Vec::new(), dejavu());
+
+        assert!(
+            collection.get(0).unwrap().has_glyph('é'),
+            "テスト前提: DejaVu Sansは'é'のグリフを持つはず"
+        );
+
+        let index = select(
+            &collection,
+            "Brand",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'é',
+        )
+        .unwrap();
+        assert_eq!(index, 1);
+    }
+
+    #[test]
+    fn unicode_range_does_not_exclude_a_char_inside_the_declared_range() {
+        let mut collection = FontCollection::new(vec![]);
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0x7F,
+            }],
+            dejavu(),
+        );
+
+        let index = select(
+            &collection,
+            "Brand",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'A',
+        )
+        .unwrap();
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn unicode_range_unspecified_covers_the_whole_unicode_range() {
+        // 既存(M1)の挙動の後方互換確認: unicode_rangeを指定しない登録は
+        // これまで通り全域をカバーする。
+        let collection = FontCollection::new(vec![dejavu()]);
+        let index = select(
+            &collection,
+            "DejaVu Sans",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'A',
+        )
+        .unwrap();
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn overlapping_unicode_ranges_prefer_the_first_declared_font() {
+        // 同じfamily・weight/style・重複するrangeを持つ2つのフォントが
+        // 同じ文字をカバーする場合、CSSソース中で先に登録された方
+        // (登録順=走査順)が優先されるはず。
+        let mut collection = FontCollection::new(vec![]);
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0x7F,
+            }],
+            dejavu(),
+        );
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0xFF,
+            }],
+            dejavu_bold(),
+        );
+
+        let index = select(
+            &collection,
+            "Brand",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'A',
+        )
+        .unwrap();
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn falls_back_to_tofu_when_every_font_excludes_the_char_by_range() {
+        // 対象文字をカバーするフォントが1つも無い(rangeで全滅)場合でも、
+        // 既存の安全弁(先頭フォントへのtofuフォールバック)は維持される。
+        let mut collection = FontCollection::new(vec![]);
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0x7F,
+            }],
+            dejavu(),
+        );
+
+        let index = select(
+            &collection,
+            "Brand",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            '日',
+        )
+        .unwrap();
+        assert_eq!(index, 0);
+    }
+
+    #[test]
+    fn unicode_range_splits_a_latin_and_a_cjk_face_declared_under_the_same_family() {
+        // 典型的なwebfont配信パターン: 英数字用フォントとCJK用フォントを
+        // 同じfamily名でunicode-range分けして併用する(0004 T38)。
+        let mut collection = FontCollection::new(vec![]);
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0x24F,
+            }],
+            dejavu(),
+        );
+        collection.push_font_face(
+            "Brand".to_string(),
+            None,
+            None,
+            vec![UnicodeRange {
+                start: 0x4E00,
+                end: 0x9FFF,
+            }],
+            cjk(),
+        );
+
+        let latin_index = select(
+            &collection,
+            "Brand",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'A',
+        )
+        .unwrap();
+        assert_eq!(
+            latin_index, 0,
+            "Latin characters should use the Latin-range face"
+        );
+
+        let cjk_index = select(
+            &collection,
+            "Brand",
+            FontWeight::Normal,
+            FontStyle::Normal,
+            '日',
+        )
+        .unwrap();
+        assert_eq!(cjk_index, 1, "CJK characters should use the CJK-range face");
     }
 }

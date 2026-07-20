@@ -247,6 +247,7 @@ impl<S: Sink> Engine<S> {
                 loaded.family,
                 Some(loaded.weight),
                 Some(loaded.style),
+                loaded.unicode_range,
                 loaded.font,
             );
         }
@@ -478,6 +479,7 @@ impl<S: Sink> Engine<S> {
                 loaded.family,
                 Some(loaded.weight),
                 Some(loaded.style),
+                loaded.unicode_range,
                 loaded.font,
             );
         }
@@ -918,5 +920,86 @@ mod tests {
         assert!(count_occurrences(&bytes, b"/FontFile2") > 0);
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn unicode_range_hard_filter_excludes_a_face_end_to_end_through_the_engine() {
+        // 1つ目の`@font-face`(index 0)はDejaVu Sansだが`unicode-range:
+        // U+0-7F`(Basic Latinのみ)を宣言する。'é'(U+00E9)はDejaVu Sans
+        // 自身が実際に描画できるグリフだが、宣言レンジ外なのでハード
+        // フィルタで除外されるはず。2つ目の`@font-face`(index 1)は同じ
+        // DejaVu Sansをrange指定なしで再登録したもので、こちらが
+        // 選ばれるはず。CSSパース→`Engine`→`FontCollection`の実際の
+        // パイプラインを通した回帰検知(0011のT39)。
+        let base_dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts"));
+        let html = r#"<html><head><style>
+            @font-face { font-family: "Brand"; src: url("DejaVuSans.ttf"); unicode-range: U+0-7F; }
+            @font-face { font-family: "Brand"; src: url("DejaVuSans.ttf"); }
+            p { font-family: "Brand"; }
+        </style></head><body><p>ééé</p></body></html>"#;
+
+        let options = EngineOptions {
+            base_dir: Some(base_dir.to_path_buf()),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        let stream = decompressed_stream_bytes(&bytes);
+        assert!(
+            count_occurrences(&stream, b"/F1 ") > 0,
+            "should select the unrestricted second face (index 1) for U+00E9"
+        );
+        assert_eq!(
+            count_occurrences(&stream, b"/F0 "),
+            0,
+            "the range-restricted first face (index 0) should never be selected for U+00E9, \
+             even though it physically has the glyph"
+        );
+    }
+
+    #[test]
+    fn unicode_range_split_between_latin_and_cjk_faces_matches_in_batch_and_streaming_mode() {
+        // 典型的な「英数字用+CJK用を同一family名でunicode-range分けして
+        // 併用」パターン(0004 T38/T39)。`Mode::Batch`/`Mode::Streaming`
+        // 両方で同じ結果になることも確認する。
+        let base_dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts"));
+        let html_src = r#"<style>
+            @font-face { font-family: "Brand"; src: url("DejaVuSans.ttf"); unicode-range: U+0-24F; }
+            @font-face { font-family: "Brand"; src: url("NotoSansCJK-Regular.ttc"); unicode-range: U+4E00-9FFF; }
+            p { font-family: "Brand"; }
+        </style><body><p>A&#26085;</p></body>"#;
+
+        let run = |mode: Mode| {
+            let options = EngineOptions {
+                mode,
+                base_dir: Some(base_dir.to_path_buf()),
+                ..EngineOptions::default()
+            };
+            let mut engine = Engine::new(options, MemorySink::new());
+            engine.feed(html_src.as_bytes()).unwrap();
+            engine.finish().unwrap()
+        };
+
+        let batch_bytes = run(Mode::Batch);
+        let streaming_bytes = run(Mode::Streaming);
+
+        for (label, bytes) in [("batch", &batch_bytes), ("streaming", &streaming_bytes)] {
+            assert!(
+                bytes.starts_with(b"%PDF-"),
+                "{label} output should be a valid PDF"
+            );
+            let stream = decompressed_stream_bytes(bytes);
+            assert!(
+                count_occurrences(&stream, b"/F0 ") > 0,
+                "{label}: the Latin-range face (index 0) should be used for 'A'"
+            );
+            assert!(
+                count_occurrences(&stream, b"/F1 ") > 0,
+                "{label}: the CJK-range face (index 1) should be used for U+65E5"
+            );
+        }
     }
 }

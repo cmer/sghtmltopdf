@@ -5,7 +5,7 @@
 
 use cssparser::{
     match_ignore_ascii_case, AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, UnicodeRange,
 };
 
 use super::properties::{parse_family_name, parse_font_style, parse_font_weight};
@@ -19,6 +19,11 @@ pub struct FontFaceRule {
     pub src: Vec<FontFaceSource>,
     pub weight: FontWeight,
     pub style: FontStyle,
+    /// `unicode-range`。空`Vec`は「未指定」を意味し、全域(U+0-10FFFF)を
+    /// 暗黙にカバーするものとして扱う(呼び出し側の責務。[0011]参照)。
+    ///
+    /// [0011]: ../../../../docs/decisions/0011-unicode-range-parsing.md
+    pub unicode_range: Vec<UnicodeRange>,
 }
 
 /// `src`ディスクリプタの1エントリ。
@@ -45,6 +50,7 @@ pub(super) fn parse_font_face_block<'i>(
     let mut src = None;
     let mut weight = FontWeight::default();
     let mut style = FontStyle::default();
+    let mut unicode_range = Vec::new();
 
     for descriptor in descriptors {
         match descriptor {
@@ -52,6 +58,7 @@ pub(super) fn parse_font_face_block<'i>(
             FontFaceDescriptor::Src(v) => src = Some(v),
             FontFaceDescriptor::Weight(v) => weight = v,
             FontFaceDescriptor::Style(v) => style = v,
+            FontFaceDescriptor::UnicodeRange(v) => unicode_range = v,
         }
     }
 
@@ -62,6 +69,7 @@ pub(super) fn parse_font_face_block<'i>(
         src,
         weight,
         style,
+        unicode_range,
     })
 }
 
@@ -70,6 +78,7 @@ enum FontFaceDescriptor {
     Src(Vec<FontFaceSource>),
     Weight(FontWeight),
     Style(FontStyle),
+    UnicodeRange(Vec<UnicodeRange>),
 }
 
 struct FontFaceDeclarationParser;
@@ -89,6 +98,7 @@ impl<'i> DeclarationParser<'i> for FontFaceDeclarationParser {
             "src" => Ok(FontFaceDescriptor::Src(parse_font_face_src(input)?)),
             "font-weight" => Ok(FontFaceDescriptor::Weight(parse_font_weight(input)?)),
             "font-style" => Ok(FontFaceDescriptor::Style(parse_font_style(input)?)),
+            "unicode-range" => Ok(FontFaceDescriptor::UnicodeRange(parse_unicode_range(input)?)),
             _ => Err(input.new_custom_error(())),
         }
     }
@@ -153,10 +163,102 @@ fn parse_font_face_src<'i>(
     Ok(sources)
 }
 
+/// `unicode-range`ディスクリプタ: `<urange>`のカンマ区切りリスト
+/// (`unicode-range: U+0-24F, U+1E00-1EFF;`)。`<urange>`自体の構文
+/// (単一コードポイント/範囲/ワイルドカード)の妥当性検証は
+/// `cssparser::UnicodeRange::parse`に委ねる(0011参照。独自の型・
+/// 手書きパーサは持たない)。1つでも不正なレンジがあれば
+/// `parse_comma_separated`がクロージャの`Err`でリスト全体の
+/// パースを打ち切るため、記述子全体が無効になる。
+fn parse_unicode_range<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<UnicodeRange>, ParseError<'i, ()>> {
+    input.parse_comma_separated(|input| {
+        UnicodeRange::parse(input).map_err(|_| input.new_custom_error(()))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::style::parse_stylesheet;
+    use cssparser::ParserInput;
+
+    fn parse_ranges(css: &str) -> Result<Vec<UnicodeRange>, ()> {
+        let mut input = ParserInput::new(css);
+        let mut parser = Parser::new(&mut input);
+        parse_unicode_range(&mut parser).map_err(|_| ())
+    }
+
+    #[test]
+    fn parses_a_single_code_point() {
+        let ranges = parse_ranges("U+416").unwrap();
+        assert_eq!(
+            ranges,
+            vec![UnicodeRange {
+                start: 0x416,
+                end: 0x416
+            }]
+        );
+    }
+
+    #[test]
+    fn parses_an_explicit_range() {
+        let ranges = parse_ranges("U+400-4ff").unwrap();
+        assert_eq!(
+            ranges,
+            vec![UnicodeRange {
+                start: 0x400,
+                end: 0x4ff
+            }]
+        );
+    }
+
+    #[test]
+    fn parses_a_wildcard_range() {
+        let ranges = parse_ranges("U+4??").unwrap();
+        assert_eq!(
+            ranges,
+            vec![UnicodeRange {
+                start: 0x400,
+                end: 0x4ff
+            }]
+        );
+    }
+
+    #[test]
+    fn parses_comma_separated_ranges_in_source_order() {
+        let ranges = parse_ranges("U+0-24F, U+1E00-1EFF, U+2C60-2C7F").unwrap();
+        assert_eq!(
+            ranges,
+            vec![
+                UnicodeRange {
+                    start: 0x0,
+                    end: 0x24F
+                },
+                UnicodeRange {
+                    start: 0x1E00,
+                    end: 0x1EFF
+                },
+                UnicodeRange {
+                    start: 0x2C60,
+                    end: 0x2C7F
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_a_range_whose_start_exceeds_its_end() {
+        assert!(parse_ranges("U+4FF-400").is_err());
+    }
+
+    #[test]
+    fn a_single_invalid_range_invalidates_the_whole_list() {
+        // 1つ目は妥当だが2つ目が不正なので、リスト全体が無効になる
+        // (`parse_comma_separated`がクロージャの`Err`で全体を打ち切るため)。
+        assert!(parse_ranges("U+0-7F, not-a-range").is_err());
+    }
 
     #[test]
     fn parses_family_and_url_src() {
@@ -172,6 +274,53 @@ mod tests {
         );
         assert_eq!(rule.weight, FontWeight::Normal);
         assert_eq!(rule.style, FontStyle::Normal);
+        assert!(rule.unicode_range.is_empty());
+    }
+
+    #[test]
+    fn parses_unicode_range_descriptor() {
+        let sheet = parse_stylesheet(
+            r#"@font-face { font-family: Brand; src: url("brand.ttf"); unicode-range: U+0-24F, U+1E00-1EFF; }"#,
+        );
+        let rule = &sheet.font_faces[0];
+        assert_eq!(
+            rule.unicode_range,
+            vec![
+                UnicodeRange {
+                    start: 0x0,
+                    end: 0x24F
+                },
+                UnicodeRange {
+                    start: 0x1E00,
+                    end: 0x1EFF
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn keeps_multiple_font_faces_with_different_unicode_ranges() {
+        let sheet = parse_stylesheet(
+            r#"
+            @font-face { font-family: Brand; src: url("brand-latin.ttf"); unicode-range: U+0-24F; }
+            @font-face { font-family: Brand; src: url("brand-cjk.ttf"); unicode-range: U+4E00-9FFF; }
+            "#,
+        );
+        assert_eq!(sheet.font_faces.len(), 2);
+        assert_eq!(
+            sheet.font_faces[0].unicode_range,
+            vec![UnicodeRange {
+                start: 0x0,
+                end: 0x24F
+            }]
+        );
+        assert_eq!(
+            sheet.font_faces[1].unicode_range,
+            vec![UnicodeRange {
+                start: 0x4E00,
+                end: 0x9FFF
+            }]
+        );
     }
 
     #[test]

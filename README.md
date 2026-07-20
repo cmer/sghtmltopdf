@@ -21,7 +21,24 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 ## 開発状況
 
 マイルストーン1(静的HTML一括変換)・マイルストーン2(CSS Fragmentation)・
-マイルストーン3(ストリーミング入出力対応)ともに完了。
+マイルストーン3(ストリーミング入出力対応)・マイルストーン4(Webfont対応)
+ともに完了。
+
+### Webfont対応
+
+`@font-face`の`unicode-range`ディスクリプタに対応している。
+
+* `unicode-range: U+0-24F, U+1E00-1EFF;`のような単一コードポイント/範囲/
+  ワイルドカード(`U+4??`)/カンマ区切り複数レンジの構文をサポートする
+* 宣言されたrangeはハードフィルタとして働く: range外の文字には、そのフォントが
+  実際にグリフを持っていても使わない。range未指定のフォント(`local()`/`--font`/
+  システムフォント自動探索を含む)は従来通り全域をカバーする(後方互換)
+* 同一family名で複数の`@font-face`にunicode-rangeを分けて宣言する典型的な
+  webfont配信パターン(英数字用フォント+CJK用フォントの併用等)に対応する。
+  重複するrangeが同じ文字をカバーする場合は、CSSソース中で先に宣言された
+  方を優先する
+
+詳細は[docs/decisions/0011-unicode-range-parsing.md](docs/decisions/0011-unicode-range-parsing.md)参照。
 
 ### ストリーミング入出力対応
 

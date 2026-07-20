@@ -134,7 +134,7 @@ pub fn load_missing_system_fonts(
                 continue;
             }
             if let Some(font) = system.load(family, style.font_weight, style.font_style) {
-                fonts.push_font_face(family.clone(), None, None, font);
+                fonts.push_font_face(family.clone(), None, None, Vec::new(), font);
             }
         }
     }

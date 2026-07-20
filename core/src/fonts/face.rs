@@ -8,16 +8,20 @@
 
 use std::path::Path;
 
+use cssparser::UnicodeRange;
+
 use crate::style::{FontFaceRule, FontFaceSource, FontStyle, FontWeight};
 
 use super::font::Font;
 use super::system::SystemFonts;
 
-/// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style。
+/// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style・
+/// unicode-range。
 pub struct LoadedFontFace {
     pub family: String,
     pub weight: FontWeight,
     pub style: FontStyle,
+    pub unicode_range: Vec<UnicodeRange>,
     pub font: Font,
 }
 
@@ -51,6 +55,7 @@ fn load_one(rule: &FontFaceRule, base_dir: &Path, system: &SystemFonts) -> Optio
                 family: rule.family.clone(),
                 weight: rule.weight,
                 style: rule.style,
+                unicode_range: rule.unicode_range.clone(),
                 font,
             });
         }
@@ -75,6 +80,7 @@ mod tests {
             src,
             weight: FontWeight::Normal,
             style: FontStyle::Normal,
+            unicode_range: Vec::new(),
         }
     }
 
