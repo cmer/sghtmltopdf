@@ -211,6 +211,11 @@ fn measure_natural_content_width(
             .fold(0.0f32, f32::max),
         // ネストしたテーブルの自然幅測定は非対応(既知の簡略化)。
         BoxContent::Table(_) => 0.0,
+        BoxContent::Image(image_content) => image_content
+            .attr_width
+            .map(|w| w as f32)
+            .or_else(|| image_content.image.as_ref().map(|img| img.width as f32))
+            .unwrap_or(0.0),
     }
 }
 
@@ -253,7 +258,8 @@ mod tests {
                 .iter()
                 .flat_map(|row| &row.cells)
                 .find_map(|cell| find_laid_out(cell, target)),
-            super::super::block::LaidOutContent::Inline(_) => None,
+            super::super::block::LaidOutContent::Inline(_)
+            | super::super::block::LaidOutContent::Image(_) => None,
         }
     }
 

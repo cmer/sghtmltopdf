@@ -47,10 +47,11 @@ use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollect
 use crate::html::{Dom, NodeId, StreamingParser};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
-    layout_document_from, paginate_document_streaming, resolve_border, resolve_lpa_or_zero,
-    resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
+    layout_document_from, paginate_document_streaming, resolve_border, resolve_images,
+    resolve_lpa_or_zero, resolve_padding, resolve_width_and_horizontal_margins, PageSettings,
+    StreamingPaginator,
 };
-use crate::pdf::StreamingPdfWriter;
+use crate::pdf::{ImageAssetCache, StreamingPdfWriter};
 use crate::sink::Sink;
 use crate::style::{
     compute_single_element_style, compute_styles, compute_styles_with_parent,
@@ -87,8 +88,14 @@ pub struct EngineOptions {
     pub fonts: Vec<FontSpec>,
     /// `@font-face`の`src: url(...)`を相対解決する基準ディレクトリ。
     /// 入力がファイルに対応しない場合(Rackボディ等)は`None`でよく、
-    /// その場合はカレントディレクトリを基準にする。
+    /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
+    /// 相対パス解決にも同じ基準ディレクトリを使う。
     pub base_dir: Option<PathBuf>,
+    /// `<img src>`のhttp(s)絶対URLフェッチを許可するか。既定`false`
+    /// ([0013](../docs/decisions/0013-image-fetch-security.md)の
+    /// 「既定無効・明示オプトイン」方針)。ローカル相対パス・`data:`URIは
+    /// この値に関わらず常に許可する。
+    pub allow_remote_images: bool,
 }
 
 /// `Engine`が返すエラー。`Sink`からのエラー(`Io`)、コア自身が判定する
@@ -142,6 +149,8 @@ struct StreamingState<S: Sink> {
     cursor_y: f32,
     paginator: StreamingPaginator,
     writer: StreamingPdfWriter<S>,
+    /// `<img>`のフェッチ・デコード結果を文書内でメモ化するキャッシュ。
+    image_cache: ImageAssetCache,
 }
 
 /// HTMLチャンク投入からPDFバイト列書き出しまでを1つのAPIとして統合する
@@ -304,6 +313,8 @@ impl<S: Sink> Engine<S> {
 
         let writer = StreamingPdfWriter::new(&fonts, self.options.settings, sink)
             .map_err(EngineError::Io)?;
+        let image_cache =
+            ImageAssetCache::new(base_dir.to_path_buf(), self.options.allow_remote_images);
 
         Ok(StreamingState {
             ua,
@@ -317,6 +328,7 @@ impl<S: Sink> Engine<S> {
             cursor_y: start_y,
             paginator: StreamingPaginator::new(self.options.settings.content_height()),
             writer,
+            image_cache,
         })
     }
 
@@ -340,7 +352,10 @@ impl<S: Sink> Engine<S> {
                 &state.ua,
                 &state.author,
             );
-            let item_box = build_box_for_element(&dom, &sub_styles, node);
+            let mut item_box = build_box_for_element(&dom, &sub_styles, node);
+            if let Some(item_box) = &mut item_box {
+                resolve_images(item_box, &dom, &state.image_cache);
+            }
             (sub_styles, item_box)
         };
         state.styles.extend(sub_styles);
@@ -487,16 +502,24 @@ impl<S: Sink> Engine<S> {
 
         let mut writer =
             StreamingPdfWriter::new(&fonts, options.settings, sink).map_err(EngineError::Io)?;
+        let image_cache = ImageAssetCache::new(base_dir.to_path_buf(), options.allow_remote_images);
 
         let mut write_error: Option<S::Error> = None;
-        paginate_document_streaming(&mut dom, &styles, &fonts, &options.settings, &mut |page| {
-            if write_error.is_some() {
-                return;
-            }
-            if let Err(e) = writer.write_page(&page, &styles, &fonts) {
-                write_error = Some(e);
-            }
-        });
+        paginate_document_streaming(
+            &mut dom,
+            &styles,
+            &fonts,
+            &options.settings,
+            &image_cache,
+            &mut |page| {
+                if write_error.is_some() {
+                    return;
+                }
+                if let Err(e) = writer.write_page(&page, &styles, &fonts) {
+                    write_error = Some(e);
+                }
+            },
+        );
         if let Some(e) = write_error {
             return Err(EngineError::Io(e));
         }
@@ -1001,5 +1024,137 @@ mod tests {
                 "{label}: the CJK-range face (index 1) should be used for U+65E5"
             );
         }
+    }
+
+    const JPEG_FIXTURE_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/spike_gradient.jpg"
+    );
+    const PNG_ALPHA_FIXTURE_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/spike_gradient_alpha.png"
+    );
+
+    fn data_uri(path: &str, mime_type: &str) -> String {
+        use base64::engine::general_purpose::STANDARD;
+        use base64::Engine;
+        let bytes = std::fs::read(path).unwrap();
+        format!("data:{mime_type};base64,{}", STANDARD.encode(bytes))
+    }
+
+    #[test]
+    fn image_data_uri_is_embedded_as_a_dctdecode_xobject_end_to_end() {
+        // M5(画像埋め込み)のパイプライン全体(DOM属性抽出→data:URI分類→
+        // デコード→box tree→レイアウト→PDF XObject書き出し)を、
+        // fetchを一切経由しないdata:URI経由で検証する。
+        let html = format!(
+            r#"<html><body><img src="{}" width="32" height="24"></body></html>"#,
+            data_uri(JPEG_FIXTURE_PATH, "image/jpeg")
+        );
+
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        // JPEGはデコードせずそのままDCTDecodeフィルタで埋め込む
+        // ([0012]の方針)ため、生のJPEGバイト列そのものが出現するはず。
+        let jpeg_bytes = std::fs::read(JPEG_FIXTURE_PATH).unwrap();
+        assert!(count_occurrences(&bytes, b"/DCTDecode") > 0);
+        assert!(
+            count_occurrences(&bytes, &jpeg_bytes) > 0,
+            "the original JPEG bytes should be embedded verbatim (no re-encode)"
+        );
+        assert!(count_occurrences(&bytes, b"/Width 32") > 0);
+        assert!(count_occurrences(&bytes, b"/Height 24") > 0);
+    }
+
+    #[test]
+    fn png_with_alpha_data_uri_produces_an_smask_xobject_end_to_end() {
+        let html = format!(
+            r#"<html><body><img src="{}"></body></html>"#,
+            data_uri(PNG_ALPHA_FIXTURE_PATH, "image/png")
+        );
+
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert!(
+            count_occurrences(&bytes, b"/SMask") > 0,
+            "a PNG with an alpha channel should produce an SMask-linked XObject"
+        );
+        // 内在サイズ(16x16、フィクスチャの実寸)がwidth/height属性なしで
+        // そのまま使われているはず。
+        assert!(count_occurrences(&bytes, b"/Width 16") > 0);
+        assert!(count_occurrences(&bytes, b"/Height 16") > 0);
+    }
+
+    #[test]
+    fn image_rendering_matches_between_batch_and_streaming_mode() {
+        let html = format!(
+            r#"<html><body><p>before</p><img src="{}" width="32" height="24"><p>after</p></body></html>"#,
+            data_uri(JPEG_FIXTURE_PATH, "image/jpeg")
+        );
+
+        let run = |mode: Mode| {
+            let options = EngineOptions {
+                mode,
+                fonts: vec![font_spec()],
+                ..EngineOptions::default()
+            };
+            let mut engine = Engine::new(options, MemorySink::new());
+            engine.feed(html.as_bytes()).unwrap();
+            engine.finish().unwrap()
+        };
+
+        let batch_bytes = run(Mode::Batch);
+        let streaming_bytes = run(Mode::Streaming);
+
+        for (label, bytes) in [("batch", &batch_bytes), ("streaming", &streaming_bytes)] {
+            assert!(
+                bytes.starts_with(b"%PDF-"),
+                "{label} output should be a valid PDF"
+            );
+            assert!(
+                count_occurrences(bytes, b"/DCTDecode") > 0,
+                "{label}: image should be embedded"
+            );
+        }
+    }
+
+    #[test]
+    fn a_broken_image_src_degrades_to_an_empty_box_instead_of_failing_the_whole_document() {
+        // [0014]の方針: 取得・デコード失敗はその要素だけ空扱いにして、
+        // 文書生成全体は止めない(壊れたURLがDoSベクタにならないように)。
+        let html = r#"<html><body><p>before</p>
+            <img src="does-not-exist-anywhere.png" width="50" height="50">
+            <p>after</p></body></html>"#;
+
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine
+            .finish()
+            .expect("a broken image src must not fail the whole document");
+
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert_eq!(
+            count_occurrences(&bytes, b"/DCTDecode"),
+            0,
+            "no image XObject should have been written for the failed fetch"
+        );
     }
 }

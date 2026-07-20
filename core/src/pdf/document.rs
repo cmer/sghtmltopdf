@@ -45,6 +45,7 @@
 //!   非対応。請求書・帳票用途での実用性に対して実装コストが見合わないため
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use pdf_writer::types::{LineCapStyle, TextRenderingMode};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
@@ -58,6 +59,7 @@ use crate::sink::Sink;
 use crate::style::{BorderStyle, ComputedStyle, RgbaColor};
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
+use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, PreparedImage};
 
 /// DOM由来のレイアウト結果(ページ列)をPDFバイト列にエンコードする。
 pub fn encode_pdf(
@@ -104,12 +106,29 @@ pub fn encode_pdf(
         .map(|((font, &ids), usage)| embed_font(&mut pdf, font, ids, usage).into_iter().collect())
         .collect();
 
-    // Pass 2: 実際にページのコンテンツストリームを書く。
+    // Pass 2: 実際にページのコンテンツストリームを書く。画像XObjectは、
+    // フォントと違ってページ間で使い回すための事前サブセット化情報が
+    // 不要なため、ページごとに「初出なら書き出す」形で済ませる
+    // ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
+    let mut image_ids: HashMap<usize, ImageIds> = HashMap::new();
     let mut page_ids = Vec::with_capacity(pages.len());
     for page in pages {
         let page_id = alloc.next();
         let content_id = alloc.next();
         page_ids.push(page_id);
+
+        let mut used_images = Vec::new();
+        for b in &page.boxes {
+            collect_image_uses(b, &mut used_images);
+        }
+        let mut page_image_refs = Vec::with_capacity(used_images.len());
+        for image in &used_images {
+            let (ids, is_new) = ids_for_image(&mut alloc, &mut image_ids, image);
+            if is_new {
+                embed_image(&mut pdf, image, &ids);
+            }
+            page_image_refs.push(ids.color);
+        }
 
         let mut content = Content::new();
         for b in &page.boxes {
@@ -121,6 +140,7 @@ pub fn encode_pdf(
                 settings,
                 Some(&remaps),
                 &font_resource_names,
+                &image_ids,
             );
         }
         let content_bytes = content.finish();
@@ -139,6 +159,11 @@ pub fn encode_pdf(
             let mut font_dict = resources.fonts();
             for (name, ids) in font_resource_names.iter().zip(font_ids.iter()) {
                 font_dict.pair(Name(name.as_bytes()), ids.type0_font);
+            }
+            font_dict.finish();
+            let mut xobject_dict = resources.x_objects();
+            for color_ref in &page_image_refs {
+                xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
             }
         }
         p.finish();
@@ -210,9 +235,37 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
                 }
             }
         }
+        LaidOutContent::Image(_) => {}
     }
 }
 
+/// ページ(群)を再帰的に走査し、実際に使われている画像を`Rc`のポインタ
+/// アイデンティティで重複排除して集める。フォントの`collect_usage`と同じ
+/// 「使用状況を先に集めてからRefを払い出す」構造。
+pub(super) fn collect_image_uses(b: &LaidOutBox, out: &mut Vec<Rc<PreparedImage>>) {
+    match &b.content {
+        LaidOutContent::Blocks(children) => {
+            for child in children {
+                collect_image_uses(child, out);
+            }
+        }
+        LaidOutContent::Table(rows) => {
+            for row in rows {
+                for cell in &row.cells {
+                    collect_image_uses(cell, out);
+                }
+            }
+        }
+        LaidOutContent::Image(Some(image)) => {
+            if !out.iter().any(|existing| Rc::ptr_eq(existing, image)) {
+                out.push(image.clone());
+            }
+        }
+        LaidOutContent::Image(None) | LaidOutContent::Inline(_) => {}
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_box(
     content: &mut Content,
     b: &LaidOutBox,
@@ -221,6 +274,7 @@ pub(super) fn render_box(
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
     font_resource_names: &[String],
+    image_ids: &HashMap<usize, ImageIds>,
 ) {
     let style = b
         .node
@@ -241,12 +295,20 @@ pub(super) fn render_box(
                     settings,
                     remaps,
                     font_resource_names,
+                    image_ids,
                 );
             }
         }
         LaidOutContent::Inline(lines) => {
             for line in lines {
                 render_line(content, line, fonts, settings, remaps, font_resource_names);
+            }
+        }
+        LaidOutContent::Image(image) => {
+            if let Some(image) = image {
+                if let Some(&ids) = image_ids.get(&(Rc::as_ptr(image) as usize)) {
+                    render_image(content, b.layout.content, settings, ids.color);
+                }
             }
         }
         LaidOutContent::Table(rows) => {
@@ -260,6 +322,7 @@ pub(super) fn render_box(
                         settings,
                         remaps,
                         font_resource_names,
+                        image_ids,
                     );
                 }
             }
@@ -347,6 +410,20 @@ fn render_background(
     );
     content.rect(x, y, border_box.width, border_box.height);
     content.fill_nonzero();
+}
+
+/// `<img>`のcontent box(`rect`)いっぱいに画像XObjectを描画する。
+/// `resource_ref`が指すXObjectは、呼び出し元がページの`/Resources
+/// /XObject`辞書へ既に登録済みであること([`image_resource_name`]と同じ
+/// 命名規則でリソース名を導出する)。
+fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, resource_ref: Ref) {
+    let x = settings.margin.left + rect.x;
+    let y = to_pdf_y(settings, rect.y + rect.height);
+    let name = image_resource_name(resource_ref);
+    content.save_state();
+    content.transform([rect.width, 0.0, 0.0, rect.height, x, y]);
+    content.x_object(Name(name.as_bytes()));
+    content.restore_state();
 }
 
 /// `border-radius`が指定されている場合の背景・枠線描画。

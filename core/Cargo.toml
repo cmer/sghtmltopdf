@@ -13,18 +13,22 @@ name = "sghtmltopdf"
 path = "src/main.rs"
 
 [dependencies]
+base64 = "0.22.1"
 cssparser = "0.37.0"
 cssparser-color = "0.5.0"
 flate2 = "1.1.9"
 fontdb = "0.23.0"
 html5ever = "0.39.0"
+image = { version = "0.25.10", default-features = false, features = ["webp"] }
 pdf-writer = "0.15.0"
+png = "0.18.1"
 precomputed-hash = "0.1.1"
 rustybuzz = "0.20.1"
 selectors = "0.39.0"
 subsetter = "0.2.6"
 taffy = "0.12.2"
 ttf-parser = "0.25.1"
+ureq = "3.3.0"
 
 # krillaはT1スパイクの比較対象として examples/spike_krilla.rs でのみ使用。
 # 採用はpdf-writerに決定したため本実装では使わない(docs/decisions/0001-pdf-writer-crate.md参照)

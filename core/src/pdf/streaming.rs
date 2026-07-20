@@ -26,8 +26,9 @@ use crate::layout::{Page, PageSettings};
 use crate::sink::Sink;
 use crate::style::ComputedStyle;
 
-use super::document::{collect_usage, render_box, RefAllocator};
+use super::document::{collect_image_uses, collect_usage, render_box, RefAllocator};
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
+use super::img::{embed_image_streaming_chunks, ids_for_image, image_resource_name, ImageIds};
 
 const PDF_HEADER: &[u8] = b"%PDF-1.7\n%\x80\x80\x80\x80\n\n";
 
@@ -48,6 +49,11 @@ pub struct StreamingPdfWriter<S: Sink> {
     usages: Vec<FontUsage>,
     page_ids: Vec<Ref>,
     settings: PageSettings,
+    /// `Rc::as_ptr`(デコード結果の同一性)をキーにした、文書全体で共有する
+    /// 画像Refのマップ。フォントと違い画像はページをまたいだ使用状況の
+    /// 集計(サブセット化)が不要なため、`finish`まで待たずページごとに
+    /// 「初出なら書き出す」形で埋めていく([0014]参照)。
+    image_ids: HashMap<usize, ImageIds>,
 }
 
 impl<S: Sink> StreamingPdfWriter<S> {
@@ -87,6 +93,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
             usages,
             page_ids: Vec::new(),
             settings,
+            image_ids: HashMap::new(),
         })
     }
 
@@ -101,6 +108,24 @@ impl<S: Sink> StreamingPdfWriter<S> {
     ) -> Result<(), S::Error> {
         for b in &page.boxes {
             collect_usage(b, fonts, &mut self.usages);
+        }
+
+        // 画像はフォントと違いページをまたいだ使用状況集計(サブセット化)が
+        // 不要なため、このページで初出のものはこの時点で即座にXObjectとして
+        // 書き出し切る([0014]参照)。
+        let mut used_images = Vec::new();
+        for b in &page.boxes {
+            collect_image_uses(b, &mut used_images);
+        }
+        let mut page_image_refs = Vec::with_capacity(used_images.len());
+        for image in &used_images {
+            let (ids, is_new) = ids_for_image(&mut self.alloc, &mut self.image_ids, image);
+            if is_new {
+                for (id, chunk) in embed_image_streaming_chunks(image, &ids) {
+                    self.write_chunk(id, &chunk)?;
+                }
+            }
+            page_image_refs.push(ids.color);
         }
 
         let page_id = self.alloc.next();
@@ -118,6 +143,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 &self.settings,
                 None,
                 &self.font_resource_names,
+                &self.image_ids,
             );
         }
         let content_bytes = content.finish();
@@ -144,6 +170,11 @@ impl<S: Sink> StreamingPdfWriter<S> {
             let mut font_dict = resources.fonts();
             for (name, ids) in self.font_resource_names.iter().zip(self.font_ids.iter()) {
                 font_dict.pair(Name(name.as_bytes()), ids.type0_font);
+            }
+            font_dict.finish();
+            let mut xobject_dict = resources.x_objects();
+            for color_ref in &page_image_refs {
+                xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
             }
         }
         self.write_chunk(page_id, &chunk)?;

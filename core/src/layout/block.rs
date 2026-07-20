@@ -11,15 +11,17 @@
 //! - 高さのパーセンテージ指定はcontaining blockの高さが不定なため`auto`として扱う
 //! - インラインコンテンツの行分割・実際の行数に応じた高さはT6([`super::inline`])が担う
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
+use crate::pdf::PreparedImage;
 use crate::style::{
     BorderStyle, BreakBetween, BreakInside, ComputedStyle, Display, Length, LengthPercentage,
     LengthPercentageOrAuto,
 };
 
-use super::box_tree::{BoxContent, LayoutBox};
+use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::{layout_inline_content, LineBox};
 use super::table::layout_table;
@@ -79,6 +81,9 @@ pub enum LaidOutContent {
     Blocks(Vec<LaidOutBox>),
     Inline(Vec<LineBox>),
     Table(Vec<LaidOutTableRow>),
+    /// `<img>`。フェッチ・デコードに失敗していれば`None`
+    /// (空の置換要素として扱い、何も描画しない)。
+    Image(Option<Rc<PreparedImage>>),
 }
 
 /// レイアウト済みのテーブル行1行分。
@@ -162,7 +167,10 @@ fn layout_box_impl(
     x: f32,
     y: f32,
 ) -> LaidOutBox {
-    let style = box_style(b, styles);
+    let mut style = box_style(b, styles);
+    if let BoxContent::Image(image_content) = &b.content {
+        apply_replaced_element_auto_size(&mut style, image_content);
+    }
 
     let padding = resolve_padding(&style, containing_width);
     let border = resolve_border(&style);
@@ -227,6 +235,14 @@ fn layout_box_impl(
                 layout_table(table, styles, fonts, content_width, content_x, content_y);
             let height = resolve_height(&style).unwrap_or(table_height);
             (LaidOutContent::Table(rows), height)
+        }
+        BoxContent::Image(image_content) => {
+            // `apply_replaced_element_auto_size`が呼ばれた場合、widthが両方
+            // autoだったケースは既に具体的なLengthへ差し替え済みなので、
+            // `resolve_height`は`Some`を返す(高さゼロは、内在サイズが
+            // 得られない=フェッチ・デコード失敗時の妥当な既定)。
+            let height = resolve_height(&style).unwrap_or(0.0);
+            (LaidOutContent::Image(image_content.image.clone()), height)
         }
     };
 
@@ -330,6 +346,58 @@ fn resolve_height(style: &ComputedStyle) -> Option<f32> {
     }
 }
 
+/// 置換要素(`<img>`)のwidth/heightが両方`auto`の場合に限り、CSS2.2
+/// §10.3.2/§10.6.2の簡略版(置換要素の内在サイズに基づく解決)を適用する:
+/// HTML属性(`width`/`height`)→内在サイズ(デコード成功時)の優先順で決め、
+/// 一方だけ値が得られる場合はアスペクト比を保って他方を導出する。
+///
+/// **既知の簡略化**: CSSで`width`/`height`のどちらか一方だけが明示指定
+/// されている場合(もう一方は`auto`)は、通常のブロック要素と同じ扱いに
+/// 委ねる(アスペクト比を保った導出は行わない)。実務上`<img>`にCSSで
+/// 幅と高さを片方だけ指定するケースは稀であり、優先度を割かなかった。
+fn apply_replaced_element_auto_size(style: &mut ComputedStyle, image: &ImageBoxContent) {
+    let width_is_auto = matches!(style.width, LengthPercentageOrAuto::Auto);
+    let height_is_auto = matches!(style.height, LengthPercentageOrAuto::Auto);
+    if !(width_is_auto && height_is_auto) {
+        return;
+    }
+
+    let attr_size = (
+        image.attr_width.map(|w| w as f32),
+        image.attr_height.map(|h| h as f32),
+    );
+    let intrinsic_size = image
+        .image
+        .as_ref()
+        .map(|prepared| (prepared.width as f32, prepared.height as f32));
+
+    let (width, height) = match attr_size {
+        (Some(w), Some(h)) => (w, h),
+        (Some(w), None) => (
+            w,
+            derive_via_aspect_ratio(w, intrinsic_size.map(|(iw, ih)| (ih, iw))),
+        ),
+        (None, Some(h)) => (derive_via_aspect_ratio(h, intrinsic_size), h),
+        (None, None) => intrinsic_size.unwrap_or((0.0, 0.0)),
+    };
+
+    style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
+    style.height = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(height));
+}
+
+/// `known`(既知の1辺の長さ)から、`ratio_basis`(`(既知でない辺の内在長,
+/// 既知の辺の内在長)`)を使ってアスペクト比を保った他方の辺を導出する。
+/// 内在サイズが無い(デコード失敗)、または既知の辺の内在長が0の場合は0を返す
+/// (呼び出し側で「サイズ不明」の意味になる)。
+fn derive_via_aspect_ratio(known: f32, ratio_basis: Option<(f32, f32)>) -> f32 {
+    match ratio_basis {
+        Some((other_intrinsic, known_intrinsic)) if known_intrinsic > 0.0 => {
+            known * other_intrinsic / known_intrinsic
+        }
+        _ => 0.0,
+    }
+}
+
 /// 2つの隣接するマージンを相殺(collapse)した結果の間隔を求める(CSS2.1 §8.3.1)。
 /// 両方が非負なら大きい方、両方が負なら小さい方(絶対値が大きい方)、
 /// 正負混在なら両者の単純な和(=正の最大値と負の最小値の和)になる。
@@ -395,6 +463,7 @@ mod tests {
     use super::*;
     use crate::fonts::Font;
     use crate::html::{self, Dom, NodeData};
+    use crate::pdf::{ImagePlane, PlaneColorSpace};
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet, Stylesheet};
 
     const TEST_FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
@@ -482,7 +551,9 @@ mod tests {
         assert_eq!(children.len(), 3, "before-text / <p> / after-text");
         let joined_text = |content: &BoxContent| match content {
             BoxContent::Inline(spans) => spans.iter().map(|s| s.text.as_str()).collect::<String>(),
-            BoxContent::Blocks(_) | BoxContent::Table(_) => panic!("expected inline content"),
+            BoxContent::Blocks(_) | BoxContent::Table(_) | BoxContent::Image(_) => {
+                panic!("expected inline content")
+            }
         };
         assert_eq!(joined_text(&children[0].content).trim(), "before");
         assert_eq!(children[1].node, Some(ps[0]));
@@ -848,5 +919,122 @@ mod tests {
             .expect("expected an anonymous block wrapping the loose text");
 
         assert_eq!(anonymous.fragmentation, FragmentationHints::default());
+    }
+
+    fn image_prepared(width: u32, height: u32) -> Rc<PreparedImage> {
+        Rc::new(PreparedImage {
+            width,
+            height,
+            color: ImagePlane {
+                data: Vec::new(),
+                filter: pdf_writer::Filter::FlateDecode,
+                color_space: PlaneColorSpace::Rgb,
+                bits_per_component: 8,
+            },
+            alpha: None,
+        })
+    }
+
+    fn image_box(content: ImageBoxContent) -> LayoutBox {
+        LayoutBox {
+            node: None,
+            content: BoxContent::Image(content),
+        }
+    }
+
+    #[test]
+    fn image_with_no_attrs_uses_intrinsic_size_when_decoded() {
+        let tree = image_box(ImageBoxContent {
+            image: Some(image_prepared(200, 100)),
+            attr_width: None,
+            attr_height: None,
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.width, 200.0);
+        assert_eq!(laid.layout.content.height, 100.0);
+    }
+
+    #[test]
+    fn image_width_attr_only_derives_height_via_aspect_ratio() {
+        // 内在サイズは200x100(2:1)。width=50pxのみ指定 → height=25px。
+        let tree = image_box(ImageBoxContent {
+            image: Some(image_prepared(200, 100)),
+            attr_width: Some(50),
+            attr_height: None,
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.width, 50.0);
+        assert_eq!(laid.layout.content.height, 25.0);
+    }
+
+    #[test]
+    fn image_height_attr_only_derives_width_via_aspect_ratio() {
+        let tree = image_box(ImageBoxContent {
+            image: Some(image_prepared(200, 100)),
+            attr_width: None,
+            attr_height: Some(40),
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.height, 40.0);
+        assert_eq!(laid.layout.content.width, 80.0);
+    }
+
+    #[test]
+    fn image_with_both_attrs_ignores_the_intrinsic_aspect_ratio() {
+        let tree = image_box(ImageBoxContent {
+            image: Some(image_prepared(200, 100)),
+            attr_width: Some(10),
+            attr_height: Some(10),
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.width, 10.0);
+        assert_eq!(laid.layout.content.height, 10.0);
+    }
+
+    #[test]
+    fn failed_image_with_no_attrs_collapses_to_zero_size() {
+        let tree = image_box(ImageBoxContent {
+            image: None,
+            attr_width: None,
+            attr_height: None,
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.width, 0.0);
+        assert_eq!(laid.layout.content.height, 0.0);
+    }
+
+    #[test]
+    fn failed_image_with_explicit_attrs_still_reserves_the_specified_space() {
+        // [0014]の方針: 取得失敗でもwidth/height属性があればそのサイズの
+        // 空ボックスとして扱う(後続コンテンツが不意にレイアウトが
+        // 詰まらないよう、指定サイズ分のスペースは確保する)。
+        let tree = image_box(ImageBoxContent {
+            image: None,
+            attr_width: Some(50),
+            attr_height: Some(50),
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.width, 50.0);
+        assert_eq!(laid.layout.content.height, 50.0);
+    }
+
+    #[test]
+    fn image_does_not_stretch_to_fill_the_containing_block_like_a_block_div_would() {
+        // 通常のブロック要素はwidth:autoでcontaining blockいっぱいに広がるが、
+        // 置換要素はそうならない(内在サイズをそのまま使う)ことの確認。
+        let tree = image_box(ImageBoxContent {
+            image: Some(image_prepared(50, 50)),
+            attr_width: None,
+            attr_height: None,
+        });
+        let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
+
+        assert_eq!(laid.layout.content.width, 50.0);
     }
 }

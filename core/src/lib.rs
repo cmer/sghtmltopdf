@@ -9,6 +9,7 @@
 pub mod engine;
 pub mod fonts;
 pub mod html;
+pub mod img;
 pub mod layout;
 pub mod pdf;
 pub mod sink;

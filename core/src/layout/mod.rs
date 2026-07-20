@@ -16,7 +16,10 @@ pub use block::{
     layout_document, layout_document_from, LaidOutBox, LaidOutContent, LaidOutTableRow,
 };
 pub(crate) use box_tree::build_box_for_element;
-pub use box_tree::{build_box_tree, BoxContent, LayoutBox, TableBox, TableCell, TableRow};
+pub use box_tree::{
+    build_box_tree, resolve_images, BoxContent, ImageBoxContent, LayoutBox, TableBox, TableCell,
+    TableRow,
+};
 pub use geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 pub use inline::{layout_inline_content, LineBox, TextRun};
 pub use page::{PageSettings, PageSize};

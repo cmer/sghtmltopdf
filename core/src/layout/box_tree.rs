@@ -9,10 +9,19 @@
 //! 等のインライン要素境界をテキストノード単位の[`InlineSpan`]として保持したまま
 //! 平坦化する(要素そのものを畳み込みはするが、どの計算スタイルが適用される
 //! テキストかという情報は失わない)。
+//!
+//! `<img>`(マイルストーン5)は`build_box_tree`/`build_box_for_element`の時点
+//! では他のブロック要素と同様に組み込むだけで、実際のフェッチ・デコード
+//! (I/Oを伴う)は行わない。[`resolve_images`]がbox tree構築後に別パスとして
+//! 呼ばれ、`<img>`要素に対応するボックスの中身を[`BoxContent::Image`]に
+//! 差し替える。構築と分離しているのは、`build_box_tree`/
+//! `build_box_for_element`を「DOM+スタイルのみから決まる純粋な処理」の
+//! ままに保ちたいため([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
 
 use std::collections::HashMap;
 
 use crate::html::{Dom, NodeData, NodeId};
+use crate::pdf::ImageAssetCache;
 use crate::style::{ComputedStyle, Display};
 
 #[derive(Debug, Clone)]
@@ -29,6 +38,22 @@ pub enum BoxContent {
     Inline(Vec<InlineSpan>),
     /// `display: table`要素の内容(行・セル)。
     Table(TableBox),
+    /// `<img>`要素(置換要素として扱う、[`resolve_images`]参照)。
+    Image(ImageBoxContent),
+}
+
+/// `<img>`要素のコンテンツ。`resolve_images`が構築する。
+#[derive(Debug, Clone)]
+pub struct ImageBoxContent {
+    /// フェッチ・デコードに成功した場合の画像データ。失敗
+    /// (ネットワークエラー・SSRFブロック・デコード不能等、いずれも同列)
+    /// した場合は`None`になり、レイアウト(T53)はこれを空の置換要素として
+    /// 扱う([0014]の方針)。
+    pub image: Option<std::rc::Rc<crate::pdf::PreparedImage>>,
+    /// `width`/`height`属性の値(px、HTML属性由来)。CSSの`width`/`height`
+    /// より弱い優先度のヒントとしてレイアウト(T53)が使う。
+    pub attr_width: Option<u32>,
+    pub attr_height: Option<u32>,
 }
 
 /// `display: table`要素から集めた行の並び。
@@ -126,6 +151,56 @@ pub(crate) fn build_box_for_element(
         node: Some(node),
         content,
     })
+}
+
+/// box tree構築後に呼び、`<img>`要素に対応するボックス(`child_kind`により
+/// ブロック扱いされ、この時点では中身が空の`BoxContent::Inline(vec![])`に
+/// なっている)を実際に[`BoxContent::Image`]へ差し替える。
+///
+/// `image_cache`がフェッチ・デコードを行う(I/Oを伴う)。同じ`src`は
+/// `image_cache`内でメモ化されるため、同一画像が繰り返し参照されても
+/// 実際のフェッチ・デコードは初回のみ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
+pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetCache) {
+    if let Some(node) = tree.node {
+        if let NodeData::Element { name, .. } = &dom.node(node).data {
+            if &*name.local == "img" {
+                tree.content = BoxContent::Image(build_image_box_content(dom, node, image_cache));
+                return; // <img>はvoid element(子を持たない)なので再帰不要。
+            }
+        }
+    }
+
+    match &mut tree.content {
+        BoxContent::Blocks(children) => {
+            for child in children {
+                resolve_images(child, dom, image_cache);
+            }
+        }
+        BoxContent::Table(table) => {
+            for row in &mut table.rows {
+                for cell in &mut row.cells {
+                    resolve_images(&mut cell.content, dom, image_cache);
+                }
+            }
+        }
+        BoxContent::Inline(_) | BoxContent::Image(_) => {}
+    }
+}
+
+fn build_image_box_content(
+    dom: &Dom,
+    node: NodeId,
+    image_cache: &ImageAssetCache,
+) -> ImageBoxContent {
+    let attrs = crate::img::read_img_attrs(dom, node);
+    let image = attrs
+        .as_ref()
+        .and_then(|a| image_cache.get_or_decode(&a.src).ok());
+    ImageBoxContent {
+        image,
+        attr_width: attrs.as_ref().and_then(|a| a.width),
+        attr_height: attrs.as_ref().and_then(|a| a.height),
+    }
 }
 
 fn build_children_boxes(
@@ -232,15 +307,28 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
 
 fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) -> ChildKind {
     match &dom.node(node).data {
-        NodeData::Element { .. } => match styles.get(&node).map(|s| s.display) {
-            Some(Display::None) | None => ChildKind::None,
-            Some(Display::Block) | Some(Display::Table) => ChildKind::Block,
-            Some(Display::Inline) => ChildKind::Inline,
-            // table-row/table-cellは`build_table_box`が専用に探索するため、
-            // 通常のブロック/インライン走査では(不正なマークアップ等で
-            // テーブル文脈の外に出現しない限り)出現しない。防御的に無視する。
-            Some(Display::TableRow) | Some(Display::TableCell) => ChildKind::None,
-        },
+        NodeData::Element { name, .. } => {
+            let display = styles.get(&node).map(|s| s.display);
+            if display == Some(Display::None) {
+                return ChildKind::None;
+            }
+            // `<img>`はHTML上のdisplay既定値がinlineの置換要素だが、インライン
+            // フォーマッティングコンテキスト(行分割・ベースライン整合)への
+            // 統合は複雑になるため、M5の初期スコープではブロックレベルの
+            // 置換要素としてのみ扱う([[0014]]参照、既知の制約)。
+            if &*name.local == "img" {
+                return ChildKind::Block;
+            }
+            match display {
+                Some(Display::Block) | Some(Display::Table) => ChildKind::Block,
+                Some(Display::Inline) => ChildKind::Inline,
+                // table-row/table-cellは`build_table_box`が専用に探索するため、
+                // 通常のブロック/インライン走査では(不正なマークアップ等で
+                // テーブル文脈の外に出現しない限り)出現しない。防御的に無視する。
+                Some(Display::TableRow) | Some(Display::TableCell) => ChildKind::None,
+                Some(Display::None) | None => ChildKind::None,
+            }
+        }
         NodeData::Text { contents } => {
             if contents.trim().is_empty() {
                 ChildKind::None
@@ -334,6 +422,7 @@ mod tests {
         match &b.content {
             BoxContent::Inline(spans) => Some(spans),
             BoxContent::Blocks(children) => children.iter().find_map(find_inline_spans),
+            BoxContent::Image(_) => None,
             BoxContent::Table(table) => table
                 .rows
                 .iter()

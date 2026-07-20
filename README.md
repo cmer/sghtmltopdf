@@ -21,8 +21,37 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 ## 開発状況
 
 マイルストーン1(静的HTML一括変換)・マイルストーン2(CSS Fragmentation)・
-マイルストーン3(ストリーミング入出力対応)・マイルストーン4(Webfont対応)
-ともに完了。
+マイルストーン3(ストリーミング入出力対応)・マイルストーン4(Webfont対応)・
+マイルストーン5(画像埋め込み)ともに完了。
+
+### 画像埋め込み
+
+`<img>`要素(JPEG/PNG/WebP)の埋め込みに対応している。ローカル相対パス
+(`base_dir`基準)・`http(s)`絶対URL・`data:` URIのいずれの`src`にも対応する。
+
+* JPEGはデコードせず、SOF0/SOF2マーカーからwidth/height/コンポーネント数
+  だけを読んでDCTDecodeフィルタでそのまま埋め込む(再エンコードなし)。
+  PNG/WebPはフルデコードし、アルファチャンネルがあれば`/SMask`付きの
+  透過画像として埋め込む
+* リモート画像フェッチは既定無効(CLIの`--allow-remote-images`で
+  オプトイン)。有効化してもプライベート/loopback/link-local
+  (クラウドメタデータの`169.254.169.254`含む)IP宛のリクエストは常に
+  ブロックする(SSRF対策。DNSリバインディング・リダイレクト経由の
+  バイパスも同じ仕組みで防ぐ)
+* `width`/`height`属性・CSSの`width`/`height`が無指定の場合、画像の内在
+  サイズを使う。片方だけ指定されていればアスペクト比を保って他方を導出する
+* 取得・デコードに失敗した画像はその要素だけ空扱いにし、文書全体の生成は
+  止めない
+* 同一文書内で同じ画像が繰り返し使われても、フェッチ・デコード・PDFへの
+  埋め込みはいずれも初回の1回のみ(`Mode::Streaming`でもメモリ使用量は
+  異なる画像の種類数に比例し、要素数には比例しない)
+* `<img>`はブロックレベルの置換要素としてのみ対応する(インライン
+  フォーマッティングコンテキストへの統合は非対応、既知の制約)
+
+詳細は[docs/decisions/0012-image-embedding-crates.md](docs/decisions/0012-image-embedding-crates.md)
+(クレート選定)・[docs/decisions/0013-image-fetch-security.md](docs/decisions/0013-image-fetch-security.md)
+(SSRF対策)・[docs/decisions/0014-image-streaming-and-fallback.md](docs/decisions/0014-image-streaming-and-fallback.md)
+(ストリーミング両立性・フォールバック)参照。
 
 ### Webfont対応
 

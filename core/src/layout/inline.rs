@@ -380,6 +380,7 @@ mod tests {
                 .iter()
                 .flat_map(|row| &row.cells)
                 .find_map(|cell| find_inline_spans(&cell.content)),
+            BoxContent::Image(_) => None,
         }
     }
 

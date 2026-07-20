@@ -36,8 +36,10 @@ use crate::fonts::FontCollection;
 use crate::html::{Dom, NodeId};
 use crate::style::{BreakBetween, BreakInside, ComputedStyle};
 
+use crate::pdf::ImageAssetCache;
+
 use super::block::{layout_document, FragmentationHints, LaidOutBox, LaidOutContent};
-use super::box_tree::build_box_tree;
+use super::box_tree::{build_box_tree, resolve_images};
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::LineBox;
 use super::page::PageSettings;
@@ -297,14 +299,17 @@ pub fn paginate_document(
 /// 将来ストリーミングHTMLパース([`crate::html::StreamingParser`])と統合し、
 /// スタイル計算自体も段階的に行うようになった場合は、この前提が崩れるため
 /// 解放タイミングを再検討する必要がある。
+#[allow(clippy::too_many_arguments)]
 pub fn paginate_document_streaming(
     dom: &mut Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
     settings: &PageSettings,
+    image_cache: &ImageAssetCache,
     on_page: &mut dyn FnMut(Page),
 ) {
-    let tree = build_box_tree(dom, styles);
+    let mut tree = build_box_tree(dom, styles);
+    resolve_images(&mut tree, dom, image_cache);
     let laid_out = layout_document(&tree, styles, fonts, settings.content_width());
     paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
         release_completed_subtrees(dom, &page);
@@ -358,7 +363,7 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
                 collect_completed_subtree_roots_in_box(child, roots);
             }
         }
-        LaidOutContent::Inline(_) | LaidOutContent::Table(_) => {}
+        LaidOutContent::Inline(_) | LaidOutContent::Table(_) | LaidOutContent::Image(_) => {}
     }
 }
 
@@ -466,7 +471,7 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        LaidOutContent::Inline(_) | LaidOutContent::Table(_) => false,
+        LaidOutContent::Inline(_) | LaidOutContent::Table(_) | LaidOutContent::Image(_) => false,
     }
 }
 
@@ -871,6 +876,9 @@ fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
                 }
             }
         }
+        // `b.layout.content`の平行移動(この関数冒頭)だけで十分。画像は
+        // `Inline`の行のような、それ自身が別途Rectを持つ子要素を持たない。
+        LaidOutContent::Image(_) => {}
     }
 
     b
@@ -1421,7 +1429,7 @@ mod tests {
         match &b.content {
             LaidOutContent::Inline(lines) => lines.len(),
             LaidOutContent::Blocks(children) => children.iter().map(count_inline_lines).sum(),
-            LaidOutContent::Table(_) => 0,
+            LaidOutContent::Table(_) | LaidOutContent::Image(_) => 0,
         }
     }
 
@@ -1736,9 +1744,16 @@ mod tests {
         assert_eq!(ps.len(), 20);
 
         let mut flushed_pages = 0usize;
-        paginate_document_streaming(&mut dom, &styles, &fonts, &settings, &mut |_page| {
-            flushed_pages += 1;
-        });
+        paginate_document_streaming(
+            &mut dom,
+            &styles,
+            &fonts,
+            &settings,
+            &ImageAssetCache::new(std::path::PathBuf::from("."), false),
+            &mut |_page| {
+                flushed_pages += 1;
+            },
+        );
         assert!(flushed_pages > 1, "expected multiple pages");
 
         // 全ページ処理後、20個の<p>要素すべてが解放されているはず
@@ -1781,9 +1796,16 @@ mod tests {
         let wrapper = divs[0];
 
         let mut flushed_pages = 0usize;
-        paginate_document_streaming(&mut dom, &styles, &fonts, &settings, &mut |_page| {
-            flushed_pages += 1;
-        });
+        paginate_document_streaming(
+            &mut dom,
+            &styles,
+            &fonts,
+            &settings,
+            &ImageAssetCache::new(std::path::PathBuf::from("."), false),
+            &mut |_page| {
+                flushed_pages += 1;
+            },
+        );
         assert!(
             flushed_pages >= 3,
             "expected the wrapper to span at least 3 pages, got {flushed_pages}"
