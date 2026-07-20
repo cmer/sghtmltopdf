@@ -110,6 +110,69 @@ pub enum Position {
     Relative,
 }
 
+/// `text-align`。`start`/`end`(bidi対応)は非対応、`direction`自体が非対応のため
+/// スコープ外。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Right,
+    Center,
+    Justify,
+}
+
+/// `white-space`。`pre-wrap`/`pre-line`/`break-spaces`は非対応
+/// (帳票用途で必要になるのは`pre`までと判断、[0020](
+/// ../../../docs/decisions/0020-typography-details-design.md)決定4)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WhiteSpace {
+    #[default]
+    Normal,
+    Nowrap,
+    Pre,
+}
+
+/// `text-transform`。`full-width`/`full-size-kana`(日本語組版の特殊変換)は非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextTransform {
+    #[default]
+    None,
+    Uppercase,
+    Lowercase,
+    Capitalize,
+}
+
+/// `line-height`のパース直後の指定値。`<number>`/`<percentage>`はCSS仕様上
+/// 「computed valueは指定値の数値そのもの」(親のfont-sizeで先に乗算した絶対値
+/// ではない)という他の継承プロパティとは異なる規則を持つ
+/// ([0020](../../../docs/decisions/0020-typography-details-design.md)決定3)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedLineHeight {
+    Normal,
+    /// `<number>`。
+    Number(f32),
+    Length(SpecifiedLength),
+    /// `<percentage>`。`<number>`と同じ意味(50%は0.5と同義)。
+    Percentage(f32),
+}
+
+/// `letter-spacing`/`word-spacing`共通の指定値(どちらも`normal | <length>`)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedSpacing {
+    Normal,
+    Length(SpecifiedLength),
+}
+
+impl SpecifiedSpacing {
+    /// `normal`は`0`として解決する(単語間・文字間の追加スペースなし)。
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> f32 {
+        match self {
+            Self::Normal => 0.0,
+            Self::Length(length) => length.resolve(font_size, root_font_size).0,
+        }
+    }
+}
+
 /// 長さ(px)またはパーセンテージ。カスケード解決済みの計算値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LengthPercentage {

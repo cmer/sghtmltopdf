@@ -16,7 +16,8 @@ use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
     BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
     Length, LengthPercentage, LengthPercentageOrAuto, Position, SpecifiedLength,
-    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, TextDecorationLine,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TextAlign,
+    TextDecorationLine, TextTransform, WhiteSpace,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -26,6 +27,21 @@ pub struct RgbaColor {
     pub green: u8,
     pub blue: u8,
     pub alpha: f32,
+}
+
+/// `line-height`の計算値。CSS2.1 §10.8.1: `<number>`/`<percentage>`の計算値は
+/// 「指定値の数値そのもの」(親のfont-sizeで先に乗算した絶対値ではない)。
+/// 継承時はこの値のまま伝わり、使用側(`layout::inline`)がそのテキストランの
+/// font-sizeで乗算する([0020](
+/// ../../../docs/decisions/0020-typography-details-design.md)決定3)。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum LineHeight {
+    #[default]
+    Normal,
+    /// `<number>`。`<percentage>`は`p/100.0`に正規化した上でこの値に入れる。
+    Number(f32),
+    /// `<length>`。em/rem解決済みの絶対px、そのまま継承される。
+    Length(f32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +120,24 @@ pub struct ComputedStyle {
     pub right: LengthPercentageOrAuto,
     pub bottom: LengthPercentageOrAuto,
     pub left: LengthPercentageOrAuto,
+    /// 継承プロパティ。IFC内では先頭`InlineSpan`の計算値で代表する
+    /// ([0020](../../../docs/decisions/0020-typography-details-design.md)決定4)。
+    pub text_align: TextAlign,
+    /// 継承プロパティ。`Number`/`Percentage`は未乗算のまま継承し、使用側
+    /// (`layout::inline`)がテキストランのfont-sizeで乗算する(決定3)。
+    pub line_height: LineHeight,
+    /// 継承プロパティ。パーセンテージはcontaining block幅が未解決のため
+    /// fractionのまま保持する(`width`/`margin`と同じ「使用値は使う側で解決」
+    /// パターン)。IFC内では先頭`InlineSpan`の計算値で代表する(決定4)。
+    pub text_indent: LengthPercentage,
+    /// 継承プロパティ。IFC内では先頭`InlineSpan`の計算値で代表する(決定4)。
+    pub white_space: WhiteSpace,
+    /// 継承プロパティ。解決済みpx、`normal`は`0.0`。
+    pub letter_spacing: f32,
+    /// 継承プロパティ。解決済みpx、`normal`は`0.0`。
+    pub word_spacing: f32,
+    /// 継承プロパティ。
+    pub text_transform: TextTransform,
 }
 
 impl Default for ComputedStyle {
@@ -194,6 +228,13 @@ impl Default for ComputedStyle {
             right: LengthPercentageOrAuto::Auto,
             bottom: LengthPercentageOrAuto::Auto,
             left: LengthPercentageOrAuto::Auto,
+            text_align: TextAlign::Left,
+            line_height: LineHeight::Normal,
+            text_indent: zero_lp,
+            white_space: WhiteSpace::Normal,
+            letter_spacing: 0.0,
+            word_spacing: 0.0,
+            text_transform: TextTransform::None,
         }
     }
 }
@@ -383,6 +424,13 @@ fn compute_element_style(
     let mut right = None;
     let mut bottom = None;
     let mut left = None;
+    let mut text_align = None;
+    let mut line_height = None;
+    let mut text_indent = None;
+    let mut white_space = None;
+    let mut letter_spacing = None;
+    let mut word_spacing = None;
+    let mut text_transform = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -446,6 +494,13 @@ fn compute_element_style(
             PropertyDeclaration::Right(v) => right = Some(*v),
             PropertyDeclaration::Bottom(v) => bottom = Some(*v),
             PropertyDeclaration::Left(v) => left = Some(*v),
+            PropertyDeclaration::TextAlign(v) => text_align = Some(*v),
+            PropertyDeclaration::LineHeight(v) => line_height = Some(*v),
+            PropertyDeclaration::TextIndent(v) => text_indent = Some(*v),
+            PropertyDeclaration::WhiteSpace(v) => white_space = Some(*v),
+            PropertyDeclaration::LetterSpacing(v) => letter_spacing = Some(*v),
+            PropertyDeclaration::WordSpacing(v) => word_spacing = Some(*v),
+            PropertyDeclaration::TextTransform(v) => text_transform = Some(*v),
         }
     }
 
@@ -458,6 +513,13 @@ fn compute_element_style(
     let inherited_color = parent.map_or(initial.color, |p| p.color);
     let inherited_text_decoration_line =
         parent.map_or(initial.text_decoration_line, |p| p.text_decoration_line);
+    let inherited_text_align = parent.map_or(initial.text_align, |p| p.text_align);
+    let inherited_line_height = parent.map_or(initial.line_height, |p| p.line_height);
+    let inherited_text_indent = parent.map_or(initial.text_indent, |p| p.text_indent);
+    let inherited_white_space = parent.map_or(initial.white_space, |p| p.white_space);
+    let inherited_letter_spacing = parent.map_or(initial.letter_spacing, |p| p.letter_spacing);
+    let inherited_word_spacing = parent.map_or(initial.word_spacing, |p| p.word_spacing);
+    let inherited_text_transform = parent.map_or(initial.text_transform, |p| p.text_transform);
 
     // font-sizeは他の長さ系プロパティより先に解決する。`em`の基準は仕様上
     // 「親要素の計算済みfont-size」(自分自身の値ではない、循環を避けるため)。
@@ -479,6 +541,26 @@ fn compute_element_style(
         v.map(|specified| specified.resolve(own_font_size, root_font_size))
             .unwrap_or(initial)
     };
+
+    // `line-height`の`<number>`/`<percentage>`は未乗算のまま継承する
+    // ([0020]決定3)。`<percentage>`は既にfraction(50%→0.5)としてパース済みの
+    // ため`<number>`と同じ扱いでよい。
+    let resolved_line_height = match line_height {
+        Some(SpecifiedLineHeight::Normal) => LineHeight::Normal,
+        Some(SpecifiedLineHeight::Number(n) | SpecifiedLineHeight::Percentage(n)) => {
+            LineHeight::Number(n)
+        }
+        Some(SpecifiedLineHeight::Length(l)) => {
+            LineHeight::Length(l.resolve(own_font_size, root_font_size).0)
+        }
+        None => inherited_line_height,
+    };
+    let resolved_letter_spacing = letter_spacing
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(inherited_letter_spacing);
+    let resolved_word_spacing = word_spacing
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(inherited_word_spacing);
 
     let resolved_color = resolve_color(color, inherited_color);
     let resolved_background_color = match background_color {
@@ -574,6 +656,13 @@ fn compute_element_style(
         right: resolve_lp_or_auto(right, initial.right),
         bottom: resolve_lp_or_auto(bottom, initial.bottom),
         left: resolve_lp_or_auto(left, initial.left),
+        text_align: text_align.unwrap_or(inherited_text_align),
+        line_height: resolved_line_height,
+        text_indent: resolve_lp(text_indent, inherited_text_indent),
+        white_space: white_space.unwrap_or(inherited_white_space),
+        letter_spacing: resolved_letter_spacing,
+        word_spacing: resolved_word_spacing,
+        text_transform: text_transform.unwrap_or(inherited_text_transform),
     }
 }
 
@@ -985,6 +1074,17 @@ mod tests {
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
         assert!(styles[&u].text_decoration_line.underline);
         assert!(styles[&s].text_decoration_line.line_through);
+    }
+
+    #[test]
+    fn ua_stylesheet_gives_pre_its_default_white_space() {
+        use super::super::ua::user_agent_stylesheet;
+
+        let dom = html::parse(br#"<pre>  a   b  </pre>"#);
+        let pre = find(&dom, dom.document(), "pre").expect("pre not found");
+
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        assert_eq!(styles[&pre].white_space, super::WhiteSpace::Pre);
     }
 
     #[test]
@@ -1512,6 +1612,199 @@ mod tests {
         assert_eq!(styles[&div].right, LengthPercentageOrAuto::Auto);
         assert_eq!(styles[&div].bottom, LengthPercentageOrAuto::Auto);
         assert_eq!(styles[&div].left, LengthPercentageOrAuto::Auto);
+    }
+
+    #[test]
+    fn typography_properties_parse_and_are_inherited() {
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { text-align: center; white-space: nowrap; \
+                 letter-spacing: 2px; word-spacing: 3px; text-transform: uppercase; }",
+            ),
+        );
+        for id in [div, p] {
+            assert_eq!(styles[&id].text_align, super::TextAlign::Center);
+            assert_eq!(styles[&id].white_space, super::WhiteSpace::Nowrap);
+            assert_eq!(styles[&id].letter_spacing, 2.0);
+            assert_eq!(styles[&id].word_spacing, 3.0);
+            assert_eq!(styles[&id].text_transform, super::TextTransform::Uppercase);
+        }
+    }
+
+    #[test]
+    fn text_align_parses_all_keywords() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for (value, expected) in [
+            ("left", super::TextAlign::Left),
+            ("right", super::TextAlign::Right),
+            ("center", super::TextAlign::Center),
+            ("justify", super::TextAlign::Justify),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ text-align: {value}; }}")),
+            );
+            assert_eq!(styles[&div].text_align, expected, "text-align: {value}");
+        }
+    }
+
+    #[test]
+    fn line_height_number_and_percentage_are_inherited_unmultiplied() {
+        // CSS2.1 10.8.1: <number>/<percentage>の計算値は指定値そのもの
+        // (親のfont-sizeで先に乗算した絶対値ではない)。子が異なるfont-sizeを
+        // 持っていても、継承される`LineHeight::Number`の値自体は変わらないはず。
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { line-height: 1.5; } p { font-size: 30px; }"),
+        );
+        assert_eq!(styles[&div].line_height, super::LineHeight::Number(1.5));
+        assert_eq!(
+            styles[&p].line_height,
+            super::LineHeight::Number(1.5),
+            "line-height: <number> should be inherited unmultiplied"
+        );
+
+        let percentage_styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { line-height: 150%; }"),
+        );
+        assert_eq!(
+            percentage_styles[&div].line_height,
+            super::LineHeight::Number(1.5),
+            "150% should normalize to the same representation as <number> 1.5"
+        );
+    }
+
+    #[test]
+    fn line_height_length_resolves_to_absolute_px() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { line-height: 24px; }"),
+        );
+        assert_eq!(styles[&div].line_height, super::LineHeight::Length(24.0));
+    }
+
+    #[test]
+    fn line_height_defaults_to_normal() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&p].line_height, super::LineHeight::Normal);
+    }
+
+    #[test]
+    fn text_indent_percentage_stays_as_a_fraction_until_used() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { text-indent: 10%; }"),
+        );
+        assert_eq!(
+            styles[&p].text_indent,
+            LengthPercentage::Percentage(0.1),
+            "text-indent percentage should remain unresolved (fraction) at computed-value time"
+        );
+    }
+
+    #[test]
+    fn text_indent_length_and_inheritance() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { text-indent: 20px; }"),
+        );
+        assert_eq!(styles[&div].text_indent, LengthPercentage::Length(20.0));
+        assert_eq!(
+            styles[&p].text_indent,
+            LengthPercentage::Length(20.0),
+            "text-indent should be inherited"
+        );
+    }
+
+    #[test]
+    fn white_space_parses_all_keywords() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for (value, expected) in [
+            ("normal", super::WhiteSpace::Normal),
+            ("nowrap", super::WhiteSpace::Nowrap),
+            ("pre", super::WhiteSpace::Pre),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ white-space: {value}; }}")),
+            );
+            assert_eq!(styles[&div].white_space, expected, "white-space: {value}");
+        }
+    }
+
+    #[test]
+    fn letter_spacing_and_word_spacing_default_to_zero_and_resolve_em() {
+        let dom = html::parse(br#"<p>a</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&p].letter_spacing, 0.0);
+        assert_eq!(defaults[&p].word_spacing, 0.0);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("p { font-size: 20px; letter-spacing: 0.5em; }"),
+        );
+        assert_eq!(styles[&p].letter_spacing, 10.0);
+    }
+
+    #[test]
+    fn text_transform_parses_all_keywords() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for (value, expected) in [
+            ("none", super::TextTransform::None),
+            ("uppercase", super::TextTransform::Uppercase),
+            ("lowercase", super::TextTransform::Lowercase),
+            ("capitalize", super::TextTransform::Capitalize),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ text-transform: {value}; }}")),
+            );
+            assert_eq!(
+                styles[&div].text_transform, expected,
+                "text-transform: {value}"
+            );
+        }
     }
 
     #[test]

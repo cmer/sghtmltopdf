@@ -25,8 +25,31 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 マイルストーン5(画像埋め込み)・マイルストーン6(外部スタイルシート)・
 マイルストーン7(`@import`/`background-image`のurl()対応)
 ともに完了。マイルストーン8(CSS2.1対応)は、Positioning & Float
-(`float`/`clear`/`position: relative`)まで完了(Typography詳細・Table layout
+(`float`/`clear`/`position: relative`)・Typography詳細まで完了(Table layout
 完全対応・Listsは未着手)。
+
+### Typography詳細
+
+`text-align`(left/right/center/justify)・`line-height`・`text-indent`・
+`white-space`(normal/nowrap/pre)・`letter-spacing`・`word-spacing`・
+`text-transform`(uppercase/lowercase/capitalize)に対応している。
+`vertical-align`(インライン文脈)は非対応。
+
+* `text-align: justify`は最後の行を除く各行の単語間ギャップを均等に伸縮する
+  (CJK文字列内部には配分しない)
+* `line-height`の`<number>`/`<percentage>`はCSS仕様通り未乗算のまま継承され、
+  各テキストが自身のfont-sizeを基準に乗算する
+* `text-indent`は最初の物理行のみに適用する(`white-space: pre`でも同様)
+* `white-space: nowrap`は折返しを行わずオーバーフローを許容、`pre`は改行・
+  連続空白をそのまま保持し折り返さない
+* `letter-spacing`はPDFの`Tc`(character spacing)、`word-spacing`はレイアウト層の
+  gap幅加算で実現する(`Tw`は複合フォントの2バイトコードに効かないため使わない)
+* `text-align`/`text-indent`/`white-space`は同一インラインフォーマッティング
+  コンテキスト内の先頭テキストノードの計算値で代表する(通常のブロック単位の
+  指定であれば問題にならない、既知の簡略化)
+
+詳細は[docs/decisions/0020-typography-details-design.md](docs/decisions/0020-typography-details-design.md)
+参照。
 
 ### `float`/`clear`/`position: relative`
 

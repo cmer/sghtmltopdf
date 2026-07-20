@@ -15,7 +15,7 @@ mod values;
 pub use cascade::matching_declarations;
 pub use computed::{
     compute_single_element_style, compute_styles, compute_styles_with_parent, ComputedStyle,
-    RgbaColor,
+    LineHeight, RgbaColor,
 };
 pub use element_ref::ElementRef;
 pub use extract::extract_author_stylesheet;
@@ -26,5 +26,6 @@ pub use stylesheet::{parse_stylesheet, StyleRule, Stylesheet};
 pub use ua::user_agent_stylesheet;
 pub use values::{
     BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
-    Length, LengthPercentage, LengthPercentageOrAuto, Position,
+    Length, LengthPercentage, LengthPercentageOrAuto, Position, TextAlign, TextTransform,
+    WhiteSpace,
 };

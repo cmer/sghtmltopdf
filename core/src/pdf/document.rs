@@ -958,6 +958,13 @@ fn render_line(
         let shear = if run.italic { ITALIC_SHEAR } else { 0.0 };
         content.set_font(Name(resource_name.as_bytes()), run.font_size);
         content.set_text_matrix([1.0, 0.0, shear, 1.0, x, baseline_y]);
+        // `letter-spacing`はグリフ幅そのもの(フォントの`/Widths`)には反映
+        // できないため、PDFの`Tc`(character spacing)を使う。`Tw`(word
+        // spacing)と異なり複合フォント(2バイトCID)にも適用される
+        // ([0020](../../../docs/decisions/0020-typography-details-design.md)
+        // 決定2)。0でも明示的に設定し、前のランの値がグラフィックステートに
+        // 残らないようにする。
+        content.set_char_spacing(run.letter_spacing);
         content.show(pdf_writer::Str(&glyph_bytes));
     }
 
@@ -1613,6 +1620,31 @@ mod tests {
             count_occurrences(&decompressed_stream_bytes(&bytes), b"/ActualText"),
             0,
             "a single word with no boundary needs no ActualText marker"
+        );
+    }
+
+    #[test]
+    fn letter_spacing_emits_a_tc_operator_with_the_resolved_value() {
+        // `letter-spacing`はグリフ幅そのものには反映できないため、PDFの`Tc`
+        // (character spacing)演算子として出力される必要がある([0020]決定2)。
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<p class="s">spaced</p>"#);
+        let author = parse_stylesheet(".s { letter-spacing: 3px; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+
+        let stream = decompressed_stream_bytes(&bytes);
+        assert!(
+            count_occurrences(&stream, b" Tc\n") > 0,
+            "letter-spacing should emit a Tc operator"
+        );
+        assert!(
+            count_occurrences(&stream, b"3 Tc\n") > 0,
+            "the Tc operand should match the resolved letter-spacing value"
         );
     }
 

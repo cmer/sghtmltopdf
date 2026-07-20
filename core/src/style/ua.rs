@@ -68,6 +68,10 @@ h3 { font-size: 19px; }
 p, ul, ol, blockquote {
   margin: 16px 0;
 }
+
+pre {
+  white-space: pre;
+}
 "#;
 
 pub fn user_agent_stylesheet() -> Stylesheet {

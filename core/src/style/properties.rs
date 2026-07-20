@@ -5,7 +5,8 @@ use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 use super::values::{
     BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
     Position, SpecifiedLength, SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto,
-    TextDecorationLine,
+    SpecifiedLineHeight, SpecifiedSpacing, TextAlign, TextDecorationLine, TextTransform,
+    WhiteSpace,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,6 +69,13 @@ pub enum PropertyDeclaration {
     Right(SpecifiedLengthPercentageOrAuto),
     Bottom(SpecifiedLengthPercentageOrAuto),
     Left(SpecifiedLengthPercentageOrAuto),
+    TextAlign(TextAlign),
+    LineHeight(SpecifiedLineHeight),
+    TextIndent(SpecifiedLengthPercentage),
+    WhiteSpace(WhiteSpace),
+    LetterSpacing(SpecifiedSpacing),
+    WordSpacing(SpecifiedSpacing),
+    TextTransform(TextTransform),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -120,6 +128,13 @@ pub fn parse_declaration<'i>(
         "right" => Ok(vec![D::Right(parse_length_percentage_or_auto(input)?)]),
         "bottom" => Ok(vec![D::Bottom(parse_length_percentage_or_auto(input)?)]),
         "left" => Ok(vec![D::Left(parse_length_percentage_or_auto(input)?)]),
+        "text-align" => Ok(vec![D::TextAlign(parse_text_align(input)?)]),
+        "line-height" => Ok(vec![D::LineHeight(parse_line_height(input)?)]),
+        "text-indent" => Ok(vec![D::TextIndent(parse_length_percentage(input)?)]),
+        "white-space" => Ok(vec![D::WhiteSpace(parse_white_space(input)?)]),
+        "letter-spacing" => Ok(vec![D::LetterSpacing(parse_spacing(input)?)]),
+        "word-spacing" => Ok(vec![D::WordSpacing(parse_spacing(input)?)]),
+        "text-transform" => Ok(vec![D::TextTransform(parse_text_transform(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -287,6 +302,74 @@ fn parse_border_style_keyword<'i>(
         "double" => BorderStyle::Double,
         _ => return Err(input.new_custom_error(())),
     })
+}
+
+fn parse_text_align<'i>(input: &mut Parser<'i, '_>) -> Result<TextAlign, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "left" => TextAlign::Left,
+        "right" => TextAlign::Right,
+        "center" => TextAlign::Center,
+        "justify" => TextAlign::Justify,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_white_space<'i>(input: &mut Parser<'i, '_>) -> Result<WhiteSpace, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "normal" => WhiteSpace::Normal,
+        "nowrap" => WhiteSpace::Nowrap,
+        "pre" => WhiteSpace::Pre,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_text_transform<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<TextTransform, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "none" => TextTransform::None,
+        "uppercase" => TextTransform::Uppercase,
+        "lowercase" => TextTransform::Lowercase,
+        "capitalize" => TextTransform::Capitalize,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `line-height`。`normal | <number> | <length> | <percentage>`。
+fn parse_line_height<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedLineHeight, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("normal"))
+        .is_ok()
+    {
+        return Ok(SpecifiedLineHeight::Normal);
+    }
+    let token = input.next()?.clone();
+    match token {
+        Token::Number { value, .. } => Ok(SpecifiedLineHeight::Number(value)),
+        Token::Percentage { unit_value, .. } => Ok(SpecifiedLineHeight::Percentage(unit_value)),
+        Token::Dimension {
+            value, ref unit, ..
+        } => Ok(SpecifiedLineHeight::Length(parse_length_unit(
+            input, value, unit,
+        )?)),
+        _ => Err(input.new_custom_error(())),
+    }
+}
+
+/// `letter-spacing`/`word-spacing`共通。`normal | <length>`。
+fn parse_spacing<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedSpacing, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("normal"))
+        .is_ok()
+    {
+        return Ok(SpecifiedSpacing::Normal);
+    }
+    Ok(SpecifiedSpacing::Length(parse_length(input)?))
 }
 
 fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'i, ()>> {
