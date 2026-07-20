@@ -14,10 +14,11 @@ use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
-    Length, LengthPercentage, LengthPercentageOrAuto, Position, SpecifiedLength,
-    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TextAlign,
-    TextDecorationLine, TextTransform, WhiteSpace,
+    BorderCollapse, BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, Display,
+    EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
+    Position, SpecifiedLength, SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto,
+    SpecifiedLineHeight, TableLayout, TextAlign, TextDecorationLine, TextTransform, VerticalAlign,
+    WhiteSpace,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -138,6 +139,22 @@ pub struct ComputedStyle {
     pub word_spacing: f32,
     /// 継承プロパティ。
     pub text_transform: TextTransform,
+    /// `border-collapse`。継承プロパティ。見た目の枠線描画のみ統合する
+    /// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定1)。
+    pub border_collapse: BorderCollapse,
+    /// `border-spacing`の水平方向。継承プロパティ、`border-collapse: collapse`
+    /// 時は無視され0として扱う(仕様通り、`layout::table`側で解決)。
+    pub border_spacing_horizontal: Length,
+    /// `border-spacing`の垂直方向。継承プロパティ。
+    pub border_spacing_vertical: Length,
+    /// `caption-side`。継承プロパティ。
+    pub caption_side: CaptionSide,
+    /// `table-layout`。非継承プロパティ、テーブル要素自身の値を使う。
+    pub table_layout: TableLayout,
+    /// `empty-cells`。継承プロパティ、`border-collapse: separate`でのみ意味を持つ。
+    pub empty_cells: EmptyCells,
+    /// `vertical-align`(テーブルセル文脈専用)。非継承プロパティ。
+    pub vertical_align: VerticalAlign,
 }
 
 impl Default for ComputedStyle {
@@ -235,6 +252,13 @@ impl Default for ComputedStyle {
             letter_spacing: 0.0,
             word_spacing: 0.0,
             text_transform: TextTransform::None,
+            border_collapse: BorderCollapse::Separate,
+            border_spacing_horizontal: Length(0.0),
+            border_spacing_vertical: Length(0.0),
+            caption_side: CaptionSide::Top,
+            table_layout: TableLayout::Auto,
+            empty_cells: EmptyCells::Show,
+            vertical_align: VerticalAlign::Baseline,
         }
     }
 }
@@ -431,6 +455,12 @@ fn compute_element_style(
     let mut letter_spacing = None;
     let mut word_spacing = None;
     let mut text_transform = None;
+    let mut border_collapse = None;
+    let mut border_spacing = None;
+    let mut caption_side = None;
+    let mut table_layout = None;
+    let mut empty_cells = None;
+    let mut vertical_align = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -501,6 +531,12 @@ fn compute_element_style(
             PropertyDeclaration::LetterSpacing(v) => letter_spacing = Some(*v),
             PropertyDeclaration::WordSpacing(v) => word_spacing = Some(*v),
             PropertyDeclaration::TextTransform(v) => text_transform = Some(*v),
+            PropertyDeclaration::BorderCollapse(v) => border_collapse = Some(*v),
+            PropertyDeclaration::BorderSpacing(h, v) => border_spacing = Some((*h, *v)),
+            PropertyDeclaration::CaptionSide(v) => caption_side = Some(*v),
+            PropertyDeclaration::TableLayout(v) => table_layout = Some(*v),
+            PropertyDeclaration::EmptyCells(v) => empty_cells = Some(*v),
+            PropertyDeclaration::VerticalAlign(v) => vertical_align = Some(*v),
         }
     }
 
@@ -520,6 +556,16 @@ fn compute_element_style(
     let inherited_letter_spacing = parent.map_or(initial.letter_spacing, |p| p.letter_spacing);
     let inherited_word_spacing = parent.map_or(initial.word_spacing, |p| p.word_spacing);
     let inherited_text_transform = parent.map_or(initial.text_transform, |p| p.text_transform);
+    let inherited_border_collapse = parent.map_or(initial.border_collapse, |p| p.border_collapse);
+    let inherited_border_spacing_horizontal = parent
+        .map_or(initial.border_spacing_horizontal, |p| {
+            p.border_spacing_horizontal
+        });
+    let inherited_border_spacing_vertical = parent.map_or(initial.border_spacing_vertical, |p| {
+        p.border_spacing_vertical
+    });
+    let inherited_caption_side = parent.map_or(initial.caption_side, |p| p.caption_side);
+    let inherited_empty_cells = parent.map_or(initial.empty_cells, |p| p.empty_cells);
 
     // font-sizeは他の長さ系プロパティより先に解決する。`em`の基準は仕様上
     // 「親要素の計算済みfont-size」(自分自身の値ではない、循環を避けるため)。
@@ -561,6 +607,12 @@ fn compute_element_style(
     let resolved_word_spacing = word_spacing
         .map(|specified| specified.resolve(own_font_size, root_font_size))
         .unwrap_or(inherited_word_spacing);
+    let resolved_border_spacing_horizontal = border_spacing
+        .map(|(h, _)| resolve_len(Some(h), inherited_border_spacing_horizontal))
+        .unwrap_or(inherited_border_spacing_horizontal);
+    let resolved_border_spacing_vertical = border_spacing
+        .map(|(_, v)| resolve_len(Some(v), inherited_border_spacing_vertical))
+        .unwrap_or(inherited_border_spacing_vertical);
 
     let resolved_color = resolve_color(color, inherited_color);
     let resolved_background_color = match background_color {
@@ -663,6 +715,13 @@ fn compute_element_style(
         letter_spacing: resolved_letter_spacing,
         word_spacing: resolved_word_spacing,
         text_transform: text_transform.unwrap_or(inherited_text_transform),
+        border_collapse: border_collapse.unwrap_or(inherited_border_collapse),
+        border_spacing_horizontal: resolved_border_spacing_horizontal,
+        border_spacing_vertical: resolved_border_spacing_vertical,
+        caption_side: caption_side.unwrap_or(inherited_caption_side),
+        table_layout: table_layout.unwrap_or(initial.table_layout),
+        empty_cells: empty_cells.unwrap_or(inherited_empty_cells),
+        vertical_align: vertical_align.unwrap_or(initial.vertical_align),
     }
 }
 
@@ -1805,6 +1864,82 @@ mod tests {
                 "text-transform: {value}"
             );
         }
+    }
+
+    #[test]
+    fn table_layout_properties_parse_and_have_correct_inheritance() {
+        let dom = html::parse(br#"<table><tr><td>a</td></tr></table>"#);
+        let table = find(&dom, dom.document(), "table").expect("table not found");
+        let td = find(&dom, table, "td").expect("td not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "table { border-collapse: collapse; border-spacing: 3px 5px; \
+                 caption-side: bottom; empty-cells: hide; table-layout: fixed; \
+                 vertical-align: middle; }",
+            ),
+        );
+        let table_style = &styles[&table];
+        assert_eq!(table_style.border_collapse, super::BorderCollapse::Collapse);
+        assert_eq!(table_style.border_spacing_horizontal.0, 3.0);
+        assert_eq!(table_style.border_spacing_vertical.0, 5.0);
+        assert_eq!(table_style.caption_side, super::CaptionSide::Bottom);
+        assert_eq!(table_style.empty_cells, super::EmptyCells::Hide);
+        assert_eq!(table_style.table_layout, super::TableLayout::Fixed);
+        assert_eq!(table_style.vertical_align, super::VerticalAlign::Middle);
+
+        let td_style = &styles[&td];
+        // 継承プロパティ: border-collapse/border-spacing/caption-side/empty-cells。
+        assert_eq!(td_style.border_collapse, super::BorderCollapse::Collapse);
+        assert_eq!(td_style.border_spacing_horizontal.0, 3.0);
+        assert_eq!(td_style.caption_side, super::CaptionSide::Bottom);
+        assert_eq!(td_style.empty_cells, super::EmptyCells::Hide);
+        // 非継承プロパティ: table-layout/vertical-align(tdは初期値のまま)。
+        assert_eq!(td_style.table_layout, super::TableLayout::Auto);
+        assert_eq!(td_style.vertical_align, super::VerticalAlign::Baseline);
+    }
+
+    #[test]
+    fn border_spacing_single_value_applies_to_both_axes() {
+        let dom = html::parse(br#"<table></table>"#);
+        let table = find(&dom, dom.document(), "table").expect("table not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("table { border-spacing: 4px; }"),
+        );
+        assert_eq!(styles[&table].border_spacing_horizontal.0, 4.0);
+        assert_eq!(styles[&table].border_spacing_vertical.0, 4.0);
+    }
+
+    #[test]
+    fn table_layout_properties_default_correctly() {
+        let dom = html::parse(br#"<table><tr><td>a</td></tr></table>"#);
+        let table = find(&dom, dom.document(), "table").expect("table not found");
+
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        let style = &styles[&table];
+        assert_eq!(style.border_collapse, super::BorderCollapse::Separate);
+        assert_eq!(style.border_spacing_horizontal.0, 0.0);
+        assert_eq!(style.border_spacing_vertical.0, 0.0);
+        assert_eq!(style.caption_side, super::CaptionSide::Top);
+        assert_eq!(style.table_layout, super::TableLayout::Auto);
+        assert_eq!(style.empty_cells, super::EmptyCells::Show);
+        assert_eq!(style.vertical_align, super::VerticalAlign::Baseline);
+    }
+
+    #[test]
+    fn caption_element_gets_table_caption_display_from_ua_stylesheet() {
+        use super::super::ua::user_agent_stylesheet;
+
+        let dom = html::parse(br#"<table><caption>Title</caption></table>"#);
+        let caption = find(&dom, dom.document(), "caption").expect("caption not found");
+
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        assert_eq!(styles[&caption].display, Display::TableCaption);
     }
 
     #[test]

@@ -3,10 +3,10 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
-    BorderStyle, BreakBetween, BreakInside, Clear, Color, Display, Float, FontStyle, FontWeight,
-    Position, SpecifiedLength, SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto,
-    SpecifiedLineHeight, SpecifiedSpacing, TextAlign, TextDecorationLine, TextTransform,
-    WhiteSpace,
+    BorderCollapse, BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, Display,
+    EmptyCells, Float, FontStyle, FontWeight, Position, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing, TableLayout, TextAlign,
+    TextDecorationLine, TextTransform, VerticalAlign, WhiteSpace,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +76,13 @@ pub enum PropertyDeclaration {
     LetterSpacing(SpecifiedSpacing),
     WordSpacing(SpecifiedSpacing),
     TextTransform(TextTransform),
+    BorderCollapse(BorderCollapse),
+    /// `border-spacing`(水平, 垂直)。1値指定は両方に同じ値を使う(仕様通り)。
+    BorderSpacing(SpecifiedLength, SpecifiedLength),
+    CaptionSide(CaptionSide),
+    TableLayout(TableLayout),
+    EmptyCells(EmptyCells),
+    VerticalAlign(VerticalAlign),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -135,6 +142,15 @@ pub fn parse_declaration<'i>(
         "letter-spacing" => Ok(vec![D::LetterSpacing(parse_spacing(input)?)]),
         "word-spacing" => Ok(vec![D::WordSpacing(parse_spacing(input)?)]),
         "text-transform" => Ok(vec![D::TextTransform(parse_text_transform(input)?)]),
+        "border-collapse" => Ok(vec![D::BorderCollapse(parse_border_collapse(input)?)]),
+        "border-spacing" => {
+            let (h, v) = parse_border_spacing(input)?;
+            Ok(vec![D::BorderSpacing(h, v)])
+        },
+        "caption-side" => Ok(vec![D::CaptionSide(parse_caption_side(input)?)]),
+        "table-layout" => Ok(vec![D::TableLayout(parse_table_layout(input)?)]),
+        "empty-cells" => Ok(vec![D::EmptyCells(parse_empty_cells(input)?)]),
+        "vertical-align" => Ok(vec![D::VerticalAlign(parse_vertical_align(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -372,6 +388,70 @@ fn parse_spacing<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedSpacing, Par
     Ok(SpecifiedSpacing::Length(parse_length(input)?))
 }
 
+fn parse_border_collapse<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<BorderCollapse, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "separate" => BorderCollapse::Separate,
+        "collapse" => BorderCollapse::Collapse,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `border-spacing`。`<length>`(水平・垂直に同じ値)または`<length> <length>`
+/// (水平, 垂直)。
+fn parse_border_spacing<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(SpecifiedLength, SpecifiedLength), ParseError<'i, ()>> {
+    let horizontal = parse_length(input)?;
+    let vertical = input.try_parse(parse_length).unwrap_or(horizontal);
+    Ok((horizontal, vertical))
+}
+
+fn parse_caption_side<'i>(input: &mut Parser<'i, '_>) -> Result<CaptionSide, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "top" => CaptionSide::Top,
+        "bottom" => CaptionSide::Bottom,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_table_layout<'i>(input: &mut Parser<'i, '_>) -> Result<TableLayout, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "auto" => TableLayout::Auto,
+        "fixed" => TableLayout::Fixed,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_empty_cells<'i>(input: &mut Parser<'i, '_>) -> Result<EmptyCells, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "show" => EmptyCells::Show,
+        "hide" => EmptyCells::Hide,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `vertical-align`。テーブルセル文脈専用と割り切る([0021]決定4)。
+/// `sub`/`super`/`text-top`/`text-bottom`/`<length>`/`<percentage>`
+/// (インライン文脈向けの値)は非対応。
+fn parse_vertical_align<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<VerticalAlign, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "top" => VerticalAlign::Top,
+        "middle" => VerticalAlign::Middle,
+        "bottom" => VerticalAlign::Bottom,
+        "baseline" => VerticalAlign::Baseline,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
 fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -380,6 +460,7 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "table" => Display::Table,
         "table-row" => Display::TableRow,
         "table-cell" => Display::TableCell,
+        "table-caption" => Display::TableCaption,
         "none" => Display::None,
         _ => return Err(input.new_custom_error(())),
     })

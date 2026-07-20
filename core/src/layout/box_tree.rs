@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 use crate::html::{Dom, NodeData, NodeId};
 use crate::pdf::{ImageAssetCache, PreparedImage};
-use crate::style::{ComputedStyle, Display};
+use crate::style::{CaptionSide, ComputedStyle, Display};
 
 #[derive(Debug, Clone)]
 pub struct LayoutBox {
@@ -57,9 +57,17 @@ pub struct ImageBoxContent {
     pub attr_height: Option<u32>,
 }
 
-/// `display: table`要素から集めた行の並び。
+/// `display: table`要素から集めた行の並びと、任意の`caption`。
 #[derive(Debug, Clone)]
 pub struct TableBox {
+    /// `display: table-caption`の子要素(`<caption>`)。複数ある場合は最初の
+    /// 1つのみ採用する(既知の簡略化、[0021](
+    /// ../../../docs/decisions/0021-table-layout-design.md)決定4)。
+    /// `Box`は`LayoutBox`→`BoxContent::Table`→`TableBox`の再帰を間接参照で
+    /// 断ち切るために必要(サイズが無限になるコンパイルエラーの回避)。
+    pub caption: Option<Box<LayoutBox>>,
+    /// captionの計算スタイルから読んだ`caption-side`(captionが無ければ初期値`Top`)。
+    pub caption_side: CaptionSide,
     pub rows: Vec<TableRow>,
 }
 
@@ -76,6 +84,10 @@ pub struct TableCell {
     pub node: NodeId,
     /// `colspan`属性の値(未指定または不正な値は1)。
     pub colspan: usize,
+    /// `rowspan`属性の値(未指定または不正な値は1)。`rowspan="0"`
+    /// (HTML5の「以降の行末まで拡張」特殊値)は非対応、1として扱う
+    /// ([0021](../../../docs/decisions/0021-table-layout-design.md)既知の簡略化4)。
+    pub rowspan: usize,
     /// セル自身の内容(通常のブロック/インラインボックスと同じ構造)。
     pub content: LayoutBox,
 }
@@ -178,6 +190,9 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
             }
         }
         BoxContent::Table(table) => {
+            if let Some(caption) = &mut table.caption {
+                resolve_images(caption, dom, image_cache);
+            }
             for row in &mut table.rows {
                 for cell in &mut row.cells {
                     resolve_images(&mut cell.content, dom, image_cache);
@@ -254,7 +269,7 @@ fn build_children_boxes(
     result
 }
 
-/// `table_node`(`display: table`)の子孫から`table-row`要素を集めて
+/// `table_node`(`display: table`)の子孫から`table-row`要素と`caption`を集めて
 /// [`TableBox`]を組み立てる。
 fn build_table_box(
     dom: &Dom,
@@ -262,12 +277,27 @@ fn build_table_box(
     table_node: NodeId,
 ) -> TableBox {
     let mut rows = Vec::new();
-    collect_table_rows(dom, styles, table_node, &mut rows);
-    TableBox { rows }
+    let mut caption_node = None;
+    collect_table_rows(dom, styles, table_node, &mut rows, &mut caption_node);
+
+    let caption_side = caption_node
+        .and_then(|node| styles.get(&node))
+        .map(|s| s.caption_side)
+        .unwrap_or_default();
+    let caption = caption_node
+        .and_then(|node| build_box_for_element(dom, styles, node))
+        .map(Box::new);
+
+    TableBox {
+        caption,
+        caption_side,
+        rows,
+    }
 }
 
-/// `node`の子を辿り、`table-row`を見つけたら行として収集する。`thead`/`tbody`/
-/// `tfoot`のような透過的な入れ物(`table-row`でも`table`でもない要素)は
+/// `node`の子を辿り、`table-row`を見つけたら行として収集し、`table-caption`を
+/// 見つけたら(最初の1つだけ)`out_caption`に記録する。`thead`/`tbody`/`tfoot`
+/// のような透過的な入れ物(`table-row`/`table-caption`でも`table`でもない要素)は
 /// 素通りして再帰する。入れ子の`table`はそれ自体が別のテーブルなので
 /// (その中の行は内側のテーブルに属する)ここでは再帰しない。
 fn collect_table_rows(
@@ -275,12 +305,18 @@ fn collect_table_rows(
     styles: &HashMap<NodeId, ComputedStyle>,
     node: NodeId,
     out: &mut Vec<TableRow>,
+    out_caption: &mut Option<NodeId>,
 ) {
     for child in dom.children(node) {
         match styles.get(&child).map(|s| s.display) {
             Some(Display::TableRow) => out.push(build_table_row(dom, styles, child)),
+            Some(Display::TableCaption) => {
+                if out_caption.is_none() {
+                    *out_caption = Some(child);
+                }
+            }
             Some(Display::Table) | Some(Display::None) | None => {}
-            _ => collect_table_rows(dom, styles, child, out),
+            _ => collect_table_rows(dom, styles, child, out, out_caption),
         }
     }
 }
@@ -296,6 +332,7 @@ fn build_table_row(
         .map(|cell_node| TableCell {
             node: cell_node,
             colspan: read_colspan(dom, cell_node),
+            rowspan: read_rowspan(dom, cell_node),
             content: build_box_for_element(dom, styles, cell_node).unwrap_or(LayoutBox {
                 node: Some(cell_node),
                 content: BoxContent::Inline(Vec::new()),
@@ -316,6 +353,20 @@ fn read_colspan(dom: &Dom, node: NodeId) -> usize {
     attrs
         .iter()
         .find(|attr| &*attr.name.local == "colspan")
+        .and_then(|attr| attr.value.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(1)
+}
+
+/// `rowspan`属性を読む(未指定・0以下・非数値は1として扱う。`rowspan="0"`の
+/// 特殊値も非対応で1扱い、`read_colspan`と同じ方針)。
+fn read_rowspan(dom: &Dom, node: NodeId) -> usize {
+    let NodeData::Element { attrs, .. } = &dom.node(node).data else {
+        return 1;
+    };
+    attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "rowspan")
         .and_then(|attr| attr.value.parse::<usize>().ok())
         .filter(|&n| n > 0)
         .unwrap_or(1)
@@ -348,10 +399,13 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
             match display {
                 Some(Display::Block) | Some(Display::Table) => ChildKind::Block,
                 Some(Display::Inline) => ChildKind::Inline,
-                // table-row/table-cellは`build_table_box`が専用に探索するため、
-                // 通常のブロック/インライン走査では(不正なマークアップ等で
-                // テーブル文脈の外に出現しない限り)出現しない。防御的に無視する。
-                Some(Display::TableRow) | Some(Display::TableCell) => ChildKind::None,
+                // table-row/table-cell/table-captionは`build_table_box`が専用に
+                // 探索するため、通常のブロック/インライン走査では(不正な
+                // マークアップ等でテーブル文脈の外に出現しない限り)出現しない。
+                // 防御的に無視する。
+                Some(Display::TableRow)
+                | Some(Display::TableCell)
+                | Some(Display::TableCaption) => ChildKind::None,
                 Some(Display::None) | None => ChildKind::None,
             }
         }
@@ -452,10 +506,16 @@ mod tests {
             BoxContent::Blocks(children) => children.iter().find_map(find_inline_spans),
             BoxContent::Image(_) => None,
             BoxContent::Table(table) => table
-                .rows
-                .iter()
-                .flat_map(|row| &row.cells)
-                .find_map(|cell| find_inline_spans(&cell.content)),
+                .caption
+                .as_deref()
+                .and_then(find_inline_spans)
+                .or_else(|| {
+                    table
+                        .rows
+                        .iter()
+                        .flat_map(|row| &row.cells)
+                        .find_map(|cell| find_inline_spans(&cell.content))
+                }),
         }
     }
 
@@ -580,6 +640,52 @@ mod tests {
     }
 
     #[test]
+    fn caption_content_is_collected_and_kept_separate_from_rows() {
+        let dom = html::parse(
+            br#"<table>
+                <caption>Fruit Prices</caption>
+                <tr><td>Apple</td><td>100</td></tr>
+            </table>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "table").expect("table not found");
+        let table_box = find_box(&tree, table_node).expect("table box not found");
+        let BoxContent::Table(table) = &table_box.content else {
+            panic!("expected a table box");
+        };
+
+        assert_eq!(
+            table.rows.len(),
+            1,
+            "caption should not be collected as a row"
+        );
+        let caption = table.caption.as_ref().expect("caption not found");
+        let BoxContent::Inline(spans) = &caption.content else {
+            panic!("expected inline caption content");
+        };
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(text, "Fruit Prices");
+    }
+
+    #[test]
+    fn table_without_a_caption_has_none() {
+        let dom = html::parse(br#"<table><tr><td>a</td></tr></table>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "table").expect("table not found");
+        let table_box = find_box(&tree, table_node).expect("table box not found");
+        let BoxContent::Table(table) = &table_box.content else {
+            panic!("expected a table box");
+        };
+        assert!(table.caption.is_none());
+    }
+
+    #[test]
     fn colspan_attribute_is_read_from_the_cell() {
         let dom =
             html::parse(br#"<table><tr><td colspan="3">wide</td><td>narrow</td></tr></table>"#);
@@ -610,6 +716,45 @@ mod tests {
         };
         for cell in &table.rows[0].cells {
             assert_eq!(cell.colspan, 1);
+        }
+    }
+
+    #[test]
+    fn rowspan_attribute_is_read_from_the_cell() {
+        let dom = html::parse(
+            br#"<table>
+                <tr><td rowspan="2">tall</td><td>a</td></tr>
+                <tr><td>b</td></tr>
+            </table>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "table").expect("table not found");
+        let BoxContent::Table(table) = &find_box(&tree, table_node).unwrap().content else {
+            panic!("expected a table box");
+        };
+        assert_eq!(table.rows[0].cells[0].rowspan, 2);
+        assert_eq!(table.rows[0].cells[1].rowspan, 1);
+        assert_eq!(table.rows[1].cells[0].rowspan, 1);
+    }
+
+    #[test]
+    fn invalid_or_missing_rowspan_defaults_to_one() {
+        let dom = html::parse(
+            br#"<table><tr><td rowspan="0">a</td><td rowspan="not-a-number">b</td><td>c</td></tr></table>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "table").expect("table not found");
+        let BoxContent::Table(table) = &find_box(&tree, table_node).unwrap().content else {
+            panic!("expected a table box");
+        };
+        for cell in &table.rows[0].cells {
+            assert_eq!(cell.rowspan, 1);
         }
     }
 

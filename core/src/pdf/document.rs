@@ -53,10 +53,11 @@ use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::layout::{
-    FragmentPosition, LaidOutBox, LaidOutContent, Layout, LineBox, Page, PageSettings, Rect,
+    resolve_border, EdgeSizes, FragmentPosition, LaidOutBox, LaidOutContent, Layout, LineBox, Page,
+    PageSettings, Rect,
 };
 use crate::sink::Sink;
-use crate::style::{BorderStyle, ComputedStyle, RgbaColor};
+use crate::style::{BorderCollapse, BorderStyle, ComputedStyle, EmptyCells, Length, RgbaColor};
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
 use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, PreparedImage};
@@ -231,8 +232,11 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
                 }
             }
         }
-        LaidOutContent::Table(rows) => {
-            for row in rows {
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &table.caption {
+                collect_usage(caption, fonts, usages);
+            }
+            for row in &table.rows {
                 for cell in &row.cells {
                     collect_usage(cell, fonts, usages);
                 }
@@ -262,8 +266,11 @@ pub(super) fn collect_image_uses(
                 collect_image_uses(child, background_images, out);
             }
         }
-        LaidOutContent::Table(rows) => {
-            for row in rows {
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &table.caption {
+                collect_image_uses(caption, background_images, out);
+            }
+            for row in &table.rows {
                 for cell in &row.cells {
                     collect_image_uses(cell, background_images, out);
                 }
@@ -297,7 +304,37 @@ pub(super) fn render_box(
         .and_then(|n| styles.get(&n))
         .cloned()
         .unwrap_or_default();
+    render_box_with_style(
+        content,
+        b,
+        &style,
+        styles,
+        fonts,
+        settings,
+        remaps,
+        font_resource_names,
+        image_ids,
+        background_images,
+    );
+}
 
+/// [`render_box`]の本体。通常は`b.node`から引いた素の`style`で描画するが、
+/// `border-collapse: collapse`時のセル(隣接セルと統合した枠線を使う必要が
+/// ある)のように、呼び出し側が上書きしたスタイルで描画したい場合のために
+/// `style`を引数として分離してある。
+#[allow(clippy::too_many_arguments)]
+fn render_box_with_style(
+    content: &mut Content,
+    b: &LaidOutBox,
+    style: &ComputedStyle,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+    image_ids: &HashMap<usize, ImageIds>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+) {
     // `background-image`は`<img>`と異なりboxの中身ではなく装飾なので、
     // `b.node`から側マップを引いて`Ref`を解決する([0017]決定2)。
     let background_image_ref = b
@@ -306,7 +343,7 @@ pub(super) fn render_box(
         .and_then(|image| image_ids.get(&(Rc::as_ptr(image) as usize)))
         .map(|ids| ids.color);
 
-    render_box_decoration(content, &b.layout, &style, settings, background_image_ref);
+    render_box_decoration(content, &b.layout, style, settings, background_image_ref);
 
     match &b.content {
         LaidOutContent::Blocks(children) => {
@@ -336,24 +373,259 @@ pub(super) fn render_box(
                 }
             }
         }
-        LaidOutContent::Table(rows) => {
-            for row in rows {
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &table.caption {
+                render_box(
+                    content,
+                    caption,
+                    styles,
+                    fonts,
+                    settings,
+                    remaps,
+                    font_resource_names,
+                    image_ids,
+                    background_images,
+                );
+            }
+            // `border-collapse`は`table`/`inline-table`要素にのみ適用されるため
+            // テーブル自身の`style`を見るが、`empty-cells`は`table-cell`要素に
+            // 適用されるプロパティ(CSS2.1 17.6.1.1)なのでセル自身の計算済み
+            // スタイルを見る必要がある(セル単位の上書きに対応するため)。
+            // `empty-cells: hide`は`border-collapse: separate`でのみ意味を持つ
+            // (CSS仕様通り)。内容が空のセルは元々装飾以外何も描画しないため、
+            // `render_box`呼び出し自体をスキップしてよい。
+            let collapse = style.border_collapse == BorderCollapse::Collapse;
+            // `border-collapse: collapse`時、隣接セル間の枠線を統合するために
+            // 全セルのフラットな一覧が要る(隣接判定は矩形の接触で幾何的に行う、
+            // [0021]決定1・2)。
+            let all_cells: Vec<&LaidOutBox> = if collapse {
+                table.rows.iter().flat_map(|row| &row.cells).collect()
+            } else {
+                Vec::new()
+            };
+            for row in &table.rows {
                 for cell in &row.cells {
-                    render_box(
-                        content,
-                        cell,
-                        styles,
-                        fonts,
-                        settings,
-                        remaps,
-                        font_resource_names,
-                        image_ids,
-                        background_images,
-                    );
+                    let cell_style = cell
+                        .node
+                        .and_then(|n| styles.get(&n))
+                        .cloned()
+                        .unwrap_or_default();
+                    let hide_this_cell = !collapse
+                        && cell_style.empty_cells == EmptyCells::Hide
+                        && laid_content_is_empty(&cell.content);
+                    if hide_this_cell {
+                        continue;
+                    }
+                    if collapse {
+                        let (resolved_style, resolved_border) =
+                            resolve_collapsed_cell_style(cell, &cell_style, &all_cells, styles);
+                        // 枠線の描画太さは`ComputedStyle`ではなく`layout.border`
+                        // (レイアウト確定時に計算済み)を見るため
+                        // ([`render_border`]参照)、統合後の太さを反映した
+                        // クローンを作って描画する。
+                        let mut resolved_cell = cell.clone();
+                        resolved_cell.layout.border = resolved_border;
+                        render_box_with_style(
+                            content,
+                            &resolved_cell,
+                            &resolved_style,
+                            styles,
+                            fonts,
+                            settings,
+                            remaps,
+                            font_resource_names,
+                            image_ids,
+                            background_images,
+                        );
+                    } else {
+                        render_box(
+                            content,
+                            cell,
+                            styles,
+                            fonts,
+                            settings,
+                            remaps,
+                            font_resource_names,
+                            image_ids,
+                            background_images,
+                        );
+                    }
                 }
             }
         }
     }
+}
+
+/// セルの内容が空かどうか(テキストが空白のみ/子要素が無い)。`empty-cells:
+/// hide`の判定に使う。ネストしたテーブル・置換要素(`<img>`)は常に非空扱い
+/// (内容として意味を持つため)。
+fn laid_content_is_empty(content: &LaidOutContent) -> bool {
+    match content {
+        LaidOutContent::Inline(lines) => lines
+            .iter()
+            .all(|line| line.runs.iter().all(|run| run.text.trim().is_empty())),
+        LaidOutContent::Blocks(children) => {
+            children.is_empty() || children.iter().all(|c| laid_content_is_empty(&c.content))
+        }
+        LaidOutContent::Table(_) | LaidOutContent::Image(_) => false,
+    }
+}
+
+/// `border-collapse: collapse`時、`cell`の枠線を隣接セルと統合した
+/// `ComputedStyle`と、実際に描画する枠線の太さ(`layout.border`の差し替え用
+/// `EdgeSizes`)を作る(枠線以外は`cell_style`のまま)。
+///
+/// レイアウト自体は`border-collapse`の値に関わらずseparateモデルと同一に
+/// 保っている([0021](../../../docs/decisions/0021-table-layout-design.md)決定1)ため、collapse時は
+/// `h_spacing`/`v_spacing`が0になり、隣接セルの矩形は座標が一致するまで接する。
+/// これを利用して、矩形の接触を幾何的に判定するだけでrowspan/colspanの
+/// グリッド情報を別途持たずに隣接セルを見つけられる。
+///
+/// 同じ境界が両側から二重に描画されるのを防ぐため、常に「左隣が見つかれば
+/// 自分の左辺は描画しない(右隣側が統合済みの枠線を右辺として描画する)」
+/// という向きで統一する(上/下も同様)。cellとtable自体の境界は対象外
+/// ([0021]決定2、テーブル自身の枠線はborder-box外側の帯として描画され
+/// セルの矩形と重ならないため、二重描画の問題が生じない)。1つの辺に複数の
+/// 隣接セルが接する場合(rowspanが絡む場合等)は、先に見つかったものを使う
+/// (既知の簡略化)。
+///
+/// 枠線の実際の描画太さは(`ComputedStyle`ではなく)レイアウト確定時に計算
+/// 済みの`layout.border`(`EdgeSizes`)を見る([`render_border`]参照)ため、
+/// 統合後の`ComputedStyle`だけでなく、それに対応する`EdgeSizes`
+/// (`layout::resolve_border`と同じ正規化)も併せて返し、呼び出し側で
+/// `cell.layout.border`を差し替えてもらう。
+fn resolve_collapsed_cell_style(
+    cell: &LaidOutBox,
+    cell_style: &ComputedStyle,
+    all_cells: &[&LaidOutBox],
+    styles: &HashMap<NodeId, ComputedStyle>,
+) -> (ComputedStyle, EdgeSizes) {
+    // 矩形の接触判定に許容する誤差(浮動小数点の丸め対策)。
+    const EPSILON: f32 = 0.5;
+
+    fn ranges_overlap(a_start: f32, a_end: f32, b_start: f32, b_end: f32) -> bool {
+        a_start < b_end - EPSILON && b_start < a_end - EPSILON
+    }
+
+    let rect = cell.layout.border_box();
+    let mut resolved = cell_style.clone();
+
+    let has_left_neighbor = all_cells.iter().any(|other| {
+        let o = other.layout.border_box();
+        (o.x + o.width - rect.x).abs() < EPSILON
+            && ranges_overlap(rect.y, rect.y + rect.height, o.y, o.y + o.height)
+    });
+    if has_left_neighbor {
+        resolved.border_left_style = BorderStyle::None;
+        resolved.border_left_width = Length(0.0);
+    }
+
+    let has_top_neighbor = all_cells.iter().any(|other| {
+        let o = other.layout.border_box();
+        (o.y + o.height - rect.y).abs() < EPSILON
+            && ranges_overlap(rect.x, rect.x + rect.width, o.x, o.x + o.width)
+    });
+    if has_top_neighbor {
+        resolved.border_top_style = BorderStyle::None;
+        resolved.border_top_width = Length(0.0);
+    }
+
+    if let Some(right_neighbor) = all_cells.iter().find(|other| {
+        let o = other.layout.border_box();
+        (o.x - (rect.x + rect.width)).abs() < EPSILON
+            && ranges_overlap(rect.y, rect.y + rect.height, o.y, o.y + o.height)
+    }) {
+        let neighbor_style = right_neighbor
+            .node
+            .and_then(|n| styles.get(&n))
+            .cloned()
+            .unwrap_or_default();
+        let own = border_edge(
+            cell_style.border_right_width.0,
+            cell_style.border_right_style,
+            cell_style.border_right_color,
+        );
+        let theirs = border_edge(
+            neighbor_style.border_left_width.0,
+            neighbor_style.border_left_style,
+            neighbor_style.border_left_color,
+        );
+        let (width, style, color) = resolve_border_conflict(own, theirs);
+        resolved.border_right_width = Length(width);
+        resolved.border_right_style = style;
+        resolved.border_right_color = color;
+    }
+
+    if let Some(bottom_neighbor) = all_cells.iter().find(|other| {
+        let o = other.layout.border_box();
+        (o.y - (rect.y + rect.height)).abs() < EPSILON
+            && ranges_overlap(rect.x, rect.x + rect.width, o.x, o.x + o.width)
+    }) {
+        let neighbor_style = bottom_neighbor
+            .node
+            .and_then(|n| styles.get(&n))
+            .cloned()
+            .unwrap_or_default();
+        let own = border_edge(
+            cell_style.border_bottom_width.0,
+            cell_style.border_bottom_style,
+            cell_style.border_bottom_color,
+        );
+        let theirs = border_edge(
+            neighbor_style.border_top_width.0,
+            neighbor_style.border_top_style,
+            neighbor_style.border_top_color,
+        );
+        let (width, style, color) = resolve_border_conflict(own, theirs);
+        resolved.border_bottom_width = Length(width);
+        resolved.border_bottom_style = style;
+        resolved.border_bottom_color = color;
+    }
+
+    let border = resolve_border(&resolved);
+    (resolved, border)
+}
+
+/// `style: none`の辺は指定幅に関わらず実効幅0として扱う
+/// (`layout::resolve_border`と同じ正規化、`resolve_border_conflict`の
+/// 幅比較を単純にするため)。
+fn border_edge(width: f32, style: BorderStyle, color: RgbaColor) -> (f32, BorderStyle, RgbaColor) {
+    if style == BorderStyle::None {
+        (0.0, BorderStyle::None, color)
+    } else {
+        (width, style, color)
+    }
+}
+
+/// CSS2.1 §17.6.2の枠線競合解決の簡略版: 幅が太い方が勝ち、幅が同じなら
+/// スタイルの優先順位(強さの見た目順: double > solid > dashed > dotted >
+/// none)で決める。`hidden`/`ridge`/`outset`/`groove`/`inset`は
+/// [`BorderStyle`]に無いため非対応([0021]決定2)。幅・スタイルとも
+/// 同着の場合は`a`を採用する(既知の簡略化、見た目には影響しない)。
+fn resolve_border_conflict(
+    a: (f32, BorderStyle, RgbaColor),
+    b: (f32, BorderStyle, RgbaColor),
+) -> (f32, BorderStyle, RgbaColor) {
+    if a.0 != b.0 {
+        return if a.0 > b.0 { a } else { b };
+    }
+    fn style_priority(s: BorderStyle) -> u8 {
+        match s {
+            BorderStyle::Double => 4,
+            BorderStyle::Solid => 3,
+            BorderStyle::Dashed => 2,
+            BorderStyle::Dotted => 1,
+            BorderStyle::None => 0,
+        }
+    }
+    if style_priority(a.1) != style_priority(b.1) {
+        return if style_priority(a.1) > style_priority(b.1) {
+            a
+        } else {
+            b
+        };
+    }
+    a
 }
 
 /// 背景・枠線を描画する。角丸(`border-radius`)が指定されていなければ従来通り
@@ -878,7 +1150,7 @@ fn render_line(
     // サイズのメトリクスを基準に統一する。
     let baseline_font = fonts.get(first_run.font_index);
     let baseline_offset_px = baseline_font
-        .map(|f| baseline_offset(f, first_run.font_size, line.rect.height))
+        .map(|f| f.baseline_offset(first_run.font_size, line.rect.height))
         .unwrap_or(first_run.font_size);
     let baseline_y = to_pdf_y(settings, line.rect.y + baseline_offset_px);
 
@@ -1020,16 +1292,6 @@ fn decoration_metrics(
         ),
         _ => (font_size * fallback_ratio, font_size * 0.05),
     }
-}
-
-/// フォントのアセント/ディセントから、行ボックス上端からベースラインまでの
-/// 距離を求める(フォントのem矩形を行ボックス内で上下中央に配置する)。
-fn baseline_offset(font: &crate::fonts::Font, font_size: f32, line_height: f32) -> f32 {
-    let units_per_em = font.units_per_em() as f32;
-    let ascent = font.ascender() as f32 / units_per_em * font_size;
-    let descent = -(font.descender() as f32) / units_per_em * font_size;
-    let half_leading = (line_height - (ascent + descent)) / 2.0;
-    ascent + half_leading
 }
 
 /// ページコンテンツ領域上端からの距離(CSSのY、下向き正)を、PDFのユーザー空間の
@@ -1581,6 +1843,216 @@ mod tests {
             text.contains("0.78431374 0.78431374 0.78431374 rg"),
             "the explicit cell background-color should be painted"
         );
+    }
+
+    /// 与えたHTML/CSSをPDF化し、展開したコンテンツストリーム中の塗りつぶし
+    /// (`f`)演算子の出現数を返す(背景・枠線描画の合計を数える簡易プロキシ)。
+    fn fill_operator_count(html_src: &str, css: &str) -> usize {
+        let dom = html::parse(html_src.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(css);
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+        count_occurrences(&decompressed_stream_bytes(&bytes), b"\nf\n")
+    }
+
+    #[test]
+    fn empty_cells_hide_suppresses_decoration_for_empty_cells_in_separate_mode() {
+        let html_src = r#"<table><tr><td>Apple</td><td></td></tr></table>"#;
+        let base_css = "td { border: 1px solid black; background-color: rgb(200,200,200); }";
+
+        let shown = fill_operator_count(html_src, base_css);
+        let hidden = fill_operator_count(
+            html_src,
+            &format!("{base_css} table {{ empty-cells: hide; }}"),
+        );
+
+        assert!(
+            hidden < shown,
+            "hiding the empty cell should remove its border/background fills \
+             (shown={shown}, hidden={hidden})"
+        );
+    }
+
+    #[test]
+    fn empty_cells_hide_has_no_effect_when_border_collapse_is_collapse() {
+        let html_src = r#"<table><tr><td>Apple</td><td></td></tr></table>"#;
+        let base_css = "td { border: 1px solid black; background-color: rgb(200,200,200); } \
+             table { border-collapse: collapse; }";
+
+        let without_hide = fill_operator_count(html_src, base_css);
+        let with_hide = fill_operator_count(
+            html_src,
+            &format!("{base_css} table {{ empty-cells: hide; }}"),
+        );
+
+        assert_eq!(
+            without_hide, with_hide,
+            "empty-cells: hide should be a no-op under border-collapse: collapse"
+        );
+    }
+
+    #[test]
+    fn empty_cells_hide_can_be_set_on_an_individual_cell() {
+        // テーブル自身はデフォルト(show)のまま、空セルにだけ`empty-cells: hide`
+        // を指定した場合でもそのセルの装飾が抑制されることを確認する
+        // (このプロパティは`table-cell`要素に適用されるため、テーブル単位では
+        // なくセル単位で見る必要がある)。
+        let html_src = r#"<table><tr><td>Apple</td><td class="empty"></td></tr></table>"#;
+        let base_css = "td { border: 1px solid black; background-color: rgb(200,200,200); }";
+
+        let shown = fill_operator_count(html_src, base_css);
+        let hidden = fill_operator_count(
+            html_src,
+            &format!("{base_css} .empty {{ empty-cells: hide; }}"),
+        );
+
+        assert!(
+            hidden < shown,
+            "hiding via a per-cell override should remove that cell's fills \
+             (shown={shown}, hidden={hidden})"
+        );
+    }
+
+    #[test]
+    fn border_collapse_avoids_drawing_a_double_thick_border_at_a_shared_edge() {
+        // 隣接する2セルが同じ枠線を指定している場合、separateモデルでは
+        // 各セルが独立に4辺とも描画する(2+2セル分=8回)。collapseモデルでは
+        // 内部で接する1辺の描画が抑制されて1回に統合されるため、合計は1回
+        // 減った7回になるはず([0021]決定1・2)。
+        let html_src = r#"<table><tr><td>a</td><td>b</td></tr></table>"#;
+        let base_css = "body { margin: 0; } td { border: 1px solid black; }";
+
+        let separate = fill_operator_count(html_src, base_css);
+        let collapse = fill_operator_count(
+            html_src,
+            &format!("{base_css} table {{ border-collapse: collapse; }}"),
+        );
+
+        assert_eq!(
+            separate, 8,
+            "each cell should draw all 4 sides independently in separate mode"
+        );
+        assert_eq!(
+            collapse, 7,
+            "collapse should merge the shared edge into a single draw (8-1=7): {collapse}"
+        );
+    }
+
+    #[test]
+    fn border_collapse_uses_the_neighbors_border_when_own_side_declares_none() {
+        // 左セルは枠線を指定していない(none)が、右セルの左辺(実際には隣接
+        // する境界の統合先である左セルの右辺として解決される)に実際の枠線が
+        // あるため、境界に枠線が現れなくなってはいけない
+        // (「own=none」を無条件に採用してはいけないことの回帰テスト)。
+        let html_src = r#"<table><tr><td class="a">a</td><td class="b">b</td></tr></table>"#;
+        let css = "body { margin: 0; } \
+                   table { border-collapse: collapse; } \
+                   .a { border: none; } \
+                   .b { border: 2px solid black; }";
+
+        let fills = fill_operator_count(html_src, css);
+        // 右セルの上/右/下辺(3, 左辺は隣接があるため抑制)+左セルの右辺
+        // (隣接セルの枠線を継承して1)=合計4のはず。
+        assert_eq!(
+            fills, 4,
+            "the shared edge should still be drawn using the neighbor's border spec: {fills}"
+        );
+    }
+
+    #[test]
+    fn resolve_border_conflict_prefers_the_wider_border() {
+        let wide = (
+            3.0,
+            BorderStyle::Solid,
+            RgbaColor {
+                red: 255,
+                green: 0,
+                blue: 0,
+                alpha: 255.0,
+            },
+        );
+        let narrow = (
+            1.0,
+            BorderStyle::Solid,
+            RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 255,
+                alpha: 255.0,
+            },
+        );
+        assert_eq!(resolve_border_conflict(wide, narrow), wide);
+        assert_eq!(resolve_border_conflict(narrow, wide), wide);
+    }
+
+    #[test]
+    fn resolve_border_conflict_prefers_a_stronger_style_when_widths_tie() {
+        let solid = (
+            1.0,
+            BorderStyle::Solid,
+            RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 255.0,
+            },
+        );
+        let dotted = (
+            1.0,
+            BorderStyle::Dotted,
+            RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 255.0,
+            },
+        );
+        let double = (
+            1.0,
+            BorderStyle::Double,
+            RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 255.0,
+            },
+        );
+        assert_eq!(resolve_border_conflict(solid, dotted), solid);
+        assert_eq!(resolve_border_conflict(double, solid), double);
+    }
+
+    #[test]
+    fn resolve_border_conflict_ignores_a_declared_width_when_style_is_none() {
+        // `style: none`の辺は幅の指定に関わらず実効幅0として扱われるため、
+        // 幅の数値だけを見れば「勝って」しまいそうな場合でも負けるはず。
+        let none_but_wide = (
+            10.0,
+            BorderStyle::None,
+            RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 255.0,
+            },
+        );
+        let thin_solid = (
+            1.0,
+            BorderStyle::Solid,
+            RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 255.0,
+            },
+        );
+        let a = border_edge(none_but_wide.0, none_but_wide.1, none_but_wide.2);
+        let b = border_edge(thin_solid.0, thin_solid.1, thin_solid.2);
+        assert_eq!(resolve_border_conflict(a, b), b);
     }
 
     #[test]

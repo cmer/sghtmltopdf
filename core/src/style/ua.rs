@@ -1,10 +1,11 @@
 //! UAデフォルトスタイルシート(最小限)。
 //!
-//! `thead`/`tbody`/`tfoot`/`caption`は`display: block`のままで、専用の
-//! ボックスは持たない。テーブルの行収集([`crate::layout::box_tree`])が
-//! これらを透過的に素通りして`table-row`の子孫を探すため、実質的に
-//! 「テーブル本体との間の透明な入れ物」として扱われる(`caption`の内容は
-//! 現状レンダリングされない、既知の簡略化)。
+//! `thead`/`tbody`/`tfoot`は`display: block`のままで、専用のボックスは持たない。
+//! テーブルの行収集([`crate::layout::box_tree`])がこれらを透過的に素通りして
+//! `table-row`の子孫を探すため、実質的に「テーブル本体との間の透明な入れ物」として
+//! 扱われる。`caption`は`display: table-caption`専用の値を持ち、`box_tree.rs`が
+//! `table-row`と並んで専用に検出する([0021](
+//! ../../../docs/decisions/0021-table-layout-design.md)決定4関連)。
 
 use super::stylesheet::{parse_stylesheet, Stylesheet};
 
@@ -12,7 +13,7 @@ const UA_CSS: &str = r#"
 html, body, div, p,
 h1, h2, h3, h4, h5, h6,
 ul, ol, li,
-thead, tbody, tfoot, caption,
+thead, tbody, tfoot,
 header, footer, section, article,
 blockquote, figure, figcaption,
 form, fieldset, hr, pre, dl, dt, dd,
@@ -30,6 +31,10 @@ tr {
 
 td, th {
   display: table-cell;
+}
+
+caption {
+  display: table-caption;
 }
 
 head, script, style, title, meta, link {

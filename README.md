@@ -25,8 +25,32 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 マイルストーン5(画像埋め込み)・マイルストーン6(外部スタイルシート)・
 マイルストーン7(`@import`/`background-image`のurl()対応)
 ともに完了。マイルストーン8(CSS2.1対応)は、Positioning & Float
-(`float`/`clear`/`position: relative`)・Typography詳細まで完了(Table layout
-完全対応・Listsは未着手)。
+(`float`/`clear`/`position: relative`)・Typography詳細・Table layout完全対応
+まで完了(Listsは未着手)。
+
+### Table layout完全対応
+
+`rowspan`/`colspan`・`border-collapse`(collapse込み)・`border-spacing`・
+`caption`/`caption-side`・`vertical-align`(テーブルセル文脈、top/middle/
+bottom/baseline)・`table-layout`(auto/fixed)・`empty-cells`に対応している。
+
+* `border-collapse: collapse`は列幅・セル配置の計算(レイアウト)自体は
+  `separate`モデルと完全に同一に保ち、見た目の枠線描画のみを隣接セル間で
+  統合する(幅→スタイルの優先順位で1本に統合、cellとtable自体の境界は対象外)
+* `rowspan`はCSS2.1 17.2相当のテーブルグリッド構築(occupancy追跡)で対応し、
+  複数行にまたがるセルの必要高さは跨ぐ行へ均等配分する(`colspan`の列幅不足分
+  配ロジックと同型)
+* `vertical-align: baseline`は、行内の各セルの「先頭行のベースライン位置」を
+  求めて揃える。ベースラインを提供できないセル内容(ネストしたテーブル・
+  置換要素)は`bottom`相当にフォールバックする
+* `table-layout: fixed`は最初の行の明示`width`指定のみで列幅を決定し、内容の
+  測定を完全にスキップする
+* `<caption>`要素は`caption-side`(top/bottom)に応じて表の上下どちらかに配置
+  される(従来`<caption>`の内容が完全に失われるバグがあったため、本対応で
+  修正した)
+
+詳細は[docs/decisions/0021-table-layout-design.md](docs/decisions/0021-table-layout-design.md)
+参照。
 
 ### Typography詳細
 

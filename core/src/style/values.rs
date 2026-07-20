@@ -18,6 +18,9 @@ pub enum Display {
     TableRow,
     /// `td`/`th`要素専用。`Display::TableRow`の祖先の下でのみ意味を持つ。
     TableCell,
+    /// `caption`要素専用。`Display::Table`の祖先の下でのみ意味を持つ
+    /// (`box_tree.rs::collect_table_rows`が`table-row`と並んで検出する)。
+    TableCaption,
     None,
 }
 
@@ -171,6 +174,51 @@ impl SpecifiedSpacing {
             Self::Length(length) => length.resolve(font_size, root_font_size).0,
         }
     }
+}
+
+/// `border-collapse`。collapse値は見た目の枠線描画のみ統合し、レイアウト計算
+/// (列幅・セル配置)はseparateと完全に同一に保つ([0021](
+/// ../../../docs/decisions/0021-table-layout-design.md)決定1)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BorderCollapse {
+    #[default]
+    Separate,
+    Collapse,
+}
+
+/// `caption-side`。CSS2.1の`left`/`right`(縦書き対応の論理値)は非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CaptionSide {
+    #[default]
+    Top,
+    Bottom,
+}
+
+/// `table-layout`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TableLayout {
+    #[default]
+    Auto,
+    Fixed,
+}
+
+/// `empty-cells`。`border-collapse: separate`でのみ意味を持つ(CSS仕様通り)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EmptyCells {
+    #[default]
+    Show,
+    Hide,
+}
+
+/// `vertical-align`(テーブルセル文脈専用と割り切る、インライン文脈の
+/// `vertical-align`は非対応)。CSS2.1の初期値は`baseline`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VerticalAlign {
+    Top,
+    Middle,
+    Bottom,
+    #[default]
+    Baseline,
 }
 
 /// 長さ(px)またはパーセンテージ。カスケード解決済みの計算値。

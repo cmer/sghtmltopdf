@@ -83,6 +83,18 @@ impl Font {
         self.face().capital_height()
     }
 
+    /// アセント/ディセントから、行ボックス上端からベースラインまでの距離を
+    /// 求める(フォントのem矩形を行ボックス内で上下中央に配置する)。
+    /// テーブルセルの`vertical-align: baseline`(セル内容の最初の行の
+    /// ベースライン位置を求める)とテキスト描画(`render_line`)の両方で使う。
+    pub fn baseline_offset(&self, font_size: f32, line_height: f32) -> f32 {
+        let units_per_em = self.units_per_em() as f32;
+        let ascent = self.ascender() as f32 / units_per_em * font_size;
+        let descent = -(self.descender() as f32) / units_per_em * font_size;
+        let half_leading = (line_height - (ascent + descent)) / 2.0;
+        ascent + half_leading
+    }
+
     pub fn italic_angle(&self) -> f32 {
         self.face().italic_angle()
     }
@@ -182,5 +194,23 @@ mod tests {
     fn from_bytes_rejects_invalid_font_data() {
         let result = Font::from_bytes(b"not a font file".to_vec(), 0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn baseline_offset_is_between_zero_and_the_line_height() {
+        // アセント分だけ行の上端から下がった位置が概ねベースラインになるはず
+        // (行の高さがフォント自身のメトリクス通りなら半行送りはゼロに近い)。
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+        let units_per_em = font.units_per_em() as f32;
+        let ascent = font.ascender() as f32 / units_per_em * 16.0;
+        let descent = -(font.descender() as f32) / units_per_em * 16.0;
+        let line_height = ascent + descent;
+
+        let offset = font.baseline_offset(16.0, line_height);
+        assert!(
+            (offset - ascent).abs() < 0.01,
+            "with no extra leading, the baseline offset should equal the ascent: {offset} vs {ascent}"
+        );
+        assert!(offset > 0.0 && offset < line_height);
     }
 }

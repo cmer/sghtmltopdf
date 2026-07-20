@@ -663,10 +663,16 @@ mod tests {
             BoxContent::Inline(spans) => Some(spans),
             BoxContent::Blocks(children) => children.iter().find_map(find_inline_spans),
             BoxContent::Table(table) => table
-                .rows
-                .iter()
-                .flat_map(|row| &row.cells)
-                .find_map(|cell| find_inline_spans(&cell.content)),
+                .caption
+                .as_deref()
+                .and_then(find_inline_spans)
+                .or_else(|| {
+                    table
+                        .rows
+                        .iter()
+                        .flat_map(|row| &row.cells)
+                        .find_map(|cell| find_inline_spans(&cell.content))
+                }),
             BoxContent::Image(_) => None,
         }
     }

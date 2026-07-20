@@ -17,8 +17,8 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::pdf::PreparedImage;
 use crate::style::{
-    BorderStyle, BreakBetween, BreakInside, Clear, ComputedStyle, Display, Float, Length,
-    LengthPercentage, LengthPercentageOrAuto, Position,
+    BorderCollapse, BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, ComputedStyle,
+    Display, Float, Length, LengthPercentage, LengthPercentageOrAuto, Position,
 };
 
 use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
@@ -86,10 +86,20 @@ impl Default for FragmentationHints {
 pub enum LaidOutContent {
     Blocks(Vec<LaidOutBox>),
     Inline(Vec<LineBox>),
-    Table(Vec<LaidOutTableRow>),
+    Table(LaidOutTable),
     /// `<img>`。フェッチ・デコードに失敗していれば`None`
     /// (空の置換要素として扱い、何も描画しない)。
     Image(Option<Rc<PreparedImage>>),
+}
+
+/// レイアウト済みのテーブル全体(任意のcaption+行の並び)。
+#[derive(Debug, Clone)]
+pub struct LaidOutTable {
+    /// `Box`は`LaidOutBox`→`LaidOutContent::Table`→`LaidOutTable`の再帰を
+    /// 間接参照で断ち切るために必要(`box_tree::TableBox.caption`と同じ理由)。
+    pub caption: Option<Box<LaidOutBox>>,
+    pub caption_side: CaptionSide,
+    pub rows: Vec<LaidOutTableRow>,
 }
 
 /// レイアウト済みのテーブル行1行分。
@@ -141,7 +151,9 @@ pub fn layout_document_from(
     )
 }
 
-fn layout_box(
+/// `<caption>`(通常のwidth解決を経る、`table.rs`のcaption配置専用)や
+/// block.rs内部の再帰呼び出しで使う。
+pub(super) fn layout_box(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
@@ -337,10 +349,29 @@ fn layout_box_impl(
         BoxContent::Table(table) => {
             // `display: table`のセルは新しいBlock Formatting Contextを確立する
             // (CSS2.1 9.4.1)ため、外側の`float_ctx`とは独立させる([0019]決定1)。
-            let (rows, table_height) =
-                layout_table(table, styles, fonts, content_width, content_x, content_y);
+            // `border-spacing`は`border-collapse: collapse`とは排他([0021]決定1)
+            // なので、collapseの場合はここで0に潰してから渡す。
+            let (h_spacing, v_spacing) = if style.border_collapse == BorderCollapse::Collapse {
+                (0.0, 0.0)
+            } else {
+                (
+                    style.border_spacing_horizontal.0,
+                    style.border_spacing_vertical.0,
+                )
+            };
+            let (laid_table, table_height) = layout_table(
+                table,
+                styles,
+                fonts,
+                content_width,
+                style.table_layout,
+                h_spacing,
+                v_spacing,
+                content_x,
+                content_y,
+            );
             let height = resolve_height(&style).unwrap_or(table_height);
-            (LaidOutContent::Table(rows), height)
+            (LaidOutContent::Table(laid_table), height)
         }
         BoxContent::Image(image_content) => {
             // `apply_replaced_element_auto_size`が呼ばれた場合、widthが両方
@@ -491,7 +522,7 @@ pub(super) fn box_style(b: &LayoutBox, styles: &HashMap<NodeId, ComputedStyle>) 
     }
 }
 
-fn resolve_lp(lp: LengthPercentage, basis: f32) -> f32 {
+pub(super) fn resolve_lp(lp: LengthPercentage, basis: f32) -> f32 {
     match lp {
         LengthPercentage::Length(px) => px,
         LengthPercentage::Percentage(fraction) => fraction * basis,
@@ -650,6 +681,87 @@ pub(crate) fn resolve_width_and_horizontal_margins(
             (width, margin_left, margin_right)
         }
     }
+}
+
+/// `b`の部分木全体のY座標を`delta`だけ平行移動した複製を返す。`paginate.rs`が
+/// 1ページ全体の連続座標からページ内相対座標への変換に使う(`delta`を引く)。
+/// `table.rs`がcaptionを`caption-side: bottom`で配置する際にも使う(`delta`に
+/// 負の値を渡すことで下方向に移動する)。
+pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
+    let mut b = b.clone();
+    shift_rect_y(&mut b.layout.content, delta);
+
+    match &mut b.content {
+        LaidOutContent::Blocks(children) => {
+            for child in children.iter_mut() {
+                *child = shift_box_y(child, delta);
+            }
+        }
+        LaidOutContent::Inline(lines) => {
+            for line in lines.iter_mut() {
+                shift_rect_y(&mut line.rect, delta);
+            }
+        }
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &mut table.caption {
+                **caption = shift_box_y(caption, delta);
+            }
+            for row in table.rows.iter_mut() {
+                for cell in row.cells.iter_mut() {
+                    *cell = shift_box_y(cell, delta);
+                }
+            }
+        }
+        // `b.layout.content`の平行移動(この関数冒頭)だけで十分。画像は
+        // `Inline`の行のような、それ自身が別途Rectを持つ子要素を持たない。
+        LaidOutContent::Image(_) => {}
+    }
+
+    b
+}
+
+fn shift_rect_y(rect: &mut Rect, delta: f32) {
+    rect.y -= delta;
+}
+
+/// `b`自身の位置(`b.layout`)は変えず、その内容(子ボックス/行/テーブルの
+/// 行・セル)だけを縦にシフトする。`shift_box_y`(自身含めた全体を平行移動)
+/// とは別物として明確に区別する: テーブルセルの`vertical-align`実装では、
+/// セル自身の高さ・位置は行の高さ均等化で既に確定済みで変えたくないが、
+/// その内側の内容だけをtop/middle/bottom/baselineに応じて上下させたい
+/// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定4)。
+pub(super) fn shift_content_vertical(b: &LaidOutBox, delta: f32) -> LaidOutBox {
+    let mut b = b.clone();
+
+    match &mut b.content {
+        LaidOutContent::Blocks(children) => {
+            for child in children.iter_mut() {
+                *child = shift_box_y(child, delta);
+            }
+        }
+        LaidOutContent::Inline(lines) => {
+            for line in lines.iter_mut() {
+                shift_rect_y(&mut line.rect, delta);
+            }
+        }
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &mut table.caption {
+                **caption = shift_box_y(caption, delta);
+            }
+            for row in table.rows.iter_mut() {
+                for cell in row.cells.iter_mut() {
+                    *cell = shift_box_y(cell, delta);
+                }
+            }
+        }
+        // `Image`は`Inline`の行のような、それ自身が別途Rectを持つ子要素を
+        // 持たないため、動かす対象が無い(セルにネストした画像の
+        // `vertical-align`は、セル内容全体を1つのブロックとして動かす形に
+        // 委ねる)。
+        LaidOutContent::Image(_) => {}
+    }
+
+    b
 }
 
 #[cfg(test)]

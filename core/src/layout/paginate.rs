@@ -38,7 +38,7 @@ use crate::style::{BreakBetween, BreakInside, ComputedStyle};
 
 use crate::pdf::ImageAssetCache;
 
-use super::block::{layout_document, FragmentationHints, LaidOutBox, LaidOutContent};
+use super::block::{layout_document, shift_box_y, FragmentationHints, LaidOutBox, LaidOutContent};
 use super::box_tree::{build_box_tree, resolve_images};
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::LineBox;
@@ -897,42 +897,6 @@ fn new_page(state: &mut PaginationState<'_>, cursor: &mut f32) {
 /// `cursor`ではなくこちらを使う。
 fn current_page_has_content(state: &PaginationState<'_>) -> bool {
     !state.last().boxes.is_empty()
-}
-
-/// `b`の部分木全体のY座標を`delta`だけ平行移動した複製を返す
-/// (1ページ全体の連続座標から、ページ内相対座標への変換に使う)。
-fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
-    let mut b = b.clone();
-    shift_rect_y(&mut b.layout.content, delta);
-
-    match &mut b.content {
-        LaidOutContent::Blocks(children) => {
-            for child in children.iter_mut() {
-                *child = shift_box_y(child, delta);
-            }
-        }
-        LaidOutContent::Inline(lines) => {
-            for line in lines.iter_mut() {
-                shift_rect_y(&mut line.rect, delta);
-            }
-        }
-        LaidOutContent::Table(rows) => {
-            for row in rows.iter_mut() {
-                for cell in row.cells.iter_mut() {
-                    *cell = shift_box_y(cell, delta);
-                }
-            }
-        }
-        // `b.layout.content`の平行移動(この関数冒頭)だけで十分。画像は
-        // `Inline`の行のような、それ自身が別途Rectを持つ子要素を持たない。
-        LaidOutContent::Image(_) => {}
-    }
-
-    b
-}
-
-fn shift_rect_y(rect: &mut Rect, delta: f32) {
-    rect.y -= delta;
 }
 
 #[cfg(test)]

@@ -14,7 +14,8 @@ pub(crate) use block::{
     resolve_width_and_horizontal_margins,
 };
 pub use block::{
-    layout_document, layout_document_from, LaidOutBox, LaidOutContent, LaidOutTableRow,
+    layout_document, layout_document_from, LaidOutBox, LaidOutContent, LaidOutTable,
+    LaidOutTableRow,
 };
 pub(crate) use box_tree::build_box_for_element;
 pub use box_tree::{
