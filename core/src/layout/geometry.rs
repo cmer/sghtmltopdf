@@ -78,4 +78,16 @@ impl Layout {
                 + self.border.bottom,
         }
     }
+
+    /// `overflow`のクリップ境界に使うパディングボックス(content+padding、
+    /// border線の内側、[0023](../../../docs/decisions/0023-box-model-details-design.md)
+    /// 決定1)。
+    pub fn padding_box(&self) -> Rect {
+        Rect {
+            x: self.content.x - self.padding.left,
+            y: self.content.y - self.padding.top,
+            width: self.padding.left + self.content.width + self.padding.right,
+            height: self.padding.top + self.content.height + self.padding.bottom,
+        }
+    }
 }

@@ -11,6 +11,7 @@ pub mod fonts;
 pub mod html;
 pub mod img;
 pub mod layout;
+mod numbering;
 pub mod pdf;
 pub mod sink;
 pub mod style;

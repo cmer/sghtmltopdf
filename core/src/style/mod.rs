@@ -15,7 +15,7 @@ mod values;
 pub use cascade::matching_declarations;
 pub use computed::{
     compute_single_element_style, compute_styles, compute_styles_with_parent, ComputedStyle,
-    LineHeight, RgbaColor,
+    FirstLetterStyle, LineHeight, RgbaColor,
 };
 pub use element_ref::ElementRef;
 pub use extract::extract_author_stylesheet;
@@ -25,7 +25,9 @@ pub use selector_impl::SgSelectorImpl;
 pub use stylesheet::{parse_stylesheet, StyleRule, Stylesheet};
 pub use ua::user_agent_stylesheet;
 pub use values::{
-    BorderCollapse, BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, Display,
-    EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
-    Position, TableLayout, TextAlign, TextTransform, VerticalAlign, WhiteSpace,
+    BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
+    BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius,
+    Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
+    LengthPercentageOrAuto, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
+    TableLayout, TextAlign, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };

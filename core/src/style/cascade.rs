@@ -17,6 +17,7 @@ use super::element_ref::ElementRef;
 use super::properties::PropertyDeclaration;
 use super::selector_impl::{PseudoElement, SgSelectorImpl};
 use super::stylesheet::Stylesheet;
+use super::values::ContentPart;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Origin {
@@ -64,21 +65,21 @@ pub fn matching_declarations<'a>(
         .collect()
 }
 
-/// `dom`上の`element`が持つ`::before`/`::after`(`pseudo`)の生成コンテンツ文字列を
-/// カスケードに従って解決する。マッチした宣言列の中に有効な`content`宣言が
-/// 一つもなければ(=生成ボックスを持たない、CSSの初期値`normal`と同じ扱い)`None`を返す。
+/// `dom`上の`element`が持つ`pseudo`(`::before`/`::after`/`::first-letter`)に
+/// マッチする宣言列を、カスケード優先度の昇順(先頭が最も優先度が低く、末尾が
+/// 最も優先度が高い)で返す。`matching_declarations`の擬似要素版。
 ///
 /// マッチングには`selectors`クレートの`MatchingMode::ForStatelessPseudoElement`を使う。
 /// これは「対象のセレクタは末尾に`pseudo`を持つ」ことを前提に、その擬似要素部分を
 /// 消費してから残りの複合セレクタを通常通り`element`(実要素)に対してマッチさせる
-/// (`::before`自身に対応するDOMノードは存在しないため)。
-pub fn matching_pseudo_content(
+/// (擬似要素自身に対応するDOMノードは存在しないため)。
+pub(super) fn matching_pseudo_declarations<'a>(
     dom: &Dom,
     element: NodeId,
     pseudo: PseudoElement,
-    ua: &Stylesheet,
-    author: &Stylesheet,
-) -> Option<String> {
+    ua: &'a Stylesheet,
+    author: &'a Stylesheet,
+) -> Vec<&'a PropertyDeclaration> {
     let el = ElementRef::new(dom, element);
     let mut caches = SelectorCaches::default();
     let mut context = MatchingContext::new(
@@ -92,7 +93,7 @@ pub fn matching_pseudo_content(
     let matches_pseudo = |p: &PseudoElement| *p == pseudo;
     context.pseudo_element_matching_fn = Some(&matches_pseudo);
 
-    let mut matched: Vec<(Origin, u32, usize, &Vec<PropertyDeclaration>)> = Vec::new();
+    let mut matched: Vec<(Origin, u32, usize, &'a Vec<PropertyDeclaration>)> = Vec::new();
     for (origin, sheet) in [(Origin::UserAgent, ua), (Origin::Author, author)] {
         for (source_order, rule) in sheet.rules.iter().enumerate() {
             let specificity = rule
@@ -116,6 +117,22 @@ pub fn matching_pseudo_content(
     matched
         .into_iter()
         .flat_map(|(_, _, _, declarations)| declarations.iter())
+        .collect()
+}
+
+/// `dom`上の`element`が持つ`::before`/`::after`(`pseudo`)の生成コンテンツ
+/// パーツ列をカスケードに従って解決する。マッチした宣言列の中に有効な`content`
+/// 宣言が一つもなければ(=生成ボックスを持たない、CSSの初期値`normal`と同じ扱い)
+/// `None`を返す。
+pub fn matching_pseudo_content(
+    dom: &Dom,
+    element: NodeId,
+    pseudo: PseudoElement,
+    ua: &Stylesheet,
+    author: &Stylesheet,
+) -> Option<Vec<ContentPart>> {
+    matching_pseudo_declarations(dom, element, pseudo, ua, author)
+        .into_iter()
         .filter_map(|decl| match decl {
             PropertyDeclaration::Content(content) => Some(content.clone()),
             _ => None,

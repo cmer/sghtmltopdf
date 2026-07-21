@@ -21,6 +21,10 @@ pub enum Display {
     /// `caption`要素専用。`Display::Table`の祖先の下でのみ意味を持つ
     /// (`box_tree.rs::collect_table_rows`が`table-row`と並んで検出する)。
     TableCaption,
+    /// `li`要素の既定値([0022](../../../docs/decisions/0022-list-style-design.md))。
+    /// 通常のブロックボックスに加えてマーカーボックス(箇条書きの記号・番号)を
+    /// 生成する。`box_tree.rs::child_kind`では`Block`と同様に扱う。
+    ListItem,
     None,
 }
 
@@ -48,10 +52,9 @@ pub struct TextDecorationLine {
     pub line_through: bool,
 }
 
-/// `border-style`。M1では実線・破線・点線・二重線のみ対応。
-/// `groove`/`ridge`/`inset`/`outset`(border-colorから2階調の疑似立体陰影を
-/// 算出する必要がある)は、請求書・帳票用途での実用性に対して実装コストが
-/// 見合わないため非対応とする。
+/// `border-style`。`groove`/`ridge`/`inset`/`outset`(border-colorから2階調の
+/// 疑似立体陰影を算出する)は[0023](../../../docs/decisions/0023-box-model-details-design.md)
+/// 決定5で対応(既存の非対応方針から変更、ユーザー確認済み)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BorderStyle {
     #[default]
@@ -60,6 +63,10 @@ pub enum BorderStyle {
     Dashed,
     Dotted,
     Double,
+    Groove,
+    Ridge,
+    Inset,
+    Outset,
 }
 
 /// `break-before`/`break-after`の値。CSS仕様上`page`は複数ページサイズ/
@@ -221,6 +228,112 @@ pub enum VerticalAlign {
     Baseline,
 }
 
+/// `list-style-type`([0022](../../../docs/decisions/0022-list-style-design.md)決定2)。
+/// `disc`/`circle`/`square`は固定記号、それ以外はカウンタ値から生成する
+/// (数値・アルファベット系は「本体+`.`」形式、既知の簡略化)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListStyleType {
+    #[default]
+    Disc,
+    Circle,
+    Square,
+    Decimal,
+    DecimalLeadingZero,
+    LowerRoman,
+    UpperRoman,
+    LowerAlpha,
+    UpperAlpha,
+    None,
+}
+
+/// `content`の1パーツ(パース時点、まだ解決されていない値)。[0024](
+/// ../../../docs/decisions/0024-generated-content-design.md)決定1。複数パーツを
+/// 連結できる(`content: "Chapter " counter(chapter) ": "`等)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContentPart {
+    String(String),
+    /// `attr(name)`。HTML属性値。
+    Attr(String),
+    /// `counter(name [, style])`。`style`は[`ListStyleType`]を再利用する
+    /// (`disc`/`circle`/`square`/`none`は空文字列を生成する、仕様通り)。
+    Counter(String, ListStyleType),
+    /// `counters(name, separator [, style])`。
+    Counters(String, String, ListStyleType),
+    OpenQuote,
+    CloseQuote,
+    NoOpenQuote,
+    NoCloseQuote,
+}
+
+/// `quotes`の1階層分(開き引用符, 閉じ引用符)。[0024]決定3。
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuotePair {
+    pub open: String,
+    pub close: String,
+}
+
+/// `list-style-position`([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ListStylePosition {
+    #[default]
+    Outside,
+    Inside,
+}
+
+/// `overflow`([0023](../../../docs/decisions/0023-box-model-details-design.md)決定1)。
+/// `scroll`/`auto`は`hidden`と区別せず同じクリップ処理として扱う(印刷に
+/// スクロールの概念が無いため)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Overflow {
+    #[default]
+    Visible,
+    Hidden,
+    Scroll,
+    Auto,
+}
+
+impl Overflow {
+    /// `visible`以外は全て同じクリップ処理の対象になる(決定1)。
+    pub fn clips(self) -> bool {
+        self != Overflow::Visible
+    }
+}
+
+/// `visibility`([0023](../../../docs/decisions/0023-box-model-details-design.md)決定4)。
+/// `collapse`は`hidden`と同一視する(テーブル行/列の高さ再計算は非対応)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Visibility {
+    #[default]
+    Visible,
+    Hidden,
+    Collapse,
+}
+
+impl Visibility {
+    pub fn is_hidden(self) -> bool {
+        self != Visibility::Visible
+    }
+}
+
+/// `z-index`([0023](../../../docs/decisions/0023-box-model-details-design.md)決定2)。
+/// `position: static`の要素には効果を持たない(仕様通り、呼び出し側が判定する)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ZIndex {
+    #[default]
+    Auto,
+    Value(i32),
+}
+
+impl ZIndex {
+    /// 描画順のソートキーとして使う実効値(`auto`は`0`と同義、仕様通り)。
+    pub fn sort_key(self) -> i32 {
+        match self {
+            ZIndex::Auto => 0,
+            ZIndex::Value(v) => v,
+        }
+    }
+}
+
 /// 長さ(px)またはパーセンテージ。カスケード解決済みの計算値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LengthPercentage {
@@ -234,7 +347,7 @@ pub enum LengthPercentageOrAuto {
     Auto,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Length(pub f32);
 
 /// パース直後の長さの指定値。`em`は基準フォントサイズ(呼び出し側が要素自身の
@@ -255,6 +368,30 @@ impl SpecifiedLength {
             Self::Px(px) => Length(px),
             Self::Em(em) => Length(em * font_size),
             Self::Rem(rem) => Length(rem * root_font_size),
+        }
+    }
+}
+
+/// `border-radius`の1コーナー分の計算値(水平半径, 垂直半径)。真円は
+/// 水平=垂直([0023](../../../docs/decisions/0023-box-model-details-design.md)決定6)。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct CornerRadius {
+    pub horizontal: Length,
+    pub vertical: Length,
+}
+
+/// パース直後の`border-radius`1コーナー分の指定値。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpecifiedCornerRadius {
+    pub horizontal: SpecifiedLength,
+    pub vertical: SpecifiedLength,
+}
+
+impl SpecifiedCornerRadius {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> CornerRadius {
+        CornerRadius {
+            horizontal: self.horizontal.resolve(font_size, root_font_size),
+            vertical: self.vertical.resolve(font_size, root_font_size),
         }
     }
 }
@@ -293,6 +430,102 @@ impl SpecifiedLengthPercentageOrAuto {
             }
         }
     }
+}
+
+/// `background-position`の計算値(水平/垂直、border-box基準の長さまたは
+/// パーセンテージ)。キーワード(`left`/`center`/`right`/`top`/`bottom`)は
+/// パース時点で対応するパーセンテージへ解決済み([0025](
+/// ../../../docs/decisions/0025-background-details-design.md)決定1)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BackgroundPosition {
+    pub horizontal: LengthPercentage,
+    pub vertical: LengthPercentage,
+}
+
+impl Default for BackgroundPosition {
+    /// 初期値`0% 0%`(左上)。
+    fn default() -> Self {
+        Self {
+            horizontal: LengthPercentage::Percentage(0.0),
+            vertical: LengthPercentage::Percentage(0.0),
+        }
+    }
+}
+
+/// パース直後の`background-position`の指定値。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpecifiedBackgroundPosition {
+    pub horizontal: SpecifiedLengthPercentage,
+    pub vertical: SpecifiedLengthPercentage,
+}
+
+impl SpecifiedBackgroundPosition {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> BackgroundPosition {
+        BackgroundPosition {
+            horizontal: self.horizontal.resolve(font_size, root_font_size),
+            vertical: self.vertical.resolve(font_size, root_font_size),
+        }
+    }
+}
+
+/// `background-size`の計算値。`Cover`/`Contain`はintrinsicサイズに基づき
+/// 描画時([0025]決定3)に矩形へ変換する。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BackgroundSize {
+    WidthHeight(LengthPercentageOrAuto, LengthPercentageOrAuto),
+    Cover,
+    Contain,
+}
+
+impl Default for BackgroundSize {
+    /// 初期値`auto auto`。
+    fn default() -> Self {
+        Self::WidthHeight(LengthPercentageOrAuto::Auto, LengthPercentageOrAuto::Auto)
+    }
+}
+
+/// パース直後の`background-size`の指定値。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedBackgroundSize {
+    WidthHeight(
+        SpecifiedLengthPercentageOrAuto,
+        SpecifiedLengthPercentageOrAuto,
+    ),
+    Cover,
+    Contain,
+}
+
+impl SpecifiedBackgroundSize {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> BackgroundSize {
+        match self {
+            Self::WidthHeight(w, h) => BackgroundSize::WidthHeight(
+                w.resolve(font_size, root_font_size),
+                h.resolve(font_size, root_font_size),
+            ),
+            Self::Cover => BackgroundSize::Cover,
+            Self::Contain => BackgroundSize::Contain,
+        }
+    }
+}
+
+/// `background-repeat`。CSS2.1の値集合(repeat/repeat-x/repeat-y/no-repeat)
+/// のみ対応(複数背景のカンマ区切り記法・`round`/`space`はCSS3スコープ外)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BackgroundRepeat {
+    #[default]
+    Repeat,
+    RepeatX,
+    RepeatY,
+    NoRepeat,
+}
+
+/// `background-attachment`。`fixed`は`scroll`と同一視して描画する
+/// ([0025]決定5、既知の簡略化)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BackgroundAttachment {
+    #[default]
+    Scroll,
+    Fixed,
 }
 
 /// 色。`currentcolor`の解決や継承は計算スタイル(T4)の役割なので、

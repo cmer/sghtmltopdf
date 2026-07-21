@@ -319,7 +319,10 @@ fn flatten_spans(
     let mut prev_is_boundary = true;
 
     for span in spans {
-        let style = styles.get(&span.node).cloned().unwrap_or_default();
+        let mut style = styles.get(&span.node).cloned().unwrap_or_default();
+        if span.is_first_letter {
+            apply_first_letter_style(&mut style);
+        }
         let style_index = span_styles.len();
         let transform = style.text_transform;
         span_styles.push(style);
@@ -336,6 +339,35 @@ fn flatten_spans(
     }
 
     (chars, span_styles)
+}
+
+/// `style.first_letter_style`(あれば)で対応するプロパティのみを上書きする
+/// ([0024](../../../docs/decisions/0024-generated-content-design.md)決定4)。
+fn apply_first_letter_style(style: &mut ComputedStyle) {
+    let Some(first_letter) = style.first_letter_style.clone() else {
+        return;
+    };
+    if let Some(v) = first_letter.font_size {
+        style.font_size = v;
+    }
+    if let Some(v) = first_letter.font_family {
+        style.font_family = v;
+    }
+    if let Some(v) = first_letter.font_weight {
+        style.font_weight = v;
+    }
+    if let Some(v) = first_letter.font_style {
+        style.font_style = v;
+    }
+    if let Some(v) = first_letter.color {
+        style.color = v;
+    }
+    if let Some(v) = first_letter.text_decoration_line {
+        style.text_decoration_line = v;
+    }
+    if let Some(v) = first_letter.text_transform {
+        style.text_transform = v;
+    }
 }
 
 /// `text-transform`を1文字に適用する。`uppercase`/`lowercase`は
@@ -559,7 +591,10 @@ fn layout_pre_content(
     lines
 }
 
-fn shape_run(
+/// `list-style-type`のマーカーテキストのシェイピングにも使う
+/// (`block.rs::layout_list_marker`、[0022](
+/// ../../../docs/decisions/0022-list-style-design.md)決定4)ため`pub(super)`。
+pub(super) fn shape_run(
     text: &str,
     font_index: usize,
     fonts: &FontCollection,
@@ -729,6 +764,43 @@ mod tests {
         // "hello"と"world"それぞれ1ランクずつ、同じフォントで連続。
         assert_eq!(lines[0].runs.len(), 2);
         assert!(lines[0].runs.iter().all(|r| r.font_index == 0));
+    }
+
+    #[test]
+    fn first_letter_style_overrides_are_applied_only_to_the_split_off_run() {
+        let (_, spans, styles) = spans_for(
+            "Hello world",
+            "p::first-letter { font-size: 2em; color: rgb(200, 0, 0); font-weight: bold; }",
+        );
+        // real boldフェイスがないフォント集合を使い、synthetic boldフラグで
+        // first-letterのfont-weightがランに反映されたことを検証する。
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+
+        assert_eq!(lines.len(), 1);
+        let runs = &lines[0].runs;
+        assert!(runs.len() >= 2, "first-letter run + remainder run(s)");
+
+        let base_font_size = ComputedStyle::default().font_size.0;
+        assert_eq!(runs[0].text, "H");
+        assert_eq!(runs[0].font_size, base_font_size * 2.0);
+        assert_eq!(
+            runs[0].color,
+            RgbaColor {
+                red: 200,
+                green: 0,
+                blue: 0,
+                alpha: 1.0
+            }
+        );
+        assert!(runs[0].bold);
+
+        // 単語間の空白はラン間の隙間として表現され、`text`には含まれない。
+        let remainder: String = runs[1..].iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(remainder, "elloworld");
+        assert_eq!(runs[1].font_size, base_font_size);
+        assert_eq!(runs[1].color, ComputedStyle::default().color);
+        assert!(!runs[1].bold);
     }
 
     #[test]

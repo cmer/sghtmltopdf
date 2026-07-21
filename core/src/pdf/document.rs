@@ -57,7 +57,10 @@ use crate::layout::{
     PageSettings, Rect,
 };
 use crate::sink::Sink;
-use crate::style::{BorderCollapse, BorderStyle, ComputedStyle, EmptyCells, Length, RgbaColor};
+use crate::style::{
+    BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, ComputedStyle, CornerRadius,
+    EmptyCells, Length, LengthPercentage, LengthPercentageOrAuto, Position, RgbaColor,
+};
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
 use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, PreparedImage};
@@ -210,6 +213,9 @@ impl RefAllocator {
 }
 
 pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut [FontUsage]) {
+    if let Some(marker) = &b.marker {
+        collect_line_usage(marker, fonts, usages);
+    }
     match &b.content {
         LaidOutContent::Blocks(children) => {
             for child in children {
@@ -218,18 +224,7 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
         }
         LaidOutContent::Inline(lines) => {
             for line in lines {
-                for run in &line.runs {
-                    let Some(font) = fonts.get(run.font_index) else {
-                        continue;
-                    };
-                    for glyph in &run.glyphs {
-                        let unicode = run.text[glyph.cluster as usize..]
-                            .chars()
-                            .next()
-                            .unwrap_or('\u{FFFD}');
-                        usages[run.font_index].record(font, glyph.glyph_id, unicode);
-                    }
-                }
+                collect_line_usage(line, fonts, usages);
             }
         }
         LaidOutContent::Table(table) => {
@@ -243,6 +238,24 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
             }
         }
         LaidOutContent::Image(_) => {}
+    }
+}
+
+/// `line`(通常の行、または`display: list-item`のマーカーを表す1ラン限りの
+/// 合成`LineBox`、[0022](../../../docs/decisions/0022-list-style-design.md)決定4)
+/// が実際に使うグリフを集める。
+fn collect_line_usage(line: &LineBox, fonts: &FontCollection, usages: &mut [FontUsage]) {
+    for run in &line.runs {
+        let Some(font) = fonts.get(run.font_index) else {
+            continue;
+        };
+        for glyph in &run.glyphs {
+            let unicode = run.text[glyph.cluster as usize..]
+                .chars()
+                .next()
+                .unwrap_or('\u{FFFD}');
+            usages[run.font_index].record(font, glyph.glyph_id, unicode);
+        }
     }
 }
 
@@ -335,19 +348,114 @@ fn render_box_with_style(
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
 ) {
+    // `visibility: hidden`(`collapse`も同一視、[0023](
+    // ../../../docs/decisions/0023-box-model-details-design.md)決定4)。
+    // このボックス自身の装飾・内容は描画しないが、`Blocks`/`Table`の子要素へは
+    // 引き続き再帰する(子孫が`visibility: visible`で上書きしていれば、
+    // `render_box`が子自身の計算スタイルを個別に評価し直すため正しく再描画
+    // される、仕様通り)。テーブルの場合は`border-collapse`統合描画の簡略化として
+    // 通常の`render_box`で再帰する(隠れたテーブル内で特定セルだけ`visible`に
+    // 上書きする、という稀なケースでは隣接セルとの枠線統合は行われない)。
+    if style.visibility.is_hidden() {
+        match &b.content {
+            LaidOutContent::Blocks(children) => {
+                for child in paint_order(children, styles) {
+                    render_box(
+                        content,
+                        child,
+                        styles,
+                        fonts,
+                        settings,
+                        remaps,
+                        font_resource_names,
+                        image_ids,
+                        background_images,
+                    );
+                }
+            }
+            LaidOutContent::Table(table) => {
+                if let Some(caption) = &table.caption {
+                    render_box(
+                        content,
+                        caption,
+                        styles,
+                        fonts,
+                        settings,
+                        remaps,
+                        font_resource_names,
+                        image_ids,
+                        background_images,
+                    );
+                }
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        render_box(
+                            content,
+                            cell,
+                            styles,
+                            fonts,
+                            settings,
+                            remaps,
+                            font_resource_names,
+                            image_ids,
+                            background_images,
+                        );
+                    }
+                }
+            }
+            LaidOutContent::Inline(_) | LaidOutContent::Image(_) => {}
+        }
+        return;
+    }
+
     // `background-image`は`<img>`と異なりboxの中身ではなく装飾なので、
-    // `b.node`から側マップを引いて`Ref`を解決する([0017]決定2)。
-    let background_image_ref = b
+    // `b.node`から側マップを引いて`Ref`とintrinsicサイズを解決する([0017]決定2)。
+    let background_image_paint = b
         .node
         .and_then(|n| background_images.get(&n))
-        .and_then(|image| image_ids.get(&(Rc::as_ptr(image) as usize)))
-        .map(|ids| ids.color);
+        .and_then(|image| {
+            image_ids
+                .get(&(Rc::as_ptr(image) as usize))
+                .map(|ids| BackgroundImagePaint {
+                    resource: ids.color,
+                    intrinsic_width: image.width,
+                    intrinsic_height: image.height,
+                })
+        });
 
-    render_box_decoration(content, &b.layout, style, settings, background_image_ref);
+    render_box_decoration(content, &b.layout, style, settings, background_image_paint);
+    render_outline(content, &b.layout, style, settings);
+
+    // `display: list-item`のマーカー。通常のテキスト行と同じ`render_line`を
+    // 再利用する([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
+    if let Some(marker) = &b.marker {
+        render_line(
+            content,
+            marker,
+            fonts,
+            settings,
+            remaps,
+            font_resource_names,
+        );
+    }
+
+    // `overflow: hidden`/`scroll`/`auto`(区別せず同じクリップとして扱う、
+    // [0023]決定1)。装飾(背景・枠線・outline・マーカー)は上で描画済みで
+    // クリップの影響を受けない。クリップ境界は常に直線のpadding-box
+    // (`border-radius`には沿わせない、決定1)。
+    if style.overflow.clips() {
+        let padding_box = b.layout.padding_box();
+        let x = settings.margin.left + padding_box.x;
+        let y = to_pdf_y(settings, padding_box.y + padding_box.height);
+        content.save_state();
+        content.rect(x, y, padding_box.width, padding_box.height);
+        content.clip_nonzero();
+        content.end_path();
+    }
 
     match &b.content {
         LaidOutContent::Blocks(children) => {
-            for child in children {
+            for child in paint_order(children, styles) {
                 render_box(
                     content,
                     child,
@@ -454,6 +562,35 @@ fn render_box_with_style(
             }
         }
     }
+
+    if style.overflow.clips() {
+        content.restore_state();
+    }
+}
+
+/// `children`を`z-index`に従って描画する順序へ並べ替える(`(z-index, 文書順)`
+/// で安定ソート、[0023](../../../docs/decisions/0023-box-model-details-design.md)
+/// 決定2)。`position: static`の要素には`z-index`が効果を持たない(仕様通り)
+/// ため実効値は常に`0`として扱う。`sort_by_key`は安定ソートなので、同じ
+/// 実効`z-index`の要素同士は文書順が保たれる。スタッキングコンテキストの
+/// 分離は非対応(同一の直接の親を持つ兄弟間の描画順のみを制御する)。
+fn paint_order<'a>(
+    children: &'a [LaidOutBox],
+    styles: &HashMap<NodeId, ComputedStyle>,
+) -> Vec<&'a LaidOutBox> {
+    let effective_z_index = |child: &LaidOutBox| -> i32 {
+        let Some(style) = child.node.and_then(|n| styles.get(&n)) else {
+            return 0;
+        };
+        if style.position == Position::Relative {
+            style.z_index.sort_key()
+        } else {
+            0
+        }
+    };
+    let mut order: Vec<&LaidOutBox> = children.iter().collect();
+    order.sort_by_key(|child| effective_z_index(child));
+    order
 }
 
 /// セルの内容が空かどうか(テキストが空白のみ/子要素が無い)。`empty-cells:
@@ -598,8 +735,8 @@ fn border_edge(width: f32, style: BorderStyle, color: RgbaColor) -> (f32, Border
 }
 
 /// CSS2.1 §17.6.2の枠線競合解決の簡略版: 幅が太い方が勝ち、幅が同じなら
-/// スタイルの優先順位(強さの見た目順: double > solid > dashed > dotted >
-/// none)で決める。`hidden`/`ridge`/`outset`/`groove`/`inset`は
+/// スタイルの優先順位(仕様通りの強さの見た目順: double > solid > dashed >
+/// dotted > ridge > outset > groove > inset > none)で決める。`hidden`は
 /// [`BorderStyle`]に無いため非対応([0021]決定2)。幅・スタイルとも
 /// 同着の場合は`a`を採用する(既知の簡略化、見た目には影響しない)。
 fn resolve_border_conflict(
@@ -611,10 +748,14 @@ fn resolve_border_conflict(
     }
     fn style_priority(s: BorderStyle) -> u8 {
         match s {
-            BorderStyle::Double => 4,
-            BorderStyle::Solid => 3,
-            BorderStyle::Dashed => 2,
-            BorderStyle::Dotted => 1,
+            BorderStyle::Double => 8,
+            BorderStyle::Solid => 7,
+            BorderStyle::Dashed => 6,
+            BorderStyle::Dotted => 5,
+            BorderStyle::Ridge => 4,
+            BorderStyle::Outset => 3,
+            BorderStyle::Groove => 2,
+            BorderStyle::Inset => 1,
             BorderStyle::None => 0,
         }
     }
@@ -639,10 +780,12 @@ fn render_box_decoration(
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
-    background_image_ref: Option<Ref>,
+    background_image_paint: Option<BackgroundImagePaint>,
 ) {
     let radii = effective_radii(layout, style);
-    let has_radius = radii.0 > 0.0 || radii.1 > 0.0 || radii.2 > 0.0 || radii.3 > 0.0;
+    let has_radius = [radii.0, radii.1, radii.2, radii.3]
+        .into_iter()
+        .any(|(rx, ry)| rx > 0.0 || ry > 0.0);
 
     if has_radius {
         render_rounded_decoration(
@@ -651,7 +794,7 @@ fn render_box_decoration(
             style,
             settings,
             radii,
-            background_image_ref,
+            background_image_paint,
         );
         return;
     }
@@ -664,17 +807,29 @@ fn render_box_decoration(
             settings,
         );
     }
-    if let Some(image_ref) = background_image_ref {
-        render_image(content, layout.border_box(), settings, image_ref);
+    if let Some(paint) = background_image_paint {
+        render_background_image(content, layout.border_box(), style, settings, &paint);
     }
     render_border(content, layout, style, settings);
 }
+
+/// 1コーナー分の実効半径(水平, 垂直)のpx値。真円は水平=垂直
+/// ([0023](../../../docs/decisions/0023-box-model-details-design.md)決定6)。
+type CornerRadiusPx = (f32, f32);
 
 /// スタイル上の`border-radius`を、そのボックスがページ分割された断片の
 /// どの位置にあるか([`FragmentPosition`])に応じて丸める。継続中の断片
 /// (`Middle`/上端なら`Last`/下端なら`First`)では、本来枠線が無い辺の角を
 /// 丸めてしまわないよう、その辺に接する角の半径を0にする。
-fn effective_radii(layout: &Layout, style: &ComputedStyle) -> (f32, f32, f32, f32) {
+fn effective_radii(
+    layout: &Layout,
+    style: &ComputedStyle,
+) -> (
+    CornerRadiusPx,
+    CornerRadiusPx,
+    CornerRadiusPx,
+    CornerRadiusPx,
+) {
     let apply_top = matches!(
         layout.fragment,
         FragmentPosition::Whole | FragmentPosition::First
@@ -683,26 +838,27 @@ fn effective_radii(layout: &Layout, style: &ComputedStyle) -> (f32, f32, f32, f3
         layout.fragment,
         FragmentPosition::Whole | FragmentPosition::Last
     );
+    let px = |r: CornerRadius| (r.horizontal.0, r.vertical.0);
     (
         if apply_top {
-            style.border_top_left_radius.0
+            px(style.border_top_left_radius)
         } else {
-            0.0
+            (0.0, 0.0)
         },
         if apply_top {
-            style.border_top_right_radius.0
+            px(style.border_top_right_radius)
         } else {
-            0.0
+            (0.0, 0.0)
         },
         if apply_bottom {
-            style.border_bottom_right_radius.0
+            px(style.border_bottom_right_radius)
         } else {
-            0.0
+            (0.0, 0.0)
         },
         if apply_bottom {
-            style.border_bottom_left_radius.0
+            px(style.border_bottom_left_radius)
         } else {
-            0.0
+            (0.0, 0.0)
         },
     )
 }
@@ -725,9 +881,9 @@ fn render_background(
 }
 
 /// `rect`いっぱいに画像XObjectを描画する。`<img>`(content box)・
-/// `background-image`(border-box、[0017]決定3)いずれの呼び出し元からも
-/// 使う共通ヘルパー。`resource_ref`が指すXObjectは、呼び出し元がページの
-/// `/Resources/XObject`辞書へ既に登録済みであること
+/// `background-image`(タイル1枚分の矩形、[`background_tile_rects`]参照)
+/// いずれの呼び出し元からも使う共通ヘルパー。`resource_ref`が指すXObjectは、
+/// 呼び出し元がページの`/Resources/XObject`辞書へ既に登録済みであること
 /// ([`image_resource_name`]と同じ命名規則でリソース名を導出する)。
 fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, resource_ref: Ref) {
     let x = settings.margin.left + rect.x;
@@ -737,6 +893,190 @@ fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, reso
     content.transform([rect.width, 0.0, 0.0, rect.height, x, y]);
     content.x_object(Name(name.as_bytes()));
     content.restore_state();
+}
+
+/// `background-image`の描画に必要な情報。`render_box`が`b.node`から
+/// 側マップ(`background_images`)経由で解決する([0017]決定2)。
+#[derive(Debug, Clone, Copy)]
+struct BackgroundImagePaint {
+    resource: Ref,
+    intrinsic_width: u32,
+    intrinsic_height: u32,
+}
+
+/// `background-size`/`-position`/`-repeat`から、実際に描画すべき画像タイルの
+/// 矩形群(border-box基準の座標系、レイアウト空間)を計算する
+/// ([0025](../../../docs/decisions/0025-background-details-design.md)決定3)。
+/// intrinsicサイズが縮退している(0を含む)場合はborder-box全体への単純な
+/// 1枚描画にフォールバックする(ゼロ除算回避)。
+fn background_tile_rects(
+    border_box: Rect,
+    style: &ComputedStyle,
+    intrinsic: (f32, f32),
+) -> Vec<Rect> {
+    let (iw, ih) = intrinsic;
+    if iw <= 0.0 || ih <= 0.0 {
+        return vec![border_box];
+    }
+
+    let (draw_w, draw_h) = match style.background_size {
+        BackgroundSize::Cover => {
+            let scale = (border_box.width / iw).max(border_box.height / ih);
+            (iw * scale, ih * scale)
+        }
+        BackgroundSize::Contain => {
+            let scale = (border_box.width / iw).min(border_box.height / ih);
+            (iw * scale, ih * scale)
+        }
+        BackgroundSize::WidthHeight(w, h) => {
+            let resolved_w = resolve_background_size_component(w, border_box.width);
+            let resolved_h = resolve_background_size_component(h, border_box.height);
+            match (resolved_w, resolved_h) {
+                (Some(w), Some(h)) => (w, h),
+                (Some(w), None) => (w, w * ih / iw),
+                (None, Some(h)) => (h * iw / ih, h),
+                (None, None) => (iw, ih),
+            }
+        }
+    };
+    if draw_w <= 0.0 || draw_h <= 0.0 {
+        return Vec::new();
+    }
+
+    let origin_x = border_box.x
+        + resolve_background_position_offset(
+            style.background_position.horizontal,
+            border_box.width,
+            draw_w,
+        );
+    let origin_y = border_box.y
+        + resolve_background_position_offset(
+            style.background_position.vertical,
+            border_box.height,
+            draw_h,
+        );
+
+    let (repeat_x, repeat_y) = match style.background_repeat {
+        BackgroundRepeat::Repeat => (true, true),
+        BackgroundRepeat::RepeatX => (true, false),
+        BackgroundRepeat::RepeatY => (false, true),
+        BackgroundRepeat::NoRepeat => (false, false),
+    };
+
+    let xs = tile_starts(
+        origin_x,
+        draw_w,
+        border_box.x,
+        border_box.x + border_box.width,
+        repeat_x,
+    );
+    let ys = tile_starts(
+        origin_y,
+        draw_h,
+        border_box.y,
+        border_box.y + border_box.height,
+        repeat_y,
+    );
+
+    xs.into_iter()
+        .flat_map(|x| {
+            ys.iter().map(move |&y| Rect {
+                x,
+                y,
+                width: draw_w,
+                height: draw_h,
+            })
+        })
+        .collect()
+}
+
+/// `background-size`の1軸分の指定値を、`auto`なら`None`(アスペクト比から
+/// 導出させる)、それ以外は`basis`(border-boxの対応する辺)基準のpx値へ解決する。
+fn resolve_background_size_component(value: LengthPercentageOrAuto, basis: f32) -> Option<f32> {
+    match value {
+        LengthPercentageOrAuto::Auto => None,
+        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(l)) => Some(l),
+        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Percentage(p)) => {
+            Some(basis * p)
+        }
+    }
+}
+
+/// `background-position`の1軸分の計算値から、border-box原点からのオフセット
+/// (px)を求める。パーセンテージは`(コンテナ - タイル)`に対する割合
+/// (CSS仕様通りの式)、長さはそのまま原点からのオフセットとして使う。
+fn resolve_background_position_offset(value: LengthPercentage, container: f32, tile: f32) -> f32 {
+    match value {
+        LengthPercentage::Length(l) => l,
+        LengthPercentage::Percentage(p) => (container - tile) * p,
+    }
+}
+
+/// 1軸分のタイル開始座標を列挙する。`repeat`が偽、またはタイル幅が0以下なら
+/// `origin`の1枚のみ。それ以外は`[min, max)`(border-boxの範囲)を覆うのに
+/// 必要な分だけ`origin`から`tile`間隔で並べる。防御的に1軸あたり200枚を
+/// 超えたら打ち切る([0025]決定4、病的な小さい`background-size`に対する
+/// フェイルセーフ)。
+fn tile_starts(origin: f32, tile: f32, min: f32, max: f32, repeat: bool) -> Vec<f32> {
+    if !repeat || tile <= 0.0 {
+        return vec![origin];
+    }
+    const MAX_TILES_PER_AXIS: usize = 200;
+    let steps_back = ((origin - min) / tile).ceil().max(0.0);
+    let first = origin - steps_back * tile;
+
+    let mut starts = Vec::new();
+    let mut x = first;
+    while x < max && starts.len() < MAX_TILES_PER_AXIS {
+        starts.push(x);
+        x += tile;
+    }
+    starts
+}
+
+/// [`background_tile_rects`]で計算した矩形群を描画する。タイルが1枚かつ
+/// border-boxとちょうど一致する場合(`background-repeat: no-repeat`+
+/// `background-size`未指定でも十分収まる等)を除き、border-boxへのクリップ
+/// (`overflow`クリップと同じパターン)を挟んでタイルがboxからはみ出さない
+/// ようにする。
+fn render_background_image(
+    content: &mut Content,
+    border_box: Rect,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+    paint: &BackgroundImagePaint,
+) {
+    let rects = background_tile_rects(
+        border_box,
+        style,
+        (paint.intrinsic_width as f32, paint.intrinsic_height as f32),
+    );
+    if rects.is_empty() {
+        return;
+    }
+
+    let fits_without_clip = rects.len() == 1
+        && rects[0].x >= border_box.x
+        && rects[0].y >= border_box.y
+        && rects[0].x + rects[0].width <= border_box.x + border_box.width
+        && rects[0].y + rects[0].height <= border_box.y + border_box.height;
+
+    if !fits_without_clip {
+        let x = settings.margin.left + border_box.x;
+        let y = to_pdf_y(settings, border_box.y + border_box.height);
+        content.save_state();
+        content.rect(x, y, border_box.width, border_box.height);
+        content.clip_nonzero();
+        content.end_path();
+    }
+
+    for rect in rects {
+        render_image(content, rect, settings, paint.resource);
+    }
+
+    if !fits_without_clip {
+        content.restore_state();
+    }
 }
 
 /// `border-radius`が指定されている場合の背景・枠線描画。
@@ -752,8 +1092,13 @@ fn render_rounded_decoration(
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
-    radii: (f32, f32, f32, f32),
-    background_image_ref: Option<Ref>,
+    radii: (
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+    ),
+    background_image_paint: Option<BackgroundImagePaint>,
 ) {
     let border_box = layout.border_box();
     let x0 = settings.margin.left + border_box.x;
@@ -771,12 +1116,19 @@ fn render_rounded_decoration(
         content.fill_nonzero();
     }
     // 角丸パスへのクリップは行わず、常に直線の矩形として描画する
-    // (border-radiusとの組み合わせは非対応、[0017]決定3の既知の簡略化)。
-    if let Some(image_ref) = background_image_ref {
-        render_image(content, border_box, settings, image_ref);
+    // (border-radiusとの組み合わせは非対応、[0025]決定7、0017決定3から継続)。
+    if let Some(paint) = background_image_paint {
+        render_background_image(content, border_box, style, settings, &paint);
     }
 
-    if !is_uniform_border(style) {
+    // groove/ridge/inset/outsetは辺ごとの陰影が必要で、角丸パスの単純な
+    // ストロークでは表現できないため、常に直線4辺へフォールバックする
+    // ([0023]決定5、既存の「4辺不揃い+角丸」フォールバックと同じパターン)。
+    let is_shaded_style = matches!(
+        style.border_top_style,
+        BorderStyle::Groove | BorderStyle::Ridge | BorderStyle::Inset | BorderStyle::Outset
+    );
+    if !is_uniform_border(style) || is_shaded_style {
         render_border(content, layout, style, settings);
         return;
     }
@@ -847,70 +1199,175 @@ const BEZIER_KAPPA: f32 = 0.552_284_8;
 
 /// PDF空間(Y-up、`y_top` > `y_bottom`)で角丸矩形のパスを構築して閉じる
 /// (塗り/ストロークは呼び出し側が行う)。半径は`(top_left, top_right,
-/// bottom_right, bottom_left)`の順(CSSの`border-radius`と同じ並び)。
+/// bottom_right, bottom_left)`の順(CSSの`border-radius`と同じ並び)、各コーナー
+/// は`(水平半径, 垂直半径)`のペア([0023](../../../docs/decisions/0023-box-model-details-design.md)
+/// 決定6、楕円コーナー対応)。
 fn rounded_rect_path(
     content: &mut Content,
     x0: f32,
     y_top: f32,
     x1: f32,
     y_bottom: f32,
-    radii: (f32, f32, f32, f32),
+    radii: (
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+    ),
 ) {
-    let max_r = ((x1 - x0) / 2.0)
-        .max(0.0)
-        .min(((y_top - y_bottom) / 2.0).max(0.0));
-    let (r_tl, r_tr, r_br, r_bl) = radii;
-    let r_tl = r_tl.clamp(0.0, max_r);
-    let r_tr = r_tr.clamp(0.0, max_r);
-    let r_br = r_br.clamp(0.0, max_r);
-    let r_bl = r_bl.clamp(0.0, max_r);
+    let max_rx = ((x1 - x0) / 2.0).max(0.0);
+    let max_ry = ((y_top - y_bottom) / 2.0).max(0.0);
+    let clamp = |(rx, ry): CornerRadiusPx| (rx.clamp(0.0, max_rx), ry.clamp(0.0, max_ry));
+    let (tl, tr, br, bl) = radii;
+    let (rx_tl, ry_tl) = clamp(tl);
+    let (rx_tr, ry_tr) = clamp(tr);
+    let (rx_br, ry_br) = clamp(br);
+    let (rx_bl, ry_bl) = clamp(bl);
 
-    content.move_to(x0 + r_tl, y_top);
-    content.line_to(x1 - r_tr, y_top);
-    if r_tr > 0.0 {
-        let k = r_tr * BEZIER_KAPPA;
-        content.cubic_to(x1 - r_tr + k, y_top, x1, y_top - r_tr + k, x1, y_top - r_tr);
+    content.move_to(x0 + rx_tl, y_top);
+    content.line_to(x1 - rx_tr, y_top);
+    if rx_tr > 0.0 || ry_tr > 0.0 {
+        let kx = rx_tr * BEZIER_KAPPA;
+        let ky = ry_tr * BEZIER_KAPPA;
+        content.cubic_to(
+            x1 - rx_tr + kx,
+            y_top,
+            x1,
+            y_top - ry_tr + ky,
+            x1,
+            y_top - ry_tr,
+        );
     }
-    content.line_to(x1, y_bottom + r_br);
-    if r_br > 0.0 {
-        let k = r_br * BEZIER_KAPPA;
+    content.line_to(x1, y_bottom + ry_br);
+    if rx_br > 0.0 || ry_br > 0.0 {
+        let kx = rx_br * BEZIER_KAPPA;
+        let ky = ry_br * BEZIER_KAPPA;
         content.cubic_to(
             x1,
-            y_bottom + r_br - k,
-            x1 - r_br + k,
+            y_bottom + ry_br - ky,
+            x1 - rx_br + kx,
             y_bottom,
-            x1 - r_br,
+            x1 - rx_br,
             y_bottom,
         );
     }
-    content.line_to(x0 + r_bl, y_bottom);
-    if r_bl > 0.0 {
-        let k = r_bl * BEZIER_KAPPA;
+    content.line_to(x0 + rx_bl, y_bottom);
+    if rx_bl > 0.0 || ry_bl > 0.0 {
+        let kx = rx_bl * BEZIER_KAPPA;
+        let ky = ry_bl * BEZIER_KAPPA;
         content.cubic_to(
-            x0 + r_bl - k,
+            x0 + rx_bl - kx,
             y_bottom,
             x0,
-            y_bottom + r_bl - k,
+            y_bottom + ry_bl - ky,
             x0,
-            y_bottom + r_bl,
+            y_bottom + ry_bl,
         );
     }
-    content.line_to(x0, y_top - r_tl);
-    if r_tl > 0.0 {
-        let k = r_tl * BEZIER_KAPPA;
-        content.cubic_to(x0, y_top - r_tl + k, x0 + r_tl - k, y_top, x0 + r_tl, y_top);
+    content.line_to(x0, y_top - ry_tl);
+    if rx_tl > 0.0 || ry_tl > 0.0 {
+        let kx = rx_tl * BEZIER_KAPPA;
+        let ky = ry_tl * BEZIER_KAPPA;
+        content.cubic_to(
+            x0,
+            y_top - ry_tl + ky,
+            x0 + rx_tl - kx,
+            y_top,
+            x0 + rx_tl,
+            y_top,
+        );
     }
     content.close_path();
 }
 
-fn shrink_radii(radii: (f32, f32, f32, f32), inset: f32) -> (f32, f32, f32, f32) {
-    let shrink = |r: f32| (r - inset).max(0.0);
+fn shrink_radii(
+    radii: (
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+    ),
+    inset: f32,
+) -> (
+    CornerRadiusPx,
+    CornerRadiusPx,
+    CornerRadiusPx,
+    CornerRadiusPx,
+) {
+    let shrink = |(rx, ry): CornerRadiusPx| ((rx - inset).max(0.0), (ry - inset).max(0.0));
     (
         shrink(radii.0),
         shrink(radii.1),
         shrink(radii.2),
         shrink(radii.3),
     )
+}
+
+/// `outline`を描く。`border`と違いレイアウトに一切影響しないため、`layout`は
+/// 参照するだけで書き換えない。border-boxの**外側**にoutline-widthの太さで
+/// 描画する点だけが`render_border`と異なり、それ以外(4辺の頂点構成・
+/// `render_border_side`への委譲)は全く同じ仕組みを再利用する
+/// ([0023](../../../docs/decisions/0023-box-model-details-design.md)決定3)。
+/// `outline-offset`(outlineとborder-boxの間隔)は非対応、常に0固定。
+fn render_outline(
+    content: &mut Content,
+    layout: &Layout,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+) {
+    let t = style.outline_width.0;
+    if t <= 0.0 || style.outline_style == BorderStyle::None {
+        return;
+    }
+    let border_box = layout.border_box();
+    let x0 = settings.margin.left + border_box.x;
+    let x1 = x0 + border_box.width;
+    let y_top = to_pdf_y(settings, border_box.y);
+    let y_bottom = to_pdf_y(settings, border_box.y + border_box.height);
+
+    // outlineの内側の辺(border-boxそのもの)。
+    let tl_inner = (x0, y_top);
+    let tr_inner = (x1, y_top);
+    let br_inner = (x1, y_bottom);
+    let bl_inner = (x0, y_bottom);
+    // outlineの外側の辺(border-boxから`t`だけ外側へ張り出す)。
+    let tl_outer = (x0 - t, y_top + t);
+    let tr_outer = (x1 + t, y_top + t);
+    let br_outer = (x1 + t, y_bottom - t);
+    let bl_outer = (x0 - t, y_bottom - t);
+
+    render_border_side(
+        content,
+        BorderSideKind::Top,
+        style.outline_style,
+        style.outline_color,
+        t,
+        BorderSideCorners::new(tl_outer, tr_outer, tr_inner, tl_inner),
+    );
+    render_border_side(
+        content,
+        BorderSideKind::Right,
+        style.outline_style,
+        style.outline_color,
+        t,
+        BorderSideCorners::new(tr_outer, br_outer, br_inner, tr_inner),
+    );
+    render_border_side(
+        content,
+        BorderSideKind::Bottom,
+        style.outline_style,
+        style.outline_color,
+        t,
+        BorderSideCorners::new(br_outer, bl_outer, bl_inner, br_inner),
+    );
+    render_border_side(
+        content,
+        BorderSideKind::Left,
+        style.outline_style,
+        style.outline_color,
+        t,
+        BorderSideCorners::new(bl_outer, tl_outer, tl_inner, bl_inner),
+    );
 }
 
 /// 4辺それぞれの`border-width`/`border-style`/`border-color`に従って枠線を描く。
@@ -947,6 +1404,7 @@ fn render_border(
 
     render_border_side(
         content,
+        BorderSideKind::Top,
         style.border_top_style,
         style.border_top_color,
         t.top,
@@ -954,6 +1412,7 @@ fn render_border(
     );
     render_border_side(
         content,
+        BorderSideKind::Right,
         style.border_right_style,
         style.border_right_color,
         t.right,
@@ -961,6 +1420,7 @@ fn render_border(
     );
     render_border_side(
         content,
+        BorderSideKind::Bottom,
         style.border_bottom_style,
         style.border_bottom_color,
         t.bottom,
@@ -968,11 +1428,111 @@ fn render_border(
     );
     render_border_side(
         content,
+        BorderSideKind::Left,
         style.border_left_style,
         style.border_left_color,
         t.left,
         BorderSideCorners::new(bl_outer, tl_outer, tl_inner, bl_inner),
     );
+}
+
+/// 辺の識別子。`groove`/`ridge`/`inset`/`outset`の陰影([0023]決定5)が
+/// 上・左辺と下・右辺で異なる色になるため必要。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BorderSideKind {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+/// RGB各成分をwhiteへ`amount`だけブレンドして明るくする(簡易実装、正確な色
+/// 再現は目指さない、[0023]決定5)。
+fn lighten(color: RgbaColor, amount: f32) -> RgbaColor {
+    let mix = |c: u8| (c as f32 + (255.0 - c as f32) * amount).round() as u8;
+    RgbaColor {
+        red: mix(color.red),
+        green: mix(color.green),
+        blue: mix(color.blue),
+        alpha: color.alpha,
+    }
+}
+
+/// RGB各成分をblackへ`amount`だけブレンドして暗くする(決定5)。
+fn darken(color: RgbaColor, amount: f32) -> RgbaColor {
+    let mix = |c: u8| (c as f32 * (1.0 - amount)).round() as u8;
+    RgbaColor {
+        red: mix(color.red),
+        green: mix(color.green),
+        blue: mix(color.blue),
+        alpha: color.alpha,
+    }
+}
+
+/// `groove`/`ridge`/`inset`/`outset`の明暗ブレンド比率。
+const SHADE_AMOUNT: f32 = 0.35;
+
+/// 1辺分の外側寄り帯・内側寄り帯それぞれの実効描画色。`solid`/`dashed`/
+/// `dotted`(呼び出し元で個別処理する`double`含む)は帯間で同色。
+struct BorderSideColors {
+    outer: RgbaColor,
+    inner: RgbaColor,
+}
+
+/// `border_style`/`side`から実効描画色を決める。光源は左上からと仮定する
+/// (CSS仕様の一般的な慣習、[0023]決定5): `inset`は上・左辺が暗色、下・右辺が
+/// 明色(押し込まれた凹み)。`outset`はその逆(浮き出た凸み)。`groove`/`ridge`は
+/// 各辺の太さを2等分し、外側帯・内側帯に異なる色を割り当てることで溝/稜線の
+/// 視覚効果を出す。
+fn border_side_colors(
+    border_style: BorderStyle,
+    side: BorderSideKind,
+    color: RgbaColor,
+) -> BorderSideColors {
+    let light = lighten(color, SHADE_AMOUNT);
+    let dark = darken(color, SHADE_AMOUNT);
+    let is_top_or_left = matches!(side, BorderSideKind::Top | BorderSideKind::Left);
+
+    match border_style {
+        BorderStyle::Inset => {
+            let c = if is_top_or_left { dark } else { light };
+            BorderSideColors { outer: c, inner: c }
+        }
+        BorderStyle::Outset => {
+            let c = if is_top_or_left { light } else { dark };
+            BorderSideColors { outer: c, inner: c }
+        }
+        BorderStyle::Groove => {
+            if is_top_or_left {
+                BorderSideColors {
+                    outer: dark,
+                    inner: light,
+                }
+            } else {
+                BorderSideColors {
+                    outer: light,
+                    inner: dark,
+                }
+            }
+        }
+        BorderStyle::Ridge => {
+            if is_top_or_left {
+                BorderSideColors {
+                    outer: light,
+                    inner: dark,
+                }
+            } else {
+                BorderSideColors {
+                    outer: dark,
+                    inner: light,
+                }
+            }
+        }
+        _ => BorderSideColors {
+            outer: color,
+            inner: color,
+        },
+    }
 }
 
 /// 1辺分の枠線を構成する4頂点。`outer_a`→`outer_b`が外形の辺、
@@ -1003,6 +1563,7 @@ impl BorderSideCorners {
 /// 1辺分の枠線を描く。
 fn render_border_side(
     content: &mut Content,
+    side: BorderSideKind,
     border_style: BorderStyle,
     color: RgbaColor,
     thickness: f32,
@@ -1026,6 +1587,26 @@ fn render_border_side(
                 color.blue as f32 / 255.0,
             );
             fill_quad(content, outer_a, outer_b, inner_b, inner_a);
+        }
+        BorderStyle::Groove | BorderStyle::Ridge | BorderStyle::Inset | BorderStyle::Outset => {
+            // 太さを2等分し、外側帯・内側帯をそれぞれ`border_side_colors`が
+            // 決めた色で塗る(`inset`/`outset`は外側=内側で同色になり、結果的に
+            // 1色の`Solid`と同じ見た目になる、[0023]決定5)。
+            let colors = border_side_colors(border_style, side, color);
+            for (t0, t1, band_color) in [(0.0, 0.5, colors.outer), (0.5, 1.0, colors.inner)] {
+                content.set_fill_rgb(
+                    band_color.red as f32 / 255.0,
+                    band_color.green as f32 / 255.0,
+                    band_color.blue as f32 / 255.0,
+                );
+                fill_quad(
+                    content,
+                    lerp(outer_a, inner_a, t0),
+                    lerp(outer_b, inner_b, t0),
+                    lerp(outer_b, inner_b, t1),
+                    lerp(outer_a, inner_a, t1),
+                );
+            }
         }
         BorderStyle::Double => {
             // 太さを3等分し、外側1/3・内側1/3それぞれをミトー結合済みの帯として
@@ -1109,9 +1690,17 @@ fn fill_quad(content: &mut Content, a: (f32, f32), b: (f32, f32), c: (f32, f32),
 
 /// `border-style`に応じたダッシュパターン/線キャップを設定する。
 /// `Double`は2本ストロークする専用処理(呼び出し側)で扱うためここには来ない。
+/// `Groove`/`Ridge`/`Inset`/`Outset`は角丸パスのストロークでは表現できず
+/// 常に直線4辺へフォールバックする([0023]決定5)ためここには来ないが、
+/// `match`を網羅するため`Solid`と同じ扱いにしておく。
 fn apply_border_style_dash(content: &mut Content, border_style: BorderStyle, thickness: f32) {
     match border_style {
-        BorderStyle::Solid | BorderStyle::Double => {
+        BorderStyle::Solid
+        | BorderStyle::Double
+        | BorderStyle::Groove
+        | BorderStyle::Ridge
+        | BorderStyle::Inset
+        | BorderStyle::Outset => {
             content.set_line_cap(LineCapStyle::ButtCap);
             content.set_dash_pattern([], 0.0);
         }
@@ -1319,6 +1908,202 @@ mod tests {
         FontCollection::new(vec![
             Font::load(DEJAVU_PATH).expect("should load bundled test font")
         ])
+    }
+
+    #[test]
+    fn background_tile_rects_defaults_to_intrinsic_size_tiled_from_the_top_left() {
+        let border_box = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 60.0,
+        };
+        let style = ComputedStyle::default();
+        let rects = background_tile_rects(border_box, &style, (40.0, 30.0));
+        // 既定値(position: 0% 0%, size: auto auto, repeat: repeat)なので、
+        // intrinsicサイズ(40x30)のタイルが左上起点で敷き詰められる。
+        assert!(rects.iter().all(|r| r.width == 40.0 && r.height == 30.0));
+        assert!(rects.contains(&Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 40.0,
+            height: 30.0
+        }));
+        // 幅100を40刻みで覆うには3列(0,40,80)、高さ60を30刻みで覆うには2行(0,30)必要。
+        assert_eq!(rects.len(), 3 * 2);
+    }
+
+    #[test]
+    fn background_tile_rects_cover_scales_up_to_fill_the_box_uniformly() {
+        let border_box = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        let style = ComputedStyle {
+            background_size: BackgroundSize::Cover,
+            background_repeat: BackgroundRepeat::NoRepeat,
+            ..ComputedStyle::default()
+        };
+        let rects = background_tile_rects(border_box, &style, (100.0, 50.0));
+        assert_eq!(
+            rects,
+            vec![Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 200.0,
+                height: 100.0
+            }]
+        );
+    }
+
+    #[test]
+    fn background_tile_rects_contain_scales_down_and_centers_by_default_position() {
+        let border_box = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        // `background-position: center`。
+        let style = ComputedStyle {
+            background_size: BackgroundSize::Contain,
+            background_repeat: BackgroundRepeat::NoRepeat,
+            background_position: crate::style::BackgroundPosition {
+                horizontal: LengthPercentage::Percentage(0.5),
+                vertical: LengthPercentage::Percentage(0.5),
+            },
+            ..ComputedStyle::default()
+        };
+        let rects = background_tile_rects(border_box, &style, (100.0, 100.0));
+        // scale = min(200/100, 100/100) = 1 → 100x100のまま、中央寄せ。
+        assert_eq!(
+            rects,
+            vec![Rect {
+                x: 50.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0
+            }]
+        );
+    }
+
+    #[test]
+    fn background_tile_rects_caps_tile_count_per_axis_for_pathological_sizes() {
+        let border_box = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 100_000.0,
+            height: 10.0,
+        };
+        let style = ComputedStyle {
+            background_size: BackgroundSize::WidthHeight(
+                LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(1.0)),
+                LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(10.0)),
+            ),
+            ..ComputedStyle::default()
+        };
+        let rects = background_tile_rects(border_box, &style, (1.0, 10.0));
+        // 1px幅のタイルで100,000pxを覆おうとすると本来10万枚必要だが、
+        // 1軸あたり200枚で打ち切られる([0025]決定4)。
+        assert_eq!(rects.len(), 200);
+    }
+
+    fn fake_prepared_image(width: u32, height: u32) -> Rc<PreparedImage> {
+        Rc::new(PreparedImage {
+            width,
+            height,
+            color: super::super::img::ImagePlane {
+                data: Vec::new(),
+                filter: pdf_writer::Filter::FlateDecode,
+                color_space: super::super::img::PlaneColorSpace::Rgb,
+                bits_per_component: 8,
+            },
+            alpha: None,
+        })
+    }
+
+    #[test]
+    fn background_image_no_repeat_draws_a_single_xobject_without_a_clip() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">hello</div>"#);
+        let author = parse_stylesheet(
+            r#".box {
+                width: 200px; height: 100px;
+                background-image: url("bg.png");
+                background-repeat: no-repeat;
+                background-size: 200px 100px;
+            }"#,
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let div = find_tag(&dom, dom.document(), "div").expect("div not found");
+        let mut background_images = HashMap::new();
+        background_images.insert(div, fake_prepared_image(40, 30));
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &background_images, &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+
+        // タイルがborder-boxとちょうど一致する(background-size:200px 100px、
+        // box自身も200x100)ので、クリップ矩形は出力されない。
+        assert_eq!(count_occurrences(&decompressed, b"re\nW\nn\n"), 0);
+        // XObject(画像)は1回だけ描画される。
+        assert_eq!(count_occurrences(&decompressed, b" Do\n"), 1);
+    }
+
+    #[test]
+    fn background_image_repeat_tiles_and_clips_to_the_border_box() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(br#"<div class="box">hello</div>"#);
+        let author = parse_stylesheet(
+            r#".box {
+                width: 100px; height: 60px;
+                background-image: url("bg.png");
+                background-repeat: repeat;
+            }"#,
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let div = find_tag(&dom, dom.document(), "div").expect("div not found");
+        let mut background_images = HashMap::new();
+        // intrinsic 40x30なので、100x60のborder-boxを覆うには3列(0,40,80)x
+        // 2行(0,30)=6タイル必要。
+        background_images.insert(div, fake_prepared_image(40, 30));
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &background_images, &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+
+        assert!(
+            count_occurrences(&decompressed, b"re\nW\nn\n") > 0,
+            "tiling beyond the border box should clip"
+        );
+        assert_eq!(count_occurrences(&decompressed, b" Do\n"), 6);
+    }
+
+    fn find_tag(dom: &crate::html::Dom, id: NodeId, tag: &str) -> Option<NodeId> {
+        if let crate::html::NodeData::Element { name, .. } = &dom.node(id).data {
+            if &*name.local == tag {
+                return Some(id);
+            }
+        }
+        dom.children(id).find_map(|child| find_tag(dom, child, tag))
+    }
+
+    fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
+        if b.node == Some(target) {
+            return Some(b);
+        }
+        if let LaidOutContent::Blocks(children) = &b.content {
+            return children.iter().find_map(|c| find_laid_out(c, target));
+        }
+        None
     }
 
     fn test_fonts_with_cjk() -> FontCollection {
@@ -2140,5 +2925,283 @@ mod tests {
         )
         .unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn list_item_marker_glyphs_are_embedded_in_the_font_subset() {
+        // 回帰テスト: 実装当初`collect_usage`が`LaidOutBox.marker`を素通り
+        // していたため、マーカー専用の文字(ここでは`decimal`マーカー"1."の
+        // '1')が使用グリフ収集に含まれず、`/ToUnicode`CMapに載らない
+        // (結果としてCID 0=notdefへ丸められ豆腐(tofu)描画になる)不具合が
+        // あった([0022](../../../docs/decisions/0022-list-style-design.md)
+        // 決定4関連)。本文中に一切数字が登場しない文書でも、マーカーの
+        // '1'(U+0031)が`/ToUnicode`CMapに実際に埋め込まれることを確認する。
+        let dom = html::parse(br#"<ol><li>apple</li></ol>"#);
+        let ua = user_agent_stylesheet();
+        let author = Stylesheet::default();
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+
+        assert!(
+            count_occurrences(&decompressed, b"<0031>") > 0,
+            "the marker's '1' glyph (from the \"1.\" decimal marker) should be \
+             embedded in the ToUnicode CMap"
+        );
+    }
+
+    #[test]
+    fn generated_content_glyphs_are_embedded_in_the_font_subset() {
+        // ::before/::afterのcontent(attr()/counter())が生成する文字も、通常の
+        // テキストスパンと同じ`BoxContent::Inline`経路(collect_line_usage)を
+        // 通るため、マーカー([0022](../../../docs/decisions/0022-list-style-design.md))
+        // の時とは異なり専用の収集漏れは生じないはずだが、本文中に一切登場しない
+        // 数字(counter()由来の'1')が実際に埋め込まれることを回帰確認する。
+        let dom = html::parse(br#"<div><h2>intro</h2></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "div { counter-reset: section; } \
+             h2 { counter-increment: section; } \
+             h2::before { content: counter(section) \". \"; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+
+        assert!(
+            count_occurrences(&decompressed, b"<0031>") > 0,
+            "the counter()-generated '1' glyph should be embedded in the ToUnicode CMap"
+        );
+    }
+
+    #[test]
+    fn border_side_colors_shade_inset_and_outset_by_top_left_vs_bottom_right() {
+        let color = RgbaColor {
+            red: 51,
+            green: 102,
+            blue: 204,
+            alpha: 1.0,
+        };
+        let light = lighten(color, SHADE_AMOUNT);
+        let dark = darken(color, SHADE_AMOUNT);
+        assert_ne!(light, dark);
+
+        for (side, expect_dark) in [
+            (BorderSideKind::Top, true),
+            (BorderSideKind::Left, true),
+            (BorderSideKind::Right, false),
+            (BorderSideKind::Bottom, false),
+        ] {
+            let colors = border_side_colors(BorderStyle::Inset, side, color);
+            let expected = if expect_dark { dark } else { light };
+            assert_eq!(colors.outer, expected, "inset outer for {side:?}");
+            assert_eq!(colors.inner, expected, "inset inner for {side:?}");
+
+            // outsetはinsetの明暗を反転しただけ(同じ辺で逆の色)。
+            let outset_colors = border_side_colors(BorderStyle::Outset, side, color);
+            let outset_expected = if expect_dark { light } else { dark };
+            assert_eq!(
+                outset_colors.outer, outset_expected,
+                "outset outer for {side:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn border_side_colors_groove_and_ridge_split_outer_and_inner_bands() {
+        let color = RgbaColor {
+            red: 51,
+            green: 102,
+            blue: 204,
+            alpha: 1.0,
+        };
+        let light = lighten(color, SHADE_AMOUNT);
+        let dark = darken(color, SHADE_AMOUNT);
+
+        // groove: top/leftは外側が暗く内側が明るい(みぞの奥行き)、right/bottomは逆。
+        let top_groove = border_side_colors(BorderStyle::Groove, BorderSideKind::Top, color);
+        assert_eq!(top_groove.outer, dark);
+        assert_eq!(top_groove.inner, light);
+        let right_groove = border_side_colors(BorderStyle::Groove, BorderSideKind::Right, color);
+        assert_eq!(right_groove.outer, light);
+        assert_eq!(right_groove.inner, dark);
+
+        // ridgeはgrooveの外側/内側を反転しただけ。
+        let top_ridge = border_side_colors(BorderStyle::Ridge, BorderSideKind::Top, color);
+        assert_eq!(top_ridge.outer, light);
+        assert_eq!(top_ridge.inner, dark);
+    }
+
+    #[test]
+    fn border_side_colors_solid_uses_the_same_color_for_both_bands() {
+        let color = RgbaColor {
+            red: 1,
+            green: 2,
+            blue: 3,
+            alpha: 1.0,
+        };
+        let colors = border_side_colors(BorderStyle::Solid, BorderSideKind::Top, color);
+        assert_eq!(colors.outer, color);
+        assert_eq!(colors.inner, color);
+    }
+
+    #[test]
+    fn outline_adds_drawing_without_affecting_layout() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom_without = html::parse(br#"<div class="box">x</div>"#);
+        let styles_without = compute_styles(&dom_without, &ua, &Stylesheet::default());
+        let pages_without = paginate_document(&dom_without, &styles_without, &fonts, &settings);
+        let bytes_without = encode_pdf(
+            &pages_without,
+            &styles_without,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
+
+        let dom_with = html::parse(br#"<div class="box">x</div>"#);
+        let author_with = parse_stylesheet(".box { outline: 4px solid rgb(255, 0, 0); }");
+        let styles_with = compute_styles(&dom_with, &ua, &author_with);
+        let pages_with = paginate_document(&dom_with, &styles_with, &fonts, &settings);
+        let bytes_with = encode_pdf(
+            &pages_with,
+            &styles_with,
+            &HashMap::new(),
+            &fonts,
+            &settings,
+        );
+
+        let fill_count_with = count_occurrences(&decompressed_stream_bytes(&bytes_with), b"\nf\n");
+        let fill_count_without =
+            count_occurrences(&decompressed_stream_bytes(&bytes_without), b"\nf\n");
+        assert!(
+            fill_count_with >= fill_count_without + 4,
+            "outline should add 4 filled mitered quads outside the border-box"
+        );
+
+        // outlineはレイアウトに影響しないため、`div`のcontent boxの位置・寸法は
+        // outlineの有無で変わらないはず。
+        let div_without = find_tag(&dom_without, dom_without.document(), "div").unwrap();
+        let div_with = find_tag(&dom_with, dom_with.document(), "div").unwrap();
+        let box_without = pages_without[0]
+            .boxes
+            .iter()
+            .find_map(|b| find_laid_out(b, div_without))
+            .unwrap();
+        let box_with = pages_with[0]
+            .boxes
+            .iter()
+            .find_map(|b| find_laid_out(b, div_with))
+            .unwrap();
+        assert_eq!(box_without.layout.content, box_with.layout.content);
+    }
+
+    #[test]
+    fn overflow_hidden_emits_a_clip_path_and_visible_does_not() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        for (css, should_clip) in [
+            (
+                ".box { overflow: hidden; width: 50px; height: 50px; }",
+                true,
+            ),
+            (
+                ".box { overflow: scroll; width: 50px; height: 50px; }",
+                true,
+            ),
+            (".box { overflow: auto; width: 50px; height: 50px; }", true),
+            (
+                ".box { overflow: visible; width: 50px; height: 50px; }",
+                false,
+            ),
+            (".box { width: 50px; height: 50px; }", false),
+        ] {
+            let dom = html::parse(br#"<div class="box"><p>hello</p></div>"#);
+            let styles = compute_styles(&dom, &ua, &parse_stylesheet(css));
+            let pages = paginate_document(&dom, &styles, &fonts, &settings);
+            let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+            let decompressed = decompressed_stream_bytes(&bytes);
+            let has_clip = count_occurrences(&decompressed, b"re\nW\nn\n") > 0;
+            assert_eq!(has_clip, should_clip, "css={css}");
+        }
+    }
+
+    #[test]
+    fn visibility_hidden_skips_own_decoration_but_still_renders_a_visible_descendant() {
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        // 親が`visibility: hidden`でも、子が明示的に`visible`を指定していれば
+        // 描画される(仕様通り、[0023]決定4)。
+        let dom = html::parse(br#"<div class="outer"><p class="inner">shown</p></div>"#);
+        let author = parse_stylesheet(
+            ".outer { visibility: hidden; background-color: rgb(255, 0, 0); } \
+             .inner { visibility: visible; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+
+        // outerの背景(赤)は描画されないはず。
+        assert_eq!(
+            count_occurrences(&decompressed, b"1 0 0 rg"),
+            0,
+            "hidden outer's red background should not be painted"
+        );
+        // innerのテキストは(何らかのグリフ描画として)出力されるはず。
+        assert!(
+            count_occurrences(&decompressed, b"Tj") > 0,
+            "visible descendant's text should still be painted"
+        );
+    }
+
+    #[test]
+    fn paint_order_sorts_by_z_index_and_falls_back_to_document_order() {
+        let dom = html::parse(
+            br#"<div>
+                <p class="a" style="position: relative; z-index: 2;">a</p>
+                <p class="b" style="position: relative; z-index: -1;">b</p>
+                <p class="c">c</p>
+                <p class="d" style="z-index: 5;">d</p>
+            </div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let fonts = test_fonts();
+        let tree = crate::layout::build_box_tree(&dom, &styles);
+        let laid = crate::layout::layout_document(&tree, &styles, &fonts, 800.0);
+        // html5everが暗黙に`<html>`/`<body>`を補うため、`<div>`のNodeIdを
+        // 辿って探す(木の深さを決め打ちしない)。
+        let div_node = find_tag(&dom, dom.document(), "div").expect("div not found");
+        let div_box = find_laid_out(&laid, div_node).expect("div box not found");
+        let LaidOutContent::Blocks(children) = &div_box.content else {
+            panic!("expected the div's own children");
+        };
+
+        let ordered = paint_order(children, &styles);
+        let text_of = |b: &LaidOutBox| -> String {
+            let LaidOutContent::Inline(lines) = &b.content else {
+                panic!("expected inline content");
+            };
+            lines[0].runs[0].text.clone()
+        };
+        let order: Vec<String> = ordered.iter().map(|b| text_of(b)).collect();
+        // b(z-index:-1) < c/d(static、z-indexが効かずauto=0扱い、文書順でc→d) < a(z-index:2)。
+        assert_eq!(order, vec!["b", "c", "d", "a"]);
     }
 }

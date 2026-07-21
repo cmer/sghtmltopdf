@@ -24,9 +24,81 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
 マイルストーン3(ストリーミング入出力対応)・マイルストーン4(Webfont対応)・
 マイルストーン5(画像埋め込み)・マイルストーン6(外部スタイルシート)・
 マイルストーン7(`@import`/`background-image`のurl()対応)
-ともに完了。マイルストーン8(CSS2.1対応)は、Positioning & Float
-(`float`/`clear`/`position: relative`)・Typography詳細・Table layout完全対応
-まで完了(Listsは未着手)。
+ともに完了。マイルストーン8(CSS2.1対応)は、Phase 1(Positioning & Float・
+Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細・
+Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
+
+### Generated content
+
+`content`プロパティ(文字列・`attr()`・`counter()`/`counters()`)・CSSカウンタ
+(`counter-reset`/`counter-increment`)・`::before`/`::after`/`::first-letter`
+疑似要素・`quotes`(`open-quote`/`close-quote`)に対応している。
+
+* `counter-reset`のスコープはCSS仕様通り、その要素自身と後続の兄弟要素まで
+  有効で、親要素の子要素ループが完了した時点でようやくpopされる(そのpop
+  タイミングを誤ると、兄弟間でカウンタ値が正しく引き継がれない)
+* `::after`の`content`解決は子孫要素の処理が全て終わった後(DOM順で最後)に
+  行う。子孫内の`counter()`増加や`quotes`のネスト深度変化を`::after`側の
+  出力に反映するために必要
+* `quotes`はカウンタと違いスコープを持たない単一のネスト深度カウンタで
+  管理する(ネストした`<q>`ごとに深度に応じた引用符ペアを選ぶ)
+* `::first-letter`はフォント・色・text-decoration・text-transformなど
+  一部のプロパティのみ上書きできるスパースな上書き(float・box model等は
+  非対応)。`::first-line`は非対応
+* `::before`/`::after`/`content`はブロック子を持つ要素では非対応(簡略化)。
+  例えば入れ子`<ol>`を含む`<li>`自身の`::before`は表示されない
+  (入れ子`<ol>`側の`::before`は問題なく機能する)
+
+詳細は[docs/decisions/0024-generated-content-design.md](docs/decisions/0024-generated-content-design.md)
+参照。
+
+### Box model詳細
+
+`overflow`(hidden/scroll/auto)・`z-index`・`outline`(-color/-style/-width)・
+`visibility`・`border-style`(groove/ridge/inset/outset)・`border-radius`楕円
+(水平/垂直別半径)に対応している。
+
+* `overflow`は`hidden`/`scroll`/`auto`を区別せず同じクリップ処理として扱う
+  (印刷にスクロールの概念が無いため)。クリップ境界は常に直線のpadding-box
+  (`border-radius`には沿わせない)
+* `z-index`は同一の直接の親を持つ兄弟間の描画順のみを制御する(スタッキング
+  コンテキストの分離は非対応)。`position: static`の要素には効果を持たない
+  (仕様通り)
+* `outline`はレイアウトに一切影響しない装飾として実装している(既存の
+  `border`描画ロジックをborder-boxの外側で再利用)
+* `visibility: hidden`(`collapse`も同一視)は、要素自身の描画は行わないが
+  レイアウト上のスペースはそのまま占有する(`display: none`との違い)。
+  子孫が`visibility: visible`で明示的に上書きしていれば正しく再表示される
+* `border-style`のgroove/ridge/inset/outsetは、border-colorから算出した
+  明暗2色(固定比率でのブレンド、正確な色再現は目指さない)で疑似立体陰影を
+  描画する。`border-radius`との組み合わせは非対応(直線4辺にフォールバック)
+* `border-radius`は各コーナーに独立した水平/垂直半径を持てるため、
+  `border-radius: 60px / 30px`のような楕円コーナーに対応する
+
+詳細は[docs/decisions/0023-box-model-details-design.md](docs/decisions/0023-box-model-details-design.md)
+参照。
+
+### Lists
+
+`list-style-type`(disc/circle/square/decimal/decimal-leading-zero/
+lower-roman/upper-roman/lower-alpha/upper-alpha/none)・
+`list-style-position`(outside/inside)・`list-style`ショートハンドに対応している。
+
+* マーカーの番号付けは、あるコンテナ(`<ul>`/`<ol>`等)の直接の子のうち
+  `display: list-item`であるものを数えるローカルなカウンタで実現する。
+  入れ子の`<ol>`/`<ul>`はそれぞれ独立したスコープを持つため1から数え直す
+  (CSS3の汎用`counter-reset`/`counter-increment`機構は非対応)
+* `<ol start="N">`のHTML属性に対応(`reversed`属性、`<ol type="...">`等の
+  レガシーHTML属性は非対応)
+* `list-style-position: outside`(初期値)はマーカーをcontent boxの外側
+  (左のgutter)に独立して配置する。`inside`は`li`の内容がテキストのみの場合、
+  `::before`と同じ要領で先頭のインラインコンテンツとして織り込む(ブロック子を
+  持つ`li`では`outside`と同じ描画にフォールバックする)
+* `list-style-image`はパースのみ対応し、実際には常に`list-style-type`の
+  テキストマーカーへフォールバックする(画像マーカー自体は描画しない)
+
+詳細は[docs/decisions/0022-list-style-design.md](docs/decisions/0022-list-style-design.md)
+参照。
 
 ### Table layout完全対応
 
@@ -141,22 +213,34 @@ CSS2.1の`float`(left/right)・`clear`(left/right/both)、および
 詳細は[docs/decisions/0016-at-import-resolution-design.md](docs/decisions/0016-at-import-resolution-design.md)
 参照。
 
-### `background-image`
+### `background-image`と`background-position`/`-size`/`-repeat`/`-attachment`
 
-`url(...)`によるCSSプロパティ値としての背景画像指定に対応している
-(`<img>`の埋め込みと同じフェッチ層・SSRF対策・`--allow-remote-assets`
-フラグを共有する)。
+`url(...)`によるCSSプロパティ値としての背景画像指定に加え、
+`background-position`(キーワード+長さ・パーセンテージ、順序非依存)・
+`background-size`(`cover`/`contain`込み)・`background-repeat`
+(`repeat`/`repeat-x`/`repeat-y`/`no-repeat`)・`background-attachment`・
+`background`ショートハンドに対応している(`<img>`の埋め込みと同じ
+フェッチ層・SSRF対策・`--allow-remote-assets`フラグを共有する)。
 
-* `background-position`/`background-size`/`background-repeat`/
-  `background-attachment`は非対応(非目標)。指定された画像はborder-box
-  全体を覆うよう常にストレッチ表示するのみの最小実装
+* `background-size: cover`/`contain`は画像のintrinsicサイズ(デコード時に
+  判明する実ピクセルサイズ)を基準にスケールを計算する
+* `background-repeat`でのタイル敷き詰めはborder-boxへクリップして描画する。
+  病的に小さい`background-size`が指定された場合に備え、1軸あたり200タイルで
+  打ち切る防御的な上限を設けている
+* `background-attachment: fixed`は`scroll`と同一視する(印刷/ページ
+  ネーション文脈では「ビューポート固定」の概念自体が曖昧なため)
+* `background`ショートハンドは、CSS仕様通り指定されなかったロングハンドを
+  全て初期値へリセットする(`border`/`list-style`ショートハンドは以前の
+  宣言を引きずる簡略化を採っているが、`background`は実務での使用頻度を
+  踏まえ仕様に忠実にした)
 * `border-radius`が指定されていても、背景画像は角丸にクリップされず
   常に直線の矩形として描画される(既知の簡略化)
 * 取得・デコードに失敗した背景画像は、その要素だけ背景画像なし扱いにし、
   文書全体の生成は止めない(`<img>`と同じフォールバック方針)
 * 背景色→背景画像→枠線の順で描画する
 
-詳細は[docs/decisions/0017-background-image-design.md](docs/decisions/0017-background-image-design.md)
+詳細は[docs/decisions/0017-background-image-design.md](docs/decisions/0017-background-image-design.md)・
+[docs/decisions/0025-background-details-design.md](docs/decisions/0025-background-details-design.md)
 参照。
 
 ### 画像埋め込み

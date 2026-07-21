@@ -12,7 +12,7 @@ use super::stylesheet::{parse_stylesheet, Stylesheet};
 const UA_CSS: &str = r#"
 html, body, div, p,
 h1, h2, h3, h4, h5, h6,
-ul, ol, li,
+ul, ol,
 thead, tbody, tfoot,
 header, footer, section, article,
 blockquote, figure, figcaption,
@@ -35,6 +35,10 @@ td, th {
 
 caption {
   display: table-caption;
+}
+
+li {
+  display: list-item;
 }
 
 head, script, style, title, meta, link {
@@ -72,6 +76,18 @@ h3 { font-size: 19px; }
 
 p, ul, ol, blockquote {
   margin: 16px 0;
+}
+
+ul, ol {
+  padding-left: 40px;
+}
+
+ul {
+  list-style-type: disc;
+}
+
+ol {
+  list-style-type: decimal;
 }
 
 pre {

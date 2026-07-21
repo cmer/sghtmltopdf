@@ -757,6 +757,10 @@ fn place_split<T>(
                 // 混在するため`false`にしておく必要がある)。
                 is_float: false,
                 content: LaidOutContent::Blocks(Vec::new()),
+                // マーカーは`b`の先頭フラグメントにのみ残す(このボックスが
+                // 複数ページにまたがって分割される場合、後続フラグメントで
+                // 重複して描画されるのを避ける)。
+                marker: if is_first { b.marker.clone() } else { None },
             };
             (seg.page_index, seg.start_index, decoration)
         })
@@ -865,6 +869,9 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
         // 行(line box)にfloatの概念はない。
         is_float: false,
         content: LaidOutContent::Inline(vec![translated]),
+        // 1行だけの合成ラッパー自体はlist-itemではないため常に`None`
+        // (元のコンテナの`marker`は上の装飾フラグメント側で引き継ぐ)。
+        marker: None,
     };
     *cursor += line.rect.height;
     state.last_mut().boxes.push(fragment);

@@ -23,13 +23,20 @@ use std::rc::Rc;
 
 use crate::html::{Dom, NodeData, NodeId};
 use crate::pdf::{ImageAssetCache, PreparedImage};
-use crate::style::{CaptionSide, ComputedStyle, Display};
+use crate::style::{CaptionSide, ComputedStyle, Display, ListStylePosition, ListStyleType};
 
 #[derive(Debug, Clone)]
 pub struct LayoutBox {
     /// 対応するDOM要素。無名ボックスの場合は`None`。
     pub node: Option<NodeId>,
     pub content: BoxContent,
+    /// `display: list-item`のマーカー(箇条書きの記号・番号)テキスト。
+    /// `list-style-position: inside`かつ内容が`BoxContent::Inline`の場合は
+    /// 代わりに`content`の先頭`InlineSpan`へ直接埋め込むため、この場合は`None`の
+    /// まま(二重描画を避ける、[0022](../../../docs/decisions/0022-list-style-design.md)
+    /// 決定4)。それ以外(`outside`、またはブロック子を持つ`inside`)は
+    /// レイアウト層(`block.rs`)がこのフィールドを見て別途配置する。
+    pub marker: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -100,6 +107,11 @@ pub struct InlineSpan {
     /// 計算スタイルに継承・カスケード済みなので、このノードのスタイルを見れば足りる)。
     pub node: NodeId,
     pub text: String,
+    /// `::first-letter`用に分離された先頭1文字かどうか。`true`の場合、
+    /// `node`の計算スタイルの`first_letter_style`(あれば)で一部プロパティが
+    /// 上書きされる([0024](../../../docs/decisions/0024-generated-content-design.md)
+    /// 決定4、`layout::inline::flatten_spans`が適用する)。
+    pub is_first_letter: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,7 +126,8 @@ pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>) -> Lay
     let child_ids: Vec<NodeId> = dom.children(dom.document()).collect();
     LayoutBox {
         node: None,
-        content: BoxContent::Blocks(build_children_boxes(dom, styles, &child_ids)),
+        content: BoxContent::Blocks(build_children_boxes(dom, styles, &child_ids, 1)),
+        marker: None,
     }
 }
 
@@ -136,6 +149,7 @@ pub(crate) fn build_box_for_element(
         return Some(LayoutBox {
             node: Some(node),
             content: BoxContent::Table(build_table_box(dom, styles, node)),
+            marker: None,
         });
     }
 
@@ -147,7 +161,13 @@ pub(crate) fn build_box_for_element(
     let content = if has_block_child {
         // `::before`/`::after`はブロック子を持つ要素では非対応(簡略化)。
         // 無名ボックス生成規則との組み合わせが複雑になるため見送る。
-        BoxContent::Blocks(build_children_boxes(dom, styles, &child_ids))
+        let list_item_start = read_list_item_start(dom, node);
+        BoxContent::Blocks(build_children_boxes(
+            dom,
+            styles,
+            &child_ids,
+            list_item_start,
+        ))
     } else {
         let mut spans = Vec::new();
         push_before_content(styles, node, &mut spans);
@@ -157,12 +177,14 @@ pub(crate) fn build_box_for_element(
             }
         }
         push_after_content(styles, node, &mut spans);
+        apply_first_letter(node, style, &mut spans);
         BoxContent::Inline(spans)
     };
 
     Some(LayoutBox {
         node: Some(node),
         content,
+        marker: None,
     })
 }
 
@@ -244,20 +266,28 @@ fn build_image_box_content(
     }
 }
 
+/// `list_item_start`は、この子ボックス列の中で`display: list-item`の子を
+/// 数える際の初期値(`<ol start="N">`のHTML属性、未指定は1)。この関数の呼び出し
+/// 単位(=1つのコンテナの直接の子)がそのままカウンタのスコープになる
+/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定3: 入れ子の
+/// `<ol>`/`<ul>`はそれぞれ独立した呼び出しになるため、副作用的に1から数え直す)。
 fn build_children_boxes(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
     child_ids: &[NodeId],
+    list_item_start: usize,
 ) -> Vec<LayoutBox> {
     let mut result = Vec::new();
     let mut pending_spans: Vec<InlineSpan> = Vec::new();
+    let mut list_item_counter = list_item_start;
 
     for &child in child_ids {
         match child_kind(dom, styles, child) {
             ChildKind::None => {}
             ChildKind::Block => {
                 flush_pending_spans(&mut pending_spans, &mut result);
-                if let Some(b) = build_box_for_element(dom, styles, child) {
+                if let Some(mut b) = build_box_for_element(dom, styles, child) {
+                    apply_list_item_marker(styles, child, &mut b, &mut list_item_counter);
                     result.push(b);
                 }
             }
@@ -267,6 +297,113 @@ fn build_children_boxes(
     flush_pending_spans(&mut pending_spans, &mut result);
 
     result
+}
+
+/// `node`の計算スタイルが`::first-letter`にマッチしていれば(`first_letter_style`
+/// が`Some`)、`spans`のうち最初の非空白文字を含むspanから先頭1文字を分離し、
+/// `is_first_letter: true`のspanとして直前に挿入する([0024](
+/// ../../../docs/decisions/0024-generated-content-design.md)決定4)。
+///
+/// **既知の簡略化**: 先頭の空白・約物のスキップは行わない(単純にテキストの
+/// 最初の1文字を対象にする)。`spans`はホストの直接のテキスト内容のみを見るため、
+/// ネストしたインライン要素の中から始まる内容には適用されない。
+fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<InlineSpan>) {
+    if style.first_letter_style.is_none() {
+        return;
+    }
+    let Some((span_index, char_len)) = spans
+        .iter()
+        .enumerate()
+        .find_map(|(i, span)| span.text.chars().next().map(|c| (i, c.len_utf8())))
+    else {
+        return;
+    };
+
+    let first_letter_text = spans[span_index].text[..char_len].to_string();
+    spans[span_index].text.replace_range(..char_len, "");
+    spans.insert(
+        span_index,
+        InlineSpan {
+            node,
+            text: first_letter_text,
+            is_first_letter: true,
+        },
+    );
+}
+
+/// `node`(`b`に対応する要素)が`display: list-item`であれば、カウンタを1つ
+/// 進めた上でマーカーテキストを`b`に反映する。`list-style-position: inside`かつ
+/// `b`の内容が`BoxContent::Inline`の場合は、`::before`と同じ要領で先頭に
+/// `InlineSpan`として埋め込む(この場合`b.marker`は`None`のまま)。それ以外は
+/// `b.marker`にテキストを持たせ、実際の配置はレイアウト層(`block.rs`)に委ねる
+/// ([0022]決定4)。
+fn apply_list_item_marker(
+    styles: &HashMap<NodeId, ComputedStyle>,
+    node: NodeId,
+    b: &mut LayoutBox,
+    counter: &mut usize,
+) {
+    let Some(style) = styles.get(&node) else {
+        return;
+    };
+    if style.display != Display::ListItem {
+        return;
+    }
+    let n = *counter;
+    *counter += 1;
+    let Some(text) = format_list_marker(style.list_style_type, n) else {
+        return;
+    };
+
+    if style.list_style_position == ListStylePosition::Inside {
+        if let BoxContent::Inline(spans) = &mut b.content {
+            spans.insert(
+                0,
+                InlineSpan {
+                    node,
+                    text: format!("{text} "),
+                    is_first_letter: false,
+                },
+            );
+            return;
+        }
+    }
+    b.marker = Some(text);
+}
+
+/// `list-style-type`からマーカーテキストを生成する。`None`はマーカーなし
+/// (`list-style-type: none`)。
+fn format_list_marker(list_style_type: ListStyleType, n: usize) -> Option<String> {
+    match list_style_type {
+        ListStyleType::None => None,
+        ListStyleType::Disc => Some("•".to_string()),
+        ListStyleType::Circle => Some("◦".to_string()),
+        ListStyleType::Square => Some("▪".to_string()),
+        ListStyleType::Decimal => Some(format!("{n}.")),
+        ListStyleType::DecimalLeadingZero => Some(format!("{n:02}.")),
+        ListStyleType::LowerRoman => {
+            Some(format!("{}.", crate::numbering::to_roman(n).to_lowercase()))
+        }
+        ListStyleType::UpperRoman => Some(format!("{}.", crate::numbering::to_roman(n))),
+        ListStyleType::LowerAlpha => {
+            Some(format!("{}.", crate::numbering::to_alpha(n).to_lowercase()))
+        }
+        ListStyleType::UpperAlpha => Some(format!("{}.", crate::numbering::to_alpha(n))),
+    }
+}
+
+/// `start`属性(`<ol start="N">`)を読む(未指定・0以下・非数値は1として扱う、
+/// `read_colspan`/`read_rowspan`と同じ方針)。
+fn read_list_item_start(dom: &Dom, node: NodeId) -> usize {
+    let NodeData::Element { attrs, .. } = &dom.node(node).data else {
+        return 1;
+    };
+    attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "start")
+        .and_then(|attr| attr.value.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(1)
 }
 
 /// `table_node`(`display: table`)の子孫から`table-row`要素と`caption`を集めて
@@ -336,6 +473,7 @@ fn build_table_row(
             content: build_box_for_element(dom, styles, cell_node).unwrap_or(LayoutBox {
                 node: Some(cell_node),
                 content: BoxContent::Inline(Vec::new()),
+                marker: None,
             }),
         })
         .collect();
@@ -377,6 +515,7 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
         result.push(LayoutBox {
             node: None,
             content: BoxContent::Inline(std::mem::take(pending)),
+            marker: None,
         });
     }
     pending.clear();
@@ -397,7 +536,9 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
                 return ChildKind::Block;
             }
             match display {
-                Some(Display::Block) | Some(Display::Table) => ChildKind::Block,
+                Some(Display::Block) | Some(Display::Table) | Some(Display::ListItem) => {
+                    ChildKind::Block
+                }
                 Some(Display::Inline) => ChildKind::Inline,
                 // table-row/table-cell/table-captionは`build_table_box`が専用に
                 // 探索するため、通常のブロック/インライン走査では(不正な
@@ -435,6 +576,7 @@ fn collect_spans(
         NodeData::Text { contents } => out.push(InlineSpan {
             node,
             text: contents.clone(),
+            is_first_letter: false,
         }),
         NodeData::Element { .. } => {
             push_before_content(styles, node, out);
@@ -461,6 +603,7 @@ fn push_before_content(
         out.push(InlineSpan {
             node,
             text: text.clone(),
+            is_first_letter: false,
         });
     }
 }
@@ -479,6 +622,7 @@ fn push_after_content(
         out.push(InlineSpan {
             node,
             text: text.clone(),
+            is_first_letter: false,
         });
     }
 }
@@ -863,5 +1007,221 @@ mod tests {
             background_images.is_empty(),
             "a failed background-image fetch should be skipped, not panic"
         );
+    }
+
+    fn find_all(dom: &Dom, id: NodeId, tag: &str, out: &mut Vec<NodeId>) {
+        if let NodeData::Element { name, .. } = &dom.node(id).data {
+            if &*name.local == tag {
+                out.push(id);
+            }
+        }
+        for child in dom.children(id) {
+            find_all(dom, child, tag, out);
+        }
+    }
+
+    #[test]
+    fn list_items_are_numbered_in_document_order_and_reset_for_nested_lists() {
+        let dom = html::parse(
+            br#"<ol>
+                <li>a</li>
+                <li>b</li>
+                <li><ol><li>nested-a</li><li>nested-b</li></ol></li>
+            </ol>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let mut lis = Vec::new();
+        find_all(&dom, dom.document(), "li", &mut lis);
+        assert_eq!(lis.len(), 5, "3 top-level li + 2 nested li");
+
+        assert_eq!(
+            find_box(&tree, lis[0]).unwrap().marker.as_deref(),
+            Some("1.")
+        );
+        assert_eq!(
+            find_box(&tree, lis[1]).unwrap().marker.as_deref(),
+            Some("2.")
+        );
+        // 3つ目の`li`はブロック子(入れ子の`ol`)を持つため、自身は
+        // マーカーだけを持つ(内容は`BoxContent::Blocks`)。
+        assert_eq!(
+            find_box(&tree, lis[2]).unwrap().marker.as_deref(),
+            Some("3.")
+        );
+        // 入れ子の`ol`は独立したカウンタスコープを持つため1から数え直す。
+        assert_eq!(
+            find_box(&tree, lis[3]).unwrap().marker.as_deref(),
+            Some("1.")
+        );
+        assert_eq!(
+            find_box(&tree, lis[4]).unwrap().marker.as_deref(),
+            Some("2.")
+        );
+    }
+
+    #[test]
+    fn ol_start_attribute_sets_the_initial_counter_value() {
+        let dom = html::parse(br#"<ol start="5"><li>a</li><li>b</li></ol>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let mut lis = Vec::new();
+        find_all(&dom, dom.document(), "li", &mut lis);
+        assert_eq!(
+            find_box(&tree, lis[0]).unwrap().marker.as_deref(),
+            Some("5.")
+        );
+        assert_eq!(
+            find_box(&tree, lis[1]).unwrap().marker.as_deref(),
+            Some("6.")
+        );
+    }
+
+    #[test]
+    fn list_style_type_none_suppresses_the_marker_but_still_advances_the_counter() {
+        let dom = html::parse(br#"<ol><li style="list-style-type: none;">a</li><li>b</li></ol>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let mut lis = Vec::new();
+        find_all(&dom, dom.document(), "li", &mut lis);
+        assert_eq!(find_box(&tree, lis[0]).unwrap().marker, None);
+        // `none`の項目もカウンタは1つ消費する(実際のブラウザの挙動に合わせる)。
+        assert_eq!(
+            find_box(&tree, lis[1]).unwrap().marker.as_deref(),
+            Some("2.")
+        );
+    }
+
+    #[test]
+    fn list_style_position_inside_embeds_the_marker_as_the_first_inline_span() {
+        let dom = html::parse(br#"<ul style="list-style-position: inside;"><li>text</li></ul>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+        let li_box = find_box(&tree, li).expect("li box not found");
+        // `inside`はspansへ埋め込むため、`marker`フィールド自体は`None`のまま。
+        assert_eq!(li_box.marker, None);
+        let BoxContent::Inline(spans) = &li_box.content else {
+            panic!("expected inline content");
+        };
+        assert_eq!(spans.len(), 2, "marker span + original text span");
+        assert_eq!(spans[0].text, "• ");
+        assert_eq!(spans[1].text, "text");
+    }
+
+    #[test]
+    fn list_style_position_inside_falls_back_to_a_separate_marker_when_li_has_block_children() {
+        let dom =
+            html::parse(br#"<ul style="list-style-position: inside;"><li><p>text</p></li></ul>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+        let li_box = find_box(&tree, li).expect("li box not found");
+        assert_eq!(li_box.marker.as_deref(), Some("•"));
+        assert!(matches!(li_box.content, BoxContent::Blocks(_)));
+    }
+
+    #[test]
+    fn format_list_marker_covers_all_list_style_types() {
+        assert_eq!(format_list_marker(ListStyleType::None, 1), None);
+        assert_eq!(
+            format_list_marker(ListStyleType::Disc, 1).as_deref(),
+            Some("•")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::Circle, 1).as_deref(),
+            Some("◦")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::Square, 1).as_deref(),
+            Some("▪")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::Decimal, 12).as_deref(),
+            Some("12.")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::DecimalLeadingZero, 3).as_deref(),
+            Some("03.")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::DecimalLeadingZero, 123).as_deref(),
+            Some("123.")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::LowerRoman, 4).as_deref(),
+            Some("iv.")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::UpperRoman, 1994).as_deref(),
+            Some("MCMXCIV.")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::LowerAlpha, 27).as_deref(),
+            Some("aa.")
+        );
+        assert_eq!(
+            format_list_marker(ListStyleType::UpperAlpha, 26).as_deref(),
+            Some("Z.")
+        );
+    }
+
+    #[test]
+    fn first_letter_splits_the_first_character_of_plain_text_into_its_own_span() {
+        let dom = html::parse(br#"<p>Hello world</p>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet("p::first-letter { font-size: 2em; color: rgb(200, 0, 0); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let text_node = dom.children(p).next().expect("p should have a text child");
+        let spans = find_inline_spans(&tree).expect("expected inline content");
+
+        assert_eq!(spans.len(), 2, "first-letter span + remainder span");
+        assert_eq!(spans[0].text, "H");
+        assert!(spans[0].is_first_letter);
+        // 分割された先頭文字スパンは、::first-letterスタイルを引くためホスト要素(p)自身のノードIDを持つ。
+        assert_eq!(spans[0].node, p);
+        assert_eq!(spans[1].text, "ello world");
+        assert!(!spans[1].is_first_letter);
+        // 残り部分は元のテキストノードのIDのまま(分割前と変わらない)。
+        assert_eq!(spans[1].node, text_node);
+    }
+
+    #[test]
+    fn first_letter_is_not_split_off_without_a_matching_rule() {
+        let dom = html::parse(br#"<p>Hello</p>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let spans = find_inline_spans(&tree).expect("expected inline content");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].text, "Hello");
+        assert!(!spans[0].is_first_letter);
+    }
+
+    #[test]
+    fn first_letter_handles_multibyte_characters_as_a_single_unit() {
+        let dom = html::parse("<p>日本語のテスト</p>".as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet("p::first-letter { color: rgb(200, 0, 0); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+
+        let spans = find_inline_spans(&tree).expect("expected inline content");
+        assert_eq!(spans[0].text, "日");
+        assert_eq!(spans[1].text, "本語のテスト");
     }
 }

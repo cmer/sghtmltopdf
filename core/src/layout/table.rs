@@ -1034,6 +1034,7 @@ mod tests {
             content: LayoutBox {
                 node: None,
                 content: BoxContent::Inline(Vec::new()),
+                marker: None,
             },
         }
     }

@@ -24,8 +24,12 @@ use crate::style::{
 use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
-use super::inline::{layout_inline_content, LineBox};
+use super::inline::{layout_inline_content, shape_run, LineBox};
 use super::table::layout_table;
+
+/// マーカー(`list-style-position: outside`)と内容のcontent edgeの間の固定の隙間(px)。
+/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
+const LIST_MARKER_GAP: f32 = 8.0;
 
 #[derive(Debug, Clone)]
 pub struct LaidOutBox {
@@ -51,6 +55,13 @@ pub struct LaidOutBox {
     /// 決定3/決定5)。
     pub is_float: bool,
     pub content: LaidOutContent,
+    /// `display: list-item`のマーカー(箇条書きの記号・番号)。シェイピング済み
+    /// `TextRun`1つを持つ`LineBox`として表現し、`pdf::document::render_line`を
+    /// そのまま再利用して描画する([0022](
+    /// ../../../docs/decisions/0022-list-style-design.md)決定4)。ページ分割で
+    /// このボックスが複数ページにまたがる場合、先頭フラグメントにのみ残す
+    /// (`paginate.rs`)。
+    pub marker: Option<LineBox>,
 }
 
 /// [`LaidOutBox`]が持つCSS Fragmentation関連の計算値。ページ分割(`paginate.rs`)が
@@ -392,6 +403,16 @@ fn layout_box_impl(
         (0.0, 0.0)
     };
 
+    let marker = b.marker.as_deref().and_then(|text| {
+        layout_list_marker(
+            text,
+            &style,
+            fonts,
+            content_x + offset_x,
+            content_y + offset_y,
+        )
+    });
+
     LaidOutBox {
         node: b.node,
         layout: Layout {
@@ -410,7 +431,44 @@ fn layout_box_impl(
         has_visible_decoration: has_visible_decoration(&style, &border),
         is_float: style.float != Float::None,
         content,
+        marker,
     }
+}
+
+/// `display: list-item`のマーカー(`list-style-position: outside`、または
+/// ブロック子を持つため`inside`からフォールバックした場合)をレイアウトする。
+/// マーカーはcontent boxの外側(左のgutter)に独立して配置するだけなので、
+/// `b`の内容が`BoxContent::Inline`/`Blocks`のどちらでも同じロジックで扱える
+/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
+///
+/// 実装は通常のテキストランと全く同じシェイピング(`shape_run`)を再利用し、
+/// 結果を`runs`が1つだけの`LineBox`として返す。これにより描画側
+/// (`pdf::document::render_line`)を一切変更せずに再利用できる。
+fn layout_list_marker(
+    text: &str,
+    style: &ComputedStyle,
+    fonts: &FontCollection,
+    content_x: f32,
+    content_y: f32,
+) -> Option<LineBox> {
+    let first_char = text.chars().next()?;
+    let font_index = fonts.select_for_char(
+        &style.font_family,
+        style.font_weight,
+        style.font_style,
+        first_char,
+    )?;
+    let run = shape_run(text, font_index, fonts, style);
+    let width = run.width;
+    Some(LineBox {
+        rect: Rect {
+            x: content_x - LIST_MARKER_GAP - width,
+            y: content_y,
+            width,
+            height: run.line_height,
+        },
+        runs: vec![run],
+    })
 }
 
 /// float子要素を配置する。幅解決は`resolve_box_geometry`で(実際のレイアウトと)
@@ -690,6 +748,9 @@ pub(crate) fn resolve_width_and_horizontal_margins(
 pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     let mut b = b.clone();
     shift_rect_y(&mut b.layout.content, delta);
+    if let Some(marker) = &mut b.marker {
+        shift_rect_y(&mut marker.rect, delta);
+    }
 
     match &mut b.content {
         LaidOutContent::Blocks(children) => {
@@ -1425,6 +1486,7 @@ mod tests {
         LayoutBox {
             node: None,
             content: BoxContent::Image(content),
+            marker: None,
         }
     }
 
@@ -1522,5 +1584,54 @@ mod tests {
         let laid = layout_document(&tree, &HashMap::new(), &test_fonts(), 800.0);
 
         assert_eq!(laid.layout.content.width, 50.0);
+    }
+
+    #[test]
+    fn outside_marker_is_positioned_left_of_the_content_edge_with_a_fixed_gap() {
+        let dom = html::parse(br#"<ul><li>text</li></ul>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut lis = Vec::new();
+        find_all(&dom, dom.document(), "li", &mut lis);
+        let li = find_laid_out(&laid, lis[0]).expect("li not found");
+
+        let marker = li.marker.as_ref().expect("li should have a marker");
+        assert_eq!(marker.runs.len(), 1);
+        assert!(marker.rect.width > 0.0);
+        assert_eq!(
+            marker.rect.x,
+            li.layout.content.x - LIST_MARKER_GAP - marker.rect.width
+        );
+        assert_eq!(
+            marker.rect.y, li.layout.content.y,
+            "marker should align with the top of the li's own content"
+        );
+    }
+
+    #[test]
+    fn list_style_type_none_produces_no_marker_in_the_laid_out_box() {
+        let dom = html::parse(br#"<ul><li style="list-style-type: none;">text</li></ul>"#);
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+        let li_laid = find_laid_out(&laid, li).expect("li not found");
+        assert!(li_laid.marker.is_none());
+    }
+
+    fn find(dom: &Dom, id: NodeId, tag: &str) -> Option<NodeId> {
+        if let NodeData::Element { name, .. } = &dom.node(id).data {
+            if &*name.local == tag {
+                return Some(id);
+            }
+        }
+        dom.children(id).find_map(|child| find(dom, child, tag))
     }
 }

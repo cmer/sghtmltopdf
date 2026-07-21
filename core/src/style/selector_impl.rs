@@ -69,8 +69,9 @@ impl<'i> parser::Parser<'i> for SelectorParser {
         })
     }
 
-    /// `::before`/`::after`のみ対応する(`content`宣言と組み合わせて生成コンテンツの
-    /// 最小サポートに使う)。それ以外の擬似要素(`::first-line`等)は非対応。
+    /// `::before`/`::after`/`::first-letter`に対応する。`::first-line`は
+    /// 非対応([0024](../../../docs/decisions/0024-generated-content-design.md)、
+    /// 行分割結果に依存するスタイル適用の実装コストが突出するため見送り)。
     fn parse_pseudo_element(
         &self,
         location: SourceLocation,
@@ -79,6 +80,7 @@ impl<'i> parser::Parser<'i> for SelectorParser {
         Ok(match_ignore_ascii_case! { &name,
             "before" => PseudoElement::Before,
             "after" => PseudoElement::After,
+            "first-letter" => PseudoElement::FirstLetter,
             _ => {
                 return Err(location.new_custom_error(
                     SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
@@ -183,19 +185,22 @@ impl ToCss for NonTSPseudoClass {
     }
 }
 
-/// 擬似要素。`content`宣言と組み合わせた`::before`/`::after`の最小サポートのみ
-/// 対応する(`::first-line`/`::first-letter`等は非対応)。
+/// 擬似要素。`::before`/`::after`(`content`宣言と組み合わせた生成コンテンツ)・
+/// `::first-letter`(限定的なプロパティのみの上書きスタイル、[0024](
+/// ../../../docs/decisions/0024-generated-content-design.md)決定4)に対応する。
+/// `::first-line`は非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PseudoElement {
     Before,
     After,
+    FirstLetter,
 }
 
 impl parser::PseudoElement for PseudoElement {
     type Impl = SgSelectorImpl;
 
     fn is_before_or_after(&self) -> bool {
-        true
+        matches!(self, Self::Before | Self::After)
     }
 }
 
@@ -204,6 +209,7 @@ impl ToCss for PseudoElement {
         dest.write_str(match self {
             Self::Before => "::before",
             Self::After => "::after",
+            Self::FirstLetter => "::first-letter",
         })
     }
 }

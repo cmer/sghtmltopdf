@@ -9,16 +9,20 @@ use std::collections::HashMap;
 
 use crate::html::{Dom, NodeData, NodeId};
 
-use super::cascade::{matching_declarations, matching_pseudo_content};
+use super::cascade::{
+    matching_declarations, matching_pseudo_content, matching_pseudo_declarations,
+};
 use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    BorderCollapse, BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, Display,
-    EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage, LengthPercentageOrAuto,
-    Position, SpecifiedLength, SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto,
-    SpecifiedLineHeight, TableLayout, TextAlign, TextDecorationLine, TextTransform, VerticalAlign,
-    WhiteSpace,
+    BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
+    BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius,
+    Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
+    LengthPercentageOrAuto, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
+    SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout, TextAlign,
+    TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -72,10 +76,12 @@ pub struct ComputedStyle {
     pub border_right_style: BorderStyle,
     pub border_bottom_style: BorderStyle,
     pub border_left_style: BorderStyle,
-    pub border_top_left_radius: Length,
-    pub border_top_right_radius: Length,
-    pub border_bottom_right_radius: Length,
-    pub border_bottom_left_radius: Length,
+    /// 水平/垂直の半径を持つ([0023](../../../docs/decisions/0023-box-model-details-design.md)
+    /// 決定6、真円は水平=垂直)。
+    pub border_top_left_radius: CornerRadius,
+    pub border_top_right_radius: CornerRadius,
+    pub border_bottom_right_radius: CornerRadius,
+    pub border_bottom_left_radius: CornerRadius,
     /// 継承プロパティ。
     pub font_size: Length,
     /// 継承プロパティ。
@@ -90,6 +96,14 @@ pub struct ComputedStyle {
     /// `url(...)`(生の値、解決は呼び出し側任せ)。非継承プロパティ、初期値`None`。
     /// [0017](../../../docs/decisions/0017-background-image-design.md)参照。
     pub background_image: Option<String>,
+    /// 非継承プロパティ。[0025](../../../docs/decisions/0025-background-details-design.md)。
+    pub background_position: BackgroundPosition,
+    /// 非継承プロパティ。
+    pub background_size: BackgroundSize,
+    /// 非継承プロパティ。
+    pub background_repeat: BackgroundRepeat,
+    /// 非継承プロパティ。`fixed`は`scroll`と同一視して描画する(決定5)。
+    pub background_attachment: BackgroundAttachment,
     /// `text-decoration-line`。仕様上は非継承プロパティだが、代わりに祖先の
     /// 装飾線が子孫のボックスへ「伝播」する特殊規則を持つ。この伝播を
     /// 別途実装する代わりに、継承プロパティとして扱うことで
@@ -155,6 +169,53 @@ pub struct ComputedStyle {
     pub empty_cells: EmptyCells,
     /// `vertical-align`(テーブルセル文脈専用)。非継承プロパティ。
     pub vertical_align: VerticalAlign,
+    /// `list-style-type`。継承プロパティ([0022](
+    /// ../../../docs/decisions/0022-list-style-design.md)決定2)。
+    pub list_style_type: ListStyleType,
+    /// `list-style-position`。継承プロパティ(決定4)。
+    pub list_style_position: ListStylePosition,
+    /// `list-style-image`(`url(...)`の生の値)。継承プロパティだが、実際には
+    /// 常に`list_style_type`のテキストマーカーへフォールバックし描画されない
+    /// (決定5)。
+    pub list_style_image: Option<String>,
+    /// `overflow`。非継承プロパティ。`hidden`/`scroll`/`auto`は区別せず全て
+    /// クリップ対象として扱う([0023](../../../docs/decisions/0023-box-model-details-design.md)
+    /// 決定1)。
+    pub overflow: Overflow,
+    /// `z-index`。非継承プロパティ。`position: static`の要素には効果を持たない
+    /// (仕様通り、`layout`/`pdf`側で判定する、決定2)。
+    pub z_index: ZIndex,
+    /// `visibility`。継承プロパティ。`collapse`は`hidden`と同一視する(決定4)。
+    pub visibility: Visibility,
+    /// `outline-width`。非継承プロパティ。
+    pub outline_width: Length,
+    /// `outline-style`。非継承プロパティ、初期値`none`。
+    pub outline_style: BorderStyle,
+    /// `outline-color`。非継承プロパティ、初期値は`currentcolor`相当
+    /// (`border-color`と同じ解決規則)。
+    pub outline_color: RgbaColor,
+    /// `quotes`。継承プロパティ。`None`は`none`(常に空文字列を生成する、
+    /// [0024](../../../docs/decisions/0024-generated-content-design.md)決定3)。
+    pub quotes: Option<Vec<QuotePair>>,
+    /// `::first-letter`の限定的な上書きスタイル(決定4)。マッチする宣言が
+    /// 一つも無ければ`None`。
+    pub first_letter_style: Option<FirstLetterStyle>,
+}
+
+/// `::first-letter`用の限定的な上書きスタイル。実装コストと需要のバランスを
+/// 取り、フォント系・color・text-decoration-line・text-transformのみ対応する
+/// ([0024](../../../docs/decisions/0024-generated-content-design.md)決定4、
+/// `float`/box model系プロパティは非対応)。各フィールドが`None`の場合は
+/// ホスト要素自身の計算値をそのまま使う。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct FirstLetterStyle {
+    pub font_size: Option<Length>,
+    pub font_family: Option<Vec<String>>,
+    pub font_weight: Option<FontWeight>,
+    pub font_style: Option<FontStyle>,
+    pub color: Option<RgbaColor>,
+    pub text_decoration_line: Option<TextDecorationLine>,
+    pub text_transform: Option<TextTransform>,
 }
 
 impl Default for ComputedStyle {
@@ -209,10 +270,10 @@ impl Default for ComputedStyle {
             border_right_style: BorderStyle::None,
             border_bottom_style: BorderStyle::None,
             border_left_style: BorderStyle::None,
-            border_top_left_radius: Length(0.0),
-            border_top_right_radius: Length(0.0),
-            border_bottom_right_radius: Length(0.0),
-            border_bottom_left_radius: Length(0.0),
+            border_top_left_radius: CornerRadius::default(),
+            border_top_right_radius: CornerRadius::default(),
+            border_bottom_right_radius: CornerRadius::default(),
+            border_bottom_left_radius: CornerRadius::default(),
             font_size: Length(16.0),
             font_family: vec!["sans-serif".to_string()],
             font_weight: FontWeight::Normal,
@@ -230,6 +291,10 @@ impl Default for ComputedStyle {
                 alpha: 0.0,
             },
             background_image: None,
+            background_position: BackgroundPosition::default(),
+            background_size: BackgroundSize::default(),
+            background_repeat: BackgroundRepeat::default(),
+            background_attachment: BackgroundAttachment::default(),
             text_decoration_line: TextDecorationLine::default(),
             pseudo_before_content: None,
             pseudo_after_content: None,
@@ -259,6 +324,32 @@ impl Default for ComputedStyle {
             table_layout: TableLayout::Auto,
             empty_cells: EmptyCells::Show,
             vertical_align: VerticalAlign::Baseline,
+            list_style_type: ListStyleType::Disc,
+            list_style_position: ListStylePosition::Outside,
+            list_style_image: None,
+            overflow: Overflow::Visible,
+            z_index: ZIndex::Auto,
+            visibility: Visibility::Visible,
+            outline_width: Length(0.0),
+            outline_style: BorderStyle::None,
+            outline_color: RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 1.0,
+            },
+            // 一般的なブラウザ既定値と同じ曲線引用符([0024]決定3)。
+            quotes: Some(vec![
+                QuotePair {
+                    open: "\u{201C}".to_string(),
+                    close: "\u{201D}".to_string(),
+                },
+                QuotePair {
+                    open: "\u{2018}".to_string(),
+                    close: "\u{2019}".to_string(),
+                },
+            ]),
+            first_letter_style: None,
         }
     }
 }
@@ -283,7 +374,20 @@ pub fn compute_styles(
         author,
         root_font_size: Cell::new(ComputedStyle::default().font_size.0),
     };
-    compute_recursive(dom, dom.document(), None, false, &ctx, &mut styles);
+    // カウンタ([0024]決定2)・quote深度(決定3)はいずれも文書全体で1つ
+    // (バッチ処理は文書全体を1回の走査で処理するため、ここで新規に用意すれば足りる)。
+    let mut counters = HashMap::new();
+    let mut quote_depth = 0;
+    compute_recursive(
+        dom,
+        dom.document(),
+        None,
+        false,
+        &ctx,
+        &mut counters,
+        &mut quote_depth,
+        &mut styles,
+    );
     styles
 }
 
@@ -297,6 +401,11 @@ pub fn compute_styles(
 /// ものをそのまま渡してよい(`root`とその子孫だけが辿られる)。`root`は
 /// `<html>`のようなルート候補ではないため、`rem`基準を上書きしない
 /// (`is_root_candidate: false`で呼ぶ)。
+///
+/// `counters`/`quote_depth`はドキュメント順に依存する状態([0024]決定2・3)
+/// なので、呼び出し側(ストリーミング処理では`Engine::StreamingState`)が
+/// トップレベル要素をまたいで永続させ、都度`&mut`で渡すこと。
+#[allow(clippy::too_many_arguments)]
 pub fn compute_styles_with_parent(
     dom: &Dom,
     root: NodeId,
@@ -304,6 +413,8 @@ pub fn compute_styles_with_parent(
     root_font_size: f32,
     ua: &Stylesheet,
     author: &Stylesheet,
+    counters: &mut HashMap<String, Vec<i32>>,
+    quote_depth: &mut i32,
 ) -> HashMap<NodeId, ComputedStyle> {
     let mut styles = HashMap::new();
     let ctx = StyleContext {
@@ -311,7 +422,16 @@ pub fn compute_styles_with_parent(
         author,
         root_font_size: Cell::new(root_font_size),
     };
-    compute_recursive(dom, root, Some(parent_style), false, &ctx, &mut styles);
+    compute_recursive(
+        dom,
+        root,
+        Some(parent_style),
+        false,
+        &ctx,
+        counters,
+        quote_depth,
+        &mut styles,
+    );
     styles
 }
 
@@ -319,7 +439,16 @@ pub fn compute_styles_with_parent(
 ///
 /// マイルストーン3のストリーミング処理で、`<html>`/`<body>`要素自身の
 /// スタイルを(それぞれの子孫全体を再帰的に辿ることなく)個別に確定させる
-/// ために使う。[`compute_element_style`]をそのまま公開したもの。
+/// ために使う。[`compute_element_style`]をそのまま公開したもの
+/// (この要素がpushしたカウンタ名の一覧はpop対象として追跡しない。
+/// `<html>`/`<body>`レベルの`counter-reset`は文書全体に永続して構わないため)。
+///
+/// **既知の簡略化**: この要素の`::after`(`content`)は解決されない
+/// (常に`None`)。`::after`の解決には子孫の処理完了後の状態が必要
+/// (`compute_recursive`参照)だが、この関数は子孫を辿らないため。
+/// `<html>`/`<body>`要素自身に`::after`生成コンテンツを使うケースは
+/// 実務上稀と判断した。
+#[allow(clippy::too_many_arguments)]
 pub fn compute_single_element_style(
     dom: &Dom,
     element: NodeId,
@@ -327,8 +456,20 @@ pub fn compute_single_element_style(
     root_font_size: f32,
     ua: &Stylesheet,
     author: &Stylesheet,
+    counters: &mut HashMap<String, Vec<i32>>,
+    quote_depth: &mut i32,
 ) -> ComputedStyle {
-    compute_element_style(dom, element, parent_style, root_font_size, ua, author)
+    compute_element_style(
+        dom,
+        element,
+        parent_style,
+        root_font_size,
+        ua,
+        author,
+        counters,
+        quote_depth,
+    )
+    .0
 }
 
 /// `compute_recursive`/`compute_element_style`の再帰全体で共有する、
@@ -342,49 +483,96 @@ struct StyleContext<'a> {
     root_font_size: Cell<f32>,
 }
 
+/// 戻り値は`node`自身が`counter-reset`(または暗黙生成)でpushしたカウンタ名の
+/// 一覧([0024]決定2)。CSSの仕様上、この push が作るスコープは「`node`自身と
+/// それに続く兄弟要素」(`node`の**親**の子要素列の残り)まで及ぶため、
+/// popできるのは`node`の親であって`node`自身ではない。よって`node`はここでは
+/// popせず、そのまま呼び出し元(親の`compute_recursive`)へ返す。一方、
+/// `node`の直接の子が同様にpushしたカウンタは、`node`の子要素列の走査
+/// (=兄弟スコープ)が終わるこの関数の末尾でpopしてよい。
+#[allow(clippy::too_many_arguments)]
 fn compute_recursive(
     dom: &Dom,
     node: NodeId,
     parent_style: Option<&ComputedStyle>,
     is_root_candidate: bool,
     ctx: &StyleContext<'_>,
+    counters: &mut HashMap<String, Vec<i32>>,
+    quote_depth: &mut i32,
     out: &mut HashMap<NodeId, ComputedStyle>,
-) {
-    let style = match &dom.node(node).data {
+) -> Vec<String> {
+    let (mut style, own_pushed_counter_names, after_parts) = match &dom.node(node).data {
         NodeData::Element { .. } => {
-            let style = compute_element_style(
+            let (style, pushed_counter_names, after_parts) = compute_element_style(
                 dom,
                 node,
                 parent_style,
                 ctx.root_font_size.get(),
                 ctx.ua,
                 ctx.author,
+                counters,
+                quote_depth,
             );
             // ドキュメント直下の最初の要素(通常は<html>)がルート要素。
             if is_root_candidate {
                 ctx.root_font_size.set(style.font_size.0);
             }
-            style
+            (style, pushed_counter_names, after_parts)
         }
-        _ => parent_style.cloned().unwrap_or_default(),
+        _ => (parent_style.cloned().unwrap_or_default(), Vec::new(), None),
     };
 
     // `node`がドキュメントノードであれば、その直下の子(通常は<html>)がルート要素候補。
     let children_are_root_candidates = node == dom.document();
+    let mut children_pushed_counter_names = Vec::new();
     for child in dom.children(node) {
-        compute_recursive(
+        let pushed_by_child = compute_recursive(
             dom,
             child,
             Some(&style),
             children_are_root_candidates,
             ctx,
+            counters,
+            quote_depth,
             out,
         );
+        children_pushed_counter_names.extend(pushed_by_child);
     }
 
+    // 直接の子(とその兄弟スコープ全体)がpushしたカウンタのスコープを終了する。
+    // `node`自身がpushした分はここではpopしない(呼び出し元=`node`の親が
+    // popする、上記のコメント参照)。
+    for name in &children_pushed_counter_names {
+        if let Some(stack) = counters.get_mut(name) {
+            stack.pop();
+        }
+    }
+
+    // `::after`のcontentを、子孫の処理が終わった今の状態(counter()/quotesが
+    // 子孫による変更を反映済み)で解決する。
+    let quotes = style.quotes.clone();
+    style.pseudo_after_content =
+        resolve_content_parts(after_parts, dom, node, counters, quote_depth, &quotes);
+
     out.insert(node, style);
+    own_pushed_counter_names
 }
 
+/// `element`の計算スタイルを求める。戻り値は`(スタイル, pushしたカウンタ名の
+/// 一覧, 未解決の::after content)`の3つ組。
+///
+/// `Vec<String>`は、この要素が`counter-reset`(または未定義カウンタへの
+/// `counter-increment`による暗黙生成、[0024](
+/// ../../../docs/decisions/0024-generated-content-design.md)決定2)で
+/// `counters`にpushしたカウンタ名の一覧で、呼び出し側(`compute_recursive`)が
+/// 子孫の処理後に同じ数だけpopするために使う。
+///
+/// `::after`の`content`は、この関数の時点では解決せず`Option<Vec<ContentPart>>`
+/// のまま返す。`::after`はDOM順で子孫より後に現れるため、`counter()`/`quotes`
+/// (子孫による変更を反映すべき)は子孫の処理が終わってから解決する必要がある
+/// (呼び出し側の`compute_recursive`が子ループの後に`resolve_content_parts`を
+/// 呼び、`ComputedStyle::pseudo_after_content`を埋める)。
+#[allow(clippy::too_many_arguments)]
 fn compute_element_style(
     dom: &Dom,
     element: NodeId,
@@ -392,14 +580,12 @@ fn compute_element_style(
     root_font_size: f32,
     ua: &Stylesheet,
     author: &Stylesheet,
-) -> ComputedStyle {
+    counters: &mut HashMap<String, Vec<i32>>,
+    quote_depth: &mut i32,
+) -> (ComputedStyle, Vec<String>, Option<Vec<ContentPart>>) {
     let declarations = matching_declarations(dom, element, ua, author);
     let inline_declarations = inline_style_declarations(dom, element);
     let attribute_sugar_declarations = data_page_break_declarations(dom, element);
-    let pseudo_before_content =
-        matching_pseudo_content(dom, element, PseudoElement::Before, ua, author);
-    let pseudo_after_content =
-        matching_pseudo_content(dom, element, PseudoElement::After, ua, author);
 
     let mut display = None;
     let mut width = None;
@@ -435,6 +621,10 @@ fn compute_element_style(
     let mut color = None;
     let mut background_color = None;
     let mut background_image = None;
+    let mut background_position = None;
+    let mut background_size = None;
+    let mut background_repeat = None;
+    let mut background_attachment = None;
     let mut text_decoration_line = None;
     let mut break_before = None;
     let mut break_after = None;
@@ -461,6 +651,18 @@ fn compute_element_style(
     let mut table_layout = None;
     let mut empty_cells = None;
     let mut vertical_align = None;
+    let mut list_style_type = None;
+    let mut list_style_position = None;
+    let mut list_style_image = None;
+    let mut overflow = None;
+    let mut z_index = None;
+    let mut visibility = None;
+    let mut outline_width = None;
+    let mut outline_style = None;
+    let mut outline_color = None;
+    let mut counter_reset = None;
+    let mut counter_increment = None;
+    let mut quotes = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -508,6 +710,10 @@ fn compute_element_style(
             PropertyDeclaration::Color(v) => color = Some(*v),
             PropertyDeclaration::BackgroundColor(v) => background_color = Some(*v),
             PropertyDeclaration::BackgroundImage(v) => background_image = v.clone(),
+            PropertyDeclaration::BackgroundPosition(v) => background_position = Some(*v),
+            PropertyDeclaration::BackgroundSize(v) => background_size = Some(*v),
+            PropertyDeclaration::BackgroundRepeat(v) => background_repeat = Some(*v),
+            PropertyDeclaration::BackgroundAttachment(v) => background_attachment = Some(*v),
             PropertyDeclaration::TextDecorationLine(v) => text_decoration_line = Some(*v),
             // `content`は`::before`/`::after`専用で、通常の要素では効果を持たない
             // (`matching_pseudo_content`が別途、擬似要素向けのマッチングを行う)。
@@ -537,6 +743,18 @@ fn compute_element_style(
             PropertyDeclaration::TableLayout(v) => table_layout = Some(*v),
             PropertyDeclaration::EmptyCells(v) => empty_cells = Some(*v),
             PropertyDeclaration::VerticalAlign(v) => vertical_align = Some(*v),
+            PropertyDeclaration::ListStyleType(v) => list_style_type = Some(*v),
+            PropertyDeclaration::ListStylePosition(v) => list_style_position = Some(*v),
+            PropertyDeclaration::ListStyleImage(v) => list_style_image = Some(v.clone()),
+            PropertyDeclaration::Overflow(v) => overflow = Some(*v),
+            PropertyDeclaration::ZIndex(v) => z_index = Some(*v),
+            PropertyDeclaration::Visibility(v) => visibility = Some(*v),
+            PropertyDeclaration::OutlineWidth(v) => outline_width = Some(*v),
+            PropertyDeclaration::OutlineStyle(v) => outline_style = Some(*v),
+            PropertyDeclaration::OutlineColor(v) => outline_color = Some(*v),
+            PropertyDeclaration::CounterReset(v) => counter_reset = Some(v.clone()),
+            PropertyDeclaration::CounterIncrement(v) => counter_increment = Some(v.clone()),
+            PropertyDeclaration::Quotes(v) => quotes = Some(v.clone()),
         }
     }
 
@@ -566,6 +784,15 @@ fn compute_element_style(
     });
     let inherited_caption_side = parent.map_or(initial.caption_side, |p| p.caption_side);
     let inherited_empty_cells = parent.map_or(initial.empty_cells, |p| p.empty_cells);
+    let inherited_list_style_type = parent.map_or(initial.list_style_type, |p| p.list_style_type);
+    let inherited_list_style_position =
+        parent.map_or(initial.list_style_position, |p| p.list_style_position);
+    let inherited_list_style_image = parent.map_or_else(
+        || initial.list_style_image.clone(),
+        |p| p.list_style_image.clone(),
+    );
+    let inherited_visibility = parent.map_or(initial.visibility, |p| p.visibility);
+    let inherited_quotes = parent.map_or_else(|| initial.quotes.clone(), |p| p.quotes.clone());
 
     // font-sizeは他の長さ系プロパティより先に解決する。`em`の基準は仕様上
     // 「親要素の計算済みfont-size」(自分自身の値ではない、循環を避けるため)。
@@ -587,6 +814,16 @@ fn compute_element_style(
         v.map(|specified| specified.resolve(own_font_size, root_font_size))
             .unwrap_or(initial)
     };
+    let resolve_corner_radius = |v: Option<SpecifiedCornerRadius>, initial: CornerRadius| {
+        v.map(|specified| specified.resolve(own_font_size, root_font_size))
+            .unwrap_or(initial)
+    };
+    let resolved_background_position = background_position
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.background_position);
+    let resolved_background_size = background_size
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.background_size);
 
     // `line-height`の`<number>`/`<percentage>`は未乗算のまま継承する
     // ([0020]決定3)。`<percentage>`は既にfraction(50%→0.5)としてパース済みの
@@ -637,6 +874,8 @@ fn compute_element_style(
     let resolved_border_right_color = resolve_color(border_right_color, resolved_color);
     let resolved_border_bottom_color = resolve_color(border_bottom_color, resolved_color);
     let resolved_border_left_color = resolve_color(border_left_color, resolved_color);
+    // `outline-color`の初期値も`currentcolor`(仕様通り)。
+    let resolved_outline_color = resolve_color(outline_color, resolved_color);
 
     let resolved_float = float.unwrap_or(initial.float);
     // CSS2.1 9.7: floatが`none`以外なら要素は自動的にblock-levelとして計算される
@@ -649,7 +888,61 @@ fn compute_element_style(
         other => other,
     };
 
-    ComputedStyle {
+    let resolved_quotes = quotes.unwrap_or(inherited_quotes);
+
+    // `counter-reset`/`counter-increment`の適用([0024]決定2)。`content`の
+    // `counter()`/`counters()`解決より先に行う必要がある(この要素自身が
+    // reset/incrementした値を、この要素の`content`が参照できるようにするため)。
+    let mut pushed_counter_names = Vec::new();
+    if let Some(resets) = &counter_reset {
+        for (name, value) in resets {
+            counters.entry(name.clone()).or_default().push(*value);
+            pushed_counter_names.push(name.clone());
+        }
+    }
+    if let Some(increments) = &counter_increment {
+        for (name, value) in increments {
+            let stack = counters.entry(name.clone()).or_default();
+            if stack.is_empty() {
+                // スコープ内にその名前のカウンタが一つも無い場合の暗黙生成
+                // (簡略化: 本来はドキュメント全体に永続すべきだが、この要素の
+                // 部分木を抜けたらpopされる、決定2の既知の簡略化)。
+                stack.push(0);
+                pushed_counter_names.push(name.clone());
+            }
+            *stack.last_mut().expect("just ensured non-empty") += value;
+        }
+    }
+
+    // `content`(::before)の解決。カウンタ・quote深度の「今の状態」を見る
+    // 必要があるため、上のreset/increment適用より後で行う。`::before`は
+    // 子孫より先にDOM順で現れるため、ここ(子孫を辿る前)で解決してよい。
+    //
+    // `::after`は逆に子孫より後にDOM順で現れるため、ここでは解決しない
+    // (`counter()`/`quotes`の状態は子孫による変更を反映すべき)。パーツの列を
+    // 未解決のまま呼び出し元(`compute_recursive`)へ返し、子孫の処理が
+    // 終わった後に解決してもらう。
+    let before_parts = matching_pseudo_content(dom, element, PseudoElement::Before, ua, author);
+    let after_parts = matching_pseudo_content(dom, element, PseudoElement::After, ua, author);
+    let pseudo_before_content = resolve_content_parts(
+        before_parts,
+        dom,
+        element,
+        counters,
+        quote_depth,
+        &resolved_quotes,
+    );
+
+    // `::first-letter`(決定4)。対応プロパティのみの限定的な上書きスタイル。
+    let first_letter_declarations =
+        matching_pseudo_declarations(dom, element, PseudoElement::FirstLetter, ua, author);
+    let first_letter_style = compute_first_letter_style(
+        &first_letter_declarations,
+        resolved_font_size.0,
+        root_font_size,
+    );
+
+    let style = ComputedStyle {
         display: resolved_display,
         width: resolve_lp_or_auto(width, initial.width),
         height: resolve_lp_or_auto(height, initial.height),
@@ -673,16 +966,19 @@ fn compute_element_style(
         border_right_style: border_right_style.unwrap_or(initial.border_right_style),
         border_bottom_style: border_bottom_style.unwrap_or(initial.border_bottom_style),
         border_left_style: border_left_style.unwrap_or(initial.border_left_style),
-        border_top_left_radius: resolve_len(border_top_left_radius, initial.border_top_left_radius),
-        border_top_right_radius: resolve_len(
+        border_top_left_radius: resolve_corner_radius(
+            border_top_left_radius,
+            initial.border_top_left_radius,
+        ),
+        border_top_right_radius: resolve_corner_radius(
             border_top_right_radius,
             initial.border_top_right_radius,
         ),
-        border_bottom_right_radius: resolve_len(
+        border_bottom_right_radius: resolve_corner_radius(
             border_bottom_right_radius,
             initial.border_bottom_right_radius,
         ),
-        border_bottom_left_radius: resolve_len(
+        border_bottom_left_radius: resolve_corner_radius(
             border_bottom_left_radius,
             initial.border_bottom_left_radius,
         ),
@@ -693,9 +989,15 @@ fn compute_element_style(
         color: resolved_color,
         background_color: resolved_background_color,
         background_image: background_image.or(initial.background_image),
+        background_position: resolved_background_position,
+        background_size: resolved_background_size,
+        background_repeat: background_repeat.unwrap_or(initial.background_repeat),
+        background_attachment: background_attachment.unwrap_or(initial.background_attachment),
         text_decoration_line: text_decoration_line.unwrap_or(inherited_text_decoration_line),
         pseudo_before_content,
-        pseudo_after_content,
+        // 子孫の処理後に`compute_recursive`が解決してこのフィールドを埋める
+        // (未解決の`after_parts`は戻り値の3つ目として返す)。
+        pseudo_after_content: None,
         break_before: break_before.unwrap_or(initial.break_before),
         break_after: break_after.unwrap_or(initial.break_after),
         break_inside: break_inside.unwrap_or(initial.break_inside),
@@ -722,7 +1024,185 @@ fn compute_element_style(
         table_layout: table_layout.unwrap_or(initial.table_layout),
         empty_cells: empty_cells.unwrap_or(inherited_empty_cells),
         vertical_align: vertical_align.unwrap_or(initial.vertical_align),
+        list_style_type: list_style_type.unwrap_or(inherited_list_style_type),
+        list_style_position: list_style_position.unwrap_or(inherited_list_style_position),
+        list_style_image: list_style_image.unwrap_or(inherited_list_style_image),
+        overflow: overflow.unwrap_or(initial.overflow),
+        z_index: z_index.unwrap_or(initial.z_index),
+        visibility: visibility.unwrap_or(inherited_visibility),
+        outline_width: resolve_len(outline_width, initial.outline_width),
+        outline_style: outline_style.unwrap_or(initial.outline_style),
+        outline_color: resolved_outline_color,
+        quotes: resolved_quotes,
+        first_letter_style,
+    };
+
+    (style, pushed_counter_names, after_parts)
+}
+
+/// `content`パーツの列を実際の文字列へ解決する。`counters`/`quote_depth`は
+/// この時点で当該要素自身の`counter-reset`/`counter-increment`適用済みの状態を
+/// 渡すこと([0024]決定2)。
+fn resolve_content_parts(
+    parts: Option<Vec<ContentPart>>,
+    dom: &Dom,
+    element: NodeId,
+    counters: &HashMap<String, Vec<i32>>,
+    quote_depth: &mut i32,
+    quotes: &Option<Vec<QuotePair>>,
+) -> Option<String> {
+    let parts = parts?;
+    let mut result = String::new();
+    for part in parts {
+        match part {
+            ContentPart::String(s) => result.push_str(&s),
+            ContentPart::Attr(name) => {
+                if let Some(value) = read_element_attr(dom, element, &name) {
+                    result.push_str(&value);
+                }
+            }
+            ContentPart::Counter(name, style) => {
+                let value = counters
+                    .get(&name)
+                    .and_then(|s| s.last())
+                    .copied()
+                    .unwrap_or(0);
+                result.push_str(&format_counter_value(style, value));
+            }
+            ContentPart::Counters(name, separator, style) => {
+                if let Some(stack) = counters.get(&name) {
+                    let formatted: Vec<String> = stack
+                        .iter()
+                        .map(|&v| format_counter_value(style, v))
+                        .collect();
+                    result.push_str(&formatted.join(&separator));
+                }
+            }
+            ContentPart::OpenQuote => {
+                result.push_str(&quote_text(quotes, *quote_depth, true));
+                *quote_depth += 1;
+            }
+            ContentPart::CloseQuote => {
+                *quote_depth = (*quote_depth - 1).max(0);
+                result.push_str(&quote_text(quotes, *quote_depth, false));
+            }
+            ContentPart::NoOpenQuote => *quote_depth += 1,
+            ContentPart::NoCloseQuote => *quote_depth = (*quote_depth - 1).max(0),
+        }
     }
+    Some(result)
+}
+
+/// `quotes`の`depth`階層目の開き/閉じ引用符。`quotes: none`または未指定は
+/// 常に空文字列(決定3)。深度が指定ペア数を超えた場合は最後のペアを繰り返す。
+fn quote_text(quotes: &Option<Vec<QuotePair>>, depth: i32, is_open: bool) -> String {
+    let Some(pairs) = quotes else {
+        return String::new();
+    };
+    let Some(last_index) = pairs.len().checked_sub(1) else {
+        return String::new();
+    };
+    let index = (depth.max(0) as usize).min(last_index);
+    let pair = &pairs[index];
+    if is_open {
+        pair.open.clone()
+    } else {
+        pair.close.clone()
+    }
+}
+
+/// `list-style-type`の値からカウンタ表記(`content: counter()`用)を生成する。
+/// `list-style-type`の同名のマーカー生成([`crate::layout::box_tree`])と異なり、
+/// 末尾に`.`を付けない。`disc`/`circle`/`square`/`none`はカウンタ表記として
+/// 意味を持たないため空文字列を返す(仕様通り)。
+fn format_counter_value(style: ListStyleType, n: i32) -> String {
+    let n = n.max(0) as usize;
+    match style {
+        ListStyleType::None
+        | ListStyleType::Disc
+        | ListStyleType::Circle
+        | ListStyleType::Square => String::new(),
+        ListStyleType::Decimal => n.to_string(),
+        ListStyleType::DecimalLeadingZero => format!("{n:02}"),
+        ListStyleType::LowerRoman => crate::numbering::to_roman(n).to_lowercase(),
+        ListStyleType::UpperRoman => crate::numbering::to_roman(n),
+        ListStyleType::LowerAlpha => crate::numbering::to_alpha(n).to_lowercase(),
+        ListStyleType::UpperAlpha => crate::numbering::to_alpha(n),
+    }
+}
+
+/// `element`のHTML属性値を読む(`content: attr(name)`用)。
+fn read_element_attr(dom: &Dom, element: NodeId, name: &str) -> Option<String> {
+    let NodeData::Element { attrs, .. } = &dom.node(element).data else {
+        return None;
+    };
+    attrs
+        .iter()
+        .find(|attr| &*attr.name.local == name)
+        .map(|attr| attr.value.to_string())
+}
+
+/// `::first-letter`にマッチした宣言列から、対応するプロパティのみを抜き出して
+/// [`FirstLetterStyle`]を組み立てる([0024]決定4、フルの`ComputedStyle`解決は
+/// 行わない軽量な実装)。`own_font_size`は`em`単位解決の基準(ホスト要素自身の
+/// 計算済みfont-size)。
+fn compute_first_letter_style(
+    declarations: &[&PropertyDeclaration],
+    own_font_size: f32,
+    root_font_size: f32,
+) -> Option<FirstLetterStyle> {
+    if declarations.is_empty() {
+        return None;
+    }
+    let mut style = FirstLetterStyle::default();
+    let mut any = false;
+    for decl in declarations {
+        match decl {
+            PropertyDeclaration::FontSize(v) => {
+                style.font_size = Some(v.resolve(own_font_size, root_font_size));
+                any = true;
+            }
+            PropertyDeclaration::FontFamily(v) => {
+                style.font_family = Some(v.clone());
+                any = true;
+            }
+            PropertyDeclaration::FontWeight(v) => {
+                style.font_weight = Some(*v);
+                any = true;
+            }
+            PropertyDeclaration::FontStyle(v) => {
+                style.font_style = Some(*v);
+                any = true;
+            }
+            // `currentcolor`はホスト要素自身の色をそのまま使うのと実質的に
+            // 同じ結果になるため、明示的な解決をせず「未指定」と同一視する
+            // (既知の簡略化)。
+            PropertyDeclaration::Color(Color::Rgba {
+                red,
+                green,
+                blue,
+                alpha,
+            }) => {
+                style.color = Some(RgbaColor {
+                    red: *red,
+                    green: *green,
+                    blue: *blue,
+                    alpha: *alpha,
+                });
+                any = true;
+            }
+            PropertyDeclaration::TextDecorationLine(v) => {
+                style.text_decoration_line = Some(*v);
+                any = true;
+            }
+            PropertyDeclaration::TextTransform(v) => {
+                style.text_transform = Some(*v);
+                any = true;
+            }
+            _ => {}
+        }
+    }
+    any.then_some(style)
 }
 
 /// `color`は継承プロパティなので、指定がない場合・`currentcolor`が指定された場合
@@ -790,6 +1270,17 @@ mod tests {
             }
         }
         dom.children(id).find_map(|child| find(dom, child, tag))
+    }
+
+    fn find_all(dom: &Dom, id: NodeId, tag: &str, out: &mut Vec<NodeId>) {
+        if let NodeData::Element { name, .. } = &dom.node(id).data {
+            if &*name.local == tag {
+                out.push(id);
+            }
+        }
+        for child in dom.children(id) {
+            find_all(dom, child, tag, out);
+        }
     }
 
     #[test]
@@ -907,6 +1398,180 @@ mod tests {
             styles[&div].background_image, None,
             "a later `background-image: none` should win the cascade over an earlier url()"
         );
+    }
+
+    #[test]
+    fn background_position_keyword_pairs_are_order_independent() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { background-position: bottom right; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let position = styles[&div].background_position;
+        assert_eq!(position.horizontal, LengthPercentage::Percentage(1.0));
+        assert_eq!(position.vertical, LengthPercentage::Percentage(1.0));
+
+        let author = parse_stylesheet("div { background-position: right bottom; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let position = styles[&div].background_position;
+        assert_eq!(position.horizontal, LengthPercentage::Percentage(1.0));
+        assert_eq!(position.vertical, LengthPercentage::Percentage(1.0));
+    }
+
+    #[test]
+    fn background_position_single_keyword_centers_the_other_axis() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { background-position: top; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let position = styles[&div].background_position;
+        assert_eq!(position.horizontal, LengthPercentage::Percentage(0.5));
+        assert_eq!(position.vertical, LengthPercentage::Percentage(0.0));
+    }
+
+    #[test]
+    fn background_position_mixes_keyword_and_length() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { background-position: 20px top; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let position = styles[&div].background_position;
+        assert_eq!(position.horizontal, LengthPercentage::Length(20.0));
+        assert_eq!(position.vertical, LengthPercentage::Percentage(0.0));
+    }
+
+    #[test]
+    fn background_position_rejects_same_axis_keyword_pairs() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // `left right`は両方水平軸のキーワードで無効 → 宣言ごと無視され初期値のまま。
+        let author = parse_stylesheet("div { background-position: left right; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let position = styles[&div].background_position;
+        assert_eq!(position, BackgroundPosition::default());
+    }
+
+    #[test]
+    fn background_position_default_is_top_left() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = Stylesheet::default();
+        let styles = compute_styles(&dom, &ua, &author);
+        let position = styles[&div].background_position;
+        assert_eq!(position.horizontal, LengthPercentage::Percentage(0.0));
+        assert_eq!(position.vertical, LengthPercentage::Percentage(0.0));
+    }
+
+    #[test]
+    fn background_size_keywords_and_single_value() {
+        let dom =
+            html::parse(br#"<div class="a"></div><div class="b"></div><div class="c"></div>"#);
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let [a, b, c] = divs[..] else {
+            panic!("expected exactly 3 divs")
+        };
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(
+            r#".a { background-size: cover; }
+               .b { background-size: contain; }
+               .c { background-size: 50%; }"#,
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&a].background_size, BackgroundSize::Cover);
+        assert_eq!(styles[&b].background_size, BackgroundSize::Contain);
+        assert_eq!(
+            styles[&c].background_size,
+            BackgroundSize::WidthHeight(
+                LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Percentage(0.5)),
+                LengthPercentageOrAuto::Auto
+            )
+        );
+    }
+
+    #[test]
+    fn background_repeat_and_attachment_are_parsed_and_not_inherited() {
+        let dom = html::parse(br#"<div><p>text</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let ua = Stylesheet::default();
+        let author =
+            parse_stylesheet("div { background-repeat: repeat-x; background-attachment: fixed; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].background_repeat, BackgroundRepeat::RepeatX);
+        assert_eq!(
+            styles[&div].background_attachment,
+            BackgroundAttachment::Fixed
+        );
+        assert_eq!(styles[&p].background_repeat, BackgroundRepeat::Repeat);
+        assert_eq!(
+            styles[&p].background_attachment,
+            BackgroundAttachment::Scroll
+        );
+    }
+
+    #[test]
+    fn background_shorthand_resets_unspecified_longhands_to_initial_values() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // 先に個別プロパティで背景画像・repeatを設定した後、`background`
+        // ショートハンドが色だけを指定 → 仕様通り他の値は初期値へ戻るはず。
+        let author = parse_stylesheet(
+            r#"div { background-image: url("bg.png"); background-repeat: no-repeat; }
+               div { background: red; }"#,
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(
+            style.background_color,
+            RgbaColor {
+                red: 255,
+                green: 0,
+                blue: 0,
+                alpha: 1.0
+            }
+        );
+        assert_eq!(
+            style.background_image, None,
+            "background shorthand should reset background-image to none"
+        );
+        assert_eq!(
+            style.background_repeat,
+            BackgroundRepeat::Repeat,
+            "background shorthand should reset background-repeat to its initial value"
+        );
+    }
+
+    #[test]
+    fn background_shorthand_parses_position_and_size_with_slash() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author =
+            parse_stylesheet(r#"div { background: url("bg.png") no-repeat center / cover; }"#);
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(style.background_image.as_deref(), Some("bg.png"));
+        assert_eq!(style.background_repeat, BackgroundRepeat::NoRepeat);
+        assert_eq!(
+            style.background_position.horizontal,
+            LengthPercentage::Percentage(0.5)
+        );
+        assert_eq!(style.background_size, BackgroundSize::Cover);
     }
 
     #[test]
@@ -1954,5 +2619,648 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         assert_eq!(styles[&span].pseudo_before_content, None);
         assert_eq!(styles[&span].pseudo_after_content, None);
+    }
+
+    #[test]
+    fn list_style_properties_default_to_disc_outside_and_no_image() {
+        let dom = html::parse(br#"<li>a</li>"#);
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&li].list_style_type, super::ListStyleType::Disc);
+        assert_eq!(
+            styles[&li].list_style_position,
+            super::ListStylePosition::Outside
+        );
+        assert_eq!(styles[&li].list_style_image, None);
+    }
+
+    #[test]
+    fn list_style_type_parses_all_keywords() {
+        let dom = html::parse(br#"<li>a</li>"#);
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+
+        for (value, expected) in [
+            ("disc", super::ListStyleType::Disc),
+            ("circle", super::ListStyleType::Circle),
+            ("square", super::ListStyleType::Square),
+            ("decimal", super::ListStyleType::Decimal),
+            (
+                "decimal-leading-zero",
+                super::ListStyleType::DecimalLeadingZero,
+            ),
+            ("lower-roman", super::ListStyleType::LowerRoman),
+            ("upper-roman", super::ListStyleType::UpperRoman),
+            ("lower-alpha", super::ListStyleType::LowerAlpha),
+            ("upper-alpha", super::ListStyleType::UpperAlpha),
+            ("none", super::ListStyleType::None),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("li {{ list-style-type: {value}; }}")),
+            );
+            assert_eq!(
+                styles[&li].list_style_type, expected,
+                "list-style-type: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_style_properties_are_inherited() {
+        let dom = html::parse(br#"<ul><li>a</li></ul>"#);
+        let ul = find(&dom, dom.document(), "ul").expect("ul not found");
+        let li = find(&dom, ul, "li").expect("li not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "ul { list-style-type: square; list-style-position: inside; \
+                 list-style-image: url(marker.png); }",
+            ),
+        );
+        assert_eq!(styles[&li].list_style_type, super::ListStyleType::Square);
+        assert_eq!(
+            styles[&li].list_style_position,
+            super::ListStylePosition::Inside
+        );
+        assert_eq!(styles[&li].list_style_image.as_deref(), Some("marker.png"));
+    }
+
+    #[test]
+    fn list_style_shorthand_expands_to_all_three_longhands() {
+        let dom = html::parse(br#"<li>a</li>"#);
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("li { list-style: square inside url(marker.png); }"),
+        );
+        assert_eq!(styles[&li].list_style_type, super::ListStyleType::Square);
+        assert_eq!(
+            styles[&li].list_style_position,
+            super::ListStylePosition::Inside
+        );
+        assert_eq!(styles[&li].list_style_image.as_deref(), Some("marker.png"));
+    }
+
+    #[test]
+    fn list_style_shorthand_none_clears_type_and_image() {
+        let dom = html::parse(br#"<li>a</li>"#);
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("li { list-style: none; }"),
+        );
+        assert_eq!(styles[&li].list_style_type, super::ListStyleType::None);
+        assert_eq!(styles[&li].list_style_image, None);
+    }
+
+    #[test]
+    fn list_style_shorthand_type_then_bare_none_means_image_none() {
+        // `type`が先に確定した後に出てくる`none`は`list-style-image: none`と
+        // 解釈されるべき(`list-style-type`を上書きしない)。
+        let dom = html::parse(br#"<li>a</li>"#);
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("li { list-style: square none; }"),
+        );
+        assert_eq!(styles[&li].list_style_type, super::ListStyleType::Square);
+        assert_eq!(styles[&li].list_style_image, None);
+    }
+
+    #[test]
+    fn li_gets_list_item_display_from_ua_stylesheet() {
+        use super::super::ua::user_agent_stylesheet;
+
+        let dom = html::parse(br#"<ul><li>a</li></ul>"#);
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        assert_eq!(styles[&li].display, Display::ListItem);
+    }
+
+    #[test]
+    fn padding_left_and_margin_left_longhands_parse_directly() {
+        // ショートハンド(`padding`/`margin`)を経由しない単独のロングハンドの
+        // パース([0022]実装中に発見・修正したギャップの回帰テスト)。
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { padding-left: 12px; padding-top: 3px; \
+                 margin-left: 5px; margin-top: 7px; }",
+            ),
+        );
+        assert_eq!(
+            styles[&div].padding_left,
+            super::LengthPercentage::Length(12.0)
+        );
+        assert_eq!(
+            styles[&div].padding_top,
+            super::LengthPercentage::Length(3.0)
+        );
+        assert_eq!(
+            styles[&div].margin_left,
+            super::LengthPercentageOrAuto::LengthPercentage(super::LengthPercentage::Length(5.0))
+        );
+        assert_eq!(
+            styles[&div].margin_top,
+            super::LengthPercentageOrAuto::LengthPercentage(super::LengthPercentage::Length(7.0))
+        );
+    }
+
+    #[test]
+    fn overflow_parses_all_keywords_and_defaults_to_visible() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&div].overflow, super::Overflow::Visible);
+
+        for (value, expected) in [
+            ("visible", super::Overflow::Visible),
+            ("hidden", super::Overflow::Hidden),
+            ("scroll", super::Overflow::Scroll),
+            ("auto", super::Overflow::Auto),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ overflow: {value}; }}")),
+            );
+            assert_eq!(styles[&div].overflow, expected, "overflow: {value}");
+        }
+    }
+
+    #[test]
+    fn overflow_is_not_inherited() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { overflow: hidden; }"),
+        );
+        assert_eq!(styles[&div].overflow, super::Overflow::Hidden);
+        assert_eq!(styles[&p].overflow, super::Overflow::Visible);
+    }
+
+    #[test]
+    fn z_index_parses_auto_and_integers_and_is_not_inherited() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&div].z_index, super::ZIndex::Auto);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { z-index: -3; }"),
+        );
+        assert_eq!(styles[&div].z_index, super::ZIndex::Value(-3));
+        assert_eq!(
+            styles[&p].z_index,
+            super::ZIndex::Auto,
+            "z-index should not be inherited"
+        );
+    }
+
+    #[test]
+    fn visibility_parses_all_keywords_and_is_inherited() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        for (value, expected) in [
+            ("visible", super::Visibility::Visible),
+            ("hidden", super::Visibility::Hidden),
+            ("collapse", super::Visibility::Collapse),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ visibility: {value}; }}")),
+            );
+            assert_eq!(styles[&div].visibility, expected, "visibility: {value}");
+            assert_eq!(
+                styles[&p].visibility, expected,
+                "visibility should be inherited: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn outline_shorthand_expands_to_width_style_color_and_defaults_to_currentcolor() {
+        let dom = html::parse(br#"<div style="color: rgb(9, 9, 9);">a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { outline: 3px dashed; }"),
+        );
+        assert_eq!(styles[&div].outline_width.0, 3.0);
+        assert_eq!(styles[&div].outline_style, super::BorderStyle::Dashed);
+        // 色を省略した場合は`currentcolor`(この要素自身のcolor)へ解決される。
+        assert_eq!(
+            styles[&div].outline_color,
+            RgbaColor {
+                red: 9,
+                green: 9,
+                blue: 9,
+                alpha: 1.0
+            }
+        );
+    }
+
+    #[test]
+    fn border_style_keyword_parses_groove_ridge_inset_outset() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for (value, expected) in [
+            ("groove", super::BorderStyle::Groove),
+            ("ridge", super::BorderStyle::Ridge),
+            ("inset", super::BorderStyle::Inset),
+            ("outset", super::BorderStyle::Outset),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ border-style: {value}; }}")),
+            );
+            assert_eq!(
+                styles[&div].border_top_style, expected,
+                "border-style: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn border_radius_shorthand_with_slash_sets_independent_horizontal_and_vertical_radii() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { border-radius: 10px 20px / 30px 40px; }"),
+        );
+        let style = &styles[&div];
+        assert_eq!(style.border_top_left_radius.horizontal.0, 10.0);
+        assert_eq!(style.border_top_left_radius.vertical.0, 30.0);
+        assert_eq!(style.border_top_right_radius.horizontal.0, 20.0);
+        assert_eq!(style.border_top_right_radius.vertical.0, 40.0);
+        // 2値指定は(top-left/bottom-right, top-right/bottom-left)の順。
+        assert_eq!(style.border_bottom_right_radius.horizontal.0, 10.0);
+        assert_eq!(style.border_bottom_right_radius.vertical.0, 30.0);
+    }
+
+    #[test]
+    fn border_radius_shorthand_without_slash_makes_a_circle() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { border-radius: 15px; }"),
+        );
+        let corner = styles[&div].border_top_left_radius;
+        assert_eq!(corner.horizontal.0, 15.0);
+        assert_eq!(corner.vertical.0, 15.0);
+    }
+
+    #[test]
+    fn border_corner_radius_longhand_accepts_one_or_two_lengths() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { border-top-left-radius: 5px 8px; border-top-right-radius: 6px; }",
+            ),
+        );
+        let style = &styles[&div];
+        assert_eq!(style.border_top_left_radius.horizontal.0, 5.0);
+        assert_eq!(style.border_top_left_radius.vertical.0, 8.0);
+        assert_eq!(style.border_top_right_radius.horizontal.0, 6.0);
+        assert_eq!(style.border_top_right_radius.vertical.0, 6.0);
+    }
+
+    #[test]
+    fn content_attr_reads_the_element_own_html_attribute() {
+        let dom = html::parse(br#"<span data-label="hello">x</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(r#"span::before { content: attr(data-label) ": "; }"#),
+        );
+        assert_eq!(
+            styles[&span].pseudo_before_content.as_deref(),
+            Some("hello: ")
+        );
+    }
+
+    #[test]
+    fn content_attr_is_empty_when_the_attribute_is_missing() {
+        let dom = html::parse(br#"<span>x</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(r#"span::before { content: "[" attr(data-missing) "]"; }"#),
+        );
+        assert_eq!(styles[&span].pseudo_before_content.as_deref(), Some("[]"));
+    }
+
+    #[test]
+    fn counter_increments_across_siblings_and_resets_are_scoped_to_the_parent() {
+        // 兄弟間ではカウンタが引き継がれ(counter-incrementが累積する)、
+        // 親が異なればcounter-resetにより独立したスコープになる([0024]決定2)。
+        let dom = html::parse(
+            br#"<div>
+                <section>
+                    <h2 class="a">a</h2>
+                    <h2 class="b">b</h2>
+                </section>
+                <section>
+                    <h2 class="c">c</h2>
+                </section>
+            </div>"#,
+        );
+        let mut h2s = Vec::new();
+        find_all(&dom, dom.document(), "h2", &mut h2s);
+        assert_eq!(h2s.len(), 3);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "section { counter-reset: h2count; } \
+                 h2 { counter-increment: h2count; } \
+                 h2::before { content: counter(h2count) \". \"; }",
+            ),
+        );
+        assert_eq!(
+            styles[&h2s[0]].pseudo_before_content.as_deref(),
+            Some("1. ")
+        );
+        assert_eq!(
+            styles[&h2s[1]].pseudo_before_content.as_deref(),
+            Some("2. ")
+        );
+        // 2つ目の`section`は独立したスコープなので1から数え直す。
+        assert_eq!(
+            styles[&h2s[2]].pseudo_before_content.as_deref(),
+            Some("1. ")
+        );
+    }
+
+    #[test]
+    fn counter_reset_on_an_element_stays_visible_to_its_following_siblings() {
+        // 回帰テスト: 実装当初、`counter-reset`をpushした要素自身の処理が
+        // 終わった時点で即popしてしまい、後続の兄弟要素からカウンタが
+        // 見えなくなるバグがあった([0024]決定2、「スコープは要素自身とそれに
+        // 続く兄弟要素まで及ぶ」)。
+        let dom = html::parse(
+            br#"<div>
+                <h2 class="reset">Intro</h2>
+                <h3 class="a">A</h3>
+                <h3 class="b">B</h3>
+            </div>"#,
+        );
+        let h3_a = find(&dom, dom.document(), "h3").expect("h3 not found");
+        let mut h3s = Vec::new();
+        find_all(&dom, dom.document(), "h3", &mut h3s);
+        assert_eq!(h3s[0], h3_a);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "h2 { counter-reset: section; } \
+                 h3 { counter-increment: section; } \
+                 h3::before { content: counter(section) \". \"; }",
+            ),
+        );
+        assert_eq!(
+            styles[&h3s[0]].pseudo_before_content.as_deref(),
+            Some("1. ")
+        );
+        assert_eq!(
+            styles[&h3s[1]].pseudo_before_content.as_deref(),
+            Some("2. ")
+        );
+    }
+
+    #[test]
+    fn counters_function_joins_nested_scope_values_with_the_separator() {
+        let dom = html::parse(
+            br#"<ol class="outer">
+                <li class="a">a
+                    <ol class="inner"><li class="b">b</li></ol>
+                </li>
+            </ol>"#,
+        );
+        let li_a = find(&dom, dom.document(), "li").expect("li not found");
+        let mut lis = Vec::new();
+        find_all(&dom, dom.document(), "li", &mut lis);
+        assert_eq!(lis[0], li_a);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "ol { counter-reset: item; } \
+                 li { counter-increment: item; } \
+                 li::before { content: counters(item, \".\"); }",
+            ),
+        );
+        assert_eq!(styles[&lis[0]].pseudo_before_content.as_deref(), Some("1"));
+        assert_eq!(
+            styles[&lis[1]].pseudo_before_content.as_deref(),
+            Some("1.1")
+        );
+    }
+
+    #[test]
+    fn counter_increment_on_an_unknown_counter_implicitly_creates_it_at_zero() {
+        let dom = html::parse(br#"<div><span>x</span></div>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "span { counter-increment: undeclared; } \
+                 span::before { content: counter(undeclared); }",
+            ),
+        );
+        assert_eq!(styles[&span].pseudo_before_content.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn counter_styles_cover_roman_alpha_and_non_numeric_fallback() {
+        let dom = html::parse(br#"<div><span>x</span></div>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        for (style, expected) in [
+            ("upper-roman", "IV"),
+            ("lower-roman", "iv"),
+            ("upper-alpha", "D"),
+            ("lower-alpha", "d"),
+            ("decimal-leading-zero", "04"),
+            ("disc", ""),
+            ("none", ""),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!(
+                    "span {{ counter-increment: c 4; }} \
+                     span::before {{ content: counter(c, {style}); }}"
+                )),
+            );
+            assert_eq!(
+                styles[&span].pseudo_before_content.as_deref(),
+                Some(expected),
+                "counter(c, {style})"
+            );
+        }
+    }
+
+    #[test]
+    fn after_content_is_resolved_after_descendants_so_it_reflects_their_counter_changes() {
+        // 回帰テスト: `::after`をDOM順で子孫より先に(この要素自身の処理中に)
+        // 解決すると、子孫による`counter-increment`/`quotes`の変更を反映
+        // できないバグがあった([0024]決定4関連の実装ノート)。
+        let dom = html::parse(br#"<div><span>x</span></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { counter-reset: c; } \
+                 span { counter-increment: c; } \
+                 div::after { content: \"total=\" counter(c); }",
+            ),
+        );
+        let _ = span;
+        assert_eq!(
+            styles[&div].pseudo_after_content.as_deref(),
+            Some("total=1")
+        );
+    }
+
+    #[test]
+    fn nested_quotes_use_the_pair_matching_their_nesting_depth() {
+        // 回帰テスト: `::after`(close-quote)の深度更新が子孫の処理より先に
+        // 行われてしまい、ネストした`<q>`が常に深度0のペアを使ってしまう
+        // バグがあった。
+        let dom = html::parse(br#"<div><q class="outer">a<q class="inner">b</q>c</q></div>"#);
+        let outer = find(&dom, dom.document(), "q").expect("outer q not found");
+        let mut qs = Vec::new();
+        find_all(&dom, dom.document(), "q", &mut qs);
+        assert_eq!(qs[0], outer);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                r#"q { quotes: "\201C" "\201D" "\2018" "\2019"; }
+                   q::before { content: open-quote; }
+                   q::after { content: close-quote; }"#,
+            ),
+        );
+        assert_eq!(
+            styles[&qs[0]].pseudo_before_content.as_deref(),
+            Some("\u{201C}")
+        );
+        assert_eq!(
+            styles[&qs[1]].pseudo_before_content.as_deref(),
+            Some("\u{2018}")
+        );
+        assert_eq!(
+            styles[&qs[1]].pseudo_after_content.as_deref(),
+            Some("\u{2019}")
+        );
+        assert_eq!(
+            styles[&qs[0]].pseudo_after_content.as_deref(),
+            Some("\u{201D}")
+        );
+    }
+
+    #[test]
+    fn quotes_none_produces_empty_strings_but_still_tracks_depth() {
+        let dom = html::parse(br#"<q>a</q>"#);
+        let q = find(&dom, dom.document(), "q").expect("q not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "q { quotes: none; } q::before { content: open-quote; } \
+                 q::after { content: close-quote; }",
+            ),
+        );
+        assert_eq!(styles[&q].pseudo_before_content.as_deref(), Some(""));
+        assert_eq!(styles[&q].pseudo_after_content.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn first_letter_style_only_captures_the_supported_property_subset() {
+        let dom = html::parse(br#"<p>text</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "p::first-letter { font-size: 2em; color: rgb(200, 0, 0); \
+                 float: left; }",
+            ),
+        );
+        let fl = styles[&p]
+            .first_letter_style
+            .as_ref()
+            .expect("first_letter_style should be Some");
+        assert_eq!(fl.font_size, Some(super::Length(32.0)));
+        assert_eq!(
+            fl.color,
+            Some(RgbaColor {
+                red: 200,
+                green: 0,
+                blue: 0,
+                alpha: 1.0
+            })
+        );
+        // `float`はサポート対象外のプロパティなので無視される(既知の簡略化)。
+        assert_eq!(fl.font_weight, None);
+    }
+
+    #[test]
+    fn first_letter_style_is_none_without_a_matching_rule() {
+        let dom = html::parse(br#"<p>text</p>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(styles[&p].first_letter_style, None);
     }
 }

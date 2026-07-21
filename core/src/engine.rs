@@ -144,6 +144,12 @@ struct StreamingState<S: Sink> {
     /// ぶんを蓄積する([0017](../docs/decisions/0017-background-image-design.md)決定2)。
     background_images: HashMap<NodeId, Rc<PreparedImage>>,
     root_font_size: f32,
+    /// CSSカウンタの状態([0024](../docs/decisions/0024-generated-content-design.md)
+    /// 決定2)。ドキュメント順に依存するため、トップレベル要素をまたいで
+    /// 永続させる必要があり`root_font_size`と同じ位置づけで持つ。
+    counters: HashMap<String, Vec<i32>>,
+    /// `quotes`のネスト深度(決定3、木構造とは無関係な単一のカウンタ)。
+    quote_depth: i32,
     /// `<body>`要素自身の計算スタイル。各トップレベル要素のスタイル計算の
     /// 親スタイルとして使う。
     body_style: ComputedStyle,
@@ -278,6 +284,11 @@ impl<S: Sink> Engine<S> {
         // 真のストリーミング処理では文書全体のスタイルを一度に持たない
         // ため、ここでは呼ばない(モジュールdocの既知の限界を参照)。
 
+        // CSSカウンタ・quote深度はドキュメント順に依存する状態([0024]決定2・3)
+        // なので、<html>から<body>直下の各トップレベル要素まで一貫して
+        // 同じ状態を引き継ぐ(以後`StreamingState`が永続させる)。
+        let mut counters = HashMap::new();
+        let mut quote_depth = 0;
         let (html_style, body_style, root_font_size) = {
             let dom = self.parser.dom();
             let html_id = dom
@@ -291,6 +302,8 @@ impl<S: Sink> Engine<S> {
                 default_root_font_size,
                 &ua,
                 &author,
+                &mut counters,
+                &mut quote_depth,
             );
             let root_font_size = html_style.font_size.0;
             let body_style = compute_single_element_style(
@@ -300,6 +313,8 @@ impl<S: Sink> Engine<S> {
                 root_font_size,
                 &ua,
                 &author,
+                &mut counters,
+                &mut quote_depth,
             );
             (html_style, body_style, root_font_size)
         };
@@ -337,6 +352,8 @@ impl<S: Sink> Engine<S> {
             styles: HashMap::new(),
             background_images: HashMap::new(),
             root_font_size,
+            counters,
+            quote_depth,
             body_style,
             content_width: body_content_width,
             start_x,
@@ -366,6 +383,8 @@ impl<S: Sink> Engine<S> {
                 state.root_font_size,
                 &state.ua,
                 &state.author,
+                &mut state.counters,
+                &mut state.quote_depth,
             );
             let mut item_box = build_box_for_element(&dom, &sub_styles, node);
             if let Some(item_box) = &mut item_box {
