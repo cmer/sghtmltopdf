@@ -18,6 +18,58 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
     └── ruby/       # Ruby向けFFI層(magnus + rb-sys)
 ```
 
+## CSSプロパティ対応を追加する際の開発手順
+
+M8(CSS2.1対応)の各カテゴリ(Positioning & Float、Typography詳細、Table
+layout、Lists、Box model詳細、Generated content、Background詳細)を実装する
+過程で固まった、CSSプロパティ対応を1カテゴリ追加する際の標準的な手順。
+新しいカテゴリ・M9(CSS3対応)以降もこの手順を踏襲する想定。
+
+1. **現状調査**: `core/src/style/properties.rs`(`PropertyDeclaration`)・
+   `computed.rs`(`ComputedStyle`)を対象カテゴリのプロパティでgrepし、
+   パース・カスケードの対応状況を事実ベースで確認する(投機で書かない)。
+2. **スコープ判断の洗い出し**: 仕様のどこまで対応するか(キーワードの
+   組み合わせ、非対応にするCSS3寄りの値、印刷用途で意味を持たない機能等)
+   のうち、コードだけでは決められない判断はユーザーに確認する。判断は
+   `docs/decisions/NNNN-{category}-design.md`(連番ADR)に、決定した内容と
+   理由をセットで記録する(対応表そのものはADRには置かず、
+   `docs/tasks/000N-*.md`側のカテゴリ別✅/❌表で管理する。カテゴリ単位・
+   用途優先の進め方の背景は
+   [docs/decisions/0018-css21-css3-coverage-strategy.md](docs/decisions/0018-css21-css3-coverage-strategy.md)参照)。
+3. **値の型を`style/values.rs`に追加**: 長さ・パーセンテージを持つ値は、
+   パース直後の指定値(`Specified*`、`em`/`rem`等の相対単位を保持)と
+   カスケード解決後の計算値(`resolve(font_size, root_font_size)`でpxへ
+   変換)を分離する既存パターン(`SpecifiedCornerRadius`/`CornerRadius`等)
+   に倣う。単純なキーワードのみの値は指定値/計算値を分けない1つのenumで足りる。
+4. **パースを`style/properties.rs`に追加**: `PropertyDeclaration`へ
+   バリアントを追加し、`parse_declaration`のディスパッチ表とパース関数を
+   実装する。ショートハンドは「ループで、どの種類の値かを`try_parse`で
+   都度判定する」既存パターン(`border`/`outline`/`list-style`ショートハンド
+   参照)を踏襲する。
+5. **カスケードを`style/computed.rs`に追加**: `ComputedStyle`へフィールドを
+   追加し、継承プロパティかどうかを決めた上でカスケード収集ループ・
+   継承解決・初期値フォールバックを実装する。
+6. **レイアウト/PDF描画を実装**: 必要に応じて`layout/`配下(ボックスツリー
+   構築・レイアウトアルゴリズム)と`pdf/document.rs`(実際の描画)を拡張する。
+   幾何計算は描画コードから独立した純粋関数に切り出すと単体テストしやすい
+   (`pdf/document.rs::background_tile_rects`等)。
+7. **テストを追加**: `computed.rs`にパース・継承・カスケードの単体テスト、
+   `pdf/document.rs`に描画ロジックの単体テストを追加した上で、
+   `core/tests/{category}.rs`を新設し、HTMLパース→スタイルカスケード→
+   ページ分割→PDFエンコードの実際のパイプラインを通すE2Eテストを書く。
+8. **CLIで目視確認**: `cargo run --bin sghtmltopdf`で対象プロパティを含む
+   HTMLを実際にPDF化し、PyMuPDF等でPNGへレンダリングして目視確認する
+   (自動テストは正しさの一部しか検証できないため必須の手順とする)。
+9. **lintとテストをクリーンにする**: `cargo fmt --check`・
+   `cargo clippy --workspace --all-targets -- -D warnings`・
+   `cargo test --workspace`がすべて通ることを確認する。
+10. **ドキュメントを同期する**: `docs/tasks/000N-*.md`のカテゴリ別対応表を
+    ✅へ更新しT番号タスクとして実装内容を追記、README.mdの「開発状況」に
+    完了したカテゴリの節を追加する(実装完了分にのみ適用する新規ルールで、
+    過去分の遡及は行わない)。
+11. **コミットは人間が行う**。実装が完了したら、コミット内容の提案(対象
+    ファイル・コミットメッセージ案)を投げる。
+
 ## 開発状況
 
 マイルストーン1(静的HTML一括変換)・マイルストーン2(CSS Fragmentation)・
