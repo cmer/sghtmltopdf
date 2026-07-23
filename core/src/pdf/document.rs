@@ -937,6 +937,7 @@ fn resolve_length_percentage(lp: LengthPercentage, basis: f32) -> f32 {
     match lp {
         LengthPercentage::Length(px) => px,
         LengthPercentage::Percentage(p) => p * basis,
+        LengthPercentage::Calc { px, percent } => px + percent * basis,
     }
 }
 
@@ -1906,10 +1907,7 @@ fn background_tile_rects(
 fn resolve_background_size_component(value: LengthPercentageOrAuto, basis: f32) -> Option<f32> {
     match value {
         LengthPercentageOrAuto::Auto => None,
-        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(l)) => Some(l),
-        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Percentage(p)) => {
-            Some(basis * p)
-        }
+        LengthPercentageOrAuto::LengthPercentage(lp) => Some(resolve_length_percentage(lp, basis)),
     }
 }
 
@@ -1920,6 +1918,7 @@ fn resolve_background_position_offset(value: LengthPercentage, container: f32, t
     match value {
         LengthPercentage::Length(l) => l,
         LengthPercentage::Percentage(p) => (container - tile) * p,
+        LengthPercentage::Calc { px, percent } => px + (container - tile) * percent,
     }
 }
 

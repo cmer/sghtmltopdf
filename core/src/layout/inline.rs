@@ -845,6 +845,7 @@ fn resolve_length_percentage(lp: LengthPercentage, basis: f32) -> f32 {
     match lp {
         LengthPercentage::Length(px) => px,
         LengthPercentage::Percentage(fraction) => fraction * basis,
+        LengthPercentage::Calc { px, percent } => px + percent * basis,
     }
 }
 
@@ -1278,10 +1279,7 @@ fn resolve_baseline_shifts(runs: &mut [TextRun], fonts: &FontCollection) {
             VerticalAlign::TextTop => base_ascent - run.ascent,
             VerticalAlign::TextBottom => run.descent - base_descent,
             VerticalAlign::Middle => base_x_height / 2.0 - (run.ascent - run.descent) / 2.0,
-            VerticalAlign::LengthPercentage(LengthPercentage::Length(px)) => px,
-            VerticalAlign::LengthPercentage(LengthPercentage::Percentage(fraction)) => {
-                run.line_height * fraction
-            }
+            VerticalAlign::LengthPercentage(lp) => resolve_length_percentage(lp, run.line_height),
         };
     }
 }

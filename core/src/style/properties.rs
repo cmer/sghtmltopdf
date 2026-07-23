@@ -8,7 +8,7 @@ use super::values::{
     BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
     Display, EmptyCells, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent,
     ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
-    SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow,
+    SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow, SpecifiedCalc,
     SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing,
     SpecifiedTransformFunction, SpecifiedVerticalAlign, TableLayout, TextAlign, TextDecorationLine,
@@ -1029,6 +1029,10 @@ fn parse_text_decoration_line<'i>(
 fn parse_length_percentage<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedLengthPercentage, ParseError<'i, ()>> {
+    // `calc(...)`([0050](../../../docs/decisions/0050-calc-design.md))。
+    if let Ok(calc) = input.try_parse(parse_calc) {
+        return Ok(SpecifiedLengthPercentage::Calc(calc));
+    }
     let token = input.next()?.clone();
     match token {
         Token::Percentage { unit_value, .. } => {
@@ -1042,6 +1046,163 @@ fn parse_length_percentage<'i>(
         } => Ok(SpecifiedLengthPercentage::Length(parse_length_unit(
             input, value, unit,
         )?)),
+        _ => Err(input.new_custom_error(())),
+    }
+}
+
+/// `calc()`の計算途中値([0050]決定3)。長さ次元(px/em/rem)・パーセンテージ・
+/// 純粋な数値の線形結合を保持する。
+#[derive(Debug, Clone, Copy, Default)]
+struct CalcValue {
+    px: f32,
+    em: f32,
+    rem: f32,
+    /// パーセンテージの割合(50% = 0.5)。
+    percent: f32,
+    /// 単位のない数値(`* 2`や`/ 3`の係数、または不正な裸の数値)。
+    number: f32,
+}
+
+impl CalcValue {
+    fn number(n: f32) -> Self {
+        Self {
+            number: n,
+            ..Default::default()
+        }
+    }
+    /// 次元・パーセンテージ成分を持たない(=純粋な数値)か。
+    fn is_pure_number(&self) -> bool {
+        self.px == 0.0 && self.em == 0.0 && self.rem == 0.0 && self.percent == 0.0
+    }
+    fn add(self, other: Self) -> Self {
+        Self {
+            px: self.px + other.px,
+            em: self.em + other.em,
+            rem: self.rem + other.rem,
+            percent: self.percent + other.percent,
+            number: self.number + other.number,
+        }
+    }
+    fn scale(self, factor: f32) -> Self {
+        Self {
+            px: self.px * factor,
+            em: self.em * factor,
+            rem: self.rem * factor,
+            percent: self.percent * factor,
+            number: self.number * factor,
+        }
+    }
+}
+
+/// `calc(...)`を[`SpecifiedCalc`]へパースする([0050]決定3)。裸の数値が
+/// 残る式(長さとして無効)はエラーにする。`min()`/`max()`/`clamp()`は非対応。
+fn parse_calc<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedCalc, ParseError<'i, ()>> {
+    input.expect_function_matching("calc")?;
+    let value = input.parse_nested_block(parse_calc_sum)?;
+    if value.number != 0.0 {
+        // `calc(2)`のように裸の数値が残る = 長さ文脈では無効。
+        return Err(input.new_custom_error(()));
+    }
+    Ok(SpecifiedCalc {
+        px: value.px,
+        em: value.em,
+        rem: value.rem,
+        percent: value.percent,
+    })
+}
+
+fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
+    let mut acc = parse_calc_product(input)?;
+    loop {
+        // `+`/`-`の前後には空白が必須(CSS仕様)。cssparserは`+5`のような
+        // 符号付き数値を1トークンにするため、Delimでない場合はループを抜ける。
+        let sign = input.try_parse(|input| {
+            let token = input.next()?.clone();
+            match token {
+                Token::Delim('+') => Ok(1.0),
+                Token::Delim('-') => Ok(-1.0),
+                _ => Err(input.new_custom_error::<(), ()>(())),
+            }
+        });
+        match sign {
+            Ok(sign) => {
+                let rhs = parse_calc_product(input)?;
+                acc = acc.add(rhs.scale(sign));
+            }
+            Err(_) => return Ok(acc),
+        }
+    }
+}
+
+fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
+    let mut acc = parse_calc_value(input)?;
+    loop {
+        enum Op {
+            Mul,
+            Div,
+        }
+        let op = input.try_parse(|input| {
+            let token = input.next()?.clone();
+            match token {
+                Token::Delim('*') => Ok(Op::Mul),
+                Token::Delim('/') => Ok(Op::Div),
+                _ => Err(input.new_custom_error::<(), ()>(())),
+            }
+        });
+        match op {
+            Ok(Op::Mul) => {
+                let rhs = parse_calc_value(input)?;
+                // 次元×次元は不可(少なくとも一方が純粋な数値、CSS仕様)。
+                if acc.is_pure_number() {
+                    acc = rhs.scale(acc.number);
+                } else if rhs.is_pure_number() {
+                    acc = acc.scale(rhs.number);
+                } else {
+                    return Err(input.new_custom_error(()));
+                }
+            }
+            Ok(Op::Div) => {
+                let rhs = parse_calc_value(input)?;
+                if !rhs.is_pure_number() || rhs.number == 0.0 {
+                    return Err(input.new_custom_error(()));
+                }
+                acc = acc.scale(1.0 / rhs.number);
+            }
+            Err(_) => return Ok(acc),
+        }
+    }
+}
+
+fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
+    // 括弧(ネストしたcalc相当)。
+    if input
+        .try_parse(|input| input.expect_parenthesis_block())
+        .is_ok()
+    {
+        return input.parse_nested_block(parse_calc_sum);
+    }
+    let token = input.next()?.clone();
+    match token {
+        Token::Number { value, .. } => Ok(CalcValue::number(value)),
+        Token::Percentage { unit_value, .. } => Ok(CalcValue {
+            percent: unit_value,
+            ..Default::default()
+        }),
+        Token::Dimension {
+            value, ref unit, ..
+        } => {
+            let mut v = CalcValue::default();
+            if unit.eq_ignore_ascii_case("px") {
+                v.px = value;
+            } else if unit.eq_ignore_ascii_case("em") {
+                v.em = value;
+            } else if unit.eq_ignore_ascii_case("rem") {
+                v.rem = value;
+            } else {
+                return Err(input.new_custom_error(()));
+            }
+            Ok(v)
+        }
         _ => Err(input.new_custom_error(())),
     }
 }

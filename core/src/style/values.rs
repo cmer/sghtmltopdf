@@ -416,6 +416,13 @@ impl ZIndex {
 pub enum LengthPercentage {
     Length(f32),
     Percentage(f32),
+    /// `calc()`の解決済み複合値([0050](
+    /// ../../../docs/decisions/0050-calc-design.md)決定1)。使用値は
+    /// `px + percent * basis`(`percent`は割合、50% = 0.5)。
+    Calc {
+        px: f32,
+        percent: f32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -473,11 +480,33 @@ impl SpecifiedCornerRadius {
     }
 }
 
+/// `calc()`の指定値([0050](../../../docs/decisions/0050-calc-design.md)決定2)。
+/// `em`/`rem`はパース時点で未解決なので4成分で保持し、`resolve`でpxへ畳む。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SpecifiedCalc {
+    pub px: f32,
+    pub em: f32,
+    pub rem: f32,
+    /// パーセンテージの割合(50% = 0.5)。
+    pub percent: f32,
+}
+
+impl SpecifiedCalc {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> LengthPercentage {
+        LengthPercentage::Calc {
+            px: self.px + self.em * font_size + self.rem * root_font_size,
+            percent: self.percent,
+        }
+    }
+}
+
 /// パース直後の「長さまたはパーセンテージ」の指定値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SpecifiedLengthPercentage {
     Length(SpecifiedLength),
     Percentage(f32),
+    /// `calc()`([0050]決定2)。
+    Calc(SpecifiedCalc),
 }
 
 impl SpecifiedLengthPercentage {
@@ -487,6 +516,7 @@ impl SpecifiedLengthPercentage {
                 LengthPercentage::Length(length.resolve(font_size, root_font_size).0)
             }
             Self::Percentage(fraction) => LengthPercentage::Percentage(fraction),
+            Self::Calc(calc) => calc.resolve(font_size, root_font_size),
         }
     }
 }
@@ -837,6 +867,7 @@ fn resolve_lp_against(lp: LengthPercentage, basis: f32) -> f32 {
     match lp {
         LengthPercentage::Length(px) => px,
         LengthPercentage::Percentage(p) => p * basis,
+        LengthPercentage::Calc { px, percent } => px + percent * basis,
     }
 }
 

@@ -676,6 +676,7 @@ fn apply_page_rule_settings_override(base: PageSettings, page_rules: &[PageRule]
         Some(LengthPercentageOrAuto::LengthPercentage(lp)) => match lp {
             crate::style::LengthPercentage::Length(px) => px,
             crate::style::LengthPercentage::Percentage(p) => basis * p,
+            crate::style::LengthPercentage::Calc { px, percent } => px + basis * percent,
         },
     };
     settings.margin.top = resolve_edge(

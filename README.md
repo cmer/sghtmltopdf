@@ -91,6 +91,24 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 `<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
 フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
 
+### `calc()`
+
+`width`/`height`/`margin`/`padding`/`top`/`right`/`bottom`/`left`/`text-indent`
+などで`calc()`に対応した。設計は[0050](docs/decisions/0050-calc-design.md)。
+
+```css
+width: calc(100% - 40px);
+padding-left: calc(2em + 10px);
+margin: calc((100% - 960px) / 2);
+```
+
+* パーセンテージと絶対長(px/em/rem)の混在を、計算値`LengthPercentage::Calc
+  { px, percent }`として保持し、使う側で`px + percent * 基準幅`に解決する
+* `+`/`-`/`*`/`/`・括弧に対応。乗除は片方が数値である必要がある(CSS仕様)
+* 対象は length-percentage を取るプロパティ。`border-width`/`font-size`/
+  `line-height`など専用型のプロパティの`calc`、および`min()`/`max()`/`clamp()`は
+  非対応(書いた場合は宣言が無視される)
+
 ### `position: absolute`/`fixed`
 
 透かし・印影・カード内ラベル・全ページ共通のヘッダ/フッタ向けに、絶対配置に

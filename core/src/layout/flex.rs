@@ -308,6 +308,9 @@ fn map_length_percentage(v: LengthPercentage) -> tf::LengthPercentage {
     match v {
         LengthPercentage::Length(px) => tf::LengthPercentage::length(px),
         LengthPercentage::Percentage(p) => tf::LengthPercentage::percent(p),
+        // taffyはpx+%の複合を表現できないため、gap等のcalcはpx成分のみ渡す
+        // (calcの主用途はflex外のwidth/margin。既知の簡略化)。
+        LengthPercentage::Calc { px, .. } => tf::LengthPercentage::length(px),
     }
 }
 
@@ -319,6 +322,9 @@ fn map_dimension(v: LengthPercentageOrAuto) -> tf::Dimension {
         }
         LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Percentage(p)) => {
             tf::Dimension::percent(p)
+        }
+        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc { px, .. }) => {
+            tf::Dimension::length(px)
         }
     }
 }
@@ -332,6 +338,9 @@ fn map_margin(v: LengthPercentageOrAuto) -> tf::LengthPercentageAuto {
         LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Percentage(p)) => {
             tf::LengthPercentageAuto::percent(p)
         }
+        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc { px, .. }) => {
+            tf::LengthPercentageAuto::length(px)
+        }
     }
 }
 
@@ -340,5 +349,6 @@ fn map_flex_basis(v: FlexBasis) -> tf::Dimension {
         FlexBasis::Auto => tf::Dimension::auto(),
         FlexBasis::LengthPercentage(LengthPercentage::Length(px)) => tf::Dimension::length(px),
         FlexBasis::LengthPercentage(LengthPercentage::Percentage(p)) => tf::Dimension::percent(p),
+        FlexBasis::LengthPercentage(LengthPercentage::Calc { px, .. }) => tf::Dimension::length(px),
     }
 }

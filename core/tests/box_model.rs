@@ -250,3 +250,49 @@ fn a_document_using_margin_collapse_renders_a_valid_pdf() {
     );
     assert!(bytes.starts_with(b"%PDF-"));
 }
+
+// ===== calc()(M11 Phase 2、T272、[0050]) =====
+
+#[test]
+fn calc_width_mixes_percentage_and_pixels() {
+    let (dom, laid) = layout(
+        r#"<div class="c">x</div>"#,
+        "body { margin: 0; } .c { width: calc(100% - 100px); height: 20px; }",
+    );
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let c = find_laid_out(&laid, divs[0]).unwrap();
+    let content_width = PageSettings::default().content_width();
+    assert!(
+        (c.layout.content.width - (content_width - 100.0)).abs() < 0.5,
+        "calc(100% - 100px) should be {} but was {}",
+        content_width - 100.0,
+        c.layout.content.width
+    );
+}
+
+#[test]
+fn calc_padding_resolves_em_and_pixels() {
+    let (dom, laid) = layout(
+        r#"<div class="c">x</div>"#,
+        "body { margin: 0; } .c { font-size: 16px; width: 300px; padding-left: calc(1em + 4px); }",
+    );
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let c = find_laid_out(&laid, divs[0]).unwrap();
+    // 1em(16px) + 4px = 20px。
+    assert!(
+        (c.layout.padding.left - 20.0).abs() < 0.5,
+        "got {}",
+        c.layout.padding.left
+    );
+}
+
+#[test]
+fn a_document_using_calc_renders_a_valid_pdf() {
+    let (_, bytes) = build_pdf(
+        r#"<div style="width: calc(50% + 2em); margin-left: calc(10px + 5%);">x</div>"#,
+        "body { margin: 0; }",
+    );
+    assert!(bytes.starts_with(b"%PDF-"));
+}

@@ -2904,6 +2904,89 @@ mod tests {
     }
 
     #[test]
+    fn calc_mixes_percentage_and_pixels() {
+        use crate::style::LengthPercentage;
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { width: calc(100% - 40px); }"),
+        );
+        match styles[&div].width {
+            super::LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc {
+                px,
+                percent,
+            }) => {
+                assert_eq!(px, -40.0);
+                assert_eq!(percent, 1.0);
+            }
+            other => panic!("expected a calc value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn calc_resolves_em_using_the_element_font_size() {
+        use crate::style::LengthPercentage;
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { font-size: 20px; margin-left: calc(2em + 5px); }"),
+        );
+        // 2em(=40px)+ 5px = 45px、パーセンテージ成分なし。
+        match styles[&div].margin_left {
+            super::LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc {
+                px,
+                percent,
+            }) => {
+                assert_eq!(px, 45.0);
+                assert_eq!(percent, 0.0);
+            }
+            other => panic!("expected a calc value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn calc_supports_multiplication_and_division() {
+        use crate::style::LengthPercentage;
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { width: calc((100% - 20px) / 2 + 3px * 2); }"),
+        );
+        // (100% - 20px)/2 = 50% - 10px、+ 6px = 50% - 4px。
+        match styles[&div].width {
+            super::LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc {
+                px,
+                percent,
+            }) => {
+                assert!((px - (-4.0)).abs() < 0.001, "px={px}");
+                assert!((percent - 0.5).abs() < 0.001, "percent={percent}");
+            }
+            other => panic!("expected a calc value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn calc_with_a_bare_number_or_dimension_product_is_rejected() {
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        // `calc(2)`は裸の数値、`calc(2px * 3px)`は次元×次元でどちらも無効。
+        for css in ["div { width: calc(2); }", "div { width: calc(2px * 3px); }"] {
+            let styles = compute_styles(&dom, &Stylesheet::default(), &parse_stylesheet(css));
+            assert_eq!(
+                styles[&div].width,
+                super::LengthPercentageOrAuto::Auto,
+                "invalid calc should be dropped, leaving the initial value: {css}"
+            );
+        }
+    }
+
+    #[test]
     fn absolute_and_fixed_are_block_level() {
         // CSS2.1 9.7 / [0049]決定2-0: absolute/fixedはdisplayをblock化する。
         // これによりインライン要素(span)も絶対配置の対象になる。

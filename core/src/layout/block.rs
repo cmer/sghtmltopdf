@@ -1090,6 +1090,7 @@ pub(super) fn resolve_lp(lp: LengthPercentage, basis: f32) -> f32 {
     match lp {
         LengthPercentage::Length(px) => px,
         LengthPercentage::Percentage(fraction) => fraction * basis,
+        LengthPercentage::Calc { px, percent } => px + percent * basis,
     }
 }
 
