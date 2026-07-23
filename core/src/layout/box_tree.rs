@@ -123,6 +123,37 @@ pub struct InlineSpan {
     /// 上書きされる([0024](../../../docs/decisions/0024-generated-content-design.md)
     /// 決定4、`layout::inline::flatten_spans`が適用する)。
     pub is_first_letter: bool,
+    /// `<br>`由来の強制改行かどうか([0037](
+    /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
+    /// `true`のとき`text`は`"\n"`で、`node`は`<br>`要素自身(空行の高さを
+    /// その計算スタイルから求めるため)。
+    pub is_forced_break: bool,
+}
+
+impl InlineSpan {
+    /// 通常のテキスト区間。
+    fn text(node: NodeId, text: String) -> Self {
+        Self {
+            node,
+            text,
+            is_first_letter: false,
+            is_forced_break: false,
+        }
+    }
+
+    /// `<br>`由来の強制改行([0037](
+    /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
+    /// `text`を`"\n"`にしておくことで、`white-space: pre`の経路
+    /// (`layout::inline::layout_pre_content`は`'\n'`で行を分割する)が
+    /// 改修なしで強制改行を処理できる。
+    fn forced_break(node: NodeId) -> Self {
+        Self {
+            node,
+            text: "\n".to_string(),
+            is_first_letter: false,
+            is_forced_break: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -350,6 +381,7 @@ fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<Inlin
             node,
             text: first_letter_text,
             is_first_letter: true,
+            is_forced_break: false,
         },
     );
 }
@@ -380,14 +412,7 @@ fn apply_list_item_marker(
 
     if style.list_style_position == ListStylePosition::Inside {
         if let BoxContent::Inline(spans) = &mut b.content {
-            spans.insert(
-                0,
-                InlineSpan {
-                    node,
-                    text: format!("{text} "),
-                    is_first_letter: false,
-                },
-            );
+            spans.insert(0, InlineSpan::text(node, format!("{text} ")));
             return;
         }
     }
@@ -619,12 +644,23 @@ fn collect_spans(
     out: &mut Vec<InlineSpan>,
 ) {
     match &dom.node(node).data {
-        NodeData::Text { contents } => out.push(InlineSpan {
-            node,
-            text: contents.clone(),
-            is_first_letter: false,
-        }),
-        NodeData::Element { .. } => {
+        NodeData::Text { contents } => out.push(InlineSpan::text(node, contents.clone())),
+        NodeData::Element { name, .. } => {
+            // インライン文脈の子孫にも`display: none`を効かせる。`child_kind`は
+            // ブロック/インラインの振り分け時にしか呼ばれないため、ここで見ないと
+            // 「インライン要素の中にある非表示要素」(例:
+            // `<p>a <select><option>x</option></select> b</p>`)の子孫テキストが
+            // 本文へ漏れる([0036](
+            // ../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
+            // 決定2・決定7の前提)。
+            if styles.get(&node).map(|s| s.display) == Some(Display::None) {
+                return;
+            }
+            // `<br>`は子を持たない強制改行マーカー([0037]決定1)。
+            if &*name.local == "br" {
+                out.push(InlineSpan::forced_break(node));
+                return;
+            }
             push_before_content(styles, node, out);
             for child in dom.children(node) {
                 collect_spans(dom, styles, child, out);
@@ -646,11 +682,7 @@ fn push_before_content(
         .get(&node)
         .and_then(|s| s.pseudo_before_content.as_ref())
     {
-        out.push(InlineSpan {
-            node,
-            text: text.clone(),
-            is_first_letter: false,
-        });
+        out.push(InlineSpan::text(node, text.clone()));
     }
 }
 
@@ -665,11 +697,7 @@ fn push_after_content(
         .get(&node)
         .and_then(|s| s.pseudo_after_content.as_ref())
     {
-        out.push(InlineSpan {
-            node,
-            text: text.clone(),
-            is_first_letter: false,
-        });
+        out.push(InlineSpan::text(node, text.clone()));
     }
 }
 
@@ -796,6 +824,23 @@ mod tests {
 
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].text, "Text");
+    }
+
+    #[test]
+    fn display_none_inside_an_inline_context_contributes_no_spans() {
+        // 回帰テスト: `collect_spans`が`display: none`を見ていなかったため、
+        // インライン要素の子孫にある非表示要素(ここでは`<select>`の
+        // `<option>`)のテキストが本文へ漏れていた。
+        let dom = html::parse(br#"<p>a <select><option>LEAK</option></select> b</p>"#);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let spans = find_inline_spans(&tree).expect("expected inline content");
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        assert!(
+            !text.contains("LEAK"),
+            "hidden descendants must not contribute text, got {text:?}"
+        );
     }
 
     #[test]

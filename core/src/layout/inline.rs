@@ -69,6 +69,22 @@ pub struct LineBox {
 struct StyledChar {
     ch: char,
     style_index: usize,
+    /// `<br>`由来の強制改行文字かどうか([0037](
+    /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
+    /// `ch`は`'\n'`。`white-space: pre`の経路はこのフラグを見ずに`'\n'`だけで
+    /// 行を分割するため、`<pre>`内の`<br>`も自然に改行になる。
+    is_forced_break: bool,
+}
+
+/// 通常フロー(`white-space: normal`/`nowrap`)の行組みの入力単位
+/// ([0037]決定2)。
+enum InlineItem<'a> {
+    Word(&'a [StyledChar]),
+    /// `<br>`由来の強制改行。`style_index`は`<br>`要素自身のスタイル
+    /// (空行の高さ算出に使う)。
+    ForcedBreak {
+        style_index: usize,
+    },
 }
 
 /// `spans`(テキストノード単位の区間列)を`available_width`に収まるよう行分割し、
@@ -124,8 +140,8 @@ pub(crate) fn layout_inline_content(
         );
     }
 
-    let words = split_into_words(&chars);
-    if words.is_empty() {
+    let items = split_into_items(&chars);
+    if items.is_empty() {
         return Vec::new();
     }
 
@@ -139,8 +155,62 @@ pub(crate) fn layout_inline_content(
     // `text-align: justify`がここに追加スペースを配分する(行頭に来た単語は
     // 境界として記録しない、既存の行の左端そのものだから)。
     let mut word_boundaries: Vec<usize> = Vec::new();
+    // 直前のアイテムが強制改行だった場合の、その`<br>`が要求する行高さ。
+    // 末尾の`<br>`に対して空行を1つ足すため([0037]決定2-3)に使う。
+    let mut trailing_break_height: Option<f32> = None;
 
-    for word in words {
+    for item in items {
+        let word = match item {
+            InlineItem::Word(word) => {
+                trailing_break_height = None;
+                word
+            }
+            InlineItem::ForcedBreak { style_index } => {
+                // 強制改行は行幅の残りに関係なく行を確定させる
+                // (`white-space: nowrap`でも効く、[0037]決定2)。
+                let break_height = span_styles
+                    .get(style_index)
+                    .map(resolve_line_height)
+                    .unwrap_or(0.0);
+                if current_runs.is_empty() {
+                    // 行に何も無い状態での強制改行(連続する`<br>`や
+                    // 段落先頭の`<br>`)は、高さだけを持つ空行になる(決定2-2)。
+                    (line_left, line_available_width) =
+                        line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
+                    lines.push(finish_line(
+                        Vec::new(),
+                        0.0,
+                        line_left,
+                        cursor_y,
+                        break_height,
+                    ));
+                    cursor_y += break_height;
+                } else {
+                    let line_height = line_height_for(&current_runs);
+                    lines.push(finish_line(
+                        std::mem::take(&mut current_runs),
+                        current_width,
+                        line_left,
+                        cursor_y,
+                        line_height,
+                    ));
+                    // 強制改行で終わる行は最終行と同じ扱いで、`justify`の
+                    // 伸縮対象にしない(決定2-1)。
+                    apply_text_align(
+                        lines.last_mut().expect("just pushed"),
+                        text_align,
+                        true,
+                        line_available_width,
+                        &word_boundaries,
+                    );
+                    word_boundaries.clear();
+                    cursor_y += line_height;
+                    current_width = 0.0;
+                }
+                trailing_break_height = Some(break_height);
+                continue;
+            }
+        };
         let word_runs = split_word_into_runs(word, &span_styles, fonts);
 
         // 単語内であっても、CJK文字が絡む改行可能な境界ごとに「まとめて
@@ -240,6 +310,11 @@ pub(crate) fn layout_inline_content(
             line_available_width,
             &word_boundaries,
         );
+    } else if let Some(break_height) = trailing_break_height {
+        // 末尾の`<br>`は1行分の空行を残す(主要ブラウザと同じ挙動、
+        // [0037]決定2-3)。
+        let (left, _) = line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
+        lines.push(finish_line(Vec::new(), 0.0, left, cursor_y, break_height));
     }
 
     lines
@@ -333,6 +408,7 @@ fn flatten_spans(
             chars.push(StyledChar {
                 ch: transformed,
                 style_index,
+                is_forced_break: span.is_forced_break,
             });
             prev_is_boundary = ch.is_whitespace();
         }
@@ -385,13 +461,34 @@ fn apply_text_transform(ch: char, transform: TextTransform, is_word_start: bool)
     }
 }
 
-/// `char::is_whitespace`基準で`str::split_whitespace`相当に単語分割する
-/// (連続する空白は畳み込み、先頭・末尾の空白は無視する)。
-fn split_into_words(chars: &[StyledChar]) -> Vec<&[StyledChar]> {
-    chars
-        .split(|sc| sc.ch.is_whitespace())
-        .filter(|word| !word.is_empty())
-        .collect()
+/// `char::is_whitespace`基準で`str::split_whitespace`相当に単語分割しつつ、
+/// `<br>`由来の強制改行を[`InlineItem::ForcedBreak`]として出現順に挟み込む
+/// ([0037](../../../docs/decisions/0037-forced-line-break-design.md)決定2)。
+/// 連続する空白は畳み込み、先頭・末尾の空白は無視する(強制改行は空白では
+/// あるが畳み込まれず、常に1つのアイテムとして残る)。
+fn split_into_items(chars: &[StyledChar]) -> Vec<InlineItem<'_>> {
+    let mut items = Vec::new();
+    let mut word_start = 0usize;
+
+    for (i, sc) in chars.iter().enumerate() {
+        if !sc.ch.is_whitespace() {
+            continue;
+        }
+        if word_start < i {
+            items.push(InlineItem::Word(&chars[word_start..i]));
+        }
+        if sc.is_forced_break {
+            items.push(InlineItem::ForcedBreak {
+                style_index: sc.style_index,
+            });
+        }
+        word_start = i + 1;
+    }
+    if word_start < chars.len() {
+        items.push(InlineItem::Word(&chars[word_start..]));
+    }
+
+    items
 }
 
 /// 単語を、(スタイル, フォント)が連続する区間ごとに[`TextRun`]へ分割する。
@@ -1388,6 +1485,108 @@ mod tests {
                 blue: 0,
                 alpha: 1.0
             }
+        );
+    }
+
+    /// 各行のテキストを連結して返す(強制改行のテスト用。空行は空文字列)。
+    fn line_texts(lines: &[LineBox]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|line| line.runs.iter().map(|r| r.text.as_str()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn br_breaks_the_line_even_when_the_text_would_fit() {
+        let (_, spans, styles) = spans_for("hello<br>world", "");
+        let fonts = dejavu_only();
+        // 十分に広い行幅でも改行される。
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+
+        assert_eq!(line_texts(&lines), vec!["hello", "world"]);
+        assert!(
+            lines[1].rect.y > lines[0].rect.y,
+            "the second line must be placed below the first"
+        );
+    }
+
+    #[test]
+    fn br_breaks_even_with_white_space_nowrap() {
+        let (_, spans, styles) = spans_for("hello<br>world", "p { white-space: nowrap; }");
+        let fonts = dejavu_only();
+        // `nowrap`は「幅による折り返し」を止めるだけで、強制改行は効く。
+        let lines = layout_inline_content(&spans, &styles, &fonts, 10.0, 0.0, 0.0, None);
+        assert_eq!(line_texts(&lines), vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn consecutive_brs_produce_an_empty_line() {
+        let (_, spans, styles) = spans_for("a<br><br>b", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+
+        assert_eq!(line_texts(&lines), vec!["a", "", "b"]);
+        assert!(
+            lines[1].rect.height > 0.0,
+            "the blank line must still take vertical space"
+        );
+        assert_eq!(lines[1].rect.y, lines[0].rect.y + lines[0].rect.height);
+        assert_eq!(lines[2].rect.y, lines[1].rect.y + lines[1].rect.height);
+    }
+
+    #[test]
+    fn a_trailing_br_leaves_one_empty_line() {
+        // 主要ブラウザと同じ挙動([0037]決定2-3)。
+        let (_, spans, styles) = spans_for("a<br>", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+
+        assert_eq!(line_texts(&lines), vec!["a", ""]);
+        assert!(lines[1].rect.height > 0.0);
+    }
+
+    #[test]
+    fn a_leading_br_pushes_the_text_down_by_one_line() {
+        let (_, spans, styles) = spans_for("<br>a", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+
+        assert_eq!(line_texts(&lines), vec!["", "a"]);
+        assert_eq!(lines[1].rect.y, lines[0].rect.height);
+    }
+
+    #[test]
+    fn br_does_not_swallow_the_surrounding_words() {
+        // 改行文字は単語区切りとしても働くため、前後の単語が連結されない。
+        let (_, spans, styles) = spans_for("one two<br>three four", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+        assert_eq!(line_texts(&lines), vec!["onetwo", "threefour"]);
+    }
+
+    #[test]
+    fn br_inside_pre_also_breaks_the_line() {
+        // `white-space: pre`は別経路(`layout_pre_content`)だが、`<br>`は
+        // `'\n'`としてスパンに載るため改修なしで改行になる([0037]決定1)。
+        let (_, spans, styles) = spans_for("a<br>b", "p { white-space: pre; }");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+        assert_eq!(line_texts(&lines), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn the_empty_line_of_a_br_uses_its_own_line_height() {
+        let (_, spans, styles) = spans_for(
+            "a<br><br>b",
+            "p { font-size: 10px; } br { font-size: 40px; line-height: 2; }",
+        );
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
+
+        assert_eq!(line_texts(&lines), vec!["a", "", "b"]);
+        assert_eq!(
+            lines[1].rect.height, 80.0,
+            "the blank line takes the <br>'s own line-height (40px * 2)"
         );
     }
 }

@@ -131,12 +131,20 @@ impl<'a> Element for ElementRef<'a> {
         })
     }
 
+    /// 対話状態(`:hover`/`:focus`等)・訪問履歴(`:visited`)・フォーム状態
+    /// (`:checked`等)はJS非対応の印刷出力では意味を持たないため常に非マッチ。
+    /// `:link`/`:any-link`のみ、`href`を持つ`<a>`(=[`Self::is_link`])として
+    /// 静的に判定できるためマッチさせる(`:visited`は「未訪問」を意味する
+    /// `:link`と排他だが、訪問履歴が存在しない以上すべてのリンクは未訪問)。
     fn match_non_ts_pseudo_class(
         &self,
-        _pc: &NonTSPseudoClass,
+        pc: &NonTSPseudoClass,
         _context: &mut MatchingContext<Self::Impl>,
     ) -> bool {
-        false
+        match pc {
+            NonTSPseudoClass::Link | NonTSPseudoClass::AnyLink => self.is_link(),
+            _ => false,
+        }
     }
 
     fn match_pseudo_element(
@@ -252,5 +260,50 @@ mod tests {
             &"id".into(),
             &AttrSelectorOperation::Exists,
         ));
+    }
+
+    /// `:link`/`:any-link`は`href`を持つ`<a>`にだけマッチする(UAスタイル
+    /// シートのリンク色・下線がこれに依存する)。他の状態系擬似クラスは
+    /// 印刷出力では意味を持たないため常に非マッチ。
+    #[test]
+    fn link_pseudo_classes_match_only_anchors_with_an_href() {
+        use crate::style::selector_impl::NonTSPseudoClass;
+        use selectors::context::{QuirksMode, SelectorCaches};
+        use selectors::matching::{
+            MatchingContext, MatchingForInvalidation, MatchingMode, NeedsSelectorFlags,
+        };
+
+        let dom = parse(br#"<div><a href="x">link</a><a id="plain">anchor</a></div>"#);
+        let mut anchors = Vec::new();
+        fn collect(dom: &Dom, id: NodeId, out: &mut Vec<NodeId>) {
+            if let NodeData::Element { name, .. } = &dom.node(id).data {
+                if &*name.local == "a" {
+                    out.push(id);
+                }
+            }
+            for child in dom.children(id) {
+                collect(dom, child, out);
+            }
+        }
+        collect(&dom, dom.document(), &mut anchors);
+
+        let mut caches = SelectorCaches::default();
+        let mut context = MatchingContext::new(
+            MatchingMode::Normal,
+            None,
+            &mut caches,
+            QuirksMode::NoQuirks,
+            NeedsSelectorFlags::No,
+            MatchingForInvalidation::No,
+        );
+
+        let with_href = ElementRef::new(&dom, anchors[0]);
+        let without_href = ElementRef::new(&dom, anchors[1]);
+        for pc in [NonTSPseudoClass::Link, NonTSPseudoClass::AnyLink] {
+            assert!(with_href.match_non_ts_pseudo_class(&pc, &mut context));
+            assert!(!without_href.match_non_ts_pseudo_class(&pc, &mut context));
+        }
+        assert!(!with_href.match_non_ts_pseudo_class(&NonTSPseudoClass::Hover, &mut context));
+        assert!(!with_href.match_non_ts_pseudo_class(&NonTSPseudoClass::Visited, &mut context));
     }
 }

@@ -83,7 +83,72 @@ Generated content・Background詳細)ともに完了し、**マイルストー�
 Phase 2: Color Level 4・`object-fit`/`object-position`・`box-shadow`・
 CSS Custom Properties、Phase 3: Flexbox)。M9完了後、ユーザー指示により
 Phase4で対象外候補としていた`opacity`/`transform`にも対応した(`filter`は
-引き続き対象外)。
+引き続き対象外)。マイルストーン10(HTML5のタグ対応)に着手し、**Phase 1(カテゴリA:
+UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`、カテゴリC:
+`<hr>`)が完了**。
+
+### `<br>`(強制改行)
+
+```html
+<p>〒100-0001<br>東京都千代田区千代田1-1<br>サンプルビル 10F</p>
+```
+
+設計は[0037](docs/decisions/0037-forced-line-break-design.md)。`<br>`は
+`is_forced_break`フラグ付きの改行文字としてインラインスパン列に載せ、
+行分割器が行幅の残りに関係なく行を確定させる。
+
+* `white-space: nowrap`でも強制改行は効く(CSS仕様どおり)
+* `white-space: pre`の中の`<br>`も改行になる(改行文字として載せているため、
+  `pre`用の別経路がそのまま処理する)
+* 連続する`<br>`は空行を生む。空行の高さは`<br>`自身の`line-height`
+* 末尾の`<br>`も1行分の空行を残す(主要ブラウザと同じ挙動。wkhtmltopdf
+  (WebKit)からの移行で見た目が変わらないことを優先)
+* 強制改行で終わる行は`text-align: justify`の伸縮対象にしない(CSS仕様)
+* `<br clear="...">`(float回避)は未対応。`<wbr>`(改行機会のヒント)も
+  現状の行分割(空白とCJK境界でのみ改行可能)の枠組みに載らないため未対応
+
+### HTML5要素のUAデフォルトスタイル
+
+WHATWG HTML仕様の"Rendering"節を出発点に、印刷/PDF出力で意味を持つ宣言だけを
+移植したUAスタイルシート(`core/src/style/ua.rs`)。設計は[0036](docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)。
+
+```html
+<h4>見出しはh1〜h6すべてがboldで、レベルごとにサイズが変わる</h4>
+<p><code>等幅</code>・<q>自動引用符</q>・<small>縮小</small>・
+   <a href="https://example.com">リンク色と下線</a></p>
+<hr>
+<details><summary>閉じていれば summary だけが出る</summary><p>本文</p></details>
+<p hidden>hidden 属性で消える</p>
+```
+
+* 見出し`h1`〜`h6`(`font-weight: bold`+レベル別のサイズ・マージン)、
+  `dl`/`dt`/`dd`、`blockquote`/`figure`、`fieldset`/`legend`、`hr`(水平線)、
+  `pre`/`code`/`kbd`/`samp`/`tt`(等幅)、`small`/`big`/`sub`/`sup`(相対
+  サイズ)、`i`/`em`/`cite`/`dfn`/`var`/`address`(italic)、`th`(bold+中央)、
+  `caption`(中央)、`center`、`q`の自動引用符(`::before`/`::after`+`quotes`)、
+  `a:link`(青+下線)に対応
+* HTML5のセクショニング要素(`article`/`section`/`header`/`footer`/`aside`/
+  `nav`/`main`/`hgroup`/`search`/`figure`/`figcaption`/`details`/`summary`/
+  `dialog`)とフレージング要素(`time`/`data`/`output`/`bdi`/`bdo`/`ruby`/
+  `rt`/`rp`/`mark`/`wbr`等)の既定`display`を定義
+* **描画できない要素は明示的に`display: none`にする**: `svg`/`math`/`canvas`/
+  `video`/`audio`/`iframe`/`embed`/`object`と、フォームコントロール
+  (`input`/`select`/`option`/`textarea`/`button`/`progress`/`meter`)。
+  未知の要素の既定`display`は`inline`のため、これが無いと`<option>`の
+  選択肢テキストや`<svg>`内のテキストが本文に流れ込む
+* `hidden`属性(`[hidden] { display: none }`)・`<details open>`・
+  `<dialog open>`による出し分けに対応。UA originは常にAuthor originに負ける
+  ため、作者CSSで上書きできる
+* CSSの汎用family名`monospace`/`serif`は、fontconfigに依存しない自前の候補
+  リスト(+`monospace`はフォントの等幅メタデータによるフォールバック)で
+  解決する。`sans-serif`は既定`font-family`と同値であり、解決すると`--font`で
+  渡したフォントが既定フォントでなくなるため意図的に解決しない
+* 既知の限界: ルビのレイアウトは非対応(`rt`/`rp`をインラインのまま出力する
+  ため「漢字(かんじ)」というフォールバック表記になる)。`<mark>`等の
+  **インライン要素の`background-color`は描画されない**(インライン描画が
+  背景色を持たない既存の制約)。`<details>`直下の裸テキストはセレクタで
+  指定できないため閉じていても隠せない。`<noscript>`は仕様上「スクリプト
+  無効時は表示」だが、JS前提の代替文言が帳票に混入するのを避けるため非表示
 
 ### `opacity`/`transform`
 

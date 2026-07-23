@@ -1,11 +1,17 @@
 //! OS標準のフォントディレクトリを走査してシステムフォントを解決する(`fontdb`を使用)。
 //!
-//! CSSの汎用family名(`sans-serif`/`serif`等)はここでは解決しない対象とする。
-//! `fontdb`はLinuxではfontconfigの設定(`/etc/fonts/fonts.conf`)から汎用名の
-//! 実体を拾えるが、fontconfig未設置の最小環境ではOS間で一貫性のないハードコードの
-//! 既定名(`Arial`等)にフォールバックし、インストール環境に実在するとは限らない。
+//! CSSの汎用family名(`monospace`/`serif`)は、`fontdb`(=Linuxでは
+//! fontconfig)の汎用名解決には**任せず**、自前の候補リストで解決する
+//! ([0036](../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
+//! 決定3)。`fontdb`はfontconfig未設置の最小環境ではOS間で一貫性のない
+//! ハードコードの既定名(`Arial`等)にフォールバックし、インストール環境に
+//! 実在するとは限らないため。候補リストが全て外れた場合、`monospace`のみ
+//! `fontdb`のフェース単位のメタデータ(`FaceInfo::monospaced`。fontconfig
+//! 非依存)を使って等幅フェースを探す。それでも見つからなければ解決を諦め、
 //! [`crate::fonts::FontCollection`]が既に持つグリフカバレッジ・フォールバックに
-//! 任せ、ここでは`font-family`で名指しされた具体的なフォント名のみを対象にする。
+//! 任せる。`sans-serif`は`ComputedStyle`の既定`font-family`と同値であり、
+//! 解決すると`--font`/`@font-face`で明示指定したフォントが既定フォントで
+//! なくなってしまうため、意図的に解決対象から外している(決定3-1)。
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -18,6 +24,41 @@ use super::font::Font;
 
 /// CSSの汎用family名(大文字小文字を区別せず判定する)。
 const GENERIC_FAMILIES: &[&str] = &["serif", "sans-serif", "monospace", "cursive", "fantasy"];
+
+/// 汎用family名ごとの、実在しやすい具体フォント名の候補(優先順)。
+///
+/// `cursive`/`fantasy`は環境差が大きく実務上の需要も薄いため候補を持たない
+/// (=解決しない、[0036]決定3)。**`sans-serif`も意図的に解決しない**
+/// ([0036]決定3-1): `ComputedStyle`の既定`font-family`が`sans-serif`で
+/// あるため、これを解決すると「`--font`/`@font-face`で明示的に与えた
+/// フォントが既定フォントになる」という挙動が壊れ、PDFに埋め込まれる
+/// フォントが実行環境のインストール状況に依存してしまう。
+const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
+    (
+        "monospace",
+        &[
+            "DejaVu Sans Mono",
+            "Liberation Mono",
+            "Noto Sans Mono",
+            "Ubuntu Mono",
+            "Menlo",
+            "Consolas",
+            "Courier New",
+            "Courier",
+        ],
+    ),
+    (
+        "serif",
+        &[
+            "DejaVu Serif",
+            "Liberation Serif",
+            "Noto Serif",
+            "Times New Roman",
+            "Times",
+            "Georgia",
+        ],
+    ),
+];
 
 pub struct SystemFonts {
     db: fontdb::Database,
@@ -70,6 +111,49 @@ impl SystemFonts {
             .flatten()
     }
 
+    /// CSSの汎用family名(`monospace`/`serif`)を、自前の候補リスト
+    /// ([`GENERIC_FAMILY_CANDIDATES`])を優先順に試して具体フォントへ
+    /// 解決する([0036](
+    /// ../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
+    /// 決定3)。候補が全て外れた場合、`monospace`のみ`fontdb`の
+    /// `FaceInfo::monospaced`フラグで等幅フェースを探す。`sans-serif`
+    /// (既定`font-family`と同値のため意図的に対象外、決定3-1)・
+    /// `cursive`/`fantasy`・汎用名でない名前を渡した場合、および何も
+    /// 見つからない場合は`None`。
+    pub fn load_generic(
+        &self,
+        generic: &str,
+        weight: FontWeight,
+        style: FontStyle,
+    ) -> Option<Font> {
+        let candidates = GENERIC_FAMILY_CANDIDATES
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(generic))
+            .map(|(_, candidates)| *candidates)?;
+
+        for candidate in candidates {
+            if let Some(font) = self.load(candidate, weight, style) {
+                return Some(font);
+            }
+        }
+
+        if generic.eq_ignore_ascii_case("monospace") {
+            return self.load_any_monospaced(weight, style);
+        }
+        None
+    }
+
+    /// フォント自身のメタデータ上「等幅」とされているフェースを1つ選び、その
+    /// family名で改めて`load`する(weight/styleの面選択を`load`に任せるため)。
+    fn load_any_monospaced(&self, weight: FontWeight, style: FontStyle) -> Option<Font> {
+        let family = self
+            .db
+            .faces()
+            .filter(|info| info.monospaced)
+            .find_map(|info| info.families.first().map(|(name, _)| name.clone()))?;
+        self.load(&family, weight, style)
+    }
+
     /// `@font-face`の`src: local(...)`用。`name`(フルネームまたはPostScript名、
     /// 大文字小文字を区別しない)に一致する特定の面を1つ直接読み込む。
     /// `load`(family名+weight/styleによるCSS的なフォールバック検索)とは異なり、
@@ -105,13 +189,18 @@ fn to_fontdb_style(style: FontStyle) -> fontdb::Style {
     }
 }
 
-/// `styles`中で使われている具体的な(CSS汎用キーワードではない)
-/// font-family/weight/styleの組のうち、`fonts`にまだ実体が無いものだけを
-/// `system`から読み込み、`fonts`へ追加する。
+/// `styles`中で使われているfont-family/weight/styleの組のうち、`fonts`に
+/// まだ実体が無いものだけを`system`から読み込み、`fonts`へ追加する。
 ///
 /// `family`単位ではなく(family, weight, style)単位で判定するため、例えば
 /// `--font`でRegularのみ読み込んだfamilyに対して文書内で太字が使われていれば、
 /// そのfamilyのBold面だけを追加でシステムから探しに行く。
+///
+/// CSSの汎用family名(`monospace`等)は[`SystemFonts::load_generic`]で解決し、
+/// **汎用名そのものを宣言family名として**`fonts`へ登録する
+/// ([0036](../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
+/// 決定3)。こうすることで`font-family: monospace`の照合が
+/// [`FontCollection::select_for_char`]の通常のfamily一致でそのまま機能する。
 pub fn load_missing_system_fonts(
     fonts: &mut FontCollection,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -124,16 +213,18 @@ pub fn load_missing_system_fonts(
             if !seen.insert(key) {
                 continue;
             }
-            if GENERIC_FAMILIES
-                .iter()
-                .any(|g| g.eq_ignore_ascii_case(family))
-            {
-                continue;
-            }
             if fonts.has_matching_face(family, style.font_weight, style.font_style) {
                 continue;
             }
-            if let Some(font) = system.load(family, style.font_weight, style.font_style) {
+            let is_generic = GENERIC_FAMILIES
+                .iter()
+                .any(|g| g.eq_ignore_ascii_case(family));
+            let font = if is_generic {
+                system.load_generic(family, style.font_weight, style.font_style)
+            } else {
+                system.load(family, style.font_weight, style.font_style)
+            };
+            if let Some(font) = font {
                 fonts.push_font_face(family.clone(), None, None, Vec::new(), font);
             }
         }
@@ -242,7 +333,12 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_system_fonts_ignores_generic_css_keywords() {
+    fn load_missing_system_fonts_does_not_resolve_sans_serif() {
+        // `sans-serif`は`ComputedStyle`の既定`font-family`と同値なので、
+        // これを解決すると`--font`で渡したフォントが既定フォントでなくなる
+        // ([0036]決定3-1)。fixtureには"DejaVu Sans"が実在するため、
+        // 「候補が無いから解決できなかった」のではなく「意図的に解決しない」
+        // ことを確認するテストになっている。
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         let author = parse_stylesheet("p { font-family: sans-serif; }");
         let dom = html::parse(b"<p>text</p>");
@@ -253,7 +349,77 @@ mod tests {
 
         assert!(
             fonts.is_empty(),
-            "generic family keywords should not trigger a system font lookup"
+            "sans-serif should not trigger a system font lookup"
+        );
+    }
+
+    #[test]
+    fn load_generic_resolves_monospace_through_the_candidate_list() {
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        let font = system
+            .load_generic("monospace", FontWeight::Normal, FontStyle::Normal)
+            .expect("DejaVu Sans Mono is in the candidate list and exists in the fixtures");
+        assert_eq!(font.family_name().as_deref(), Some("DejaVu Sans Mono"));
+    }
+
+    #[test]
+    fn load_generic_is_case_insensitive() {
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        assert!(system
+            .load_generic("MONOSPACE", FontWeight::Normal, FontStyle::Normal)
+            .is_some());
+    }
+
+    #[test]
+    fn load_generic_returns_none_for_families_we_deliberately_skip() {
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        for generic in ["sans-serif", "cursive", "fantasy", "Helvetica"] {
+            assert!(
+                system
+                    .load_generic(generic, FontWeight::Normal, FontStyle::Normal)
+                    .is_none(),
+                "{generic} should not be resolved as a generic family"
+            );
+        }
+    }
+
+    #[test]
+    fn load_generic_returns_none_when_no_candidate_exists() {
+        // serifの候補("DejaVu Serif"等)はfixtureに存在しない。monospaceと
+        // 違い、フラグによるフォールバック探索も行わないのでNoneになる。
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        assert!(system
+            .load_generic("serif", FontWeight::Normal, FontStyle::Normal)
+            .is_none());
+    }
+
+    #[test]
+    fn load_any_monospaced_finds_a_monospaced_face_by_its_metadata_flag() {
+        // 候補リストが全て外れた場合のフォールバック経路(fontdbの
+        // `FaceInfo::monospaced`フラグ)。fixtureのDejaVu Sans Monoが
+        // 等幅フラグを持つことを利用して、経路そのものを直接検証する。
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        let font = system
+            .load_any_monospaced(FontWeight::Normal, FontStyle::Normal)
+            .expect("the fixture directory contains a monospaced face");
+        assert_eq!(font.family_name().as_deref(), Some("DejaVu Sans Mono"));
+    }
+
+    #[test]
+    fn load_missing_system_fonts_registers_monospace_under_the_generic_name() {
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        let author = parse_stylesheet("pre { font-family: monospace; }");
+        let dom = html::parse(b"<pre>text</pre>");
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &author);
+
+        let mut fonts = FontCollection::new(vec![]);
+        load_missing_system_fonts(&mut fonts, &styles, &system);
+
+        assert_eq!(fonts.len(), 1);
+        assert!(
+            fonts.has_family("monospace"),
+            "the resolved face must be registered under the generic name so that \
+             `font-family: monospace` matches it during selection"
         );
     }
 }

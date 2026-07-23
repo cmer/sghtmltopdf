@@ -1,9 +1,11 @@
-DejaVuSans.ttf and DejaVuSans-Bold.ttf are derived from the Bitstream Vera
-Fonts and are distributed under the Bitstream Vera License (a permissive,
-free-redistribution license). They are bundled here solely as test fixtures
-for T7 font shaping/measurement tests (core/src/fonts), so tests are
-hermetic and do not depend on system fonts being installed. DejaVuSans-Bold
-is used specifically to test real (non-synthetic) bold face selection.
+DejaVuSans.ttf, DejaVuSans-Bold.ttf and DejaVuSansMono.ttf are derived from
+the Bitstream Vera Fonts and are distributed under the Bitstream Vera
+License (a permissive, free-redistribution license). They are bundled here
+solely as test fixtures for T7 font shaping/measurement tests
+(core/src/fonts), so tests are hermetic and do not depend on system fonts
+being installed. DejaVuSans-Bold is used specifically to test real
+(non-synthetic) bold face selection. DejaVuSansMono is used to test generic
+CSS family resolution (`font-family: monospace`, T212).
 
 Source: https://dejavu-fonts.github.io/
 
