@@ -355,3 +355,133 @@ fn a_form_encodes_to_a_valid_pdf() {
     assert!(bytes.starts_with(b"%PDF-"));
     assert!(bytes.windows(5).any(|w| w == b"%%EOF"));
 }
+
+// ===== インラインの`<img>`(M11 Phase 2、T268、[0046]) =====
+
+fn jpeg_data_uri() -> String {
+    use base64::Engine;
+    let jpeg = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/spike_gradient.jpg"
+    ))
+    .expect("fixture image");
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+    format!("data:image/jpeg;base64,{b64}")
+}
+
+fn layout_with_images(html_src: &str, css: &str) -> (Dom, LaidOutBox) {
+    use sghtmltopdf_core::layout::{build_box_tree, resolve_images};
+    use sghtmltopdf_core::pdf::ImageAssetCache;
+    let dom = html::parse(html_src.as_bytes());
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(css));
+    let fonts = test_fonts();
+    let mut tree = build_box_tree(&dom, &styles);
+    let cache = ImageAssetCache::new(std::path::PathBuf::from("."), false);
+    resolve_images(&mut tree, &dom, &cache);
+    let laid = layout_document(
+        &tree,
+        &styles,
+        &fonts,
+        PageSettings::default().content_width(),
+    );
+    (dom, laid)
+}
+
+#[test]
+fn an_inline_image_sits_on_the_same_line_as_the_text() {
+    let html_src = format!(
+        r#"<p>icon <img src="{}" width="40" height="30"> text</p>"#,
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(&html_src, "body { margin: 0; }");
+    let lines = all_lines(&laid);
+    assert_eq!(lines.len(), 1, "the image must not force its own line");
+    assert_eq!(
+        lines[0].atomics.len(),
+        1,
+        "the image is an atomic inline box"
+    );
+    // 画像の前後にテキストがある。
+    let text: String = lines[0].runs.iter().map(|r| r.text.as_str()).collect();
+    assert_eq!(text, "icontext");
+}
+
+#[test]
+fn an_inline_image_uses_its_attribute_size() {
+    let html_src = format!(
+        r#"<p><img src="{}" width="40" height="30"></p>"#,
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(&html_src, "body { margin: 0; }");
+    let atomic = &all_lines(&laid)[0].atomics[0];
+    assert_eq!(atomic.margin_box_width, 40.0);
+    assert_eq!(atomic.margin_box_height, 30.0);
+    match &atomic.content.content {
+        LaidOutContent::Image(Some(_)) => {}
+        other => panic!("expected an embedded image, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_block_image_still_takes_its_own_line() {
+    // `display: block`を明示した`<img>`は従来どおりブロック置換要素。
+    let html_src = format!(
+        r#"<p>before</p><img src="{}" width="40" height="30" style="display: block;"><p>after</p>"#,
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(&html_src, "body { margin: 0; }");
+    // ブロック画像は行(atomics)に載らない。
+    let lines = all_lines(&laid);
+    assert!(
+        lines.iter().all(|l| l.atomics.is_empty()),
+        "a block image should not be an atomic inline box"
+    );
+}
+
+#[test]
+fn a_vertical_align_applies_to_an_inline_image() {
+    let html_src = format!(
+        r#"<p>x<img src="{}" width="20" height="40" style="vertical-align: top;"></p>"#,
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(&html_src, "body { margin: 0; } p { margin: 0; }");
+    let line = &all_lines(&laid)[0];
+    let img = &line.atomics[0];
+    // 上端揃え: 画像の上端が行の上端に一致する。
+    assert!(
+        (img.content.layout.border_box().y - line.rect.y).abs() < 0.01,
+        "expected {}, got {}",
+        line.rect.y,
+        img.content.layout.border_box().y
+    );
+}
+
+#[test]
+fn an_inline_image_is_embedded_in_the_pdf() {
+    // 画像の解決は`Engine`のパイプライン全体を通す(`paginate_document`は
+    // 内部でbox treeを組み直すため、テスト側で`resolve_images`しても効かない)。
+    use sghtmltopdf_core::engine::{Engine, EngineOptions, FontSpec, Mode};
+    use sghtmltopdf_core::sink::MemorySink;
+
+    let html_src = format!(
+        r#"<html><body><p>logo <img src="{}" width="32" height="24"> here</p></body></html>"#,
+        jpeg_data_uri()
+    );
+    let options = EngineOptions {
+        mode: Mode::Batch,
+        fonts: vec![FontSpec {
+            path: std::path::PathBuf::from(FONT_PATH),
+            index: 0,
+        }],
+        ..EngineOptions::default()
+    };
+    let mut engine = Engine::new(options, MemorySink::new());
+    engine.feed(html_src.as_bytes()).unwrap();
+    let bytes = engine.finish().unwrap();
+
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        bytes.windows(10).any(|w| w == b"/DCTDecode"),
+        "the inline JPEG must be embedded as an image XObject"
+    );
+}

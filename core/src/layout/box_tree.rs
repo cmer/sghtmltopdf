@@ -361,7 +361,18 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
                 resolve_images(item, dom, image_cache);
             }
         }
-        BoxContent::Inline(_) | BoxContent::Image(_) => {}
+        // 行に参加するアトミックボックス(インラインの`<img>`・
+        // `display: inline-block`)の中も辿る([0046](
+        // ../../../docs/decisions/0046-inline-image-design.md)決定4)。
+        // 辿らないとインライン画像が常に「取得失敗」扱いになる。
+        BoxContent::Inline(spans) => {
+            for span in spans {
+                if let Some(atomic) = span.atomic.as_deref_mut() {
+                    resolve_images(atomic, dom, image_cache);
+                }
+            }
+        }
+        BoxContent::Image(_) => {}
     }
 }
 
@@ -934,7 +945,15 @@ fn read_rowspan(dom: &Dom, node: NodeId) -> usize {
 }
 
 fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox>) {
-    if !pending.iter().all(|span| span.text.trim().is_empty()) {
+    // 空白のみのテキストからは無名ブロックを作らない(CSS2.1 9.2.2.1)。
+    // ただしアトミックボックス(インラインの`<img>`・`display: inline-block`)は
+    // `text`が空でも意味のある内容なので、1つでもあれば無名ブロックを作る
+    // ([0046](../../../docs/decisions/0046-inline-image-design.md)決定2で
+    // インライン画像が消えていた原因)。
+    let has_meaningful_content = pending
+        .iter()
+        .any(|span| span.atomic.is_some() || !span.text.trim().is_empty());
+    if has_meaningful_content {
         result.push(LayoutBox {
             node: None,
             content: BoxContent::Inline(std::mem::take(pending)),
@@ -946,17 +965,10 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
 
 fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) -> ChildKind {
     match &dom.node(node).data {
-        NodeData::Element { name, .. } => {
+        NodeData::Element { .. } => {
             let display = styles.get(&node).map(|s| s.display);
             if display == Some(Display::None) {
                 return ChildKind::None;
-            }
-            // `<img>`はHTML上のdisplay既定値がinlineの置換要素だが、インライン
-            // フォーマッティングコンテキスト(行分割・ベースライン整合)への
-            // 統合は複雑になるため、M5の初期スコープではブロックレベルの
-            // 置換要素としてのみ扱う([[0014]]参照、既知の制約)。
-            if &*name.local == "img" {
-                return ChildKind::Block;
             }
             match display {
                 // `inline-block`は親の行に参加する(中身はブロックとして
@@ -1031,6 +1043,20 @@ fn collect_spans_in_context(
             // `<br>`は子を持たない強制改行マーカー([0037]決定1)。
             if &*name.local == "br" {
                 out.push(InlineSpan::forced_break(node));
+                return;
+            }
+            // インラインの`<img>`(置換要素)も1つの箱として行に参加する
+            // ([0046](../../../docs/decisions/0046-inline-image-design.md)決定2)。
+            // 中身は`resolve_images`が後から`BoxContent::Image`へ差し替える。
+            if &*name.local == "img" {
+                out.push(InlineSpan::atomic(
+                    node,
+                    LayoutBox {
+                        node: Some(node),
+                        content: BoxContent::Inline(Vec::new()),
+                        marker: None,
+                    },
+                ));
                 return;
             }
             // `display: inline-block`は1つの箱として行に参加する([0043]決定1)。
@@ -1131,6 +1157,58 @@ mod tests {
                 }),
             BoxContent::Flex(flex) => flex.items.iter().find_map(find_inline_spans),
         }
+    }
+
+    #[test]
+    fn an_inline_img_becomes_an_atomic_span_inside_the_text() {
+        // [0046]決定1・2: `<img>`の既定displayはinlineなので、テキストと同じ
+        // インラインボックスにアトミックボックスとして載る。
+        let dom = html::parse(br#"<p>before <img src="a.png"> after</p>"#);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let p_box = find_box(&tree, p).expect("p box not found");
+        let spans = find_inline_spans(p_box).expect("expected inline content");
+
+        let atomic_count = spans.iter().filter(|s| s.atomic.is_some()).count();
+        assert_eq!(atomic_count, 1, "the <img> should be one atomic span");
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(text.replace(char::is_whitespace, ""), "beforeafter");
+    }
+
+    #[test]
+    fn a_lone_inline_img_between_blocks_is_not_dropped() {
+        // 回帰テスト: `flush_pending_spans`が「テキストが空白のみ」で無名ブロックを
+        // 捨てていたため、`<p>`兄弟の間の裸の`<img>`が消えていた([0046])。
+        let dom = html::parse(br#"<p>a</p><img src="x.png"><p>b</p>"#);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        fn count_atomics(b: &LayoutBox) -> usize {
+            match &b.content {
+                BoxContent::Inline(spans) => spans.iter().filter(|s| s.atomic.is_some()).count(),
+                BoxContent::Blocks(children) => children.iter().map(count_atomics).sum(),
+                _ => 0,
+            }
+        }
+        assert_eq!(count_atomics(&tree), 1, "the lone <img> must survive");
+    }
+
+    #[test]
+    fn a_block_img_is_still_a_block_replaced_element() {
+        // `display: block`を明示した`<img>`は従来どおりブロック置換要素
+        // (アトミックスパンにはならない)。
+        let dom = html::parse(br#"<div><img src="a.png" style="display: block;"></div>"#);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let img = find(&dom, dom.document(), "img").expect("img not found");
+        let img_box = find_box(&tree, img).expect("the block <img> should have its own box");
+        assert!(matches!(
+            img_box.content,
+            BoxContent::Inline(_) | BoxContent::Image(_)
+        ));
     }
 
     #[test]

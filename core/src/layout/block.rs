@@ -758,7 +758,7 @@ fn resolve_height(style: &ComputedStyle, padding_tb: f32, border_tb: f32) -> Opt
 /// されている場合(もう一方は`auto`)は、通常のブロック要素と同じ扱いに
 /// 委ねる(アスペクト比を保った導出は行わない)。実務上`<img>`にCSSで
 /// 幅と高さを片方だけ指定するケースは稀であり、優先度を割かなかった。
-fn apply_replaced_element_auto_size(style: &mut ComputedStyle, image: &ImageBoxContent) {
+pub(super) fn apply_replaced_element_auto_size(style: &mut ComputedStyle, image: &ImageBoxContent) {
     let width_is_auto = matches!(style.width, LengthPercentageOrAuto::Auto);
     let height_is_auto = matches!(style.height, LengthPercentageOrAuto::Auto);
     if !(width_is_auto && height_is_auto) {

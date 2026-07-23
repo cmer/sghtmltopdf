@@ -192,7 +192,8 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 * `top`/`bottom`は行ボックスの高さを増やさない(収束計算を避けるための簡略化)
 * テーブルセルの`vertical-align`は従来どおり`top`/`middle`/`bottom`/`baseline`
   のみ有効で、インライン専用の値を指定した場合は`baseline`扱い
-* `<img>`はブロックレベルの置換要素として扱うため対象外(M5からの既知の制約)
+* インラインの`<img>`(既定)にも`vertical-align`が効く。`display: block`を
+  指定した`<img>`はブロック置換要素として扱う
 
 **インライン要素の背景色**(`<mark>`や`<span style="background-color: ...">`)も
 このカテゴリで対応した。ランごとにascent〜descentの矩形として塗る。テキスト
@@ -769,7 +770,8 @@ CSS2.1の`float`(left/right)・`clear`(left/right/both)、および
   埋め込みはいずれも初回の1回のみ(`Mode::Streaming`でもメモリ使用量は
   異なる画像の種類数に比例し、要素数には比例しない)
 * `<img>`はブロックレベルの置換要素としてのみ対応する(インライン
-  フォーマッティングコンテキストへの統合は非対応、既知の制約)
+  フォーマッティングコンテキストへの統合はM11で対応。既定の`<img>`はインライン
+  置換要素として行に載り、`display: block`を指定すると独立した行になる)
 
 詳細は[docs/decisions/0012-image-embedding-crates.md](docs/decisions/0012-image-embedding-crates.md)
 (クレート選定)・[docs/decisions/0013-image-fetch-security.md](docs/decisions/0013-image-fetch-security.md)

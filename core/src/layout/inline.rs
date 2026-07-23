@@ -25,7 +25,7 @@ use crate::style::{
 };
 
 use super::block::LaidOutBox;
-use super::box_tree::{InlineSpan, LayoutBox};
+use super::box_tree::{BoxContent, InlineSpan, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::Rect;
 
@@ -1185,11 +1185,18 @@ fn layout_atomic_inline(
     fonts: &FontCollection,
     available_width: f32,
 ) -> LaidOutBox {
-    let style = b
+    let mut style = b
         .node
         .and_then(|n| styles.get(&n))
         .cloned()
         .unwrap_or_default();
+    // 置換要素(`<img>`)は`width`/`height`属性・画像の固有サイズから寸法が
+    // 決まる([0046](../../../docs/decisions/0046-inline-image-design.md)決定3)。
+    // ブロック配置時(`resolve_box_geometry`)と同じ処理をここでも通し、
+    // 寸法決定ロジックを共有する。
+    if let BoxContent::Image(image_content) = &b.content {
+        super::block::apply_replaced_element_auto_size(&mut style, image_content);
+    }
     let padding = super::block::resolve_padding(&style, available_width);
     let border = super::block::resolve_border(&style);
 
