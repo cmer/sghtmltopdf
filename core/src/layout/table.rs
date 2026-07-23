@@ -119,13 +119,40 @@ pub(super) fn layout_table(
     // 同一の結果になる。
     let grid = build_table_grid(&table.rows, column_count);
 
-    // `table-layout: fixed`は最初の行の明示`width`指定のみを見て、内容測定
-    // (`compute_column_widths`のセル自然幅計算)を完全にスキップする高速パス
-    // (仕様上もこれがfixedモードの目的そのもの)。
+    // `<colgroup>`/`<col>`由来の列幅ヒントを、この時点で使用幅(px)へ解決する
+    // ([0038](../../../docs/decisions/0038-colgroup-col-design.md)決定4)。
+    // 列数を超える分は捨て、足りない分は指定なしとして扱う。
+    let column_hints: Vec<Option<f32>> = (0..column_count)
+        .map(|i| {
+            table
+                .column_widths
+                .get(i)
+                .copied()
+                .flatten()
+                .map(|lp| resolve_lp(lp, available_column_width))
+        })
+        .collect();
+
+    // `table-layout: fixed`は`<col>`と最初の行の明示`width`指定のみを見て、
+    // 内容測定(`compute_column_widths`のセル自然幅計算)を完全にスキップする
+    // 高速パス(仕様上もこれがfixedモードの目的そのもの)。
     let col_widths = if table_layout == TableLayout::Fixed {
-        compute_fixed_column_widths(&grid, styles, column_count, available_column_width)
+        compute_fixed_column_widths(
+            &grid,
+            styles,
+            &column_hints,
+            column_count,
+            available_column_width,
+        )
     } else {
-        compute_column_widths(&grid, styles, fonts, column_count, available_column_width)
+        compute_column_widths(
+            &grid,
+            styles,
+            fonts,
+            &column_hints,
+            column_count,
+            available_column_width,
+        )
     };
     let mut col_x = vec![0.0f32; column_count + 1];
     col_x[0] = h_spacing;
@@ -396,14 +423,16 @@ fn build_table_grid(rows: &[TableRow], column_count: usize) -> Vec<Vec<GridCell<
     grid
 }
 
-/// `table-layout: fixed`用の列幅決定(CSS2.1 §17.5.2.1の簡略版)。最初の行の
-/// セルに明示`width`(px/%)指定があればそれをそのセルが占める列の合計幅とし
-/// (colspanで複数列にまたがる場合は列数で均等に分割する)、指定の無い列は
-/// 残りの幅を均等配分する。1行目に無い列(1行目のcolspan合計が`column_count`
-/// に満たない場合)も均等配分の対象に含める。内容の測定は一切行わない。
+/// `table-layout: fixed`用の列幅決定(CSS2.1 §17.5.2.1の簡略版)。
+/// `<col>`由来のヒント(`column_hints`)を最優先し、次に最初の行のセルの明示
+/// `width`(px/%)をそのセルが占める列の合計幅とし(colspanで複数列にまたがる
+/// 場合は列数で均等に分割する)、どちらも無い列は残りの幅を均等配分する。
+/// 1行目に無い列(1行目のcolspan合計が`column_count`に満たない場合)も均等
+/// 配分の対象に含める。内容の測定は一切行わない。
 fn compute_fixed_column_widths(
     grid: &[Vec<GridCell<'_>>],
     styles: &HashMap<NodeId, ComputedStyle>,
+    column_hints: &[Option<f32>],
     column_count: usize,
     containing_width: f32,
 ) -> Vec<f32> {
@@ -424,6 +453,13 @@ fn compute_fixed_column_widths(
         }
     }
 
+    // `<col>`の指定は最初の行のセルより優先する([0038]決定4)。
+    for (i, hint) in column_hints.iter().enumerate().take(column_count) {
+        if let Some(hint) = hint {
+            widths[i] = Some(*hint);
+        }
+    }
+
     let specified_sum: f32 = widths.iter().filter_map(|w| *w).sum();
     let auto_count = widths.iter().filter(|w| w.is_none()).count();
     let remaining = (containing_width - specified_sum).max(0.0);
@@ -438,10 +474,15 @@ fn compute_fixed_column_widths(
 
 /// 各列の使用幅を求める。セルの内容から求めた「自然な幅」の列ごとの最大値を、
 /// containing widthちょうどに収まるよう比例縮尺する。
+///
+/// `<col>`由来のヒント(`column_hints`)がある列はその幅で確定させ、残りの幅を
+/// ヒントの無い列へ自然幅に比例して配分する([0038](
+/// ../../../docs/decisions/0038-colgroup-col-design.md)決定4)。
 fn compute_column_widths(
     grid: &[Vec<GridCell<'_>>],
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
+    column_hints: &[Option<f32>],
     column_count: usize,
     containing_width: f32,
 ) -> Vec<f32> {
@@ -475,6 +516,19 @@ fn compute_column_widths(
         }
     }
 
+    let has_hint = column_hints
+        .iter()
+        .take(column_count)
+        .any(|hint| hint.is_some());
+    if has_hint {
+        return distribute_with_column_hints(
+            &natural,
+            column_hints,
+            column_count,
+            containing_width,
+        );
+    }
+
     let natural_sum: f32 = natural.iter().sum();
     if natural_sum > 0.0 {
         let scale = containing_width / natural_sum;
@@ -482,6 +536,43 @@ fn compute_column_widths(
     } else {
         vec![containing_width / column_count as f32; column_count]
     }
+}
+
+/// `<col>`のヒントがある列を確定させ、残りをヒントの無い列へ自然幅に比例して
+/// 配分する([0038]決定4)。ヒントの合計が`containing_width`を超える場合は
+/// ヒントのある列だけを比例縮小して収める(決定4-1)。
+fn distribute_with_column_hints(
+    natural: &[f32],
+    column_hints: &[Option<f32>],
+    column_count: usize,
+    containing_width: f32,
+) -> Vec<f32> {
+    let hint_of = |i: usize| column_hints.get(i).copied().flatten();
+    let hint_sum: f32 = (0..column_count).filter_map(hint_of).sum();
+
+    if hint_sum > containing_width && hint_sum > 0.0 {
+        let scale = containing_width / hint_sum;
+        return (0..column_count)
+            .map(|i| hint_of(i).map(|w| w * scale).unwrap_or(0.0))
+            .collect();
+    }
+
+    let auto_natural_sum: f32 = (0..column_count)
+        .filter(|&i| hint_of(i).is_none())
+        .map(|i| natural[i])
+        .sum();
+    let remaining = (containing_width - hint_sum).max(0.0);
+
+    (0..column_count)
+        .map(|i| match hint_of(i) {
+            Some(w) => w,
+            None if auto_natural_sum > 0.0 => remaining * natural[i] / auto_natural_sum,
+            None => {
+                let auto_count = (0..column_count).filter(|&i| hint_of(i).is_none()).count();
+                remaining / auto_count as f32
+            }
+        })
+        .collect()
 }
 
 /// セル1つの「自然な幅」(内容を折り返し無しで並べた幅+パディング+ボーダー)。
@@ -1159,5 +1250,138 @@ mod tests {
             row1[0].layout.border_box().x,
             row0_lefts[1]
         );
+    }
+
+    // ===== <colgroup>/<col>(列幅指定、[0038]) =====
+
+    #[test]
+    fn col_width_fixes_the_column_width_in_auto_layout() {
+        // border-spacingを0にして、列幅=セルのborder-box幅が直接比較できるようにする。
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup><col style="width: 100px;"><col></colgroup>
+                 <tr><td>a</td><td>bbbbbbbbbbbbbbbb</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 100.0).abs() < 0.5, "got {widths:?}");
+        // 残り幅は指定の無い列が全部もらう。
+        assert!((widths[1] - 400.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    #[test]
+    fn col_percentage_width_resolves_against_the_table_width() {
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup><col style="width: 20%;"><col></colgroup>
+                 <tr><td>a</td><td>b</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 100.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    #[test]
+    fn col_span_applies_the_same_width_to_several_columns() {
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup><col span="2" style="width: 50px;"><col></colgroup>
+                 <tr><td>a</td><td>b</td><td>c</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 50.0).abs() < 0.5, "got {widths:?}");
+        assert!((widths[1] - 50.0).abs() < 0.5, "got {widths:?}");
+        assert!((widths[2] - 400.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    #[test]
+    fn colgroup_span_without_col_children_defines_the_columns_itself() {
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup span="2" style="width: 60px;"></colgroup>
+                 <tr><td>a</td><td>b</td><td>c</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 60.0).abs() < 0.5, "got {widths:?}");
+        assert!((widths[1] - 60.0).abs() < 0.5, "got {widths:?}");
+        assert!((widths[2] - 380.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    #[test]
+    fn columns_without_a_col_hint_share_the_rest_proportionally_to_their_content() {
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup><col style="width: 100px;"><col><col></colgroup>
+                 <tr><td>a</td><td>short</td><td>a much much much longer cell</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 100.0).abs() < 0.5, "got {widths:?}");
+        assert!(
+            widths[2] > widths[1],
+            "the column with more content should get more of the remaining width: {widths:?}"
+        );
+        let total: f32 = widths.iter().sum();
+        assert!((total - 500.0).abs() < 1.0, "got {widths:?}");
+    }
+
+    #[test]
+    fn col_hints_wider_than_the_table_are_scaled_down_to_fit() {
+        // [0038]決定4-1: 指定の合計が使える幅を超えたら指定列だけを比例縮小する。
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup><col style="width: 600px;"><col style="width: 200px;"></colgroup>
+                 <tr><td>a</td><td>b</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            400.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 300.0).abs() < 0.5, "got {widths:?}");
+        assert!((widths[1] - 100.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    #[test]
+    fn col_width_takes_precedence_over_the_first_row_cell_in_fixed_layout() {
+        let table = layout_table_html(
+            r#"<table>
+                 <colgroup><col style="width: 300px;"><col></colgroup>
+                 <tr><td style="width: 100px;">a</td><td>b</td></tr>
+               </table>"#,
+            "body { margin: 0; } table { table-layout: fixed; border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        assert!(
+            (widths[0] - 300.0).abs() < 0.5,
+            "the <col> width must win over the first row cell: {widths:?}"
+        );
+        assert!((widths[1] - 200.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    #[test]
+    fn a_table_without_colgroup_keeps_the_previous_behaviour() {
+        // 回帰確認: ヒントが1つも無ければ従来どおり全列を比例縮尺する。
+        let table = layout_table_html(
+            r#"<table><tr><td>a</td><td>a much much much longer cell</td></tr></table>"#,
+            "body { margin: 0; } table { border-spacing: 0; }",
+            500.0,
+        );
+        let widths = cell_widths(&table, 0);
+        let total: f32 = widths.iter().sum();
+        assert!((total - 500.0).abs() < 1.0, "got {widths:?}");
+        assert!(widths[1] > widths[0], "got {widths:?}");
     }
 }

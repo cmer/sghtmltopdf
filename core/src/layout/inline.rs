@@ -207,6 +207,15 @@ pub(crate) fn layout_inline_content(
                     cursor_y += line_height;
                     current_width = 0.0;
                 }
+                // `<br clear="left|right|all">`(レガシー表示属性が`clear`
+                // プロパティに変換されている、[0039](
+                // ../../../docs/decisions/0039-presentational-attributes-design.md)
+                // 決定5)。CSSで`br { clear: both }`と書いた場合も同じ経路。
+                if let (Some(ctx), Some(clear)) =
+                    (float_ctx, span_styles.get(style_index).map(|s| s.clear))
+                {
+                    cursor_y = ctx.clearance(clear, cursor_y);
+                }
                 trailing_break_height = Some(break_height);
                 continue;
             }
@@ -1587,6 +1596,27 @@ mod tests {
         assert_eq!(
             lines[1].rect.height, 80.0,
             "the blank line takes the <br>'s own line-height (40px * 2)"
+        );
+    }
+
+    #[test]
+    fn br_clear_pushes_the_next_line_below_a_float() {
+        // `<br clear="left">`はレガシー表示属性が`clear: left`に変換され
+        // ([0039]決定5)、強制改行の直後の行をfloatの下端まで押し下げる。
+        use crate::layout::float_ctx::FloatContext;
+        use crate::style::Float;
+
+        let (_, spans, styles) = spans_for("a<br clear=\"left\">b", "");
+        let fonts = dejavu_only();
+        let mut ctx = FloatContext::new();
+        ctx.register(Float::Left, 0.0, 0.0, 50.0, 100.0);
+
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, Some(&ctx));
+        assert_eq!(line_texts(&lines), vec!["a", "b"]);
+        assert!(
+            lines[1].rect.y >= 100.0,
+            "the line after <br clear=left> must clear the float, got y={}",
+            lines[1].rect.y
         );
     }
 }

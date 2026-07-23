@@ -54,7 +54,7 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::layout::{
     resolve_border, shape_standalone_line, EdgeSizes, FragmentPosition, LaidOutBox, LaidOutContent,
-    Layout, LineBox, Page, PageSettings, Rect,
+    LaidOutTableRow, Layout, LineBox, Page, PageSettings, Rect,
 };
 use crate::sink::Sink;
 use crate::style::{
@@ -867,6 +867,7 @@ fn render_box_with_style_inner(
                 Vec::new()
             };
             for row in &table.rows {
+                render_row_background(content, row, styles, settings, alpha_gs_names);
                 for cell in &row.cells {
                     let cell_style = cell
                         .node
@@ -1657,6 +1658,66 @@ fn render_background_image(
     }
 
     if !fits_without_clip {
+        content.restore_state();
+    }
+}
+
+/// `<tr>`(`display: table-row`)の`background-color`を、その行のセル群を
+/// 覆う矩形として塗る。
+///
+/// 行ボックスは`LaidOutTableRow`にジオメトリを持たないため、行に属するセルの
+/// border boxの和集合を行の矩形とみなす(`border-spacing`がある場合、セル間の
+/// 隙間も行の背景で塗られる。これはCSS2.1 17.5.1の描画順=行の背景がセルの
+/// 背景の下に敷かれる、という規定と同じ見え方になる)。CSSの
+/// `tr { background-color: ... }`とレガシー表示属性の`<tr bgcolor>`
+/// ([0039](../../../docs/decisions/0039-presentational-attributes-design.md))の
+/// どちらもこの経路で描画される。`<thead>`/`<tbody>`は透過的な入れ物として
+/// ボックスを持たない([`crate::style::user_agent_stylesheet`])ため、
+/// それらへの背景指定は引き続き効かない(既知の制約)。
+fn render_row_background(
+    content: &mut Content,
+    row: &LaidOutTableRow,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    settings: &PageSettings,
+    alpha_gs_names: &[String],
+) {
+    let Some(style) = styles.get(&row.node) else {
+        return;
+    };
+    if style.background_color.alpha <= 0.0 || row.cells.is_empty() {
+        return;
+    }
+
+    let mut left = f32::MAX;
+    let mut right = f32::MIN;
+    let mut top = f32::MAX;
+    let mut bottom = f32::MIN;
+    for cell in &row.cells {
+        let b = cell.layout.border_box();
+        left = left.min(b.x);
+        right = right.max(b.x + b.width);
+        top = top.min(b.y);
+        bottom = bottom.max(b.y + b.height);
+    }
+    if right <= left || bottom <= top {
+        return;
+    }
+
+    let use_alpha = style.background_color.alpha < 1.0;
+    if use_alpha {
+        content.save_state();
+        apply_fill_alpha(content, style.background_color.alpha, alpha_gs_names);
+    }
+    content.set_fill_rgb(
+        style.background_color.red as f32 / 255.0,
+        style.background_color.green as f32 / 255.0,
+        style.background_color.blue as f32 / 255.0,
+    );
+    let x = settings.margin.left + left;
+    let y_bottom = to_pdf_y(settings, bottom);
+    content.rect(x, y_bottom, right - left, bottom - top);
+    content.fill_nonzero();
+    if use_alpha {
         content.restore_state();
     }
 }

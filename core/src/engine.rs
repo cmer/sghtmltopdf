@@ -45,7 +45,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
-use crate::html::{Dom, NodeId, StreamingParser};
+use crate::html::{find_base_href, Dom, NodeId, StreamingParser};
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
@@ -255,8 +255,13 @@ impl<S: Sink> Engine<S> {
         // 画像用の`ImageAssetCache`(下の`image_cache`)とは別インスタンスを
         // 持つ([0015](../docs/decisions/0015-external-stylesheet-fetch-design.md)
         // 決定3)。
+        // `<base href>`は`<head>`に現れるため、この時点(最初のトップレベル
+        // 要素が確定した時点)で既にパース済み([0040](
+        // ../docs/decisions/0040-base-href-design.md)決定3)。
+        let base_href = find_base_href(&self.parser.dom());
         let css_fetcher =
-            ImageFetcher::new(base_dir.to_path_buf(), self.options.allow_remote_assets);
+            ImageFetcher::new(base_dir.to_path_buf(), self.options.allow_remote_assets)
+                .with_base_href(base_href.clone());
         let css_cache = DocumentImageCache::new();
         let author = {
             let dom = self.parser.dom();
@@ -354,8 +359,11 @@ impl<S: Sink> Engine<S> {
         let writer =
             StreamingPdfWriter::new(&fonts, page_settings, sink, author.page_rules.clone())
                 .map_err(EngineError::Io)?;
-        let image_cache =
-            ImageAssetCache::new(base_dir.to_path_buf(), self.options.allow_remote_assets);
+        let image_cache = ImageAssetCache::with_base_href(
+            base_dir.to_path_buf(),
+            self.options.allow_remote_assets,
+            base_href,
+        );
 
         Ok(StreamingState {
             ua,
@@ -546,7 +554,9 @@ impl<S: Sink> Engine<S> {
             .base_dir
             .as_deref()
             .unwrap_or_else(|| Path::new("."));
-        let css_fetcher = ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets);
+        let base_href = find_base_href(&dom);
+        let css_fetcher = ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets)
+            .with_base_href(base_href.clone());
         let css_cache = DocumentImageCache::new();
         let author = extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
         let styles = compute_styles(&dom, &ua, &author);
@@ -580,7 +590,11 @@ impl<S: Sink> Engine<S> {
         let mut writer =
             StreamingPdfWriter::new(&fonts, page_settings, sink, author.page_rules.clone())
                 .map_err(EngineError::Io)?;
-        let image_cache = ImageAssetCache::new(base_dir.to_path_buf(), options.allow_remote_assets);
+        let image_cache = ImageAssetCache::with_base_href(
+            base_dir.to_path_buf(),
+            options.allow_remote_assets,
+            base_href,
+        );
         // `background-image`はレイアウトのサイズ計算に影響しない描画専用の
         // 情報なので、`resolve_images`(box tree構築)とは独立に、文書全体の
         // `styles`から一度だけ構築できる([0017]決定2)。

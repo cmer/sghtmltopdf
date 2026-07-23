@@ -85,7 +85,69 @@ CSS Custom Properties、Phase 3: Flexbox)。M9完了後、ユーザー指示に�
 Phase4で対象外候補としていた`opacity`/`transform`にも対応した(`filter`は
 引き続き対象外)。マイルストーン10(HTML5のタグ対応)に着手し、**Phase 1(カテゴリA:
 UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`、カテゴリC:
-`<hr>`)が完了**。
+`<hr>`)とPhase 2(カテゴリD: `<colgroup>`/`<col>`、カテゴリE: レガシー表示
+属性、カテゴリF: `<base href>`)が完了**。
+
+### レガシーHTML表示属性(presentational hints)
+
+wkhtmltopdf時代の帳票HTMLをそのまま流し込めるよう、HTML4由来の表示属性に
+対応している。設計は[0039](docs/decisions/0039-presentational-attributes-design.md)。
+
+```html
+<table border="1" cellpadding="5" cellspacing="0" width="100%">
+  <tr bgcolor="#e8e8e8"><th align="left">品目</th><th align="right">金額</th></tr>
+  <tr><td>商品A</td><td align="right">2,000</td></tr>
+</table>
+<center><font size="5" color="#cc0000">見出し</font></center>
+<hr width="60%" size="2" noshade>
+```
+
+* 対応する属性: 汎用`align`、`<body bgcolor/text>`、`<table width/height/
+  bgcolor/border/cellspacing/cellpadding/align>`、`<tr/td/th bgcolor/valign/
+  align/width/height/nowrap>`、`<col/colgroup width>`、`<img border/hspace/
+  vspace/align>`、`<hr width/size/noshade>`、`<font color/face/size>`、
+  `<ul/ol/li type>`、`<br clear>`
+* **カスケード上はUAスタイルシートより強く、作者CSSより弱い**(HTML仕様の
+  presentational hintsと同じ位置)。`td { padding: 0 }`のような作者CSSで
+  必ず上書きできる
+* 属性値は専用パーサを持たず、CSS宣言テキストへ組み立てて`style`属性と同じ
+  パーサへ通す。`bgcolor="red"`/`#fff`/`ffffff`(`#`なし)のいずれも解釈し、
+  不正な値はCSSの不正宣言と同様に無視される
+* `<table border>`/`<table cellpadding>`は、祖先方向の最も近い`<table>`を
+  探して子孫セルにも効かせる(入れ子テーブルでは内側の指定が勝つ)
+* `<tr>`の背景色を描画するようになった(行に属するセルのborder boxの和集合を
+  塗る)。CSSの`tr { background-color: ... }`もこの経路で描画される。
+  `<thead>`/`<tbody>`は透過的な入れ物としてボックスを持たないため、そちらへの
+  背景指定は効かない
+* 対象外: `<body link/vlink/alink>`、`<li value>`、`<table rules/frame>`
+
+### `<colgroup>`/`<col>`(列幅指定)
+
+```html
+<table>
+  <colgroup><col><col style="width: 80px;"><col style="width: 110px;"></colgroup>
+  ...
+</table>
+```
+
+* `<col>`要素の計算スタイルの`width`を列幅ヒントとして使う(CSSでも
+  `width="80"`属性でも同じ経路で効く)。`<col span="2">`・`<col>`を持たない
+  `<colgroup span="2">`にも対応
+* `table-layout: fixed`では`<col>`の指定が最初の行のセルの`width`より優先。
+  `auto`では指定のある列を確定させ、残りの幅を指定の無い列へ内容の自然幅に
+  比例して配分する。指定の合計が使える幅を超える場合は指定列だけを比例縮小
+* `<col>`への`background`/`border`(列単位の装飾)は非対応
+
+### `<base href>`
+
+* `<img src>`・`<link href>`・`@import`の相対参照の基準を移す。`<base href>`が
+  `http(s)`の絶対URLならURLとして結合し(リモート取得は既存の
+  `--allow-remote-assets`ゲートが必要)、相対パスならローカルの基準
+  ディレクトリとして前置する
+* 採用するのは`<body>`より前に現れた最初の`<base href>`のみ
+  (`Mode::Streaming`で反映できないケースを両モードで揃えるため)
+* `@font-face`の`src: url()`だけは`base_dir`を直接使う別経路のため影響を
+  受けない(既知の限界)
 
 ### `<br>`(強制改行)
 

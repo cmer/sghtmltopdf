@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use super::{classify_img_src, ImageFetcher};
+use super::ImageFetcher;
 
 /// キャッシュ1件分の結果(成功時のバイト列、または失敗理由)。
 type CachedFetch = Result<Rc<[u8]>, Rc<str>>;
@@ -48,7 +48,11 @@ impl DocumentImageCache {
             return cached.clone();
         }
 
-        let result: Result<Vec<u8>, String> = classify_img_src(raw_src)
+        // 分類の前に`<base href>`に対する解決を挟むため、`classify_img_src`は
+        // 直接呼ばず`ImageFetcher::resolve`を経由する([0040](
+        // ../../../docs/decisions/0040-base-href-design.md)決定1)。
+        let result: Result<Vec<u8>, String> = fetcher
+            .resolve(raw_src)
             .ok_or_else(|| format!("サポートされていないsrcです: {raw_src}"))
             .and_then(|src| fetcher.fetch(&src).map_err(|e| e.to_string()));
         let result: Result<Rc<[u8]>, Rc<str>> =

@@ -25,14 +25,19 @@ enum Origin {
     Author,
 }
 
-/// `dom`上の`element`に適用される宣言を、カスケード優先度の昇順
-/// (先頭が最も優先度が低く、末尾が最も優先度が高い)で返す。
-pub fn matching_declarations<'a>(
+/// [`matching_declarations`]と同じだが、UAスタイルシート由来と作者CSS由来を
+/// 分けて返す(それぞれの中はカスケード優先度の昇順)。
+///
+/// レガシー表示属性(presentational hints)は「UAスタイルシートより強く、
+/// 作者CSSより弱い」位置に入れる必要がある([0039](
+/// ../../../docs/decisions/0039-presentational-attributes-design.md)決定1)
+/// ため、両者の間に割り込めるようこの形を用意している。
+pub fn matching_declarations_by_origin<'a>(
     dom: &Dom,
     element: NodeId,
     ua: &'a Stylesheet,
     author: &'a Stylesheet,
-) -> Vec<&'a PropertyDeclaration> {
+) -> (Vec<&'a PropertyDeclaration>, Vec<&'a PropertyDeclaration>) {
     let el = ElementRef::new(dom, element);
     let mut caches = SelectorCaches::default();
     let mut context = MatchingContext::new(
@@ -44,25 +49,38 @@ pub fn matching_declarations<'a>(
         MatchingForInvalidation::No,
     );
 
-    let mut matched: Vec<(Origin, u32, usize, &'a Vec<PropertyDeclaration>)> = Vec::new();
-
-    for (origin, sheet) in [(Origin::UserAgent, ua), (Origin::Author, author)] {
+    let mut collect = |sheet: &'a Stylesheet| {
+        let mut matched: Vec<(u32, usize, &'a Vec<PropertyDeclaration>)> = Vec::new();
         for (source_order, rule) in sheet.rules.iter().enumerate() {
             if let Some(specificity) = best_matching_specificity(&rule.selectors, &el, &mut context)
             {
-                matched.push((origin, specificity, source_order, &rule.declarations));
+                matched.push((specificity, source_order, &rule.declarations));
             }
         }
-    }
+        matched.sort_by_key(|(specificity, source_order, _)| (*specificity, *source_order));
+        matched
+            .into_iter()
+            .flat_map(|(_, _, declarations)| declarations.iter())
+            .collect::<Vec<_>>()
+    };
 
-    matched.sort_by_key(|(origin, specificity, source_order, _)| {
-        (*origin, *specificity, *source_order)
-    });
+    // Originが最優先のソートキーなので、オリジンごとに個別へソートしたものを
+    // 順に並べれば、全体を一度にソートした結果と一致する。
+    (collect(ua), collect(author))
+}
 
-    matched
-        .into_iter()
-        .flat_map(|(_, _, _, declarations)| declarations.iter())
-        .collect()
+/// `dom`上の`element`に適用される宣言を、カスケード優先度の昇順
+/// (先頭が最も優先度が低く、末尾が最も優先度が高い)で返す。
+pub fn matching_declarations<'a>(
+    dom: &Dom,
+    element: NodeId,
+    ua: &'a Stylesheet,
+    author: &'a Stylesheet,
+) -> Vec<&'a PropertyDeclaration> {
+    let (mut ua_declarations, author_declarations) =
+        matching_declarations_by_origin(dom, element, ua, author);
+    ua_declarations.extend(author_declarations);
+    ua_declarations
 }
 
 /// `dom`上の`element`が持つ`pseudo`(`::before`/`::after`/`::first-letter`)に

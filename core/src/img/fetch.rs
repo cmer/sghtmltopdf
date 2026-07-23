@@ -51,12 +51,31 @@ pub struct ImageFetcher {
     allow_remote: bool,
     max_bytes: u64,
     agent: Agent,
+    /// `<base href>`の値([0040](
+    /// ../../../docs/decisions/0040-base-href-design.md)決定1)。相対参照は
+    /// フェッチ前にこれに対して解決される。`<img src>`・`<link href>`・
+    /// `@import`はいずれもこのフェッチャを共有するため、ここ1箇所で3種類
+    /// すべてに効く。
+    base_href: Option<String>,
 }
 
 impl ImageFetcher {
     /// サイズ上限は[`DEFAULT_MAX_IMAGE_BYTES`]を使う。
     pub fn new(base_dir: PathBuf, allow_remote: bool) -> Self {
         Self::with_max_bytes(base_dir, allow_remote, DEFAULT_MAX_IMAGE_BYTES)
+    }
+
+    /// `<base href>`を設定した同じフェッチャを返す(ビルダー的に使う)。
+    pub fn with_base_href(mut self, base_href: Option<String>) -> Self {
+        self.base_href = base_href.filter(|href| !href.trim().is_empty());
+        self
+    }
+
+    /// 生の参照値を`<base href>`に対して解決し、URL/パスとして分類する
+    /// ([0040]決定2)。フェッチ経路はすべてここを通す。
+    pub fn resolve(&self, raw: &str) -> Option<super::ImgSrc> {
+        let resolved = super::resolve_against_base_href(self.base_href.as_deref(), raw);
+        super::classify_img_src(&resolved)
     }
 
     pub fn with_max_bytes(base_dir: PathBuf, allow_remote: bool, max_bytes: u64) -> Self {
@@ -77,6 +96,7 @@ impl ImageFetcher {
             allow_remote,
             max_bytes,
             agent,
+            base_href: None,
         }
     }
 

@@ -92,6 +92,39 @@ pub fn is_stylesheet_link(attrs: &[Attribute]) -> bool {
         })
 }
 
+/// 文書内の最初の`<base href>`の値([0040](
+/// ../../../docs/decisions/0040-base-href-design.md)決定3)。`<body>`より後に
+/// 現れた`<base>`は無視する(`Mode::Streaming`では原理的に反映できないため、
+/// 両モードで同じ挙動に揃える)。
+pub fn find_base_href(dom: &Dom) -> Option<String> {
+    fn walk(dom: &Dom, node: NodeId, seen_body: &mut bool) -> Option<String> {
+        if let NodeData::Element { name, attrs, .. } = &dom.node(node).data {
+            match &*name.local {
+                "body" => *seen_body = true,
+                "base" if !*seen_body => {
+                    let href = attrs
+                        .iter()
+                        .find(|attr| &*attr.name.local == "href")
+                        .map(|attr| attr.value.trim().to_string())
+                        .filter(|href| !href.is_empty());
+                    if href.is_some() {
+                        return href;
+                    }
+                }
+                _ => {}
+            }
+        }
+        for child in dom.children(node) {
+            if let Some(found) = walk(dom, child, seen_body) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    let mut seen_body = false;
+    walk(dom, dom.document(), &mut seen_body)
+}
+
 /// パース済みのDOM木。
 pub struct Dom {
     pub(crate) nodes: Vec<Node>,
@@ -279,5 +312,40 @@ mod tests {
             2,
             "child link count is preserved"
         );
+    }
+
+    #[test]
+    fn find_base_href_returns_the_first_base_in_head() {
+        let dom = crate::html::parse(
+            br#"<html><head><base href="https://example.com/docs/"><base href="https://other.example/"></head><body>x</body></html>"#,
+        );
+        assert_eq!(
+            find_base_href(&dom).as_deref(),
+            Some("https://example.com/docs/")
+        );
+    }
+
+    #[test]
+    fn find_base_href_is_none_without_a_base_element() {
+        let dom = crate::html::parse(br#"<html><head></head><body>x</body></html>"#);
+        assert!(find_base_href(&dom).is_none());
+    }
+
+    #[test]
+    fn find_base_href_ignores_a_base_without_href_and_an_empty_href() {
+        let dom = crate::html::parse(
+            br#"<html><head><base target="_blank"><base href="  "></head><body>x</body></html>"#,
+        );
+        assert!(find_base_href(&dom).is_none());
+    }
+
+    #[test]
+    fn find_base_href_ignores_a_base_that_appears_after_body_starts() {
+        // `Mode::Streaming`では原理的に反映できないため、両モードで無視する
+        // ([0040]決定3)。
+        let dom = crate::html::parse(
+            br#"<html><body><base href="https://example.com/"><p>x</p></body></html>"#,
+        );
+        assert!(find_base_href(&dom).is_none());
     }
 }

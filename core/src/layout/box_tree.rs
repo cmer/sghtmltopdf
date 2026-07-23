@@ -23,7 +23,10 @@ use std::rc::Rc;
 
 use crate::html::{Dom, NodeData, NodeId};
 use crate::pdf::{ImageAssetCache, PreparedImage};
-use crate::style::{CaptionSide, ComputedStyle, Display, ListStylePosition, ListStyleType};
+use crate::style::{
+    CaptionSide, ComputedStyle, Display, LengthPercentage, LengthPercentageOrAuto,
+    ListStylePosition, ListStyleType,
+};
 
 #[derive(Debug, Clone)]
 pub struct LayoutBox {
@@ -87,6 +90,12 @@ pub struct TableBox {
     /// captionの計算スタイルから読んだ`caption-side`(captionが無ければ初期値`Top`)。
     pub caption_side: CaptionSide,
     pub rows: Vec<TableRow>,
+    /// `<colgroup>`/`<col>`由来の列幅ヒント(列インデックス順、`None`は指定なし)。
+    /// `<col>`要素の計算スタイルの`width`をそのまま持つ([0038](
+    /// ../../../docs/decisions/0038-colgroup-col-design.md)決定1・決定3)。
+    /// 実際の列数より多い分は`layout::table`側で切り捨て、少ない分は指定なし
+    /// として扱う。
+    pub column_widths: Vec<Option<LengthPercentage>>,
 }
 
 /// `display: table-row`要素(`<tr>`)1行分。
@@ -477,7 +486,84 @@ fn build_table_box(
         caption,
         caption_side,
         rows,
+        column_widths: collect_column_widths(dom, styles, table_node),
     }
+}
+
+/// `<colgroup>`/`<col>`から列幅ヒントを列インデックス順に集める([0038](
+/// ../../../docs/decisions/0038-colgroup-col-design.md)決定2)。
+///
+/// `<colgroup>`が`<col>`を子に持てばその`<col>`群を、持たなければ
+/// `<colgroup>`自身を`span`属性の回数だけ列として展開する。テーブル直下の
+/// `<col>`(`<colgroup>`を省略した書き方。html5everは`<colgroup>`を暗黙補完
+/// するが、防御的に直下も見る)も同様に扱う。
+fn collect_column_widths(
+    dom: &Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    table_node: NodeId,
+) -> Vec<Option<LengthPercentage>> {
+    let mut widths = Vec::new();
+
+    fn push_column(
+        styles: &HashMap<NodeId, ComputedStyle>,
+        node: NodeId,
+        span: usize,
+        out: &mut Vec<Option<LengthPercentage>>,
+    ) {
+        let width = match styles.get(&node).map(|s| s.width) {
+            Some(LengthPercentageOrAuto::LengthPercentage(lp)) => Some(lp),
+            _ => None,
+        };
+        for _ in 0..span {
+            out.push(width);
+        }
+    }
+
+    for child in dom.children(table_node) {
+        let Some(local_name) = element_local_name(dom, child) else {
+            continue;
+        };
+        match local_name.as_str() {
+            "colgroup" => {
+                let cols: Vec<NodeId> = dom
+                    .children(child)
+                    .filter(|&c| element_local_name(dom, c).as_deref() == Some("col"))
+                    .collect();
+                if cols.is_empty() {
+                    push_column(styles, child, read_span(dom, child), &mut widths);
+                } else {
+                    for col in cols {
+                        push_column(styles, col, read_span(dom, col), &mut widths);
+                    }
+                }
+            }
+            "col" => push_column(styles, child, read_span(dom, child), &mut widths),
+            _ => {}
+        }
+    }
+
+    widths
+}
+
+fn element_local_name(dom: &Dom, node: NodeId) -> Option<String> {
+    match &dom.node(node).data {
+        NodeData::Element { name, .. } => Some(name.local.to_string()),
+        _ => None,
+    }
+}
+
+/// `<col span>`/`<colgroup span>`を読む(未指定・0以下・非数値は1、`colspan`と
+/// 同じ寛容さ、[0038]決定2)。
+fn read_span(dom: &Dom, node: NodeId) -> usize {
+    let NodeData::Element { attrs, .. } = &dom.node(node).data else {
+        return 1;
+    };
+    attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "span")
+        .and_then(|attr| attr.value.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(1)
 }
 
 /// flexコンテナ(`node`)の子要素ごとに1個ずつflexアイテムを構築する。CSS仕様上

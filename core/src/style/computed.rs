@@ -10,8 +10,9 @@ use std::collections::HashMap;
 use crate::html::{Dom, NodeData, NodeId};
 
 use super::cascade::{
-    matching_declarations, matching_pseudo_content, matching_pseudo_declarations,
+    matching_declarations_by_origin, matching_pseudo_content, matching_pseudo_declarations,
 };
+use super::presentational::presentational_hint_declarations;
 use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
@@ -669,9 +670,14 @@ fn compute_element_style(
     counters: &mut HashMap<String, Vec<i32>>,
     quote_depth: &mut i32,
 ) -> (ComputedStyle, Vec<String>, Option<Vec<ContentPart>>) {
-    let declarations = matching_declarations(dom, element, ua, author);
+    let (ua_declarations, author_declarations) =
+        matching_declarations_by_origin(dom, element, ua, author);
     let inline_declarations = inline_style_declarations(dom, element);
-    let attribute_sugar_declarations = data_page_break_declarations(dom, element);
+    // レガシー表示属性(`bgcolor`/`align`等)と`data-page-break`糖衣は、
+    // UAスタイルシートより強く作者CSSより弱い位置に置く([0039](
+    // ../../../docs/decisions/0039-presentational-attributes-design.md)決定1)。
+    let mut attribute_declarations = presentational_hint_declarations(dom, element);
+    attribute_declarations.extend(data_page_break_declarations(dom, element));
 
     let mut display = None;
     let mut width = None;
@@ -769,12 +775,14 @@ fn compute_element_style(
     let mut opacity = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
-    // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
-    // という位置づけのため最も弱く先頭に置く。インラインstyle属性はセレクタベースの
-    // どの宣言よりも優先度が高いため、最後に置く。
-    for decl in attribute_sugar_declarations
-        .iter()
-        .chain(declarations)
+    // HTML属性由来の宣言(レガシー表示属性・`data-page-break`糖衣)は
+    // 「UAスタイルシートより強く、作者CSSでは上書きできる既定のヒント」という
+    // 位置づけなので両者の間に置く([0039]決定1)。インラインstyle属性は
+    // セレクタベースのどの宣言よりも優先度が高いため、最後に置く。
+    for decl in ua_declarations
+        .into_iter()
+        .chain(attribute_declarations.iter())
+        .chain(author_declarations)
         .chain(inline_declarations.iter())
     {
         match decl {

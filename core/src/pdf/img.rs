@@ -305,8 +305,18 @@ pub struct ImageAssetCache {
 
 impl ImageAssetCache {
     pub fn new(base_dir: PathBuf, allow_remote: bool) -> Self {
+        Self::with_base_href(base_dir, allow_remote, None)
+    }
+
+    /// `<base href>`(相対参照の基準、[0040](
+    /// ../../../docs/decisions/0040-base-href-design.md))を指定して構築する。
+    pub fn with_base_href(
+        base_dir: PathBuf,
+        allow_remote: bool,
+        base_href: Option<String>,
+    ) -> Self {
         Self {
-            fetcher: ImageFetcher::new(base_dir, allow_remote),
+            fetcher: ImageFetcher::new(base_dir, allow_remote).with_base_href(base_href),
             fetch_cache: DocumentImageCache::new(),
             decoded: RefCell::new(HashMap::new()),
         }

@@ -33,6 +33,68 @@ pub enum ImgSrc {
     DataUri { mime_type: String, bytes: Vec<u8> },
 }
 
+/// `raw`(生の参照値)を`<base href>`に対して解決する([0040](
+/// ../../../docs/decisions/0040-base-href-design.md)決定2)。
+///
+/// `base`が`None`、または`raw`が絶対参照(`http(s)`/`data:`)の場合は`raw`を
+/// そのまま返す。`base`が`http(s)`の絶対URLならURLとして結合し、そうでなければ
+/// ローカルパスのディレクトリ前置として扱う(root-relativeな`raw`はどちらの
+/// 場合も基準のルートを使うため前置しない)。
+pub fn resolve_against_base_href(base: Option<&str>, raw: &str) -> String {
+    let raw_trimmed = raw.trim();
+    let Some(base) = base.map(str::trim).filter(|b| !b.is_empty()) else {
+        return raw_trimmed.to_string();
+    };
+    if starts_with_ignore_ascii_case(raw_trimmed, "http://")
+        || starts_with_ignore_ascii_case(raw_trimmed, "https://")
+        || starts_with_ignore_ascii_case(raw_trimmed, "data:")
+        || starts_with_ignore_ascii_case(raw_trimmed, "file:")
+    {
+        return raw_trimmed.to_string();
+    }
+
+    let base_is_url = starts_with_ignore_ascii_case(base, "http://")
+        || starts_with_ignore_ascii_case(base, "https://");
+    if !base_is_url {
+        // ローカルパスの基準ディレクトリとして前置する。root-relativeな参照は
+        // `resolve_local_asset_path`が`base_dir`のルートとして解決するので触らない。
+        if raw_trimmed.starts_with('/') {
+            return raw_trimmed.to_string();
+        }
+        let base_dir = base.trim_end_matches('/');
+        if base_dir.is_empty() {
+            return raw_trimmed.to_string();
+        }
+        return format!("{base_dir}/{raw_trimmed}");
+    }
+
+    // プロトコル相対(`//example.com/x`)。
+    if let Some(rest) = raw_trimmed.strip_prefix("//") {
+        let scheme = base.split(':').next().unwrap_or("https");
+        return format!("{scheme}://{rest}");
+    }
+    // ルート相対(`/x`)は基準URLのオリジンに対して解決する。
+    let scheme_end = base.find("://").map(|i| i + 3).unwrap_or(0);
+    if raw_trimmed.starts_with('/') {
+        let origin_end = base[scheme_end..]
+            .find('/')
+            .map(|i| scheme_end + i)
+            .unwrap_or(base.len());
+        return format!("{}{raw_trimmed}", &base[..origin_end]);
+    }
+    // それ以外は基準URLの「最後の`/`まで」に連結する。
+    let dir_end = base[scheme_end..]
+        .rfind('/')
+        .map(|i| scheme_end + i + 1)
+        .unwrap_or(base.len());
+    let mut resolved = base[..dir_end].to_string();
+    if !resolved.ends_with('/') {
+        resolved.push('/');
+    }
+    resolved.push_str(raw_trimmed);
+    resolved
+}
+
 /// `src`属性の値を分類する。デコード不能な`data:`URI・`file:`スキームなど
 /// 「そもそも取得を試みるべきでない」値は`None`を返す
 /// (呼び出し側は[0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)
@@ -251,5 +313,88 @@ mod tests {
     fn resolve_local_asset_path_leaves_dot_relative_paths_unchanged() {
         let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "./assets/x.css");
         assert_eq!(resolved, Path::new("/var/www/app/./assets/x.css"));
+    }
+
+    // ===== `<base href>`([0040]) =====
+
+    #[test]
+    fn base_href_is_ignored_for_absolute_references() {
+        for raw in [
+            "https://cdn.example.com/a.png",
+            "http://cdn.example.com/a.png",
+            "data:image/png;base64,AAA",
+        ] {
+            assert_eq!(
+                resolve_against_base_href(Some("https://example.com/docs/"), raw),
+                raw
+            );
+        }
+    }
+
+    #[test]
+    fn no_base_href_leaves_the_reference_untouched() {
+        assert_eq!(resolve_against_base_href(None, "img/a.png"), "img/a.png");
+        assert_eq!(
+            resolve_against_base_href(Some("   "), "img/a.png"),
+            "img/a.png"
+        );
+    }
+
+    #[test]
+    fn a_url_base_resolves_relative_references_against_its_directory() {
+        assert_eq!(
+            resolve_against_base_href(Some("https://example.com/docs/index.html"), "img/a.png"),
+            "https://example.com/docs/img/a.png"
+        );
+        assert_eq!(
+            resolve_against_base_href(Some("https://example.com/docs/"), "a.png"),
+            "https://example.com/docs/a.png"
+        );
+        // 末尾に`/`が無い基準はディレクトリとみなせる部分までを使う。
+        assert_eq!(
+            resolve_against_base_href(Some("https://example.com/docs"), "a.png"),
+            "https://example.com/a.png"
+        );
+    }
+
+    #[test]
+    fn a_url_base_resolves_root_relative_and_protocol_relative_references() {
+        assert_eq!(
+            resolve_against_base_href(Some("https://example.com/docs/index.html"), "/a.png"),
+            "https://example.com/a.png"
+        );
+        assert_eq!(
+            resolve_against_base_href(Some("https://example.com/docs/"), "//cdn.example.net/a.png"),
+            "https://cdn.example.net/a.png"
+        );
+    }
+
+    #[test]
+    fn a_path_base_is_prepended_as_a_directory() {
+        assert_eq!(
+            resolve_against_base_href(Some("assets/"), "img/a.png"),
+            "assets/img/a.png"
+        );
+        assert_eq!(
+            resolve_against_base_href(Some("assets"), "a.png"),
+            "assets/a.png"
+        );
+        // root-relativeな参照は基準ディレクトリを前置しない
+        // (`resolve_local_asset_path`が`base_dir`のルートとして解決するため)。
+        assert_eq!(
+            resolve_against_base_href(Some("assets/"), "/a.png"),
+            "/a.png"
+        );
+    }
+
+    #[test]
+    fn a_resolved_relative_reference_classifies_as_a_remote_url() {
+        let resolved = resolve_against_base_href(Some("https://example.com/docs/"), "a.png");
+        assert_eq!(
+            classify_img_src(&resolved),
+            Some(ImgSrc::RemoteUrl(
+                "https://example.com/docs/a.png".to_string()
+            ))
+        );
     }
 }
