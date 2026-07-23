@@ -79,6 +79,61 @@ layout、Lists、Box model詳細、Generated content、Background詳細)を実�
 ともに完了。マイルストーン8(CSS2.1対応)は、Phase 1(Positioning & Float・
 Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細・
 Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
+マイルストーン9(CSS3対応)は、Phase 1(`box-sizing`・Paged media)が完了。
+Phase 2(Color Level 4・`object-fit`・`box-shadow`・CSS Custom Properties)・
+Phase 3(Flexbox)は未着手。
+
+### Paged media(`@page`/`@media`/margin box/ページ番号)
+
+`@page`ルール(`size`/`margin`、文書全体で1回だけ適用される単一の上書き)・
+`@media`(`print`/`all`は常時適用、`screen`は常時無視、特徴クエリは評価しない)・
+ページ余白ボックス(margin box、`@top-left`〜`@bottom-right-corner`の16個)・
+`content: counter(page)`/`counter(pages)`(ページ番号)に対応している。
+
+```css
+@page {
+  size: A4;
+  margin: 80px 60px;
+  @top-center { content: "請求書"; }
+  @bottom-center { content: "Page " counter(page) " of " counter(pages); }
+}
+@page :first {
+  @bottom-center { content: "表紙"; }
+}
+```
+
+* `@page`の`size`/`margin`はページごとに変えられない(`:first`/`:left`/
+  `:right`付きの`size`/`margin`宣言はパースされるが適用されない)。
+  `:first`/`:left`/`:right`は**margin boxの内容の出し分け**にのみ使える
+  (実装コストの大きい`paginate.rs`側の変更を避けるための意図的なスコープ
+  縮小、ユーザー確認済み)
+* margin boxの寸法は簡略化したモデルを使う: 4隅は固定サイズ(縦横マージン幅の
+  交差部分)、残り12個(上/下/左/右の各辺3分割)は均等割り(著者の`width`指定は
+  無視する)。装飾(背景・枠線)は非対応、`content`のテキスト描画のみ
+* `counter(page)`(現在ページ番号)はストリーミングモードでも問題なく動作する。
+  `counter(pages)`(総ページ数)は文書全体のページ分割が完了するまで値が
+  確定しないため、**`Mode::Streaming`では非対応**(`EngineError::
+  UnsupportedInStreamingMode`)。`Mode::Batch`では、`counter(pages)`が
+  使われている場合のみ総ページ数を事前カウントするパスが1回余分に走る
+* `@media`は特徴クエリ(`(min-width: ...)`等)を一切評価しない。sghtmltopdfは
+  常に印刷/PDF出力のみでビューポートという概念が無いため
+
+詳細は[docs/decisions/0028-paged-media-design.md](docs/decisions/0028-paged-media-design.md)
+参照。
+
+### `box-sizing`
+
+`content-box`(既定)/`border-box`に対応している(`padding-box`は標準外の
+ため非対応)。`border-box`の場合、指定した`width`/`height`はpadding・border
+を含む外寸として扱われる(content-boxの実寸はそこからpadding+borderを
+引いた値になり、それが0未満になる場合は0にクランプされる)。
+
+* 非継承プロパティ(子要素には伝播しない)
+* テーブルセルの列幅アルゴリズムには組み込んでいない(実務上`<td>`への
+  明示指定は稀と判断、既知の簡略化)
+
+詳細は[docs/decisions/0027-box-sizing-design.md](docs/decisions/0027-box-sizing-design.md)
+参照。
 
 ### Generated content
 

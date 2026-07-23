@@ -633,6 +633,60 @@ pub(super) fn shape_run(
     }
 }
 
+/// 任意の文字列を、折り返しなしの単一行として`(origin_x, origin_y)`起点で
+/// シェイピングする。通常のDOMテキストノードを経由しない用途
+/// (`@page`のmargin box、[0028](../../../docs/decisions/0028-paged-media-design.md)
+/// 決定5)向け。文字ごとに`fonts.select_for_char`でフォントを選び直す
+/// (`split_word_into_runs`と同じ考え方だが、折り返し判定が不要な分単純)。
+pub fn shape_standalone_line(
+    text: &str,
+    style: &ComputedStyle,
+    fonts: &FontCollection,
+    origin_x: f32,
+    origin_y: f32,
+) -> LineBox {
+    let mut runs: Vec<TextRun> = Vec::new();
+    let mut current_font: Option<usize> = None;
+    let mut current_text = String::new();
+
+    for ch in text.chars() {
+        let font_index = fonts
+            .select_for_char(&style.font_family, style.font_weight, style.font_style, ch)
+            .unwrap_or(0);
+        if current_font == Some(font_index) {
+            current_text.push(ch);
+        } else {
+            if let Some(fi) = current_font {
+                runs.push(shape_run(&current_text, fi, fonts, style));
+            }
+            current_text.clear();
+            current_text.push(ch);
+            current_font = Some(font_index);
+        }
+    }
+    if let Some(fi) = current_font {
+        runs.push(shape_run(&current_text, fi, fonts, style));
+    }
+
+    let mut x_cursor = 0.0;
+    let mut max_height: f32 = 0.0;
+    for run in &mut runs {
+        run.x_offset = x_cursor;
+        x_cursor += run.width;
+        max_height = max_height.max(run.line_height);
+    }
+
+    LineBox {
+        rect: Rect {
+            x: origin_x,
+            y: origin_y,
+            width: x_cursor,
+            height: max_height,
+        },
+        runs,
+    }
+}
+
 fn measure_space_width(fonts: &FontCollection, font_index: usize, font_size: f32) -> f32 {
     let Some(font) = fonts.get(font_index) else {
         return 0.0;

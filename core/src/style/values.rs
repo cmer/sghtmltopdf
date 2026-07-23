@@ -315,6 +315,15 @@ impl Visibility {
     }
 }
 
+/// `box-sizing`([0027](../../../docs/decisions/0027-box-sizing-design.md))。
+/// `padding-box`(標準外)は非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BoxSizing {
+    #[default]
+    ContentBox,
+    BorderBox,
+}
+
 /// `z-index`([0023](../../../docs/decisions/0023-box-model-details-design.md)決定2)。
 /// `position: static`の要素には効果を持たない(仕様通り、呼び出し側が判定する)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

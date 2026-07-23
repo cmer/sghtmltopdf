@@ -17,8 +17,8 @@ use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
     BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
-    BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius,
-    Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
+    BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
+    CornerRadius, Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
     LengthPercentageOrAuto, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
     SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout, TextAlign,
@@ -182,6 +182,8 @@ pub struct ComputedStyle {
     /// クリップ対象として扱う([0023](../../../docs/decisions/0023-box-model-details-design.md)
     /// 決定1)。
     pub overflow: Overflow,
+    /// `box-sizing`。非継承プロパティ。[0027](../../../docs/decisions/0027-box-sizing-design.md)。
+    pub box_sizing: BoxSizing,
     /// `z-index`。非継承プロパティ。`position: static`の要素には効果を持たない
     /// (仕様通り、`layout`/`pdf`側で判定する、決定2)。
     pub z_index: ZIndex,
@@ -328,6 +330,7 @@ impl Default for ComputedStyle {
             list_style_position: ListStylePosition::Outside,
             list_style_image: None,
             overflow: Overflow::Visible,
+            box_sizing: BoxSizing::ContentBox,
             z_index: ZIndex::Auto,
             visibility: Visibility::Visible,
             outline_width: Length(0.0),
@@ -655,6 +658,7 @@ fn compute_element_style(
     let mut list_style_position = None;
     let mut list_style_image = None;
     let mut overflow = None;
+    let mut box_sizing = None;
     let mut z_index = None;
     let mut visibility = None;
     let mut outline_width = None;
@@ -747,6 +751,7 @@ fn compute_element_style(
             PropertyDeclaration::ListStylePosition(v) => list_style_position = Some(*v),
             PropertyDeclaration::ListStyleImage(v) => list_style_image = Some(v.clone()),
             PropertyDeclaration::Overflow(v) => overflow = Some(*v),
+            PropertyDeclaration::BoxSizing(v) => box_sizing = Some(*v),
             PropertyDeclaration::ZIndex(v) => z_index = Some(*v),
             PropertyDeclaration::Visibility(v) => visibility = Some(*v),
             PropertyDeclaration::OutlineWidth(v) => outline_width = Some(*v),
@@ -1028,6 +1033,7 @@ fn compute_element_style(
         list_style_position: list_style_position.unwrap_or(inherited_list_style_position),
         list_style_image: list_style_image.unwrap_or(inherited_list_style_image),
         overflow: overflow.unwrap_or(initial.overflow),
+        box_sizing: box_sizing.unwrap_or(initial.box_sizing),
         z_index: z_index.unwrap_or(initial.z_index),
         visibility: visibility.unwrap_or(inherited_visibility),
         outline_width: resolve_len(outline_width, initial.outline_width),
@@ -1115,7 +1121,7 @@ fn quote_text(quotes: &Option<Vec<QuotePair>>, depth: i32, is_open: bool) -> Str
 /// `list-style-type`の同名のマーカー生成([`crate::layout::box_tree`])と異なり、
 /// 末尾に`.`を付けない。`disc`/`circle`/`square`/`none`はカウンタ表記として
 /// 意味を持たないため空文字列を返す(仕様通り)。
-fn format_counter_value(style: ListStyleType, n: i32) -> String {
+pub(crate) fn format_counter_value(style: ListStyleType, n: i32) -> String {
     let n = n.max(0) as usize;
     match style {
         ListStyleType::None
@@ -1128,6 +1134,48 @@ fn format_counter_value(style: ListStyleType, n: i32) -> String {
         ListStyleType::UpperRoman => crate::numbering::to_roman(n),
         ListStyleType::LowerAlpha => crate::numbering::to_alpha(n).to_lowercase(),
         ListStyleType::UpperAlpha => crate::numbering::to_alpha(n),
+    }
+}
+
+/// margin box(`@top-left`等)の`content`を解決する。本文の`content:
+/// counter()`(DOM順カウンタスコープ、`compute_recursive`)とはタイミングが
+/// 根本的に異なる(ページ分割**後**)ため、別経路として実装する
+/// ([0028](../../../docs/decisions/0028-paged-media-design.md)決定6)。
+/// `counter(page)`/`counter(pages)`(`counters()`形式も含む、区切り文字は
+/// 意味を持たない)のみ値を持ち、それ以外の名前付きカウンタ・`attr()`・
+/// 引用符は常に空文字列になる(margin boxにはDOM要素・カウンタスコープ・
+/// 引用符ネスト深度という概念が無いため、既知の簡略化)。
+pub fn resolve_margin_box_content(
+    parts: &[ContentPart],
+    page_number: usize,
+    total_pages: Option<usize>,
+) -> String {
+    let mut out = String::new();
+    for part in parts {
+        match part {
+            ContentPart::String(s) => out.push_str(s),
+            ContentPart::Counter(name, style) | ContentPart::Counters(name, _, style) => {
+                if let Some(n) = page_counter_value(name, page_number, total_pages) {
+                    out.push_str(&format_counter_value(*style, n));
+                }
+            }
+            ContentPart::Attr(_)
+            | ContentPart::OpenQuote
+            | ContentPart::CloseQuote
+            | ContentPart::NoOpenQuote
+            | ContentPart::NoCloseQuote => {}
+        }
+    }
+    out
+}
+
+fn page_counter_value(name: &str, page_number: usize, total_pages: Option<usize>) -> Option<i32> {
+    if name == "page" {
+        Some(page_number as i32)
+    } else if name == "pages" {
+        total_pages.map(|n| n as i32)
+    } else {
+        None
     }
 }
 
@@ -2819,6 +2867,42 @@ mod tests {
     }
 
     #[test]
+    fn box_sizing_parses_both_keywords_and_defaults_to_content_box() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&div].box_sizing, super::BoxSizing::ContentBox);
+
+        for (value, expected) in [
+            ("content-box", super::BoxSizing::ContentBox),
+            ("border-box", super::BoxSizing::BorderBox),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ box-sizing: {value}; }}")),
+            );
+            assert_eq!(styles[&div].box_sizing, expected, "box-sizing: {value}");
+        }
+    }
+
+    #[test]
+    fn box_sizing_is_not_inherited() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { box-sizing: border-box; }"),
+        );
+        assert_eq!(styles[&div].box_sizing, super::BoxSizing::BorderBox);
+        assert_eq!(styles[&p].box_sizing, super::BoxSizing::ContentBox);
+    }
+
+    #[test]
     fn z_index_parses_auto_and_integers_and_is_not_inherited() {
         let dom = html::parse(br#"<div><p>a</p></div>"#);
         let div = find(&dom, dom.document(), "div").expect("div not found");
@@ -3262,5 +3346,52 @@ mod tests {
         let p = find(&dom, dom.document(), "p").expect("p not found");
         let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
         assert_eq!(styles[&p].first_letter_style, None);
+    }
+
+    #[test]
+    fn resolve_margin_box_content_formats_page_and_pages_counters() {
+        let parts = vec![
+            ContentPart::String("Page ".to_string()),
+            ContentPart::Counter("page".to_string(), ListStyleType::Decimal),
+            ContentPart::String(" of ".to_string()),
+            ContentPart::Counter("pages".to_string(), ListStyleType::Decimal),
+        ];
+        assert_eq!(
+            resolve_margin_box_content(&parts, 3, Some(10)),
+            "Page 3 of 10"
+        );
+    }
+
+    #[test]
+    fn resolve_margin_box_content_leaves_pages_empty_when_total_is_unknown() {
+        // ストリーミングモードでは`counter(pages)`自体がエラーになる想定
+        // ([0028]決定6)だが、この関数自身は`total_pages: None`を渡された
+        // 場合に単に空文字列を返すだけの安全な挙動にしておく。
+        let parts = vec![ContentPart::Counter(
+            "pages".to_string(),
+            ListStyleType::Decimal,
+        )];
+        assert_eq!(resolve_margin_box_content(&parts, 1, None), "");
+    }
+
+    #[test]
+    fn resolve_margin_box_content_respects_the_counter_style() {
+        let parts = vec![ContentPart::Counter(
+            "page".to_string(),
+            ListStyleType::UpperRoman,
+        )];
+        assert_eq!(resolve_margin_box_content(&parts, 4, None), "IV");
+    }
+
+    #[test]
+    fn resolve_margin_box_content_ignores_attr_and_unrelated_counters_and_quotes() {
+        let parts = vec![
+            ContentPart::Attr("href".to_string()),
+            ContentPart::Counter("chapter".to_string(), ListStyleType::Decimal),
+            ContentPart::OpenQuote,
+            ContentPart::String("x".to_string()),
+            ContentPart::CloseQuote,
+        ];
+        assert_eq!(resolve_margin_box_content(&parts, 1, None), "x");
     }
 }

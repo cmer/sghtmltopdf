@@ -53,13 +53,15 @@ use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::layout::{
-    resolve_border, EdgeSizes, FragmentPosition, LaidOutBox, LaidOutContent, Layout, LineBox, Page,
-    PageSettings, Rect,
+    resolve_border, shape_standalone_line, EdgeSizes, FragmentPosition, LaidOutBox, LaidOutContent,
+    Layout, LineBox, Page, PageSettings, Rect,
 };
 use crate::sink::Sink;
 use crate::style::{
-    BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, ComputedStyle, CornerRadius,
-    EmptyCells, Length, LengthPercentage, LengthPercentageOrAuto, Position, RgbaColor,
+    resolve_margin_box_content, resolve_page_rules, BackgroundRepeat, BackgroundSize,
+    BorderCollapse, BorderStyle, Color, ComputedStyle, CornerRadius, EmptyCells, Length,
+    LengthPercentage, LengthPercentageOrAuto, MarginBoxArea, PageRule, Position,
+    PropertyDeclaration, RgbaColor,
 };
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
@@ -1889,12 +1891,273 @@ fn to_pdf_y(settings: &PageSettings, y_from_content_top: f32) -> f32 {
     settings.size.height - settings.margin.top - y_from_content_top
 }
 
+/// `@page`のmargin box(`@top-left`等、16個)の水平/垂直方向の内容配置
+/// ([0028](../../../docs/decisions/0028-paged-media-design.md)決定5)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum HAlign {
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum VAlign {
+    Top,
+    Middle,
+    Bottom,
+}
+
+/// margin box 1つ分の矩形と、内容の配置規則を返す。
+///
+/// 座標系は`render_line`/`render_image`と同じ「content area(padding/borderの
+/// 内側ではなく、ページの余白の内側=`settings.margin`の内側)基準の相対座標」
+/// (`render_line`が`settings.margin.left + line.rect.x`・`to_pdf_y`が
+/// `settings.size.height - settings.margin.top - y`という式でPDF座標へ変換する
+/// 前提に合わせる必要がある)。margin boxはこのcontent areaの**外側**にあるため、
+/// x/yが負の値やcontent_width/content_heightを超える値になるのが正しい。
+///
+/// 角の4boxは固定サイズ、残り12boxは辺のマージン幅を3等分する簡易配分
+/// ([0028]決定5、著者の`width`指定は無視する既知の簡略化)。
+fn margin_box_area_rect(area: MarginBoxArea, settings: &PageSettings) -> (Rect, HAlign, VAlign) {
+    let m = settings.margin;
+    let content_width = settings.content_width();
+    let content_height = settings.content_height();
+    let strip_w = content_width / 3.0;
+    let strip_h = content_height / 3.0;
+
+    use MarginBoxArea::*;
+    match area {
+        TopLeftCorner => (
+            rect(-m.left, -m.top, m.left, m.top),
+            HAlign::Left,
+            VAlign::Middle,
+        ),
+        TopLeft => (
+            rect(0.0, -m.top, strip_w, m.top),
+            HAlign::Left,
+            VAlign::Middle,
+        ),
+        TopCenter => (
+            rect(strip_w, -m.top, strip_w, m.top),
+            HAlign::Center,
+            VAlign::Middle,
+        ),
+        TopRight => (
+            rect(strip_w * 2.0, -m.top, strip_w, m.top),
+            HAlign::Right,
+            VAlign::Middle,
+        ),
+        TopRightCorner => (
+            rect(content_width, -m.top, m.right, m.top),
+            HAlign::Right,
+            VAlign::Middle,
+        ),
+
+        BottomLeftCorner => (
+            rect(-m.left, content_height, m.left, m.bottom),
+            HAlign::Left,
+            VAlign::Middle,
+        ),
+        BottomLeft => (
+            rect(0.0, content_height, strip_w, m.bottom),
+            HAlign::Left,
+            VAlign::Middle,
+        ),
+        BottomCenter => (
+            rect(strip_w, content_height, strip_w, m.bottom),
+            HAlign::Center,
+            VAlign::Middle,
+        ),
+        BottomRight => (
+            rect(strip_w * 2.0, content_height, strip_w, m.bottom),
+            HAlign::Right,
+            VAlign::Middle,
+        ),
+        BottomRightCorner => (
+            rect(content_width, content_height, m.right, m.bottom),
+            HAlign::Right,
+            VAlign::Middle,
+        ),
+
+        LeftTop => (
+            rect(-m.left, 0.0, m.left, strip_h),
+            HAlign::Center,
+            VAlign::Top,
+        ),
+        LeftMiddle => (
+            rect(-m.left, strip_h, m.left, strip_h),
+            HAlign::Center,
+            VAlign::Middle,
+        ),
+        LeftBottom => (
+            rect(-m.left, strip_h * 2.0, m.left, strip_h),
+            HAlign::Center,
+            VAlign::Bottom,
+        ),
+
+        RightTop => (
+            rect(content_width, 0.0, m.right, strip_h),
+            HAlign::Center,
+            VAlign::Top,
+        ),
+        RightMiddle => (
+            rect(content_width, strip_h, m.right, strip_h),
+            HAlign::Center,
+            VAlign::Middle,
+        ),
+        RightBottom => (
+            rect(content_width, strip_h * 2.0, m.right, strip_h),
+            HAlign::Center,
+            VAlign::Bottom,
+        ),
+    }
+}
+
+fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+/// margin boxの宣言リストから、シェイピングに必要な最小限のスタイルを
+/// 組み立てる(`font-*`/`color`のみ、`ComputedStyle::default()`を基点に
+/// 上書きする)。margin boxはDOM要素を持たないためカスケード・継承は行わない
+/// ([0028]決定7)。
+fn margin_box_style(decls: &[PropertyDeclaration]) -> ComputedStyle {
+    let mut style = ComputedStyle::default();
+    for decl in decls {
+        match decl {
+            PropertyDeclaration::FontSize(v) => {
+                style.font_size = v.resolve(style.font_size.0, style.font_size.0)
+            }
+            PropertyDeclaration::FontFamily(v) => style.font_family = v.clone(),
+            PropertyDeclaration::FontWeight(v) => style.font_weight = *v,
+            PropertyDeclaration::FontStyle(v) => style.font_style = *v,
+            PropertyDeclaration::Color(Color::Rgba {
+                red,
+                green,
+                blue,
+                alpha,
+            }) => {
+                style.color = RgbaColor {
+                    red: *red,
+                    green: *green,
+                    blue: *blue,
+                    alpha: *alpha,
+                }
+            }
+            _ => {}
+        }
+    }
+    style
+}
+
+struct ShapedMarginBox {
+    rect: Rect,
+    h_align: HAlign,
+    v_align: VAlign,
+    line: LineBox,
+}
+
+/// このページで実際に描画すべきmargin boxを、`content`が空でないものだけ
+/// シェイピング済みの状態で返す。描画(`render_margin_boxes`)・使用グリフ
+/// 収集(`collect_margin_box_usage`)の両方から呼ばれる共通処理。
+fn shape_margin_boxes_for_page(
+    settings: &PageSettings,
+    fonts: &FontCollection,
+    page_rules: &[PageRule],
+    page_number: usize,
+    total_pages: Option<usize>,
+) -> Vec<ShapedMarginBox> {
+    if page_rules.is_empty() {
+        return Vec::new();
+    }
+    let is_first = page_number == 1;
+    let is_left = page_number.is_multiple_of(2);
+    let resolved = resolve_page_rules(page_rules, is_first, is_left);
+
+    resolved
+        .margin_boxes
+        .iter()
+        .filter_map(|(area, decls)| {
+            let content_decl = decls.iter().rev().find_map(|d| match d {
+                PropertyDeclaration::Content(parts) => Some(parts.clone()),
+                _ => None,
+            })?;
+            let parts = content_decl?;
+            let text = resolve_margin_box_content(&parts, page_number, total_pages);
+            if text.is_empty() {
+                return None;
+            }
+            let style = margin_box_style(decls);
+            let (rect, h_align, v_align) = margin_box_area_rect(*area, settings);
+            let line = shape_standalone_line(&text, &style, fonts, 0.0, 0.0);
+            Some(ShapedMarginBox {
+                rect,
+                h_align,
+                v_align,
+                line,
+            })
+        })
+        .collect()
+}
+
+/// 確定した`shape_margin_boxes_for_page`の結果を、実際にコンテンツ
+/// ストリームへ描画する(alignmentに応じて原点を配置してから`render_line`を
+/// 再利用する)。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_margin_boxes(
+    content: &mut Content,
+    settings: &PageSettings,
+    fonts: &FontCollection,
+    page_rules: &[PageRule],
+    page_number: usize,
+    total_pages: Option<usize>,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+) {
+    for shaped in shape_margin_boxes_for_page(settings, fonts, page_rules, page_number, total_pages)
+    {
+        let mut line = shaped.line;
+        line.rect.x = match shaped.h_align {
+            HAlign::Left => shaped.rect.x,
+            HAlign::Center => shaped.rect.x + (shaped.rect.width - line.rect.width) / 2.0,
+            HAlign::Right => shaped.rect.x + shaped.rect.width - line.rect.width,
+        };
+        line.rect.y = match shaped.v_align {
+            VAlign::Top => shaped.rect.y,
+            VAlign::Middle => shaped.rect.y + (shaped.rect.height - line.rect.height) / 2.0,
+            VAlign::Bottom => shaped.rect.y + shaped.rect.height - line.rect.height,
+        };
+        render_line(content, &line, fonts, settings, remaps, font_resource_names);
+    }
+}
+
+/// margin boxが使うグリフをフォントサブセット化のために集める
+/// (`render_margin_boxes`と同じ`shape_margin_boxes_for_page`を再利用)。
+pub(super) fn collect_margin_box_usage(
+    settings: &PageSettings,
+    fonts: &FontCollection,
+    page_rules: &[PageRule],
+    page_number: usize,
+    total_pages: Option<usize>,
+    usages: &mut [FontUsage],
+) {
+    for shaped in shape_margin_boxes_for_page(settings, fonts, page_rules, page_number, total_pages)
+    {
+        collect_line_usage(&shaped.line, fonts, usages);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::fonts::Font;
     use crate::html;
-    use crate::layout::paginate_document;
+    use crate::layout::{paginate_document, PageSize};
     use crate::sink::MemorySink;
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet, Stylesheet};
 
@@ -1908,6 +2171,68 @@ mod tests {
         FontCollection::new(vec![
             Font::load(DEJAVU_PATH).expect("should load bundled test font")
         ])
+    }
+
+    #[test]
+    fn margin_box_area_rect_places_corners_and_strips_relative_to_the_content_area() {
+        // A4相当、margin 80/60(上下/左右)を想定。座標系は`render_line`と同じ
+        // content area相対(margin boxはこの外側にあるため負・content超過が
+        // 正しい)。
+        let settings = PageSettings {
+            size: PageSize {
+                width: 800.0,
+                height: 1100.0,
+            },
+            margin: EdgeSizes {
+                top: 80.0,
+                right: 60.0,
+                bottom: 80.0,
+                left: 60.0,
+            },
+        };
+        let content_width = settings.content_width();
+        let content_height = settings.content_height();
+
+        let (top_left_corner, h, v) = margin_box_area_rect(MarginBoxArea::TopLeftCorner, &settings);
+        assert_eq!(
+            top_left_corner,
+            Rect {
+                x: -60.0,
+                y: -80.0,
+                width: 60.0,
+                height: 80.0
+            }
+        );
+        assert_eq!((h, v), (HAlign::Left, VAlign::Middle));
+
+        let (top_center, h, v) = margin_box_area_rect(MarginBoxArea::TopCenter, &settings);
+        assert_eq!(top_center.y, -80.0);
+        assert_eq!(top_center.height, 80.0);
+        assert_eq!(top_center.x, content_width / 3.0);
+        assert_eq!((h, v), (HAlign::Center, VAlign::Middle));
+
+        let (bottom_center, h, v) = margin_box_area_rect(MarginBoxArea::BottomCenter, &settings);
+        assert_eq!(bottom_center.y, content_height);
+        assert_eq!(bottom_center.height, 80.0);
+        assert_eq!((h, v), (HAlign::Center, VAlign::Middle));
+
+        let (bottom_right_corner, ..) =
+            margin_box_area_rect(MarginBoxArea::BottomRightCorner, &settings);
+        assert_eq!(
+            bottom_right_corner,
+            Rect {
+                x: content_width,
+                y: content_height,
+                width: 60.0,
+                height: 80.0
+            }
+        );
+
+        let (right_middle, h, v) = margin_box_area_rect(MarginBoxArea::RightMiddle, &settings);
+        assert_eq!(right_middle.x, content_width);
+        assert_eq!(right_middle.width, 60.0);
+        assert_eq!(right_middle.y, content_height / 3.0);
+        assert_eq!((h, v), (HAlign::Center, VAlign::Middle));
     }
 
     #[test]

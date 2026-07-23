@@ -17,8 +17,8 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::pdf::PreparedImage;
 use crate::style::{
-    BorderCollapse, BorderStyle, BreakBetween, BreakInside, CaptionSide, Clear, ComputedStyle,
-    Display, Float, Length, LengthPercentage, LengthPercentageOrAuto, Position,
+    BorderCollapse, BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear,
+    ComputedStyle, Display, Float, Length, LengthPercentage, LengthPercentageOrAuto, Position,
 };
 
 use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
@@ -235,8 +235,16 @@ fn resolve_box_geometry(
         None if style.float != Float::None
             && !matches!(style.width, LengthPercentageOrAuto::Auto) =>
         {
+            let width = resolve_lpa_or_zero(style.width, containing_width);
+            // `box-sizing: border-box`の場合の変換([0027]決定2)。通常フロー用の
+            // `resolve_width_and_horizontal_margins`と同じ調整をここでも行う。
+            let width = if style.box_sizing == BoxSizing::BorderBox {
+                (width - padding.left - padding.right - border.left - border.right).max(0.0)
+            } else {
+                width
+            };
             (
-                resolve_lpa_or_zero(style.width, containing_width),
+                width,
                 resolve_lpa_or_zero(style.margin_left, containing_width),
                 resolve_lpa_or_zero(style.margin_right, containing_width),
             )
@@ -340,7 +348,12 @@ fn layout_box_impl(
             // auto-heightを拡張する(CSS2.1 10.6.7の浅い実装、孫要素には
             // 伝播しない、既知の簡略化。[0019]参照)。
             let auto_height = cursor_y.max(max_float_bottom) - content_y;
-            let height = resolve_height(&style).unwrap_or(auto_height);
+            let height = resolve_height(
+                &style,
+                padding.top + padding.bottom,
+                border.top + border.bottom,
+            )
+            .unwrap_or(auto_height);
             (LaidOutContent::Blocks(laid_children), height)
         }
         BoxContent::Inline(spans) => {
@@ -354,7 +367,12 @@ fn layout_box_impl(
                 Some(&*float_ctx),
             );
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
-            let height = resolve_height(&style).unwrap_or(lines_height);
+            let height = resolve_height(
+                &style,
+                padding.top + padding.bottom,
+                border.top + border.bottom,
+            )
+            .unwrap_or(lines_height);
             (LaidOutContent::Inline(lines), height)
         }
         BoxContent::Table(table) => {
@@ -381,7 +399,12 @@ fn layout_box_impl(
                 content_x,
                 content_y,
             );
-            let height = resolve_height(&style).unwrap_or(table_height);
+            let height = resolve_height(
+                &style,
+                padding.top + padding.bottom,
+                border.top + border.bottom,
+            )
+            .unwrap_or(table_height);
             (LaidOutContent::Table(laid_table), height)
         }
         BoxContent::Image(image_content) => {
@@ -389,7 +412,12 @@ fn layout_box_impl(
             // autoだったケースは既に具体的なLengthへ差し替え済みなので、
             // `resolve_height`は`Some`を返す(高さゼロは、内在サイズが
             // 得られない=フェッチ・デコード失敗時の妥当な既定)。
-            let height = resolve_height(&style).unwrap_or(0.0);
+            let height = resolve_height(
+                &style,
+                padding.top + padding.bottom,
+                border.top + border.bottom,
+            )
+            .unwrap_or(0.0);
             (LaidOutContent::Image(image_content.image.clone()), height)
         }
     };
@@ -623,9 +651,18 @@ pub(crate) fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
 
 /// `height`が明示指定されていれば返す。`auto`および(containing blockの高さが
 /// 不定なため)パーセンテージ指定は`None`とし、呼び出し側でコンテンツ高さを使う。
-fn resolve_height(style: &ComputedStyle) -> Option<f32> {
+/// `box-sizing: border-box`の場合、指定値は border-box の高さを表すため
+/// `padding_tb`/`border_tb`を引いてcontent-box相当に変換する
+/// ([0027](../../../docs/decisions/0027-box-sizing-design.md)決定2)。
+fn resolve_height(style: &ComputedStyle, padding_tb: f32, border_tb: f32) -> Option<f32> {
     match style.height {
-        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(px)) => Some(px),
+        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(px)) => {
+            Some(if style.box_sizing == BoxSizing::BorderBox {
+                (px - padding_tb - border_tb).max(0.0)
+            } else {
+                px
+            })
+        }
         LengthPercentageOrAuto::Auto | LengthPercentageOrAuto::LengthPercentage(_) => None,
     }
 }
@@ -711,7 +748,15 @@ pub(crate) fn resolve_width_and_horizontal_margins(
         return (width, margin_left, margin_right);
     }
 
+    // `box-sizing: border-box`の場合、指定値はborder-boxの幅を表すため、
+    // padding+borderを引いてcontent-box相当に変換してから既存の等式へ渡す
+    // ([0027]決定2)。
     let width = resolve_lpa_or_zero(style.width, containing_width);
+    let width = if style.box_sizing == BoxSizing::BorderBox {
+        (width - padding_lr - border_lr).max(0.0)
+    } else {
+        width
+    };
     let remaining = (containing_width - border_lr - padding_lr - width).max(0.0);
 
     match (margin_left_is_auto, margin_right_is_auto) {
@@ -1387,6 +1432,53 @@ mod tests {
 
         let border_box = div_box.layout.border_box();
         assert_eq!(border_box.width, 2.0 + 5.0 + 100.0 + 5.0 + 2.0);
+    }
+
+    #[test]
+    fn box_sizing_border_box_makes_the_specified_width_include_padding_and_border() {
+        let dom = html::parse(br#"<div class="box"></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".box { box-sizing: border-box; width: 100px; height: 60px; margin: 0; \
+             padding: 5px; border: 2px solid black; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+
+        // border-boxでは指定した100px/60pxがpadding+border込みの外寸になるため、
+        // content-boxはその分小さくなる(100 - 2*5 - 2*2 = 86)。
+        assert_eq!(div_box.layout.content.width, 100.0 - 2.0 * 5.0 - 2.0 * 2.0);
+        assert_eq!(div_box.layout.content.height, 60.0 - 2.0 * 5.0 - 2.0 * 2.0);
+
+        let border_box = div_box.layout.border_box();
+        assert_eq!(border_box.width, 100.0);
+        assert_eq!(border_box.height, 60.0);
+    }
+
+    #[test]
+    fn box_sizing_border_box_clamps_to_zero_when_padding_and_border_exceed_the_specified_width() {
+        let dom = html::parse(br#"<div class="box"></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".box { box-sizing: border-box; width: 5px; margin: 0; \
+             padding: 10px; border: 10px solid black; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let div_box = find_laid_out(&laid, divs[0]).expect("div box not found");
+
+        assert_eq!(div_box.layout.content.width, 0.0);
     }
 
     #[test]

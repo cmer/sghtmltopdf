@@ -25,9 +25,12 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::layout::{Page, PageSettings};
 use crate::sink::Sink;
-use crate::style::ComputedStyle;
+use crate::style::{ComputedStyle, PageRule};
 
-use super::document::{collect_image_uses, collect_usage, render_box, RefAllocator};
+use super::document::{
+    collect_image_uses, collect_margin_box_usage, collect_usage, render_box, render_margin_boxes,
+    RefAllocator,
+};
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
 use super::img::{
     embed_image_streaming_chunks, ids_for_image, image_resource_name, ImageIds, PreparedImage,
@@ -57,6 +60,9 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// 集計(サブセット化)が不要なため、`finish`まで待たずページごとに
     /// 「初出なら書き出す」形で埋めていく([0014]参照)。
     image_ids: HashMap<usize, ImageIds>,
+    /// `@page`ルール(margin box描画用、[0028](
+    /// ../../../docs/decisions/0028-paged-media-design.md))。
+    page_rules: Vec<PageRule>,
 }
 
 impl<S: Sink> StreamingPdfWriter<S> {
@@ -65,6 +71,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         fonts: &FontCollection,
         settings: PageSettings,
         mut sink: S,
+        page_rules: Vec<PageRule>,
     ) -> Result<Self, S::Error> {
         sink.write(PDF_HEADER)?;
 
@@ -97,22 +104,41 @@ impl<S: Sink> StreamingPdfWriter<S> {
             page_ids: Vec::new(),
             settings,
             image_ids: HashMap::new(),
+            page_rules,
         })
     }
 
     /// 確定した1ページを即座にコンテンツストリームへエンコードし、`sink`へ
     /// 書き出す。使用したグリフは内部に軽量な[`FontUsage`]として蓄積する
     /// だけなので、呼び出し後は`page`(レイアウト結果)を破棄してよい。
+    ///
+    /// `total_pages`は`counter(pages)`用の総ページ数(`Mode::Streaming`では
+    /// 原理的に決まらないため常に`None`、`Mode::Batch`で`@page`が
+    /// `counter(pages)`を使う場合のみ事前カウント済みの値を渡す、
+    /// [0028](../../../docs/decisions/0028-paged-media-design.md)決定6)。
     pub fn write_page(
         &mut self,
         page: &Page,
         styles: &HashMap<NodeId, ComputedStyle>,
         background_images: &HashMap<NodeId, Rc<PreparedImage>>,
         fonts: &FontCollection,
+        total_pages: Option<usize>,
     ) -> Result<(), S::Error> {
+        // ページ番号は「これまでに書いたページ数+1」(1始まり)。`push`する前に
+        // 求める。
+        let page_number = self.page_ids.len() + 1;
+
         for b in &page.boxes {
             collect_usage(b, fonts, &mut self.usages);
         }
+        collect_margin_box_usage(
+            &self.settings,
+            fonts,
+            &self.page_rules,
+            page_number,
+            total_pages,
+            &mut self.usages,
+        );
 
         // 画像はフォントと違いページをまたいだ使用状況集計(サブセット化)が
         // 不要なため、このページで初出のものはこの時点で即座にXObjectとして
@@ -152,6 +178,16 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 background_images,
             );
         }
+        render_margin_boxes(
+            &mut content,
+            &self.settings,
+            fonts,
+            &self.page_rules,
+            page_number,
+            total_pages,
+            None,
+            &self.font_resource_names,
+        );
         let content_bytes = content.finish();
         let compressed_content = deflate(&content_bytes);
 
@@ -305,11 +341,11 @@ mod tests {
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new())
+        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
             .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &HashMap::new(), &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -348,11 +384,11 @@ mod tests {
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         assert!(pages.len() > 1, "expected multiple pages");
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new())
+        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
             .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &HashMap::new(), &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -372,11 +408,11 @@ mod tests {
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new())
+        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
             .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &HashMap::new(), &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -409,16 +445,16 @@ mod tests {
         let pages1 = paginate_document(&dom1, &styles1, &fonts, &settings);
         let pages2 = paginate_document(&dom2, &styles2, &fonts, &settings);
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new())
+        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
             .expect("new should not fail");
         for page in &pages1 {
             writer
-                .write_page(page, &styles1, &HashMap::new(), &fonts)
+                .write_page(page, &styles1, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
         }
         for page in &pages2 {
             writer
-                .write_page(page, &styles2, &HashMap::new(), &fonts)
+                .write_page(page, &styles2, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
         }
         let bytes = writer.finish(&fonts).expect("finish should not fail");
@@ -447,12 +483,12 @@ mod tests {
         let laid_out =
             crate::layout::layout_document(&tree, &styles, &fonts, settings.content_width());
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new())
+        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
             .expect("new should not fail");
         let mut page_count = 0usize;
         paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
             writer
-                .write_page(&page, &styles, &HashMap::new(), &fonts)
+                .write_page(&page, &styles, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
             page_count += 1;
         });
@@ -495,11 +531,11 @@ mod tests {
             Ok(())
         });
 
-        let mut writer =
-            StreamingPdfWriter::new(&fonts, settings, sink).expect("new should not fail");
+        let mut writer = StreamingPdfWriter::new(&fonts, settings, sink, Vec::new())
+            .expect("new should not fail");
         for page in &pages {
             writer
-                .write_page(page, &styles, &HashMap::new(), &fonts)
+                .write_page(page, &styles, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");
         }
         writer.finish(&fonts).expect("finish should not fail");

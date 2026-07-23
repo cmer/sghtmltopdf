@@ -3,12 +3,13 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 
 use super::values::{
-    BackgroundAttachment, BackgroundRepeat, BorderCollapse, BorderStyle, BreakBetween, BreakInside,
-    CaptionSide, Clear, Color, ContentPart, Display, EmptyCells, Float, FontStyle, FontWeight,
-    ListStylePosition, ListStyleType, Overflow, Position, QuotePair, SpecifiedBackgroundPosition,
-    SpecifiedBackgroundSize, SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing, TableLayout, TextAlign,
-    TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    BackgroundAttachment, BackgroundRepeat, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
+    BreakInside, CaptionSide, Clear, Color, ContentPart, Display, EmptyCells, Float, FontStyle,
+    FontWeight, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
+    SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedCornerRadius, SpecifiedLength,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight,
+    SpecifiedSpacing, TableLayout, TextAlign, TextDecorationLine, TextTransform, VerticalAlign,
+    Visibility, WhiteSpace, ZIndex,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,6 +102,9 @@ pub enum PropertyDeclaration {
     /// `hidden`/`scroll`/`auto`は全て同じクリップ処理として扱う([0023](
     /// ../../../docs/decisions/0023-box-model-details-design.md)決定1)。
     Overflow(Overflow),
+    /// `padding-box`(標準外)は非対応([0027](
+    /// ../../../docs/decisions/0027-box-sizing-design.md))。
+    BoxSizing(BoxSizing),
     /// `position: static`の要素には効果を持たない(仕様通り、決定2)。
     ZIndex(ZIndex),
     /// `collapse`は`hidden`と同一視する(決定4)。
@@ -216,6 +220,7 @@ pub fn parse_declaration<'i>(
         "list-style-image" => Ok(vec![D::ListStyleImage(parse_list_style_image(input)?)]),
         "list-style" => parse_list_style_shorthand(input),
         "overflow" => Ok(vec![D::Overflow(parse_overflow(input)?)]),
+        "box-sizing" => Ok(vec![D::BoxSizing(parse_box_sizing(input)?)]),
         "z-index" => Ok(vec![D::ZIndex(parse_z_index(input)?)]),
         "visibility" => Ok(vec![D::Visibility(parse_visibility(input)?)]),
         "outline-width" => Ok(vec![D::OutlineWidth(parse_length(input)?)]),
@@ -448,6 +453,16 @@ fn parse_overflow<'i>(input: &mut Parser<'i, '_>) -> Result<Overflow, ParseError
         "hidden" => Overflow::Hidden,
         "scroll" => Overflow::Scroll,
         "auto" => Overflow::Auto,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `box-sizing`。`padding-box`(標準外)は非対応([0027]決定1)。
+fn parse_box_sizing<'i>(input: &mut Parser<'i, '_>) -> Result<BoxSizing, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "content-box" => BoxSizing::ContentBox,
+        "border-box" => BoxSizing::BorderBox,
         _ => return Err(input.new_custom_error(())),
     })
 }
@@ -896,7 +911,9 @@ fn parse_length_percentage_or_auto<'i>(
     parse_length_percentage(input).map(SpecifiedLengthPercentageOrAuto::LengthPercentage)
 }
 
-fn parse_length<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedLength, ParseError<'i, ()>> {
+pub(crate) fn parse_length<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedLength, ParseError<'i, ()>> {
     let token = input.next()?.clone();
     match token {
         Token::Number { value: 0.0, .. } => Ok(SpecifiedLength::Px(0.0)),

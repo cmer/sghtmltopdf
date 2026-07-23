@@ -49,15 +49,16 @@ use crate::html::{Dom, NodeId, StreamingParser};
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
-    layout_document_from, paginate_document_streaming, resolve_background_images, resolve_border,
-    resolve_images, resolve_lpa_or_zero, resolve_padding, resolve_width_and_horizontal_margins,
-    PageSettings, StreamingPaginator,
+    layout_document_from, paginate_document, paginate_document_streaming,
+    resolve_background_images, resolve_border, resolve_images, resolve_lpa_or_zero,
+    resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
 };
 use crate::pdf::{ImageAssetCache, PreparedImage, StreamingPdfWriter};
 use crate::sink::Sink;
 use crate::style::{
     compute_single_element_style, compute_styles, compute_styles_with_parent,
-    extract_author_stylesheet, user_agent_stylesheet, ComputedStyle, Stylesheet,
+    extract_author_stylesheet, resolve_page_rules, rules_use_page_count, user_agent_stylesheet,
+    ComputedStyle, LengthPercentageOrAuto, PageRule, Stylesheet,
 };
 
 /// 一括処理かストリーミング処理かを選択する。
@@ -261,6 +262,16 @@ impl<S: Sink> Engine<S> {
             let dom = self.parser.dom();
             extract_author_stylesheet(&dom, &css_fetcher, &css_cache)
         };
+        let page_settings =
+            apply_page_rule_settings_override(self.options.settings, &author.page_rules);
+        // `counter(pages)`は文書全体のページ分割完了まで値が定まらないため、
+        // 真のストリーミング処理とは原理的に相容れない([0028](
+        // ../docs/decisions/0028-paged-media-design.md)決定6、ユーザー確認済み)。
+        if rules_use_page_count(&author.page_rules) {
+            return Err(EngineError::UnsupportedInStreamingMode(
+                "counter(pages) in @page margin boxes is not supported in streaming mode",
+            ));
+        }
 
         let mut loaded_fonts = Vec::with_capacity(self.options.fonts.len());
         for spec in &self.options.fonts {
@@ -327,7 +338,7 @@ impl<S: Sink> Engine<S> {
             ));
         }
 
-        let page_width = self.options.settings.content_width();
+        let page_width = page_settings.content_width();
         let body_padding = resolve_padding(&body_style, page_width);
         let (body_content_width, body_margin_left, _) = resolve_width_and_horizontal_margins(
             &body_style,
@@ -340,8 +351,9 @@ impl<S: Sink> Engine<S> {
             + body_border.top
             + body_padding.top;
 
-        let writer = StreamingPdfWriter::new(&fonts, self.options.settings, sink)
-            .map_err(EngineError::Io)?;
+        let writer =
+            StreamingPdfWriter::new(&fonts, page_settings, sink, author.page_rules.clone())
+                .map_err(EngineError::Io)?;
         let image_cache =
             ImageAssetCache::new(base_dir.to_path_buf(), self.options.allow_remote_assets);
 
@@ -358,7 +370,7 @@ impl<S: Sink> Engine<S> {
             content_width: body_content_width,
             start_x,
             cursor_y: start_y,
-            paginator: StreamingPaginator::new(self.options.settings.content_height()),
+            paginator: StreamingPaginator::new(page_settings.content_height()),
             writer,
             image_cache,
         })
@@ -436,7 +448,16 @@ impl<S: Sink> Engine<S> {
         for page in &pages {
             state
                 .writer
-                .write_page(page, &state.styles, &state.background_images, &state.fonts)
+                // `Mode::Streaming`は総ページ数を原理的に知りえないため常に`None`
+                // (`counter(pages)`使用時は`init_streaming_state`で事前に
+                // エラーを返している)。
+                .write_page(
+                    page,
+                    &state.styles,
+                    &state.background_images,
+                    &state.fonts,
+                    None,
+                )
                 .map_err(EngineError::Io)?;
         }
 
@@ -484,7 +505,7 @@ impl<S: Sink> Engine<S> {
                 } = state;
                 for page in paginator.finish() {
                     writer
-                        .write_page(&page, &styles, &background_images, &fonts)
+                        .write_page(&page, &styles, &background_images, &fonts, None)
                         .map_err(EngineError::Io)?;
                 }
                 writer.finish(&fonts).map_err(EngineError::Io)
@@ -529,6 +550,7 @@ impl<S: Sink> Engine<S> {
         let css_cache = DocumentImageCache::new();
         let author = extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
         let styles = compute_styles(&dom, &ua, &author);
+        let page_settings = apply_page_rule_settings_override(options.settings, &author.page_rules);
 
         let system_fonts = SystemFonts::scan();
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
@@ -542,8 +564,22 @@ impl<S: Sink> Engine<S> {
         }
         load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
 
+        // `counter(pages)`が使われている場合のみ、総ページ数を確定させる
+        // ための事前カウント用パスを走らせる(レイアウト・ページ分割の
+        // 計算コストが余分にかかるが、この機能を使わない文書には一切
+        // 影響しない、[0028](../docs/decisions/0028-paged-media-design.md)
+        // 決定6)。`Mode::Batch`はこの時点で`dom`全体が確定済みなので
+        // 事前カウントが可能(`Mode::Streaming`では原理的に不可能、
+        // `init_streaming_state`で別途エラーにしている)。
+        let total_pages = if rules_use_page_count(&author.page_rules) {
+            Some(paginate_document(&dom, &styles, &fonts, &page_settings).len())
+        } else {
+            None
+        };
+
         let mut writer =
-            StreamingPdfWriter::new(&fonts, options.settings, sink).map_err(EngineError::Io)?;
+            StreamingPdfWriter::new(&fonts, page_settings, sink, author.page_rules.clone())
+                .map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::new(base_dir.to_path_buf(), options.allow_remote_assets);
         // `background-image`はレイアウトのサイズ計算に影響しない描画専用の
         // 情報なので、`resolve_images`(box tree構築)とは独立に、文書全体の
@@ -555,13 +591,15 @@ impl<S: Sink> Engine<S> {
             &mut dom,
             &styles,
             &fonts,
-            &options.settings,
+            &page_settings,
             &image_cache,
             &mut |page| {
                 if write_error.is_some() {
                     return;
                 }
-                if let Err(e) = writer.write_page(&page, &styles, &background_images, &fonts) {
+                if let Err(e) =
+                    writer.write_page(&page, &styles, &background_images, &fonts, total_pages)
+                {
                     write_error = Some(e);
                 }
             },
@@ -572,6 +610,50 @@ impl<S: Sink> Engine<S> {
 
         writer.finish(&fonts).map_err(EngineError::Io)
     }
+}
+
+/// `@page`ルールの`size`/`margin`宣言(無条件`@page{}`ルールのみ、
+/// [0028](../docs/decisions/0028-paged-media-design.md)決定4改訂)を
+/// `base`(CLIオプション/既定値)へ適用した`PageSettings`を返す。
+/// `:first`/`:left`/`:right`はmargin box(ヘッダー/フッター内容)の出し分け
+/// にのみ使うため、ここでは無条件ルールだけを見ればよい
+/// (`is_first`/`is_left`はどちらの値でも`resolve_page_rules`が返す
+/// `size_px`/`margin_*`には影響しない)。
+fn apply_page_rule_settings_override(base: PageSettings, page_rules: &[PageRule]) -> PageSettings {
+    let resolved = resolve_page_rules(page_rules, false, false);
+    let mut settings = base;
+    if let Some((width, height)) = resolved.size_px {
+        settings.size.width = width;
+        settings.size.height = height;
+    }
+    let resolve_edge = |value: Option<LengthPercentageOrAuto>, base: f32, basis: f32| match value {
+        None | Some(LengthPercentageOrAuto::Auto) => base,
+        Some(LengthPercentageOrAuto::LengthPercentage(lp)) => match lp {
+            crate::style::LengthPercentage::Length(px) => px,
+            crate::style::LengthPercentage::Percentage(p) => basis * p,
+        },
+    };
+    settings.margin.top = resolve_edge(
+        resolved.margin_top,
+        settings.margin.top,
+        settings.size.height,
+    );
+    settings.margin.bottom = resolve_edge(
+        resolved.margin_bottom,
+        settings.margin.bottom,
+        settings.size.height,
+    );
+    settings.margin.left = resolve_edge(
+        resolved.margin_left,
+        settings.margin.left,
+        settings.size.width,
+    );
+    settings.margin.right = resolve_edge(
+        resolved.margin_right,
+        settings.margin.right,
+        settings.size.width,
+    );
+    settings
 }
 
 /// `root`以下のサブツリーに属するノードの`ComputedStyle`を`styles`から
@@ -951,6 +1033,160 @@ mod tests {
             .expect("Mode::Batch should not reject a late <style> tag");
         let bytes = engine.finish().unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn apply_page_rule_settings_override_uses_only_unconditional_rules() {
+        let base = PageSettings::default();
+        let sheet = crate::style::parse_stylesheet(
+            "@page { size: 300px 400px; margin: 20px; } \
+             @page :first { size: 999px 999px; margin: 999px; }",
+        );
+        let overridden = apply_page_rule_settings_override(base, &sheet.page_rules);
+        assert_eq!(overridden.size.width, 300.0);
+        assert_eq!(overridden.size.height, 400.0);
+        assert_eq!(overridden.margin.top, 20.0);
+        assert_eq!(overridden.margin.left, 20.0);
+    }
+
+    #[test]
+    fn apply_page_rule_settings_override_leaves_settings_unchanged_without_at_page() {
+        let base = PageSettings::default();
+        let overridden = apply_page_rule_settings_override(base, &[]);
+        assert_eq!(overridden, base);
+    }
+
+    #[test]
+    fn at_page_size_overrides_the_pdf_media_box_in_batch_mode() {
+        let options = EngineOptions {
+            mode: Mode::Batch,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine
+            .feed(b"<html><head><style>@page { size: 300px 400px; }</style></head><body><p>x</p></body></html>")
+            .unwrap();
+        let bytes = engine.finish().unwrap();
+        assert!(
+            count_occurrences(&bytes, b"/MediaBox [0 0 300 400]") > 0,
+            "@page size should override the PDF MediaBox"
+        );
+    }
+
+    #[test]
+    fn at_page_size_overrides_the_pdf_media_box_in_streaming_mode() {
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine
+            .feed(b"<html><head><style>@page { size: 300px 400px; }</style></head><body><p>x</p></body></html>")
+            .unwrap();
+        let bytes = engine.finish().unwrap();
+        assert!(
+            count_occurrences(&bytes, b"/MediaBox [0 0 300 400]") > 0,
+            "@page size should override the PDF MediaBox in streaming mode too"
+        );
+    }
+
+    #[test]
+    fn margin_box_content_glyphs_are_embedded_in_the_font_subset_in_batch_mode() {
+        // margin boxのcontentは通常のBoxContent::Inline経路(collect_usage)を
+        // 通らない独立した経路(collect_margin_box_usage)なので、専用の収集漏れが
+        // 起きていないかを回帰確認する(M8のマーカーグリフ収集漏れと同種のバグ
+        // クラス)。本文には登場しない数字を`@bottom-right`のページ番号として
+        // 表示させ、そのグリフが実際にToUnicode CMapへ埋め込まれることを確認する。
+        let options = EngineOptions {
+            mode: Mode::Batch,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine
+            .feed(
+                b"<html><head><style>\
+                    @page { @bottom-right { content: counter(page); } }\
+                  </style></head><body><p>no digits here</p></body></html>",
+            )
+            .unwrap();
+        let bytes = engine.finish().unwrap();
+        let decompressed = decompressed_stream_bytes(&bytes);
+        assert!(
+            count_occurrences(&decompressed, b"<0031>") > 0,
+            "the margin box counter(page) glyph ('1') should be embedded in the ToUnicode CMap"
+        );
+    }
+
+    #[test]
+    fn counter_pages_in_a_margin_box_is_rejected_in_streaming_mode() {
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        match engine.feed(
+            b"<html><head><style>\
+                @page { @bottom-center { content: counter(pages); } }\
+              </style></head><body><p>x</p></body></html>",
+        ) {
+            Err(EngineError::UnsupportedInStreamingMode(_)) => {}
+            other => panic!("expected UnsupportedInStreamingMode, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn counter_page_alone_is_allowed_in_streaming_mode() {
+        // `counter(page)`単体(`counter(pages)`を伴わない)は、ページ確定時点で
+        // 値が決まるためストリーミングでも問題なく動作するはず([0028]決定6)。
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine
+            .feed(
+                b"<html><head><style>\
+                    @page { @bottom-right { content: counter(page); } }\
+                  </style></head><body><p>x</p></body></html>",
+            )
+            .expect("counter(page) alone should be allowed in streaming mode");
+        let bytes = engine.finish().unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn counter_pages_resolves_to_the_actual_total_page_count_in_batch_mode() {
+        // `@page`の`size`/`margin`を明示指定してページ数を決定論的にする:
+        // ページ内容領域の高さ=300px(margin 0)、300px高さのdivを2個並べれば
+        // ちょうど2ページに分かれるはず。
+        let options = EngineOptions {
+            mode: Mode::Batch,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        let html = b"<html><head><style>\
+               @page { size: 200px 300px; margin: 0; @bottom-right { content: counter(pages); } }\
+               body { margin: 0; } div { height: 300px; }\
+             </style></head><body><div></div><div></div></body></html>";
+        engine.feed(html).unwrap();
+        let bytes = engine.finish().unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert_eq!(
+            count_occurrences(&bytes, b"/MediaBox [0 0 200 300]"),
+            2,
+            "expected exactly 2 pages"
+        );
+        let decompressed = decompressed_stream_bytes(&bytes);
+        assert!(
+            count_occurrences(&decompressed, b"<0032>") > 0,
+            "counter(pages) should resolve to the actual total page count ('2') in the ToUnicode CMap"
+        );
     }
 
     #[test]
