@@ -10,8 +10,9 @@ use super::values::{
     ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
     SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow,
     SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing, TableLayout, TextAlign,
-    TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing,
+    SpecifiedTransformFunction, TableLayout, TextAlign, TextDecorationLine, TextTransform,
+    VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -146,6 +147,15 @@ pub enum PropertyDeclaration {
     FlexBasis(SpecifiedFlexBasis),
     RowGap(SpecifiedLengthPercentage),
     ColumnGap(SpecifiedLengthPercentage),
+    /// `transform`。空のVecは`none`([0035](
+    /// ../../../docs/decisions/0035-opacity-transform-design.md)決定1-1)。
+    Transform(Vec<SpecifiedTransformFunction>),
+    /// `transform-origin`。値の文法が`background-position`と同じため
+    /// `SpecifiedBackgroundPosition`を再利用する(初期値は`50% 50%`、
+    /// `background-position`の`0% 0%`とは個別に指定、決定1-1)。
+    TransformOrigin(SpecifiedBackgroundPosition),
+    /// `opacity`。0〜1にクランプ済み(決定2)。
+    Opacity(f32),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -290,6 +300,9 @@ pub fn parse_declaration<'i>(
         "row-gap" => Ok(vec![D::RowGap(parse_length_percentage(input)?)]),
         "column-gap" => Ok(vec![D::ColumnGap(parse_length_percentage(input)?)]),
         "gap" => parse_gap_shorthand(input),
+        "transform" => Ok(vec![D::Transform(parse_transform(input)?)]),
+        "transform-origin" => Ok(vec![D::TransformOrigin(parse_background_position(input)?)]),
+        "opacity" => Ok(vec![D::Opacity(parse_opacity(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -1820,4 +1833,128 @@ fn parse_gap_shorthand<'i>(
     let row = parse_length_percentage(input)?;
     let column = input.try_parse(parse_length_percentage).unwrap_or(row);
     Ok(vec![D::RowGap(row), D::ColumnGap(column)])
+}
+
+/// `transform: none | <transform-function>+`([0035](
+/// ../../../docs/decisions/0035-opacity-transform-design.md)決定1-1)。
+fn parse_transform<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<SpecifiedTransformFunction>, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(Vec::new());
+    }
+    let mut functions = Vec::new();
+    while let Ok(f) = input.try_parse(parse_transform_function) {
+        functions.push(f);
+    }
+    if functions.is_empty() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(functions)
+}
+
+/// `<transform-function>`1つ分(`translate(...)`等)。
+fn parse_transform_function<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedTransformFunction, ParseError<'i, ()>> {
+    use SpecifiedTransformFunction as F;
+    let name = match input.next()?.clone() {
+        Token::Function(name) => name,
+        _ => return Err(input.new_custom_error(())),
+    };
+    input.parse_nested_block(|input| {
+        Ok(match_ignore_ascii_case! { &name,
+            "translate" => {
+                let x = parse_length_percentage(input)?;
+                let y = input
+                    .try_parse(|input| {
+                        input.expect_comma()?;
+                        parse_length_percentage(input)
+                    })
+                    .unwrap_or(SpecifiedLengthPercentage::Length(SpecifiedLength::Px(0.0)));
+                F::Translate(x, y)
+            },
+            "translatex" => F::TranslateX(parse_length_percentage(input)?),
+            "translatey" => F::TranslateY(parse_length_percentage(input)?),
+            "scale" => {
+                let x = input.expect_number()?;
+                let y = input
+                    .try_parse(|input| {
+                        input.expect_comma()?;
+                        input.expect_number()
+                    })
+                    .unwrap_or(x);
+                F::Scale(x, y)
+            },
+            "scalex" => F::ScaleX(input.expect_number()?),
+            "scaley" => F::ScaleY(input.expect_number()?),
+            "rotate" => F::Rotate(parse_angle_radians(input)?),
+            "skew" => {
+                let x = parse_angle_radians(input)?;
+                let y = input
+                    .try_parse(|input| {
+                        input.expect_comma()?;
+                        parse_angle_radians(input)
+                    })
+                    .unwrap_or(0.0);
+                F::Skew(x, y)
+            },
+            "skewx" => F::SkewX(parse_angle_radians(input)?),
+            "skewy" => F::SkewY(parse_angle_radians(input)?),
+            "matrix" => {
+                let a = input.expect_number()?;
+                input.expect_comma()?;
+                let b = input.expect_number()?;
+                input.expect_comma()?;
+                let c = input.expect_number()?;
+                input.expect_comma()?;
+                let d = input.expect_number()?;
+                input.expect_comma()?;
+                let e = input.expect_number()?;
+                input.expect_comma()?;
+                let f = input.expect_number()?;
+                F::Matrix(a, b, c, d, e, f)
+            },
+            _ => return Err(input.new_custom_error(())),
+        })
+    })
+}
+
+/// 角度値(`deg`/`rad`/`grad`/`turn`)をラジアンへ正規化する。単位無しの`0`も
+/// 有効(CSS仕様通り)。
+fn parse_angle_radians<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
+    let token = input.next()?.clone();
+    match token {
+        Token::Number { value: 0.0, .. } => Ok(0.0),
+        Token::Dimension {
+            value, ref unit, ..
+        } => {
+            if unit.eq_ignore_ascii_case("deg") {
+                Ok(value.to_radians())
+            } else if unit.eq_ignore_ascii_case("rad") {
+                Ok(value)
+            } else if unit.eq_ignore_ascii_case("grad") {
+                Ok(value * std::f32::consts::PI / 200.0)
+            } else if unit.eq_ignore_ascii_case("turn") {
+                Ok(value * std::f32::consts::TAU)
+            } else {
+                Err(input.new_custom_error(()))
+            }
+        }
+        _ => Err(input.new_custom_error(())),
+    }
+}
+
+/// `opacity: <number> | <percentage>`。0〜1にクランプする(決定2)。
+fn parse_opacity<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
+    let token = input.next()?.clone();
+    let value = match token {
+        Token::Number { value, .. } => value,
+        Token::Percentage { unit_value, .. } => unit_value,
+        _ => return Err(input.new_custom_error(())),
+    };
+    Ok(value.clamp(0.0, 1.0))
 }

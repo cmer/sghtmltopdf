@@ -81,7 +81,34 @@ Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細�
 Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
 **マイルストーン9(CSS3対応)全体が完了**(Phase 1: `box-sizing`・Paged media、
 Phase 2: Color Level 4・`object-fit`/`object-position`・`box-shadow`・
-CSS Custom Properties、Phase 3: Flexbox)。
+CSS Custom Properties、Phase 3: Flexbox)。M9完了後、ユーザー指示により
+Phase4で対象外候補としていた`opacity`/`transform`にも対応した(`filter`は
+引き続き対象外)。
+
+### `opacity`/`transform`
+
+```css
+.watermark { opacity: 0.4; transform: rotate(-20deg); }
+.card { transform: scale(1.1); transform-origin: top left; }
+```
+
+* `transform`は`translate`/`translateX`/`translateY`/`scale`/`scaleX`/
+  `scaleY`/`rotate`/`skew`/`skewX`/`skewY`/`matrix()`に対応(3D変形・
+  `perspective`は非対応)。複数関数は記述順に合成する。`transform-origin`
+  (初期値`50% 50%`)にも対応。レイアウトには一切影響しない視覚効果のみ
+  (CSS仕様通り)で、PDFコンテンツストリームの`cm`(CTM)操作だけで実装して
+  いる
+* `opacity`はPDFの透明グループ(Form XObject + `/Group /S /Transparency`)を
+  使った、CSS仕様通りの正確な実装。要素のサブツリー全体(背景・枠線・
+  テキスト・子要素すべて)を1枚の絵として下地に対して1回だけ半透明合成する
+  ため、サブツリー内で子要素同士が重なっていても二重に暗く合成されない
+  (単純に各描画命令へ同じアルファを個別適用する近似とは異なる)
+* `opacity`と`transform`を同じ要素に指定した場合、`transform`のCTMが
+  `opacity`の透明グループ呼び出しを内包する(変形してから半透明合成)
+* ページ分割・ストリーミング出力の両方で動作する
+
+詳細は[docs/decisions/0035-opacity-transform-design.md](docs/decisions/0035-opacity-transform-design.md)
+参照。
 
 ### Flexbox(`display: flex`)
 

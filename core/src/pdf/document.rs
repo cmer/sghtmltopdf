@@ -58,10 +58,10 @@ use crate::layout::{
 };
 use crate::sink::Sink;
 use crate::style::{
-    resolve_margin_box_content, resolve_page_rules, BackgroundRepeat, BackgroundSize,
-    BorderCollapse, BorderStyle, Color, ComputedBoxShadow, ComputedStyle, CornerRadius, EmptyCells,
-    Length, LengthPercentage, LengthPercentageOrAuto, MarginBoxArea, ObjectFit, PageRule, Position,
-    PropertyDeclaration, RgbaColor,
+    compose_transform, resolve_margin_box_content, resolve_page_rules, BackgroundRepeat,
+    BackgroundSize, BorderCollapse, BorderStyle, Color, ComputedBoxShadow, ComputedStyle,
+    CornerRadius, EmptyCells, Length, LengthPercentage, LengthPercentageOrAuto, MarginBoxArea,
+    ObjectFit, PageRule, Position, PropertyDeclaration, RgbaColor,
 };
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
@@ -148,6 +148,18 @@ pub fn encode_pdf(
             page_image_refs.push(ids.color);
         }
 
+        // `opacity < 1`の要素を先に集めてRefを払い出す(画像・フォントと同じ
+        // 構造、[0035](../../../docs/decisions/0035-opacity-transform-design.md)
+        // 決定2)。実際のForm XObject化(サブツリーの描画・埋め込み)は
+        // `render_box`の中で行われ、その結果は`pending_forms`に積まれる。
+        let mut opacity_nodes = Vec::new();
+        for b in &page.boxes {
+            collect_opacity_uses(b, styles, &mut opacity_nodes);
+        }
+        let opacity_form_ids: HashMap<NodeId, Ref> =
+            opacity_nodes.iter().map(|&n| (n, alloc.next())).collect();
+        let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
+
         let mut content = Content::new();
         for b in &page.boxes {
             render_box(
@@ -161,10 +173,13 @@ pub fn encode_pdf(
                 &image_ids,
                 background_images,
                 &alpha_gs_names,
+                &opacity_form_ids,
+                &mut pending_forms,
             );
         }
         let content_bytes = content.finish();
 
+        let form_refs: Vec<Ref> = pending_forms.iter().map(|(id, _)| *id).collect();
         let mut p = pdf.page(page_id);
         p.parent(pages_tree_id);
         p.media_box(PdfRect::new(
@@ -174,29 +189,46 @@ pub fn encode_pdf(
             settings.size.height,
         ));
         p.contents(content_id);
-        {
-            let mut resources = p.resources();
-            let mut font_dict = resources.fonts();
-            for (name, ids) in font_resource_names.iter().zip(font_ids.iter()) {
-                font_dict.pair(Name(name.as_bytes()), ids.type0_font);
-            }
-            font_dict.finish();
-            let mut xobject_dict = resources.x_objects();
-            for color_ref in &page_image_refs {
-                xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
-            }
-            xobject_dict.finish();
-            let mut ext_g_state_dict = resources.ext_g_states();
-            for (name, &id) in alpha_gs_names.iter().zip(alpha_gs_ids.iter()) {
-                ext_g_state_dict.pair(Name(name.as_bytes()), id);
-            }
-        }
+        write_resources(
+            p.resources(),
+            &font_resource_names,
+            &font_ids,
+            &page_image_refs,
+            &form_refs,
+            &alpha_gs_names,
+            &alpha_gs_ids,
+        );
         p.finish();
 
         let compressed_content = deflate(&content_bytes);
         let mut content_stream = pdf.stream(content_id, &compressed_content);
         content_stream.filter(pdf_writer::Filter::FlateDecode);
         content_stream.finish();
+
+        // opacityグループのForm XObjectを実際に書き出す(決定2)。`/BBox`は
+        // ページのcontent area全体(box-shadowのにじみ出し・`overflow:
+        // visible`・transformとの組み合わせでborder-boxを超える描画がある
+        // 可能性を考慮し、安全側に倒す、既知の簡略化)。`/Resources`はページと
+        // 同じ内容(全ての名前は文書全体で一意なため絞り込みはしない)。
+        for (form_ref, bytes) in &pending_forms {
+            let mut form = pdf.form_xobject(*form_ref, bytes);
+            form.bbox(PdfRect::new(
+                0.0,
+                0.0,
+                settings.size.width,
+                settings.size.height,
+            ));
+            form.group().transparency().isolated(true).knockout(false);
+            write_resources(
+                form.resources(),
+                &font_resource_names,
+                &font_ids,
+                &page_image_refs,
+                &form_refs,
+                &alpha_gs_names,
+                &alpha_gs_ids,
+            );
+        }
     }
 
     pdf.pages(pages_tree_id)
@@ -219,6 +251,39 @@ pub fn write_document<S: Sink>(
     let bytes = encode_pdf(pages, styles, background_images, fonts, settings);
     sink.write(&bytes)?;
     sink.finish()
+}
+
+/// ページの`/Resources`辞書、および各opacityグループForm XObjectの
+/// `/Resources`辞書(ページと同じ内容、[0035](
+/// ../../../docs/decisions/0035-opacity-transform-design.md)決定2)を
+/// 組み立てる共有ロジック。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn write_resources(
+    mut resources: pdf_writer::writers::Resources<'_>,
+    font_resource_names: &[String],
+    font_ids: &[FontIds],
+    page_image_refs: &[Ref],
+    form_refs: &[Ref],
+    alpha_gs_names: &[String],
+    alpha_gs_ids: &[Ref],
+) {
+    let mut font_dict = resources.fonts();
+    for (name, ids) in font_resource_names.iter().zip(font_ids.iter()) {
+        font_dict.pair(Name(name.as_bytes()), ids.type0_font);
+    }
+    font_dict.finish();
+    let mut xobject_dict = resources.x_objects();
+    for color_ref in page_image_refs {
+        xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
+    }
+    for &form_ref in form_refs {
+        xobject_dict.pair(Name(form_resource_name(form_ref).as_bytes()), form_ref);
+    }
+    xobject_dict.finish();
+    let mut ext_g_state_dict = resources.ext_g_states();
+    for (name, &id) in alpha_gs_names.iter().zip(alpha_gs_ids.iter()) {
+        ext_g_state_dict.pair(Name(name.as_bytes()), id);
+    }
 }
 
 #[derive(Default)]
@@ -313,6 +378,47 @@ pub(super) fn collect_image_uses(
     }
 }
 
+/// ページ(群)を再帰的に走査し、`opacity < 1`の要素の`NodeId`を集める。
+/// フォント・画像と同じ「使用状況を先に集めてからRefを払い出す」構造
+/// ([0035](../../../docs/decisions/0035-opacity-transform-design.md)決定2)。
+/// `opacity`要素は必ず実DOM要素に対応する(無名ボックスには`style`が
+/// 付かないため`opacity`を持ちようがない)ので`b.node`は常に`Some`のはず。
+pub(super) fn collect_opacity_uses(
+    b: &LaidOutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    out: &mut Vec<NodeId>,
+) {
+    if let Some(node) = b.node {
+        if styles.get(&node).is_some_and(|s| s.opacity < 1.0) {
+            out.push(node);
+        }
+    }
+    match &b.content {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+            for child in children {
+                collect_opacity_uses(child, styles, out);
+            }
+        }
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &table.caption {
+                collect_opacity_uses(caption, styles, out);
+            }
+            for row in &table.rows {
+                for cell in &row.cells {
+                    collect_opacity_uses(cell, styles, out);
+                }
+            }
+        }
+        LaidOutContent::Inline(_) | LaidOutContent::Image(_) => {}
+    }
+}
+
+/// [`collect_opacity_uses`]で払い出した`Ref`の、Form XObject用の固定
+/// リソース名(画像の`image_resource_name`と同じパターン)。
+pub(super) fn form_resource_name(form_ref: Ref) -> String {
+    format!("Fo{}", form_ref.get())
+}
+
 fn push_unique_image(out: &mut Vec<Rc<PreparedImage>>, image: &Rc<PreparedImage>) {
     if !out.iter().any(|existing| Rc::ptr_eq(existing, image)) {
         out.push(image.clone());
@@ -331,6 +437,8 @@ pub(super) fn render_box(
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     alpha_gs_names: &[String],
+    opacity_form_ids: &HashMap<NodeId, Ref>,
+    pending_forms: &mut Vec<(Ref, Vec<u8>)>,
 ) {
     let style = b
         .node
@@ -349,6 +457,8 @@ pub(super) fn render_box(
         image_ids,
         background_images,
         alpha_gs_names,
+        opacity_form_ids,
+        pending_forms,
     );
 }
 
@@ -356,6 +466,11 @@ pub(super) fn render_box(
 /// `border-collapse: collapse`時のセル(隣接セルと統合した枠線を使う必要が
 /// ある)のように、呼び出し側が上書きしたスタイルで描画したい場合のために
 /// `style`を引数として分離してある。
+///
+/// `transform`が指定されている場合、実際の描画([`render_box_with_style_inner`])
+/// をコンテンツストリームの`q cm ... Q`(CTM操作)で包む([0035](
+/// ../../../docs/decisions/0035-opacity-transform-design.md)決定1)。
+/// レイアウトには一切影響しない(視覚効果のみ、CSS仕様通り)。
 #[allow(clippy::too_many_arguments)]
 fn render_box_with_style(
     content: &mut Content,
@@ -369,6 +484,195 @@ fn render_box_with_style(
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     alpha_gs_names: &[String],
+    opacity_form_ids: &HashMap<NodeId, Ref>,
+    pending_forms: &mut Vec<(Ref, Vec<u8>)>,
+) {
+    if style.transform.is_empty() {
+        render_box_opacity_wrapped(
+            content,
+            b,
+            style,
+            styles,
+            fonts,
+            settings,
+            remaps,
+            font_resource_names,
+            image_ids,
+            background_images,
+            alpha_gs_names,
+            opacity_form_ids,
+            pending_forms,
+        );
+        return;
+    }
+
+    let pdf_matrix = transform_matrix_pdf_space(b, style, settings);
+    content.save_state();
+    content.transform(pdf_matrix);
+    render_box_opacity_wrapped(
+        content,
+        b,
+        style,
+        styles,
+        fonts,
+        settings,
+        remaps,
+        font_resource_names,
+        image_ids,
+        background_images,
+        alpha_gs_names,
+        opacity_form_ids,
+        pending_forms,
+    );
+    content.restore_state();
+}
+
+/// `opacity < 1`の場合、実際の描画([`render_box_with_style_inner`])を別の
+/// `Content`へ書いてPDFの透明グループ(Form XObject + `/Group /S
+/// /Transparency`)として`pending_forms`へ積み、元の`content`側には
+/// `q /GSn gs /FoN Do Q`だけを書く([0035](
+/// ../../../docs/decisions/0035-opacity-transform-design.md)決定2)。
+/// `transform`のCTM包み(決定4)より内側で呼ぶ必要があるため、
+/// `render_box_with_style`から分離してある。
+#[allow(clippy::too_many_arguments)]
+fn render_box_opacity_wrapped(
+    content: &mut Content,
+    b: &LaidOutBox,
+    style: &ComputedStyle,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+    image_ids: &HashMap<usize, ImageIds>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    alpha_gs_names: &[String],
+    opacity_form_ids: &HashMap<NodeId, Ref>,
+    pending_forms: &mut Vec<(Ref, Vec<u8>)>,
+) {
+    if style.opacity >= 1.0 {
+        render_box_with_style_inner(
+            content,
+            b,
+            style,
+            styles,
+            fonts,
+            settings,
+            remaps,
+            font_resource_names,
+            image_ids,
+            background_images,
+            alpha_gs_names,
+            opacity_form_ids,
+            pending_forms,
+        );
+        return;
+    }
+
+    // `collect_opacity_uses`が事前にこのノードのRefを払い出し済みのはず
+    // (`b.node`は必ず実DOM要素、決定2)。
+    let form_ref = *b
+        .node
+        .and_then(|n| opacity_form_ids.get(&n))
+        .expect("opacity < 1の要素は事前にRefが払い出されているはず");
+
+    let mut sub_content = Content::new();
+    render_box_with_style_inner(
+        &mut sub_content,
+        b,
+        style,
+        styles,
+        fonts,
+        settings,
+        remaps,
+        font_resource_names,
+        image_ids,
+        background_images,
+        alpha_gs_names,
+        opacity_form_ids,
+        pending_forms,
+    );
+    pending_forms.push((form_ref, sub_content.finish().to_vec()));
+
+    content.save_state();
+    apply_fill_alpha(content, style.opacity, alpha_gs_names);
+    content.x_object(Name(form_resource_name(form_ref).as_bytes()));
+    content.restore_state();
+}
+
+/// `b`の`transform`/`transform-origin`から、PDFの`cm`オペランドを組み立てる
+/// ([0035]決定1-3)。CSS座標系(Y下向き)で関数を合成してから、まずPDF座標系
+/// (Y上向き)へ変換し(この時点の平行移動成分は`translate()`由来の相対量の
+/// ままなので、Y成分の符号反転だけで正しく変換できる)、最後に
+/// `transform-origin`をPDF座標(ページ絶対座標)へ変換した上で基準点として
+/// 適用する。原点の平行移動を先にCSS座標側で行ってしまうと、ページ高さの
+/// オフセットが変形行列の回転・拡大成分と混ざり込み誤った結果になるため、
+/// 「原点調整はPDF座標に変換した後で行う」という順序が重要
+/// (スパイクで検算済み)。
+fn transform_matrix_pdf_space(
+    b: &LaidOutBox,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+) -> [f32; 6] {
+    let border_box = b.layout.border_box();
+    let css_matrix = compose_transform(&style.transform, border_box.width, border_box.height);
+    let [a, b_, c, d, e, f] = css_matrix;
+    // Y軸反転の共役変換(決定1-3)。`translate()`/`matrix()`のe/fは常に相対量
+    // (ページ絶対座標ではない)なので、符号反転だけで正しくPDF座標系の
+    // 相対量になる。
+    let pdf_matrix_no_origin = [a, -b_, -c, d, e, -f];
+
+    let origin_x = settings.margin.left
+        + border_box.x
+        + resolve_length_percentage(style.transform_origin.horizontal, border_box.width);
+    let origin_y = to_pdf_y(
+        settings,
+        border_box.y
+            + resolve_length_percentage(style.transform_origin.vertical, border_box.height),
+    );
+    apply_transform_origin(pdf_matrix_no_origin, origin_x, origin_y)
+}
+
+fn resolve_length_percentage(lp: LengthPercentage, basis: f32) -> f32 {
+    match lp {
+        LengthPercentage::Length(px) => px,
+        LengthPercentage::Percentage(p) => p * basis,
+    }
+}
+
+/// `transform-origin`(基準点`(ox, oy)`)を基準に`m`を適用できるよう、
+/// `Translate(ox,oy) ∘ m ∘ Translate(-ox,-oy)`へ調整する([0035]決定1-1)。
+/// `m`と`(ox, oy)`は同じ座標系(このプロジェクトでは常にPDF座標系)で
+/// 揃っている必要がある。
+fn apply_transform_origin(m: [f32; 6], ox: f32, oy: f32) -> [f32; 6] {
+    let [a, b, c, d, e, f] = m;
+    [
+        a,
+        b,
+        c,
+        d,
+        e + ox - a * ox - c * oy,
+        f + oy - b * ox - d * oy,
+    ]
+}
+
+/// [`render_box_with_style`]の実体(装飾〜子要素再帰)。`transform`のCTM包み
+/// より内側に置く必要があるため分離してある。
+#[allow(clippy::too_many_arguments)]
+fn render_box_with_style_inner(
+    content: &mut Content,
+    b: &LaidOutBox,
+    style: &ComputedStyle,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+    image_ids: &HashMap<usize, ImageIds>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    alpha_gs_names: &[String],
+    opacity_form_ids: &HashMap<NodeId, Ref>,
+    pending_forms: &mut Vec<(Ref, Vec<u8>)>,
 ) {
     // `visibility: hidden`(`collapse`も同一視、[0023](
     // ../../../docs/decisions/0023-box-model-details-design.md)決定4)。
@@ -393,6 +697,8 @@ fn render_box_with_style(
                         image_ids,
                         background_images,
                         alpha_gs_names,
+                        opacity_form_ids,
+                        pending_forms,
                     );
                 }
             }
@@ -409,6 +715,8 @@ fn render_box_with_style(
                         image_ids,
                         background_images,
                         alpha_gs_names,
+                        opacity_form_ids,
+                        pending_forms,
                     );
                 }
                 for row in &table.rows {
@@ -424,6 +732,8 @@ fn render_box_with_style(
                             image_ids,
                             background_images,
                             alpha_gs_names,
+                            opacity_form_ids,
+                            pending_forms,
                         );
                     }
                 }
@@ -499,6 +809,8 @@ fn render_box_with_style(
                     image_ids,
                     background_images,
                     alpha_gs_names,
+                    opacity_form_ids,
+                    pending_forms,
                 );
             }
         }
@@ -534,6 +846,8 @@ fn render_box_with_style(
                     image_ids,
                     background_images,
                     alpha_gs_names,
+                    opacity_form_ids,
+                    pending_forms,
                 );
             }
             // `border-collapse`は`table`/`inline-table`要素にのみ適用されるため
@@ -586,6 +900,8 @@ fn render_box_with_style(
                             image_ids,
                             background_images,
                             alpha_gs_names,
+                            opacity_form_ids,
+                            pending_forms,
                         );
                     } else {
                         render_box(
@@ -599,6 +915,8 @@ fn render_box_with_style(
                             image_ids,
                             background_images,
                             alpha_gs_names,
+                            opacity_form_ids,
+                            pending_forms,
                         );
                     }
                 }

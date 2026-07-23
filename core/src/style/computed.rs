@@ -23,7 +23,8 @@ use super::values::{
     LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit,
     Overflow, Position, QuotePair, SpecifiedCornerRadius, SpecifiedLength,
     SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout,
-    TextAlign, TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    TextAlign, TextDecorationLine, TextTransform, TransformFunction, VerticalAlign, Visibility,
+    WhiteSpace, ZIndex,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -236,6 +237,17 @@ pub struct ComputedStyle {
     pub row_gap: LengthPercentage,
     /// `column-gap`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
     pub column_gap: LengthPercentage,
+    /// `transform`。非継承プロパティ。パーセンテージ(`translate`系)は要素
+    /// 自身のborder-boxサイズが確定してから解決するため未解決のまま保持する
+    /// ([0035](../../../docs/decisions/0035-opacity-transform-design.md)決定1-2)。
+    /// 空のVecは`none`。
+    pub transform: Vec<TransformFunction>,
+    /// `transform-origin`。非継承プロパティ、初期値`50% 50%`
+    /// (`background-position`の初期値`0% 0%`とは異なる、決定1-1)。
+    pub transform_origin: BackgroundPosition,
+    /// `opacity`。非継承プロパティ、0〜1にクランプ済み、初期値1.0
+    /// ([0035]決定2)。
+    pub opacity: f32,
 }
 
 /// `box-shadow`1つ分の計算値。長さはpx解決済み、`color`は`currentcolor`を
@@ -418,6 +430,12 @@ impl Default for ComputedStyle {
             flex_basis: FlexBasis::Auto,
             row_gap: LengthPercentage::Length(0.0),
             column_gap: LengthPercentage::Length(0.0),
+            transform: Vec::new(),
+            transform_origin: BackgroundPosition {
+                horizontal: LengthPercentage::Percentage(0.5),
+                vertical: LengthPercentage::Percentage(0.5),
+            },
+            opacity: 1.0,
         }
     }
 }
@@ -746,6 +764,9 @@ fn compute_element_style(
     let mut flex_basis = None;
     let mut row_gap = None;
     let mut column_gap = None;
+    let mut transform = None;
+    let mut transform_origin = None;
+    let mut opacity = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -853,6 +874,9 @@ fn compute_element_style(
             PropertyDeclaration::FlexBasis(v) => flex_basis = Some(*v),
             PropertyDeclaration::RowGap(v) => row_gap = Some(*v),
             PropertyDeclaration::ColumnGap(v) => column_gap = Some(*v),
+            PropertyDeclaration::Transform(v) => transform = Some(v.clone()),
+            PropertyDeclaration::TransformOrigin(v) => transform_origin = Some(*v),
+            PropertyDeclaration::Opacity(v) => opacity = Some(*v),
         }
     }
 
@@ -1009,6 +1033,22 @@ fn compute_element_style(
     let resolved_column_gap = column_gap
         .map(|specified| specified.resolve(own_font_size, root_font_size))
         .unwrap_or(initial.column_gap);
+
+    // `transform`/`transform-origin`/`opacity`([0035](
+    // ../../../docs/decisions/0035-opacity-transform-design.md))。いずれも
+    // 非継承プロパティ。
+    let resolved_transform = transform
+        .map(|specified| {
+            specified
+                .into_iter()
+                .map(|f| f.resolve(own_font_size, root_font_size))
+                .collect()
+        })
+        .unwrap_or_else(|| initial.transform.clone());
+    let resolved_transform_origin = transform_origin
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.transform_origin);
+    let resolved_opacity = opacity.unwrap_or(initial.opacity);
 
     let resolved_float = float.unwrap_or(initial.float);
     // CSS2.1 9.7: floatが`none`以外なら要素は自動的にblock-levelとして計算される
@@ -1183,6 +1223,9 @@ fn compute_element_style(
         flex_basis: resolved_flex_basis,
         row_gap: resolved_row_gap,
         column_gap: resolved_column_gap,
+        transform: resolved_transform,
+        transform_origin: resolved_transform_origin,
+        opacity: resolved_opacity,
     };
 
     (style, pushed_counter_names, after_parts)
@@ -2335,6 +2378,80 @@ mod tests {
         // 他の辺には影響しない(初期値のまま)。
         assert_eq!(style.border_right_width.0, 0.0);
         assert_eq!(style.border_right_style, super::BorderStyle::None);
+    }
+
+    #[test]
+    fn opacity_parses_and_clamps_out_of_range_values() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { opacity: 0.5; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].opacity, 0.5);
+
+        let author = parse_stylesheet("div { opacity: 2; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].opacity, 1.0);
+
+        let author = parse_stylesheet("div { opacity: -1; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].opacity, 0.0);
+    }
+
+    #[test]
+    fn opacity_defaults_to_one_and_is_not_inherited() {
+        let dom = html::parse(br#"<div><p>t</p></div>"#);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { opacity: 0.3; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&p].opacity, 1.0);
+    }
+
+    #[test]
+    fn transform_parses_multiple_functions_and_none_resets_it() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { transform: translateX(10px) scale(2); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&div].transform.len(), 2);
+
+        let author = parse_stylesheet("div { transform: none; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert!(styles[&div].transform.is_empty());
+    }
+
+    #[test]
+    fn transform_origin_defaults_to_50_percent_and_can_be_overridden() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = Stylesheet::default();
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].transform_origin.horizontal,
+            LengthPercentage::Percentage(0.5)
+        );
+        assert_eq!(
+            styles[&div].transform_origin.vertical,
+            LengthPercentage::Percentage(0.5)
+        );
+
+        let author = parse_stylesheet("div { transform-origin: left top; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&div].transform_origin.horizontal,
+            LengthPercentage::Percentage(0.0)
+        );
+        assert_eq!(
+            styles[&div].transform_origin.vertical,
+            LengthPercentage::Percentage(0.0)
+        );
     }
 
     #[test]

@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use pdf_writer::writers::Catalog;
-use pdf_writer::{Chunk, Content, Filter, Finish, Name, Rect as PdfRect, Ref};
+use pdf_writer::{Chunk, Content, Filter, Finish, Rect as PdfRect, Ref};
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
@@ -28,13 +28,11 @@ use crate::sink::Sink;
 use crate::style::{ComputedStyle, PageRule};
 
 use super::document::{
-    alpha_gs_resource_name, collect_image_uses, collect_margin_box_usage, collect_usage,
-    render_box, render_margin_boxes, RefAllocator, ALPHA_STEPS,
+    alpha_gs_resource_name, collect_image_uses, collect_margin_box_usage, collect_opacity_uses,
+    collect_usage, render_box, render_margin_boxes, write_resources, RefAllocator, ALPHA_STEPS,
 };
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
-use super::img::{
-    embed_image_streaming_chunks, ids_for_image, image_resource_name, ImageIds, PreparedImage,
-};
+use super::img::{embed_image_streaming_chunks, ids_for_image, ImageIds, PreparedImage};
 
 const PDF_HEADER: &[u8] = b"%PDF-1.7\n%\x80\x80\x80\x80\n\n";
 
@@ -178,6 +176,19 @@ impl<S: Sink> StreamingPdfWriter<S> {
             page_image_refs.push(ids.color);
         }
 
+        // `opacity < 1`の要素を先に集めてRefを払い出す(バッチモード
+        // `encode_pdf`と同じ構造、[0035](
+        // ../../../docs/decisions/0035-opacity-transform-design.md)決定2)。
+        let mut opacity_nodes = Vec::new();
+        for b in &page.boxes {
+            collect_opacity_uses(b, styles, &mut opacity_nodes);
+        }
+        let opacity_form_ids: HashMap<NodeId, Ref> = opacity_nodes
+            .iter()
+            .map(|&n| (n, self.alloc.next()))
+            .collect();
+        let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
+
         let page_id = self.alloc.next();
         let content_id = self.alloc.next();
         self.page_ids.push(page_id);
@@ -196,6 +207,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 &self.image_ids,
                 background_images,
                 &self.alpha_gs_names,
+                &opacity_form_ids,
+                &mut pending_forms,
             );
         }
         render_margin_boxes(
@@ -217,6 +230,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         content_stream.finish();
         self.write_chunk(content_id, &chunk)?;
 
+        let form_refs: Vec<Ref> = pending_forms.iter().map(|(id, _)| *id).collect();
         let mut chunk = Chunk::new();
         {
             let mut p = chunk.page(page_id);
@@ -228,23 +242,43 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 self.settings.size.height,
             ));
             p.contents(content_id);
-            let mut resources = p.resources();
-            let mut font_dict = resources.fonts();
-            for (name, ids) in self.font_resource_names.iter().zip(self.font_ids.iter()) {
-                font_dict.pair(Name(name.as_bytes()), ids.type0_font);
-            }
-            font_dict.finish();
-            let mut xobject_dict = resources.x_objects();
-            for color_ref in &page_image_refs {
-                xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
-            }
-            xobject_dict.finish();
-            let mut ext_g_state_dict = resources.ext_g_states();
-            for (name, &id) in self.alpha_gs_names.iter().zip(self.alpha_gs_ids.iter()) {
-                ext_g_state_dict.pair(Name(name.as_bytes()), id);
-            }
+            write_resources(
+                p.resources(),
+                &self.font_resource_names,
+                &self.font_ids,
+                &page_image_refs,
+                &form_refs,
+                &self.alpha_gs_names,
+                &self.alpha_gs_ids,
+            );
         }
         self.write_chunk(page_id, &chunk)?;
+
+        // opacityグループのForm XObjectを実際に書き出す(バッチモードと同じ
+        // 方針、決定2)。
+        for (form_ref, bytes) in &pending_forms {
+            let mut chunk = Chunk::new();
+            {
+                let mut form = chunk.form_xobject(*form_ref, bytes);
+                form.bbox(PdfRect::new(
+                    0.0,
+                    0.0,
+                    self.settings.size.width,
+                    self.settings.size.height,
+                ));
+                form.group().transparency().isolated(true).knockout(false);
+                write_resources(
+                    form.resources(),
+                    &self.font_resource_names,
+                    &self.font_ids,
+                    &page_image_refs,
+                    &form_refs,
+                    &self.alpha_gs_names,
+                    &self.alpha_gs_ids,
+                );
+            }
+            self.write_chunk(*form_ref, &chunk)?;
+        }
 
         Ok(())
     }

@@ -706,3 +706,181 @@ pub enum FlexBasis {
     Auto,
     LengthPercentage(LengthPercentage),
 }
+
+/// `transform`関数1つ分のパース直後の指定値(`em`/`rem`未解決)。
+/// 角度は度数(`deg`)以外(`rad`/`grad`/`turn`)も含めてパース時点で
+/// ラジアンへ正規化する([0035](../../../docs/decisions/0035-opacity-transform-design.md))。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedTransformFunction {
+    Translate(SpecifiedLengthPercentage, SpecifiedLengthPercentage),
+    TranslateX(SpecifiedLengthPercentage),
+    TranslateY(SpecifiedLengthPercentage),
+    Scale(f32, f32),
+    ScaleX(f32),
+    ScaleY(f32),
+    /// ラジアン単位。
+    Rotate(f32),
+    /// ラジアン単位(水平, 垂直)。
+    Skew(f32, f32),
+    SkewX(f32),
+    SkewY(f32),
+    Matrix(f32, f32, f32, f32, f32, f32),
+}
+
+impl SpecifiedTransformFunction {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> TransformFunction {
+        match self {
+            Self::Translate(x, y) => TransformFunction::Translate(
+                x.resolve(font_size, root_font_size),
+                y.resolve(font_size, root_font_size),
+            ),
+            Self::TranslateX(x) => {
+                TransformFunction::TranslateX(x.resolve(font_size, root_font_size))
+            }
+            Self::TranslateY(y) => {
+                TransformFunction::TranslateY(y.resolve(font_size, root_font_size))
+            }
+            Self::Scale(x, y) => TransformFunction::Scale(x, y),
+            Self::ScaleX(x) => TransformFunction::ScaleX(x),
+            Self::ScaleY(y) => TransformFunction::ScaleY(y),
+            Self::Rotate(r) => TransformFunction::Rotate(r),
+            Self::Skew(x, y) => TransformFunction::Skew(x, y),
+            Self::SkewX(x) => TransformFunction::SkewX(x),
+            Self::SkewY(y) => TransformFunction::SkewY(y),
+            Self::Matrix(a, b, c, d, e, f) => TransformFunction::Matrix(a, b, c, d, e, f),
+        }
+    }
+}
+
+/// `transform`関数1つ分の計算値。`translate`系のパーセンテージは要素自身の
+/// border-box幅/高さが確定してから解決するため`LengthPercentage`のまま
+/// 保持する([0035]決定1-2、`background-position`と同じ考え方)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TransformFunction {
+    Translate(LengthPercentage, LengthPercentage),
+    TranslateX(LengthPercentage),
+    TranslateY(LengthPercentage),
+    Scale(f32, f32),
+    ScaleX(f32),
+    ScaleY(f32),
+    Rotate(f32),
+    Skew(f32, f32),
+    SkewX(f32),
+    SkewY(f32),
+    Matrix(f32, f32, f32, f32, f32, f32),
+}
+
+fn resolve_lp_against(lp: LengthPercentage, basis: f32) -> f32 {
+    match lp {
+        LengthPercentage::Length(px) => px,
+        LengthPercentage::Percentage(p) => p * basis,
+    }
+}
+
+impl TransformFunction {
+    /// この関数1つ分の変形行列。CSSの`matrix(a, b, c, d, e, f)`と同じ規約
+    /// (`x' = a*x + c*y + e`, `y' = b*x + d*y + f`)、CSS座標系(Y下向き正)の
+    /// まま返す(PDF座標系への変換は[`compose_transform`]の呼び出し側が
+    /// 決定1-3に従って行う)。`box_width`/`box_height`は`translate`系の
+    /// パーセンテージ解決に使う要素自身のborder-boxサイズ。
+    pub fn to_matrix(self, box_width: f32, box_height: f32) -> [f32; 6] {
+        match self {
+            Self::Translate(x, y) => [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                resolve_lp_against(x, box_width),
+                resolve_lp_against(y, box_height),
+            ],
+            Self::TranslateX(x) => [1.0, 0.0, 0.0, 1.0, resolve_lp_against(x, box_width), 0.0],
+            Self::TranslateY(y) => [1.0, 0.0, 0.0, 1.0, 0.0, resolve_lp_against(y, box_height)],
+            Self::Scale(sx, sy) => [sx, 0.0, 0.0, sy, 0.0, 0.0],
+            Self::ScaleX(sx) => [sx, 0.0, 0.0, 1.0, 0.0, 0.0],
+            Self::ScaleY(sy) => [1.0, 0.0, 0.0, sy, 0.0, 0.0],
+            Self::Rotate(radians) => {
+                let (s, c) = radians.sin_cos();
+                [c, s, -s, c, 0.0, 0.0]
+            }
+            Self::Skew(ax, ay) => [1.0, ay.tan(), ax.tan(), 1.0, 0.0, 0.0],
+            Self::SkewX(ax) => [1.0, 0.0, ax.tan(), 1.0, 0.0, 0.0],
+            Self::SkewY(ay) => [1.0, ay.tan(), 0.0, 1.0, 0.0, 0.0],
+            Self::Matrix(a, b, c, d, e, f) => [a, b, c, d, e, f],
+        }
+    }
+}
+
+/// `a`を先に適用し、その結果へ`b`を適用する合成行列(`b ∘ a`、`matrix(...)`と
+/// 同じ規約)。`transform`の複数関数を記述順に合成するために使う
+/// ([0035]決定1-1)。
+pub fn compose_transform_matrices(a: [f32; 6], b: [f32; 6]) -> [f32; 6] {
+    let [a1, b1, c1, d1, e1, f1] = b;
+    let [a2, b2, c2, d2, e2, f2] = a;
+    [
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    ]
+}
+
+/// `functions`を記述順に合成した1つの変形行列(CSS座標系のまま)。
+pub fn compose_transform(
+    functions: &[TransformFunction],
+    box_width: f32,
+    box_height: f32,
+) -> [f32; 6] {
+    functions
+        .iter()
+        .fold([1.0, 0.0, 0.0, 1.0, 0.0, 0.0], |acc, f| {
+            compose_transform_matrices(acc, f.to_matrix(box_width, box_height))
+        })
+}
+
+#[cfg(test)]
+mod transform_tests {
+    use super::*;
+
+    fn assert_matrix_eq(a: [f32; 6], b: [f32; 6]) {
+        for i in 0..6 {
+            assert!(
+                (a[i] - b[i]).abs() < 1e-4,
+                "matrices differ at index {i}: {a:?} vs {b:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn translate_uses_percentage_against_own_box_size() {
+        let m = TransformFunction::Translate(
+            LengthPercentage::Percentage(0.5),
+            LengthPercentage::Length(10.0),
+        )
+        .to_matrix(200.0, 50.0);
+        assert_matrix_eq(m, [1.0, 0.0, 0.0, 1.0, 100.0, 10.0]);
+    }
+
+    #[test]
+    fn rotate_90_degrees_matches_the_standard_rotation_matrix() {
+        let m = TransformFunction::Rotate(std::f32::consts::FRAC_PI_2).to_matrix(0.0, 0.0);
+        assert_matrix_eq(m, [0.0, 1.0, -1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn composing_translate_then_scale_applies_translate_first() {
+        // translate(10px, 0) してからscale(2)すると、原点は(10,0)→(20,0)になる
+        // (先に平行移動、その結果を拡大するので平行移動量も2倍になる)。
+        let translate = TransformFunction::TranslateX(LengthPercentage::Length(10.0));
+        let scale = TransformFunction::Scale(2.0, 2.0);
+        let total = compose_transform(&[translate, scale], 0.0, 0.0);
+        assert_matrix_eq(total, [2.0, 0.0, 0.0, 2.0, 20.0, 0.0]);
+    }
+
+    #[test]
+    fn identity_matrix_for_empty_function_list() {
+        let total = compose_transform(&[], 0.0, 0.0);
+        assert_matrix_eq(total, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+    }
+}
