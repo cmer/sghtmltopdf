@@ -338,8 +338,9 @@ fn first_baseline_absolute_y(b: &LaidOutBox, fonts: &FontCollection) -> Option<f
         LaidOutContent::Blocks(children) => children
             .iter()
             .find_map(|child| first_baseline_absolute_y(child, fonts)),
-        // ネストしたテーブル・置換要素はベースラインを提供しない(既知の簡略化)。
-        LaidOutContent::Table(_) | LaidOutContent::Image(_) => None,
+        // ネストしたテーブル・flex・置換要素はベースラインを提供しない
+        // (既知の簡略化)。
+        LaidOutContent::Table(_) | LaidOutContent::Flex(_) | LaidOutContent::Image(_) => None,
     }
 }
 
@@ -502,7 +503,10 @@ fn natural_cell_width(
 }
 
 /// ボックスの内容を折り返し無しでレイアウトした場合の自然な幅を測る。
-fn measure_natural_content_width(
+/// テーブルの自動列幅アルゴリズムに加え、`layout::flex`のtaffy採寸ブリッジ
+/// (`available_space`が`MinContent`/`MaxContent`の場合)からも共有で使う
+/// ([0034](../../../docs/decisions/0034-flexbox-design.md)決定2)。
+pub(super) fn measure_natural_content_width(
     content: &BoxContent,
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
@@ -526,8 +530,9 @@ fn measure_natural_content_width(
                     + border.right
             })
             .fold(0.0f32, f32::max),
-        // ネストしたテーブルの自然幅測定は非対応(既知の簡略化)。
-        BoxContent::Table(_) => 0.0,
+        // ネストしたテーブル・flexの自然幅測定は非対応(既知の簡略化、
+        // [0034]決定2と同じ考え方)。
+        BoxContent::Table(_) | BoxContent::Flex(_) => 0.0,
         BoxContent::Image(image_content) => image_content
             .attr_width
             .map(|w| w as f32)
@@ -582,6 +587,9 @@ mod tests {
                         .flat_map(|row| &row.cells)
                         .find_map(|cell| find_laid_out(cell, target))
                 }),
+            super::super::block::LaidOutContent::Flex(children) => children
+                .iter()
+                .find_map(|child| find_laid_out(child, target)),
             super::super::block::LaidOutContent::Inline(_)
             | super::super::block::LaidOutContent::Image(_) => None,
         }
@@ -652,7 +660,8 @@ mod tests {
     fn find_nested_table(b: &LaidOutBox) -> Option<&LaidOutTable> {
         match &b.content {
             super::super::block::LaidOutContent::Table(table) => Some(table),
-            super::super::block::LaidOutContent::Blocks(children) => {
+            super::super::block::LaidOutContent::Blocks(children)
+            | super::super::block::LaidOutContent::Flex(children) => {
                 children.iter().find_map(find_nested_table)
             }
             super::super::block::LaidOutContent::Inline(_)

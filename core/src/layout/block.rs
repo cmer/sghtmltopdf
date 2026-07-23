@@ -22,6 +22,7 @@ use crate::style::{
 };
 
 use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
+use super::flex::layout_flex;
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::{layout_inline_content, shape_run, LineBox};
@@ -98,6 +99,10 @@ pub enum LaidOutContent {
     Blocks(Vec<LaidOutBox>),
     Inline(Vec<LineBox>),
     Table(LaidOutTable),
+    /// `display: flex`。`Blocks`と同じ形(taffyが確定した位置・サイズで
+    /// 既にレイアウト済みの`LaidOutBox`の並び)で十分なため、`Table`のような
+    /// 専用構造体は作らない([0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
+    Flex(Vec<LaidOutBox>),
     /// `<img>`。フェッチ・デコードに失敗していれば`None`
     /// (空の置換要素として扱い、何も描画しない)。
     Image(Option<Rc<PreparedImage>>),
@@ -173,7 +178,17 @@ pub(super) fn layout_box(
     x: f32,
     y: f32,
 ) -> LaidOutBox {
-    layout_box_impl(b, styles, fonts, containing_width, None, float_ctx, x, y)
+    layout_box_impl(
+        b,
+        styles,
+        fonts,
+        containing_width,
+        None,
+        None,
+        float_ctx,
+        x,
+        y,
+    )
 }
 
 /// テーブルセルなど、通常の`width`解決(auto/margin計算)を経ずに
@@ -196,6 +211,38 @@ pub(super) fn layout_box_with_forced_width(
         fonts,
         containing_width,
         Some(forced_content_width),
+        None,
+        float_ctx,
+        x,
+        y,
+    )
+}
+
+/// `layout_box_with_forced_width`の高さ版拡張。幅・高さの両方を強制する
+/// ([`super::flex`]専用)。taffyが確定した各flexアイテムの幅・高さで実際の
+/// `LaidOutBox`を得る最終レイアウトパスに使う([0034](
+/// ../../../docs/decisions/0034-flexbox-design.md)決定2)。`align-items:
+/// stretch`(既定値)でtaffyがアイテムをコンテナの高さへ引き伸ばした場合、
+/// この高さ強制によって背景色・枠線も引き伸ばされた高さ分だけ描画される。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn layout_box_with_forced_size(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    forced_content_width: f32,
+    forced_content_height: f32,
+    float_ctx: &mut FloatContext,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
+    layout_box_impl(
+        b,
+        styles,
+        fonts,
+        containing_width,
+        Some(forced_content_width),
+        Some(forced_content_height),
         float_ctx,
         x,
         y,
@@ -273,6 +320,7 @@ fn layout_box_impl(
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: Option<f32>,
+    forced_content_height: Option<f32>,
     float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
@@ -407,6 +455,28 @@ fn layout_box_impl(
             .unwrap_or(table_height);
             (LaidOutContent::Table(laid_table), height)
         }
+        BoxContent::Flex(flex) => {
+            // `display: table`と同様、flexコンテナは新しいフォーマッティング
+            // コンテキストを確立する(`float`はflexアイテムに効果を持たない、
+            // CSS仕様通り)ため、外側の`float_ctx`とは独立させる
+            // ([0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
+            let (items, flex_height) = layout_flex(
+                flex,
+                styles,
+                fonts,
+                &style,
+                content_width,
+                content_x,
+                content_y,
+            );
+            let height = resolve_height(
+                &style,
+                padding.top + padding.bottom,
+                border.top + border.bottom,
+            )
+            .unwrap_or(flex_height);
+            (LaidOutContent::Flex(items), height)
+        }
         BoxContent::Image(image_content) => {
             // `apply_replaced_element_auto_size`が呼ばれた場合、widthが両方
             // autoだったケースは既に具体的なLengthへ差し替え済みなので、
@@ -421,6 +491,9 @@ fn layout_box_impl(
             (LaidOutContent::Image(image_content.image.clone()), height)
         }
     };
+    // taffyが確定した高さを最終レイアウトパスでそのまま反映する
+    // (`layout_box_with_forced_size`専用、[0034]決定2)。
+    let content_height = forced_content_height.unwrap_or(content_height);
 
     // `position: relative`の視覚的オフセット。後続兄弟の`cursor_y`計算は
     // `margin_box_height()`(座標に依存しない)を使うため、ここでcontent座標を
@@ -798,7 +871,7 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     }
 
     match &mut b.content {
-        LaidOutContent::Blocks(children) => {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children.iter_mut() {
                 *child = shift_box_y(child, delta);
             }
@@ -840,7 +913,7 @@ pub(super) fn shift_content_vertical(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     let mut b = b.clone();
 
     match &mut b.content {
-        LaidOutContent::Blocks(children) => {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children.iter_mut() {
                 *child = shift_box_y(child, delta);
             }
@@ -964,7 +1037,10 @@ mod tests {
         assert_eq!(children.len(), 3, "before-text / <p> / after-text");
         let joined_text = |content: &BoxContent| match content {
             BoxContent::Inline(spans) => spans.iter().map(|s| s.text.as_str()).collect::<String>(),
-            BoxContent::Blocks(_) | BoxContent::Table(_) | BoxContent::Image(_) => {
+            BoxContent::Blocks(_)
+            | BoxContent::Table(_)
+            | BoxContent::Flex(_)
+            | BoxContent::Image(_) => {
                 panic!("expected inline content")
             }
         };

@@ -762,6 +762,7 @@ mod tests {
                         .flat_map(|row| &row.cells)
                         .find_map(|cell| find_inline_spans(&cell.content))
                 }),
+            BoxContent::Flex(flex) => flex.items.iter().find_map(find_inline_spans),
             BoxContent::Image(_) => None,
         }
     }

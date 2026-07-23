@@ -236,7 +236,7 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
         collect_line_usage(marker, fonts, usages);
     }
     match &b.content {
-        LaidOutContent::Blocks(children) => {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children {
                 collect_usage(child, fonts, usages);
             }
@@ -293,7 +293,7 @@ pub(super) fn collect_image_uses(
     }
 
     match &b.content {
-        LaidOutContent::Blocks(children) => {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children {
                 collect_image_uses(child, background_images, out);
             }
@@ -380,7 +380,7 @@ fn render_box_with_style(
     // 上書きする、という稀なケースでは隣接セルとの枠線統合は行われない)。
     if style.visibility.is_hidden() {
         match &b.content {
-            LaidOutContent::Blocks(children) => {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
                 for child in paint_order(children, styles) {
                     render_box(
                         content,
@@ -486,7 +486,7 @@ fn render_box_with_style(
     }
 
     match &b.content {
-        LaidOutContent::Blocks(children) => {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in paint_order(children, styles) {
                 render_box(
                     content,
@@ -647,7 +647,7 @@ fn laid_content_is_empty(content: &LaidOutContent) -> bool {
         LaidOutContent::Blocks(children) => {
             children.is_empty() || children.iter().all(|c| laid_content_is_empty(&c.content))
         }
-        LaidOutContent::Table(_) | LaidOutContent::Image(_) => false,
+        LaidOutContent::Table(_) | LaidOutContent::Flex(_) | LaidOutContent::Image(_) => false,
     }
 }
 

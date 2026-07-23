@@ -55,7 +55,7 @@ fn build_pdf(html_src: &str, css: &str) -> (usize, Vec<u8>) {
 fn extract_text(b: &LaidOutBox) -> String {
     fn walk(b: &LaidOutBox, out: &mut String) {
         match &b.content {
-            LaidOutContent::Blocks(children) => {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
                 for child in children {
                     walk(child, out);
                 }

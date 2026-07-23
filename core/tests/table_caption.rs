@@ -63,7 +63,9 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
         return Some(b);
     }
     match &b.content {
-        LaidOutContent::Blocks(children) => children.iter().find_map(|c| find_laid_out(c, target)),
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+            children.iter().find_map(|c| find_laid_out(c, target))
+        }
         LaidOutContent::Table(table) => table
             .caption
             .as_deref()

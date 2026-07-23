@@ -363,7 +363,12 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
                 collect_completed_subtree_roots_in_box(child, roots);
             }
         }
-        LaidOutContent::Inline(_) | LaidOutContent::Table(_) | LaidOutContent::Image(_) => {}
+        // flexコンテナはページ分割に対してアトミック(`display: table`と同じ
+        // 扱い、[0034](../../../docs/decisions/0034-flexbox-design.md)決定3)。
+        LaidOutContent::Inline(_)
+        | LaidOutContent::Table(_)
+        | LaidOutContent::Flex(_)
+        | LaidOutContent::Image(_) => {}
     }
 }
 
@@ -482,7 +487,11 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        LaidOutContent::Inline(_) | LaidOutContent::Table(_) | LaidOutContent::Image(_) => false,
+        // flexコンテナはアトミック([0034]決定3)。
+        LaidOutContent::Inline(_)
+        | LaidOutContent::Table(_)
+        | LaidOutContent::Flex(_)
+        | LaidOutContent::Image(_) => false,
     }
 }
 
@@ -1539,7 +1548,7 @@ mod tests {
         match &b.content {
             LaidOutContent::Inline(lines) => lines.len(),
             LaidOutContent::Blocks(children) => children.iter().map(count_inline_lines).sum(),
-            LaidOutContent::Table(_) | LaidOutContent::Image(_) => 0,
+            LaidOutContent::Table(_) | LaidOutContent::Flex(_) | LaidOutContent::Image(_) => 0,
         }
     }
 

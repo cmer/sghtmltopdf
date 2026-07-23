@@ -79,9 +79,34 @@ layout、Lists、Box model詳細、Generated content、Background詳細)を実�
 ともに完了。マイルストーン8(CSS2.1対応)は、Phase 1(Positioning & Float・
 Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細・
 Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
-マイルストーン9(CSS3対応)は、Phase 1(`box-sizing`・Paged media)が完了。
-**Phase 2(Color Level 4・`object-fit`/`object-position`・`box-shadow`・
-CSS Custom Propertiesすべて)が完了**。残るはPhase 3(Flexbox)のみ。
+**マイルストーン9(CSS3対応)全体が完了**(Phase 1: `box-sizing`・Paged media、
+Phase 2: Color Level 4・`object-fit`/`object-position`・`box-shadow`・
+CSS Custom Properties、Phase 3: Flexbox)。
+
+### Flexbox(`display: flex`)
+
+```css
+.invoice-header { display: flex; justify-content: space-between; align-items: center; }
+.item-row { display: flex; }
+.item-row .name { flex-grow: 1; }
+.item-row .price { flex-shrink: 0; width: 80px; }
+```
+
+* `flex-direction`/`flex-wrap`/`justify-content`/`align-items`/
+  `align-content`/`gap`(コンテナ側)、`flex-grow`/`flex-shrink`/
+  `flex-basis`/`flex`ショートハンド/`align-self`(アイテム側)に対応
+* レイアウトは`taffy`クレートへブリッジする形で実装している。既存のbox tree
+  (`display: table`と同じパターン)のサブツリーとしてflexコンテナを扱い、
+  テキスト等の内在サイズが必要な採寸は既存のブロック/インライン/テーブル
+  レイアウト関数を呼んで実測する(2パス方式)
+* `inline-flex`は非対応。`order`もtaffy自体が未対応のため非対応
+* min-contentとmax-contentは区別しない(既知の簡略化)
+* flexコンテナはページ分割に対してアトミック(`display: table`と同じく、
+  内部で分割せず丸ごと次ページへ送る)
+* Grid非対応(必要になれば別途検討)
+
+詳細は[docs/decisions/0034-flexbox-design.md](docs/decisions/0034-flexbox-design.md)
+参照。
 
 ### CSS Custom Properties(`--foo`/`var()`)
 

@@ -4,11 +4,12 @@ use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 use palette::{FromColor, Lab, Lch, Oklab, Oklch, Srgb};
 
 use super::values::{
-    BackgroundAttachment, BackgroundRepeat, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
-    BreakInside, CaptionSide, Clear, Color, ContentPart, Display, EmptyCells, Float, FontStyle,
-    FontWeight, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
+    AlignContent, AlignItems, AlignSelf, BackgroundAttachment, BackgroundRepeat, BorderCollapse,
+    BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
+    Display, EmptyCells, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent,
+    ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
     SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow,
-    SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing, TableLayout, TextAlign,
     TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
@@ -129,6 +130,22 @@ pub enum PropertyDeclaration {
     ObjectPosition(SpecifiedBackgroundPosition),
     /// `box-shadow`。カンマ区切りの複数指定(決定1)。
     BoxShadow(Vec<SpecifiedBoxShadow>),
+    /// `flex-direction`。flexコンテナ専用([0034](
+    /// ../../../docs/decisions/0034-flexbox-design.md)決定4)。
+    FlexDirection(FlexDirection),
+    FlexWrap(FlexWrap),
+    JustifyContent(JustifyContent),
+    AlignItems(AlignItems),
+    AlignContent(AlignContent),
+    /// `align-self`。flexアイテム専用。
+    AlignSelf(AlignSelf),
+    /// `flex-grow`。負値は無効(パース時点で拒否)。
+    FlexGrow(f32),
+    /// `flex-shrink`。負値は無効(パース時点で拒否)。
+    FlexShrink(f32),
+    FlexBasis(SpecifiedFlexBasis),
+    RowGap(SpecifiedLengthPercentage),
+    ColumnGap(SpecifiedLengthPercentage),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -157,6 +174,24 @@ pub fn parse_declaration<'i>(
         "border-width" => parse_border_width_shorthand(input),
         "border-color" => parse_border_color_shorthand(input),
         "border-style" => parse_border_style_shorthand(input),
+        "border-top" => parse_border_top_shorthand(input),
+        "border-right" => parse_border_right_shorthand(input),
+        "border-bottom" => parse_border_bottom_shorthand(input),
+        "border-left" => parse_border_left_shorthand(input),
+        "border-top-width" => Ok(vec![D::BorderTopWidth(parse_length(input)?)]),
+        "border-right-width" => Ok(vec![D::BorderRightWidth(parse_length(input)?)]),
+        "border-bottom-width" => Ok(vec![D::BorderBottomWidth(parse_length(input)?)]),
+        "border-left-width" => Ok(vec![D::BorderLeftWidth(parse_length(input)?)]),
+        "border-top-color" => Ok(vec![D::BorderTopColor(parse_color(input)?)]),
+        "border-right-color" => Ok(vec![D::BorderRightColor(parse_color(input)?)]),
+        "border-bottom-color" => Ok(vec![D::BorderBottomColor(parse_color(input)?)]),
+        "border-left-color" => Ok(vec![D::BorderLeftColor(parse_color(input)?)]),
+        "border-top-style" => Ok(vec![D::BorderTopStyle(parse_border_style_keyword(input)?)]),
+        "border-right-style" => Ok(vec![D::BorderRightStyle(parse_border_style_keyword(input)?)]),
+        "border-bottom-style" => {
+            Ok(vec![D::BorderBottomStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-left-style" => Ok(vec![D::BorderLeftStyle(parse_border_style_keyword(input)?)]),
         "border-radius" => parse_border_radius_shorthand(input),
         "border-top-left-radius" => Ok(vec![D::BorderTopLeftRadius(parse_corner_radius(input)?)]),
         "border-top-right-radius" => Ok(vec![D::BorderTopRightRadius(parse_corner_radius(input)?)]),
@@ -242,6 +277,19 @@ pub fn parse_declaration<'i>(
         "object-fit" => Ok(vec![D::ObjectFit(parse_object_fit(input)?)]),
         "object-position" => Ok(vec![D::ObjectPosition(parse_background_position(input)?)]),
         "box-shadow" => Ok(vec![D::BoxShadow(parse_box_shadow(input)?)]),
+        "flex-direction" => Ok(vec![D::FlexDirection(parse_flex_direction(input)?)]),
+        "flex-wrap" => Ok(vec![D::FlexWrap(parse_flex_wrap(input)?)]),
+        "justify-content" => Ok(vec![D::JustifyContent(parse_justify_content(input)?)]),
+        "align-items" => Ok(vec![D::AlignItems(parse_align_items(input)?)]),
+        "align-content" => Ok(vec![D::AlignContent(parse_align_content(input)?)]),
+        "align-self" => Ok(vec![D::AlignSelf(parse_align_self(input)?)]),
+        "flex-grow" => Ok(vec![D::FlexGrow(parse_non_negative_number(input)?)]),
+        "flex-shrink" => Ok(vec![D::FlexShrink(parse_non_negative_number(input)?)]),
+        "flex-basis" => Ok(vec![D::FlexBasis(parse_flex_basis(input)?)]),
+        "flex" => parse_flex_shorthand(input),
+        "row-gap" => Ok(vec![D::RowGap(parse_length_percentage(input)?)]),
+        "column-gap" => Ok(vec![D::ColumnGap(parse_length_percentage(input)?)]),
+        "gap" => parse_gap_shorthand(input),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -290,15 +338,11 @@ fn parse_four_sides<'i, T: Copy>(
     Ok((top, right, bottom, left))
 }
 
-/// `border`ショートハンドの簡易実装。`border-width`/`border-style`/`border-color`を
-/// 同時に指定でき、指定順序は問わない(CSSの`border`ショートハンドの仕様通り)。
-/// いずれも4辺に同じ値を適用する(`border-top`等の辺別ショートハンドは非対応)。
-/// `border-color`省略時は宣言を生成しない(計算スタイル側で初期値`currentcolor`
-/// として扱う)。
-fn parse_border_shorthand<'i>(
+/// `border`/`border-top`/`border-right`/`border-bottom`/`border-left`共通の
+/// 「`<width>`/`<style>`/`<color>`、任意順・任意省略」パース(CSS仕様通り)。
+fn parse_border_edge_values<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
-    use PropertyDeclaration as D;
+) -> Result<(SpecifiedLength, BorderStyle, Option<Color>), ParseError<'i, ()>> {
     let mut width = SpecifiedLength::Px(0.0);
     let mut style = BorderStyle::None;
     let mut color = None;
@@ -318,6 +362,20 @@ fn parse_border_shorthand<'i>(
         }
         break;
     }
+    Ok((width, style, color))
+}
+
+/// `border`ショートハンドの簡易実装。`border-width`/`border-style`/`border-color`を
+/// 同時に指定でき、指定順序は問わない(CSSの`border`ショートハンドの仕様通り)。
+/// いずれも4辺に同じ値を適用する(辺別に変えたい場合は`border-top`等の
+/// 辺別ショートハンド、または`border-top-width`等のロングハンドを使う)。
+/// `border-color`省略時は宣言を生成しない(計算スタイル側で初期値`currentcolor`
+/// として扱う)。
+fn parse_border_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (width, style, color) = parse_border_edge_values(input)?;
 
     let mut decls = vec![
         D::BorderTopWidth(width),
@@ -336,6 +394,57 @@ fn parse_border_shorthand<'i>(
             D::BorderBottomColor(c),
             D::BorderLeftColor(c),
         ]);
+    }
+    Ok(decls)
+}
+
+/// `border-top`/`border-right`/`border-bottom`/`border-left`の辺別
+/// ショートハンド。`border`ショートハンドと同じ値文法(`<width>`/`<style>`/
+/// `<color>`、任意順・任意省略)だが、指定した1辺にのみ適用する。
+fn parse_border_top_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (width, style, color) = parse_border_edge_values(input)?;
+    let mut decls = vec![D::BorderTopWidth(width), D::BorderTopStyle(style)];
+    if let Some(c) = color {
+        decls.push(D::BorderTopColor(c));
+    }
+    Ok(decls)
+}
+
+fn parse_border_right_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (width, style, color) = parse_border_edge_values(input)?;
+    let mut decls = vec![D::BorderRightWidth(width), D::BorderRightStyle(style)];
+    if let Some(c) = color {
+        decls.push(D::BorderRightColor(c));
+    }
+    Ok(decls)
+}
+
+fn parse_border_bottom_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (width, style, color) = parse_border_edge_values(input)?;
+    let mut decls = vec![D::BorderBottomWidth(width), D::BorderBottomStyle(style)];
+    if let Some(c) = color {
+        decls.push(D::BorderBottomColor(c));
+    }
+    Ok(decls)
+}
+
+fn parse_border_left_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (width, style, color) = parse_border_edge_values(input)?;
+    let mut decls = vec![D::BorderLeftWidth(width), D::BorderLeftStyle(style)];
+    if let Some(c) = color {
+        decls.push(D::BorderLeftColor(c));
     }
     Ok(decls)
 }
@@ -677,6 +786,7 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "table-cell" => Display::TableCell,
         "table-caption" => Display::TableCaption,
         "list-item" => Display::ListItem,
+        "flex" => Display::Flex,
         "none" => Display::None,
         _ => return Err(input.new_custom_error(())),
     })
@@ -1530,4 +1640,184 @@ pub(crate) fn parse_family_name<'i>(
         name.push_str(&ident);
     }
     Ok(name)
+}
+
+fn parse_flex_direction<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<FlexDirection, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "row" => FlexDirection::Row,
+        "row-reverse" => FlexDirection::RowReverse,
+        "column" => FlexDirection::Column,
+        "column-reverse" => FlexDirection::ColumnReverse,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_flex_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<FlexWrap, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "nowrap" => FlexWrap::NoWrap,
+        "wrap" => FlexWrap::Wrap,
+        "wrap-reverse" => FlexWrap::WrapReverse,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフロー
+/// キーワードは非対応(既知の簡略化、[0034](
+/// ../../../docs/decisions/0034-flexbox-design.md)決定4)。
+fn parse_justify_content<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<JustifyContent, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "flex-start" | "start" => JustifyContent::FlexStart,
+        "flex-end" | "end" => JustifyContent::FlexEnd,
+        "center" => JustifyContent::Center,
+        "space-between" => JustifyContent::SpaceBetween,
+        "space-around" => JustifyContent::SpaceAround,
+        "space-evenly" => JustifyContent::SpaceEvenly,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_align_items<'i>(input: &mut Parser<'i, '_>) -> Result<AlignItems, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "flex-start" | "start" => AlignItems::FlexStart,
+        "flex-end" | "end" => AlignItems::FlexEnd,
+        "center" => AlignItems::Center,
+        "baseline" => AlignItems::Baseline,
+        "stretch" => AlignItems::Stretch,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+fn parse_align_content<'i>(input: &mut Parser<'i, '_>) -> Result<AlignContent, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "flex-start" | "start" => AlignContent::FlexStart,
+        "flex-end" | "end" => AlignContent::FlexEnd,
+        "center" => AlignContent::Center,
+        "stretch" => AlignContent::Stretch,
+        "space-between" => AlignContent::SpaceBetween,
+        "space-around" => AlignContent::SpaceAround,
+        "space-evenly" => AlignContent::SpaceEvenly,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `align-self`。`auto`(初期値、親の`align-items`を使う)を含む。
+fn parse_align_self<'i>(input: &mut Parser<'i, '_>) -> Result<AlignSelf, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "auto" => AlignSelf::Auto,
+        "flex-start" | "start" => AlignSelf::FlexStart,
+        "flex-end" | "end" => AlignSelf::FlexEnd,
+        "center" => AlignSelf::Center,
+        "baseline" => AlignSelf::Baseline,
+        "stretch" => AlignSelf::Stretch,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `flex-grow`/`flex-shrink`。仕様上負値は無効(パース時点で拒否し、宣言全体を
+/// 無視する既存の挙動に乗せる)。
+fn parse_non_negative_number<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
+    let value = input.expect_number()?;
+    if value < 0.0 {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(value)
+}
+
+/// `flex-basis: auto | content | <length-percentage>`。`content`は`auto`と
+/// 同一視する(既知の簡略化、[0034]決定)。
+fn parse_flex_basis<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedFlexBasis, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(SpecifiedFlexBasis::Auto);
+    }
+    if input
+        .try_parse(|input| input.expect_ident_matching("content"))
+        .is_ok()
+    {
+        return Ok(SpecifiedFlexBasis::Content);
+    }
+    parse_length_percentage(input).map(SpecifiedFlexBasis::LengthPercentage)
+}
+
+/// `flex`ショートハンドの簡易実装。CSS仕様の既定値規則
+/// (`flex: <number>`単独/`<number> <number>`はbasisが省略時0%になり、
+/// `flex: <width>`単独はgrow/shrinkが両方1になる)を再現する。
+fn parse_flex_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(vec![
+            D::FlexGrow(0.0),
+            D::FlexShrink(0.0),
+            D::FlexBasis(SpecifiedFlexBasis::Auto),
+        ]);
+    }
+
+    let mut grow = None;
+    let mut shrink = None;
+    let mut basis = None;
+
+    loop {
+        if grow.is_none() {
+            if let Ok(g) = input.try_parse(parse_non_negative_number) {
+                grow = Some(g);
+                if let Ok(s) = input.try_parse(parse_non_negative_number) {
+                    shrink = Some(s);
+                }
+                continue;
+            }
+        }
+        if basis.is_none() {
+            if let Ok(b) = input.try_parse(parse_flex_basis) {
+                basis = Some(b);
+                continue;
+            }
+        }
+        break;
+    }
+
+    if grow.is_none() && basis.is_none() {
+        return Err(input.new_custom_error(()));
+    }
+
+    // basis省略時は0%(`flex: 1`のような数値のみの指定は0%基準で伸縮する、
+    // 仕様通り)。grow省略時(basisのみの指定)は1(仕様通り、通常の
+    // flex-growの初期値0とは異なる)。
+    Ok(vec![
+        D::FlexGrow(grow.unwrap_or(1.0)),
+        D::FlexShrink(shrink.unwrap_or(1.0)),
+        D::FlexBasis(basis.unwrap_or(SpecifiedFlexBasis::LengthPercentage(
+            SpecifiedLengthPercentage::Percentage(0.0),
+        ))),
+    ])
+}
+
+/// `gap`ショートハンド。`<row-gap> <column-gap>?`(`border-spacing`と同じ
+/// 1〜2値パターン)。
+fn parse_gap_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let row = parse_length_percentage(input)?;
+    let column = input.try_parse(parse_length_percentage).unwrap_or(row);
+    Ok(vec![D::RowGap(row), D::ColumnGap(column)])
 }

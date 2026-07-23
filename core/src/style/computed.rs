@@ -16,13 +16,14 @@ use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
-    BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
-    CornerRadius, Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position,
-    QuotePair, SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout, TextAlign,
-    TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    AlignContent, AlignItems, AlignSelf, BackgroundAttachment, BackgroundPosition,
+    BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
+    BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display, EmptyCells,
+    FlexBasis, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent, Length,
+    LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit,
+    Overflow, Position, QuotePair, SpecifiedCornerRadius, SpecifiedLength,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout,
+    TextAlign, TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -212,6 +213,29 @@ pub struct ComputedStyle {
     /// 複数指定に対応、先頭が最前面(決定2)。[0032](
     /// ../../../docs/decisions/0032-box-shadow-design.md)。
     pub box_shadow: Vec<ComputedBoxShadow>,
+    /// `flex-direction`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    /// [0034](../../../docs/decisions/0034-flexbox-design.md)。
+    pub flex_direction: FlexDirection,
+    /// `flex-wrap`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    pub flex_wrap: FlexWrap,
+    /// `justify-content`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    pub justify_content: JustifyContent,
+    /// `align-items`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    pub align_items: AlignItems,
+    /// `align-content`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    pub align_content: AlignContent,
+    /// `align-self`。非継承プロパティ、flexアイテムにのみ意味を持つ。
+    pub align_self: AlignSelf,
+    /// `flex-grow`。非継承プロパティ、flexアイテムにのみ意味を持つ。
+    pub flex_grow: f32,
+    /// `flex-shrink`。非継承プロパティ、flexアイテムにのみ意味を持つ。
+    pub flex_shrink: f32,
+    /// `flex-basis`。非継承プロパティ、flexアイテムにのみ意味を持つ。
+    pub flex_basis: FlexBasis,
+    /// `row-gap`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    pub row_gap: LengthPercentage,
+    /// `column-gap`。非継承プロパティ、flexコンテナ自身にのみ意味を持つ。
+    pub column_gap: LengthPercentage,
 }
 
 /// `box-shadow`1つ分の計算値。長さはpx解決済み、`color`は`currentcolor`を
@@ -383,6 +407,17 @@ impl Default for ComputedStyle {
                 vertical: LengthPercentage::Percentage(0.5),
             },
             box_shadow: Vec::new(),
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::NoWrap,
+            justify_content: JustifyContent::FlexStart,
+            align_items: AlignItems::Stretch,
+            align_content: AlignContent::Stretch,
+            align_self: AlignSelf::Auto,
+            flex_grow: 0.0,
+            flex_shrink: 1.0,
+            flex_basis: FlexBasis::Auto,
+            row_gap: LengthPercentage::Length(0.0),
+            column_gap: LengthPercentage::Length(0.0),
         }
     }
 }
@@ -700,6 +735,17 @@ fn compute_element_style(
     let mut object_fit = None;
     let mut object_position = None;
     let mut box_shadow = None;
+    let mut flex_direction = None;
+    let mut flex_wrap = None;
+    let mut justify_content = None;
+    let mut align_items = None;
+    let mut align_content = None;
+    let mut align_self = None;
+    let mut flex_grow = None;
+    let mut flex_shrink = None;
+    let mut flex_basis = None;
+    let mut row_gap = None;
+    let mut column_gap = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -796,6 +842,17 @@ fn compute_element_style(
             PropertyDeclaration::ObjectFit(v) => object_fit = Some(*v),
             PropertyDeclaration::ObjectPosition(v) => object_position = Some(*v),
             PropertyDeclaration::BoxShadow(v) => box_shadow = Some(v.clone()),
+            PropertyDeclaration::FlexDirection(v) => flex_direction = Some(*v),
+            PropertyDeclaration::FlexWrap(v) => flex_wrap = Some(*v),
+            PropertyDeclaration::JustifyContent(v) => justify_content = Some(*v),
+            PropertyDeclaration::AlignItems(v) => align_items = Some(*v),
+            PropertyDeclaration::AlignContent(v) => align_content = Some(*v),
+            PropertyDeclaration::AlignSelf(v) => align_self = Some(*v),
+            PropertyDeclaration::FlexGrow(v) => flex_grow = Some(*v),
+            PropertyDeclaration::FlexShrink(v) => flex_shrink = Some(*v),
+            PropertyDeclaration::FlexBasis(v) => flex_basis = Some(*v),
+            PropertyDeclaration::RowGap(v) => row_gap = Some(*v),
+            PropertyDeclaration::ColumnGap(v) => column_gap = Some(*v),
         }
     }
 
@@ -940,6 +997,18 @@ fn compute_element_style(
             }
         })
         .collect();
+
+    // flexbox関連([0034](../../../docs/decisions/0034-flexbox-design.md))。
+    // いずれも非継承プロパティなので初期値との比較に`inherited_*`は不要。
+    let resolved_flex_basis = flex_basis
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.flex_basis);
+    let resolved_row_gap = row_gap
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.row_gap);
+    let resolved_column_gap = column_gap
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.column_gap);
 
     let resolved_float = float.unwrap_or(initial.float);
     // CSS2.1 9.7: floatが`none`以外なら要素は自動的にblock-levelとして計算される
@@ -1103,6 +1172,17 @@ fn compute_element_style(
         object_fit: object_fit.unwrap_or(initial.object_fit),
         object_position: resolved_object_position,
         box_shadow: resolved_box_shadow,
+        flex_direction: flex_direction.unwrap_or(initial.flex_direction),
+        flex_wrap: flex_wrap.unwrap_or(initial.flex_wrap),
+        justify_content: justify_content.unwrap_or(initial.justify_content),
+        align_items: align_items.unwrap_or(initial.align_items),
+        align_content: align_content.unwrap_or(initial.align_content),
+        align_self: align_self.unwrap_or(initial.align_self),
+        flex_grow: flex_grow.unwrap_or(initial.flex_grow),
+        flex_shrink: flex_shrink.unwrap_or(initial.flex_shrink),
+        flex_basis: resolved_flex_basis,
+        row_gap: resolved_row_gap,
+        column_gap: resolved_column_gap,
     };
 
     (style, pushed_counter_names, after_parts)
@@ -2184,6 +2264,77 @@ mod tests {
                 alpha: 1.0
             }
         );
+    }
+
+    #[test]
+    fn border_top_width_longhand_sets_only_the_top_edge() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { border-top-width: 5px; }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(style.border_top_width.0, 5.0);
+        assert_eq!(style.border_right_width.0, 0.0);
+        assert_eq!(style.border_bottom_width.0, 0.0);
+        assert_eq!(style.border_left_width.0, 0.0);
+    }
+
+    #[test]
+    fn border_edge_longhands_set_width_style_and_color_independently() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(
+            "div { border-bottom-width: 3px; border-bottom-style: dotted; \
+             border-bottom-color: rgb(1, 2, 3); }",
+        );
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(style.border_bottom_width.0, 3.0);
+        assert_eq!(style.border_bottom_style, super::BorderStyle::Dotted);
+        assert_eq!(
+            style.border_bottom_color,
+            RgbaColor {
+                red: 1,
+                green: 2,
+                blue: 3,
+                alpha: 1.0
+            }
+        );
+        // 他の辺には影響しない。
+        assert_eq!(style.border_top_width.0, 0.0);
+        assert_eq!(style.border_top_style, super::BorderStyle::None);
+    }
+
+    #[test]
+    fn border_edge_shorthand_sets_width_style_and_color_on_one_side() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { border-left: 4px solid rgb(5, 6, 7); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let style = &styles[&div];
+        assert_eq!(style.border_left_width.0, 4.0);
+        assert_eq!(style.border_left_style, super::BorderStyle::Solid);
+        assert_eq!(
+            style.border_left_color,
+            RgbaColor {
+                red: 5,
+                green: 6,
+                blue: 7,
+                alpha: 1.0
+            }
+        );
+        // 他の辺には影響しない(初期値のまま)。
+        assert_eq!(style.border_right_width.0, 0.0);
+        assert_eq!(style.border_right_style, super::BorderStyle::None);
     }
 
     #[test]

@@ -25,6 +25,11 @@ pub enum Display {
     /// 通常のブロックボックスに加えてマーカーボックス(箇条書きの記号・番号)を
     /// 生成する。`box_tree.rs::child_kind`では`Block`と同様に扱う。
     ListItem,
+    /// `flex`要素専用。Flexboxフォーマッティングコンテキストを確立する
+    /// (子要素ごとに1個のflexアイテムを生成し、taffyへレイアウトを委譲する、
+    /// [0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
+    /// `inline-flex`は非対応(決定4、既知の簡略化)。
+    Flex,
     None,
 }
 
@@ -603,4 +608,101 @@ pub struct BoxShadow {
     pub spread_radius: f32,
     pub color: Option<Color>,
     pub inset: bool,
+}
+
+/// `flex-direction`([0034](../../../docs/decisions/0034-flexbox-design.md)決定4)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FlexDirection {
+    #[default]
+    Row,
+    RowReverse,
+    Column,
+    ColumnReverse,
+}
+
+/// `flex-wrap`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FlexWrap {
+    #[default]
+    NoWrap,
+    Wrap,
+    WrapReverse,
+}
+
+/// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフロー
+/// キーワードは非対応(既知の簡略化、実務上ほぼ使われない)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JustifyContent {
+    #[default]
+    FlexStart,
+    FlexEnd,
+    Center,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+/// `align-items`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlignItems {
+    FlexStart,
+    FlexEnd,
+    Center,
+    Baseline,
+    #[default]
+    Stretch,
+}
+
+/// `align-content`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlignContent {
+    FlexStart,
+    FlexEnd,
+    Center,
+    #[default]
+    Stretch,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+/// `align-self`。`Auto`(初期値)は親の`align-items`をそのまま使う(仕様通り)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlignSelf {
+    #[default]
+    Auto,
+    FlexStart,
+    FlexEnd,
+    Center,
+    Baseline,
+    Stretch,
+}
+
+/// `flex-basis`のパース直後の指定値(`em`/`rem`未解決)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedFlexBasis {
+    Auto,
+    /// `content`キーワード。本実装では`Auto`と同一視する(既知の簡略化、
+    /// [0034](../../../docs/decisions/0034-flexbox-design.md))。
+    Content,
+    LengthPercentage(SpecifiedLengthPercentage),
+}
+
+impl SpecifiedFlexBasis {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> FlexBasis {
+        match self {
+            Self::Auto | Self::Content => FlexBasis::Auto,
+            Self::LengthPercentage(lp) => {
+                FlexBasis::LengthPercentage(lp.resolve(font_size, root_font_size))
+            }
+        }
+    }
+}
+
+/// `flex-basis`の計算値。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum FlexBasis {
+    #[default]
+    Auto,
+    LengthPercentage(LengthPercentage),
 }

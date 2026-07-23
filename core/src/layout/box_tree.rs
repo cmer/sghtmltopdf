@@ -46,8 +46,19 @@ pub enum BoxContent {
     Inline(Vec<InlineSpan>),
     /// `display: table`要素の内容(行・セル)。
     Table(TableBox),
+    /// `display: flex`要素の内容(flexアイテムの並び)。
+    Flex(FlexBox),
     /// `<img>`要素(置換要素として扱う、[`resolve_images`]参照)。
     Image(ImageBoxContent),
+}
+
+/// `display: flex`要素から集めたflexアイテムの並び([0034](
+/// ../../../docs/decisions/0034-flexbox-design.md)決定1)。各アイテムは
+/// 通常のブロック子と同じ`LayoutBox`(子要素ごとに1個、`build_children_boxes`の
+/// 無名ボックス生成規則は適用しない)。
+#[derive(Debug, Clone)]
+pub struct FlexBox {
+    pub items: Vec<LayoutBox>,
 }
 
 /// `<img>`要素のコンテンツ。`resolve_images`が構築する。
@@ -152,6 +163,13 @@ pub(crate) fn build_box_for_element(
             marker: None,
         });
     }
+    if style.display == Display::Flex {
+        return Some(LayoutBox {
+            node: Some(node),
+            content: BoxContent::Flex(build_flex_box(dom, styles, node)),
+            marker: None,
+        });
+    }
 
     let child_ids: Vec<NodeId> = dom.children(node).collect();
     let has_block_child = child_ids
@@ -219,6 +237,11 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
                 for cell in &mut row.cells {
                     resolve_images(&mut cell.content, dom, image_cache);
                 }
+            }
+        }
+        BoxContent::Flex(flex) => {
+            for item in &mut flex.items {
+                resolve_images(item, dom, image_cache);
             }
         }
         BoxContent::Inline(_) | BoxContent::Image(_) => {}
@@ -432,6 +455,28 @@ fn build_table_box(
     }
 }
 
+/// flexコンテナ(`node`)の子要素ごとに1個ずつflexアイテムを構築する。CSS仕様上
+/// flexアイテムは各子要素ごとに独立して生成され、隣接するinline-level要素を
+/// 1つの無名ボックスへまとめる規則(`build_children_boxes`)はflexコンテナの
+/// 子には適用されないため、`build_box_for_element`を子要素ごとに直接呼ぶ
+/// (決定1)。子要素自身の`display`値(`block`/`table`/入れ子の`flex`等)は
+/// そのまま尊重され、そのアイテムの中身のレイアウトに使われる(ネスト無制限)。
+/// `display: none`の子・裸のテキストノード(要素で包まれていないもの)は
+/// 無視する(後者は既知の簡略化、実務上flexコンテナの子は要素でラップされる
+/// ことがほとんどのため)。
+fn build_flex_box(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) -> FlexBox {
+    let items = dom
+        .children(node)
+        // `build_box_for_element`は要素ノードを前提にしている(`styles`は
+        // 継承のためテキストノードにも計算スタイルを持つので、要素以外を
+        // 弾かずに渡すと空の`BoxContent::Inline(vec![])`という幽霊アイテムが
+        // 生成されてしまう)。裸のテキストノード(空白等)は明示的に除外する。
+        .filter(|&child| matches!(dom.node(child).data, NodeData::Element { .. }))
+        .filter_map(|child| build_box_for_element(dom, styles, child))
+        .collect();
+    FlexBox { items }
+}
+
 /// `node`の子を辿り、`table-row`を見つけたら行として収集し、`table-caption`を
 /// 見つけたら(最初の1つだけ)`out_caption`に記録する。`thead`/`tbody`/`tfoot`
 /// のような透過的な入れ物(`table-row`/`table-caption`でも`table`でもない要素)は
@@ -536,9 +581,10 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
                 return ChildKind::Block;
             }
             match display {
-                Some(Display::Block) | Some(Display::Table) | Some(Display::ListItem) => {
-                    ChildKind::Block
-                }
+                Some(Display::Block)
+                | Some(Display::Table)
+                | Some(Display::ListItem)
+                | Some(Display::Flex) => ChildKind::Block,
                 Some(Display::Inline) => ChildKind::Inline,
                 // table-row/table-cell/table-captionは`build_table_box`が専用に
                 // 探索するため、通常のブロック/インライン走査では(不正な
@@ -660,6 +706,7 @@ mod tests {
                         .flat_map(|row| &row.cells)
                         .find_map(|cell| find_inline_spans(&cell.content))
                 }),
+            BoxContent::Flex(flex) => flex.items.iter().find_map(find_inline_spans),
         }
     }
 

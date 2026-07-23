@@ -32,10 +32,11 @@ pub use selector_impl::SgSelectorImpl;
 pub use stylesheet::{parse_stylesheet, StyleRule, Stylesheet};
 pub use ua::user_agent_stylesheet;
 pub use values::{
-    BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
-    BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
-    CornerRadius, Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position,
-    QuotePair, TableLayout, TextAlign, TextTransform, VerticalAlign, Visibility, WhiteSpace,
-    ZIndex,
+    AlignContent, AlignItems, AlignSelf, BackgroundAttachment, BackgroundPosition,
+    BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
+    BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display, EmptyCells,
+    FlexBasis, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent, Length,
+    LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit,
+    Overflow, Position, QuotePair, TableLayout, TextAlign, TextTransform, VerticalAlign,
+    Visibility, WhiteSpace, ZIndex,
 };
