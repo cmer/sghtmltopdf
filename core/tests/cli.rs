@@ -105,7 +105,7 @@ fn font_face_src_url_is_resolved_relative_to_the_html_file_and_embedded() {
         &input,
         r#"<html><head><style>
             @font-face { font-family: "CJK Brand"; src: url("cjk.ttc"); }
-            p { font-family: "CJK Brand", sans-serif; }
+            p { font-family: "CJK Brand"; }
         </style></head><body><p>日本語のテスト</p></body></html>"#,
     )
     .unwrap();

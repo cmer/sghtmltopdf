@@ -348,7 +348,10 @@ impl Default for ComputedStyle {
             border_bottom_right_radius: CornerRadius::default(),
             border_bottom_left_radius: CornerRadius::default(),
             font_size: Length(16.0),
-            font_family: vec!["sans-serif".to_string()],
+            // 既定は「未指定」を表す空 Vec。`select_for_char`は空なら
+            // 呼び出し側フォント(`--font`/`@font-face`)へフォールバックする
+            // ([0036]決定3-1改訂: `sans-serif`は明示時のみゴシック解決)。
+            font_family: Vec::new(),
             font_weight: FontWeight::Normal,
             font_style: FontStyle::Normal,
             color: RgbaColor {

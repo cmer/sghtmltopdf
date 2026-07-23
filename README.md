@@ -376,10 +376,15 @@ WHATWG HTML仕様の"Rendering"節を出発点に、印刷/PDF出力で意味を
 * `hidden`属性(`[hidden] { display: none }`)・`<details open>`・
   `<dialog open>`による出し分けに対応。UA originは常にAuthor originに負ける
   ため、作者CSSで上書きできる
-* CSSの汎用family名`monospace`/`serif`は、fontconfigに依存しない自前の候補
-  リスト(+`monospace`はフォントの等幅メタデータによるフォールバック)で
-  解決する。`sans-serif`は既定`font-family`と同値であり、解決すると`--font`で
-  渡したフォントが既定フォントでなくなるため意図的に解決しない
+* CSSの汎用family名`monospace`/`serif`/`sans-serif`は、fontconfigに依存しない
+  自前の候補リスト(+`monospace`はフォントの等幅メタデータによるフォールバック)
+  で解決する。`sans-serif`の候補は英字ゴシック(DejaVu Sans / Liberation Sans /
+  Noto Sans / Arial …)。既定`font-family`は「未指定」(空)であり`--font`へ
+  フォールバックするので、`sans-serif`を解決しても`--font`の既定挙動は変わらない
+  (**明示**した`font-family: sans-serif`だけがゴシックに解決される)
+* `--gothic-font <path>`(必要なら`--gothic-font-index`)を渡すと、そのフォントが
+  `sans-serif`の実体として決定的に使われる(システム候補リストの探索より優先)。
+  日本語ゴシックを`sans-serif`に割り当てたい場合に使う
 * 既知の限界: ルビのレイアウトは非対応(`rt`/`rp`をインラインのまま出力する
   ため「漢字(かんじ)」というフォールバック表記になる)。`<mark>`等の
   **インライン要素の`background-color`は描画されない**(インライン描画が

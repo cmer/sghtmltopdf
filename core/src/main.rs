@@ -28,6 +28,7 @@ struct FontSpec {
 struct Options {
     input: PathBuf,
     fonts: Vec<FontSpec>,
+    gothic_font: Option<FontSpec>,
     output: PathBuf,
     allow_remote_assets: bool,
 }
@@ -58,7 +59,10 @@ fn main() -> ExitCode {
 
 fn print_usage() {
     eprintln!(
-        "使い方: sghtmltopdf <input.html> --font <font.ttf> [--font <font2.ttf> [--font-index N]]... [-o <output.pdf>] [--allow-remote-assets]"
+        "使い方: sghtmltopdf <input.html> --font <font.ttf> [--font <font2.ttf> [--font-index N]]... [--gothic-font <gothic.ttf>] [-o <output.pdf>] [--allow-remote-assets]"
+    );
+    eprintln!(
+        "  --gothic-fontは`font-family: sans-serif`(明示指定)の実体として使う。未指定ならシステムのゴシック候補で解決する"
     );
     eprintln!(
         "  --font-indexは直前の--fontに対して、TrueType Collection(.ttc)内のフェイス番号を指定する(既定は0)"
@@ -71,6 +75,7 @@ fn print_usage() {
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut input = None;
     let mut fonts: Vec<FontSpec> = Vec::new();
+    let mut gothic_font: Option<FontSpec> = None;
     let mut output = None;
     let mut allow_remote_assets = false;
 
@@ -84,6 +89,25 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                     path: PathBuf::from(value),
                     index: 0,
                 });
+            }
+            "--gothic-font" => {
+                i += 1;
+                let value = args.get(i).ok_or("--gothic-fontには値が必要です")?;
+                gothic_font = Some(FontSpec {
+                    path: PathBuf::from(value),
+                    index: 0,
+                });
+            }
+            "--gothic-font-index" => {
+                i += 1;
+                let value = args.get(i).ok_or("--gothic-font-indexには値が必要です")?;
+                let index: u32 = value
+                    .parse()
+                    .map_err(|_| format!("--gothic-font-indexは数値で指定してください: {value}"))?;
+                gothic_font
+                    .as_mut()
+                    .ok_or("--gothic-font-indexは--gothic-fontに対して指定してください")?
+                    .index = index;
             }
             "--font-index" => {
                 i += 1;
@@ -119,6 +143,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     Ok(Options {
         input,
         fonts,
+        gothic_font,
         output,
         allow_remote_assets,
     })
@@ -145,6 +170,10 @@ fn run(options: &Options) -> Result<(), String> {
         mode: Mode::Batch,
         settings: PageSettings::default(),
         fonts: engine_fonts,
+        gothic_font: options.gothic_font.as_ref().map(|spec| EngineFontSpec {
+            path: spec.path.clone(),
+            index: spec.index,
+        }),
         base_dir,
         allow_remote_assets: options.allow_remote_assets,
     };

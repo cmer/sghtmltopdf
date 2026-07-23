@@ -1,6 +1,6 @@
 //! OS標準のフォントディレクトリを走査してシステムフォントを解決する(`fontdb`を使用)。
 //!
-//! CSSの汎用family名(`monospace`/`serif`)は、`fontdb`(=Linuxでは
+//! CSSの汎用family名(`monospace`/`serif`/`sans-serif`)は、`fontdb`(=Linuxでは
 //! fontconfig)の汎用名解決には**任せず**、自前の候補リストで解決する
 //! ([0036](../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
 //! 決定3)。`fontdb`はfontconfig未設置の最小環境ではOS間で一貫性のない
@@ -9,9 +9,13 @@
 //! `fontdb`のフェース単位のメタデータ(`FaceInfo::monospaced`。fontconfig
 //! 非依存)を使って等幅フェースを探す。それでも見つからなければ解決を諦め、
 //! [`crate::fonts::FontCollection`]が既に持つグリフカバレッジ・フォールバックに
-//! 任せる。`sans-serif`は`ComputedStyle`の既定`font-family`と同値であり、
-//! 解決すると`--font`/`@font-face`で明示指定したフォントが既定フォントで
-//! なくなってしまうため、意図的に解決対象から外している(決定3-1)。
+//! 任せる。`sans-serif`は当初「既定`font-family`と同値なので解決しない」と
+//! していたが([0036]決定3-1)、**既定`font-family`を空(未指定)に切り離した**
+//! ため、`sans-serif`を明示した場合のみゴシック体を解決するよう改めた
+//! (決定3-1改訂)。未指定要素は空`font-family`で`select_for_char`の
+//! フォールバック(=`--font`のフォント)へ行くため、`--font`が既定という
+//! 挙動は保たれる。`--gothic-font`が渡された場合はそちらが`sans-serif`として
+//! 最優先で使われる。
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -28,11 +32,8 @@ const GENERIC_FAMILIES: &[&str] = &["serif", "sans-serif", "monospace", "cursive
 /// 汎用family名ごとの、実在しやすい具体フォント名の候補(優先順)。
 ///
 /// `cursive`/`fantasy`は環境差が大きく実務上の需要も薄いため候補を持たない
-/// (=解決しない、[0036]決定3)。**`sans-serif`も意図的に解決しない**
-/// ([0036]決定3-1): `ComputedStyle`の既定`font-family`が`sans-serif`で
-/// あるため、これを解決すると「`--font`/`@font-face`で明示的に与えた
-/// フォントが既定フォントになる」という挙動が壊れ、PDFに埋め込まれる
-/// フォントが実行環境のインストール状況に依存してしまう。
+/// (=解決しない、[0036]決定3)。`sans-serif`は既定`font-family`を空に切り離した
+/// ため明示時のみ解決する(決定3-1改訂)。
 const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
     (
         "monospace",
@@ -56,6 +57,21 @@ const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
             "Times New Roman",
             "Times",
             "Georgia",
+        ],
+    ),
+    (
+        // `sans-serif`は明示指定時のみゴシック体を探す([0036]決定3-1改訂)。
+        // 英字ゴシックの候補(実運用では`--gothic-font`で決定的に上書きできる)。
+        "sans-serif",
+        &[
+            "DejaVu Sans",
+            "Liberation Sans",
+            "Noto Sans",
+            "Arial",
+            "Helvetica",
+            "Ubuntu",
+            "Verdana",
+            "Tahoma",
         ],
     ),
 ];
@@ -333,12 +349,11 @@ mod tests {
     }
 
     #[test]
-    fn load_missing_system_fonts_does_not_resolve_sans_serif() {
-        // `sans-serif`は`ComputedStyle`の既定`font-family`と同値なので、
-        // これを解決すると`--font`で渡したフォントが既定フォントでなくなる
-        // ([0036]決定3-1)。fixtureには"DejaVu Sans"が実在するため、
-        // 「候補が無いから解決できなかった」のではなく「意図的に解決しない」
-        // ことを確認するテストになっている。
+    fn explicit_sans_serif_resolves_to_a_system_gothic_face() {
+        // `sans-serif`を**明示**した場合はゴシック体を候補リストで解決する
+        // ([0036]決定3-1改訂)。fixtureの"DejaVu Sans"が候補にあるので拾える。
+        // 既定`font-family`は空(未指定)に切り離したため、この解決が
+        // `--font`の既定挙動を壊すことはない。
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         let author = parse_stylesheet("p { font-family: sans-serif; }");
         let dom = html::parse(b"<p>text</p>");
@@ -347,9 +362,27 @@ mod tests {
         let mut fonts = FontCollection::new(vec![]);
         load_missing_system_fonts(&mut fonts, &styles, &system);
 
+        assert_eq!(fonts.len(), 1);
+        assert!(
+            fonts.has_family("sans-serif"),
+            "the resolved gothic face must be registered under the generic name"
+        );
+    }
+
+    #[test]
+    fn an_element_without_an_explicit_font_family_does_not_trigger_a_lookup() {
+        // 既定`font-family`は空(未指定)なので、`--font`のフォントへ
+        // フォールバックする。システムフォント探索は起きない。
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        let dom = html::parse(b"<p>text</p>");
+        let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+
+        let mut fonts = FontCollection::new(vec![]);
+        load_missing_system_fonts(&mut fonts, &styles, &system);
+
         assert!(
             fonts.is_empty(),
-            "sans-serif should not trigger a system font lookup"
+            "an unspecified font-family must not look up system fonts"
         );
     }
 
@@ -372,8 +405,10 @@ mod tests {
 
     #[test]
     fn load_generic_returns_none_for_families_we_deliberately_skip() {
+        // `cursive`/`fantasy`は候補を持たない。`Helvetica`は汎用名でない。
+        // (`sans-serif`は決定3-1改訂で解決対象になったのでここには含めない。)
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
-        for generic in ["sans-serif", "cursive", "fantasy", "Helvetica"] {
+        for generic in ["cursive", "fantasy", "Helvetica"] {
             assert!(
                 system
                     .load_generic(generic, FontWeight::Normal, FontStyle::Normal)
@@ -381,6 +416,15 @@ mod tests {
                 "{generic} should not be resolved as a generic family"
             );
         }
+    }
+
+    #[test]
+    fn load_generic_resolves_sans_serif_to_a_gothic_candidate() {
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        let font = system
+            .load_generic("sans-serif", FontWeight::Normal, FontStyle::Normal)
+            .expect("DejaVu Sans is in the sans-serif candidate list and exists in the fixtures");
+        assert_eq!(font.family_name().as_deref(), Some("DejaVu Sans"));
     }
 
     #[test]

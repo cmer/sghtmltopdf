@@ -91,6 +91,11 @@ pub struct EngineOptions {
     pub settings: PageSettings,
     /// `--font`相当の明示的なフォント指定(複数指定可)。
     pub fonts: Vec<FontSpec>,
+    /// `--gothic-font`相当。指定すると`font-family: sans-serif`(明示)の
+    /// 実体として最優先で使われる。未指定なら`sans-serif`はシステムの
+    /// ゴシック候補([`crate::fonts`])で解決する。既定`font-family`(未指定)は
+    /// これに関わらず`--font`のフォントへフォールバックする。
+    pub gothic_font: Option<FontSpec>,
     /// `@font-face`の`src: url(...)`を相対解決する基準ディレクトリ。
     /// 入力がファイルに対応しない場合(Rackボディ等)は`None`でよく、
     /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
@@ -171,6 +176,24 @@ struct StreamingState<S: Sink> {
 
 /// HTMLチャンク投入からPDFバイト列書き出しまでを1つのAPIとして統合する
 /// コアのエントリポイント。
+/// `--gothic-font`を`font-family: sans-serif`の実体として登録する
+/// ([0036]決定3-1改訂)。`push_font_face`で宣言family名`"sans-serif"`として
+/// 追加するので、`select_for_char`の通常のfamily一致でそのまま拾える。
+/// `has_matching_face("sans-serif", ...)`が真になるため、後段の
+/// `load_missing_system_fonts`はシステムのゴシック探索をスキップする。
+fn register_gothic_font<E>(
+    fonts: &mut FontCollection,
+    gothic: Option<&FontSpec>,
+) -> Result<(), EngineError<E>> {
+    if let Some(spec) = gothic {
+        let font = Font::load_indexed(&spec.path, spec.index).map_err(|e| {
+            EngineError::Font(format!("ゴシックフォントの読み込みに失敗しました: {e}"))
+        })?;
+        fonts.push_font_face("sans-serif".to_string(), None, None, Vec::new(), font);
+    }
+    Ok(())
+}
+
 pub struct Engine<S: Sink> {
     options: EngineOptions,
     parser: StreamingParser,
@@ -289,6 +312,7 @@ impl<S: Sink> Engine<S> {
         let mut fonts = FontCollection::new(loaded_fonts);
 
         let system_fonts = SystemFonts::scan();
+        register_gothic_font(&mut fonts, self.options.gothic_font.as_ref())?;
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
@@ -590,6 +614,7 @@ impl<S: Sink> Engine<S> {
         let page_settings = apply_page_rule_settings_override(options.settings, &author.page_rules);
 
         let system_fonts = SystemFonts::scan();
+        register_gothic_font(&mut fonts, options.gothic_font.as_ref())?;
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
