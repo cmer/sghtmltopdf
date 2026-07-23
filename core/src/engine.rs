@@ -1391,6 +1391,73 @@ mod tests {
         assert!(count_occurrences(&bytes, b"/Height 16") > 0);
     }
 
+    /// `object-fit`/`object-position`のE2Eテスト(M9 Phase 2)。詳細設計は
+    /// [0030](../../docs/decisions/0030-object-fit-position-design.md)参照。
+    /// `object_fit_rect`自体の幾何計算は`pdf/document.rs`の単体テストで
+    /// 網羅済みのため、ここでは実際のパイプライン(data:URIデコード→
+    /// box tree→レイアウト→PDFエンコード)を通した疎通・クリップ発行の
+    /// 確認に絞る。
+    fn build_object_fit_pdf(object_fit_css: &str) -> Vec<u8> {
+        let html = format!(
+            r#"<html><body><img src="{}" style="width: 150px; height: 80px; {}"></body></html>"#,
+            data_uri(JPEG_FIXTURE_PATH, "image/jpeg"),
+            object_fit_css
+        );
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        engine.feed(html.as_bytes()).unwrap();
+        let bytes = engine.finish().unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        bytes
+    }
+
+    #[test]
+    fn object_fit_cover_and_none_render_valid_pdfs_with_a_single_image_draw_each() {
+        for object_fit in ["cover", "contain", "none", "scale-down", "fill"] {
+            let bytes = build_object_fit_pdf(&format!("object-fit: {object_fit};"));
+            let decompressed = decompressed_stream_bytes(&bytes);
+            assert_eq!(
+                count_occurrences(&decompressed, b" Do\n"),
+                1,
+                "object-fit: {object_fit} should draw the image exactly once (no tiling)"
+            );
+        }
+    }
+
+    #[test]
+    fn object_fit_always_clips_to_the_content_box_even_for_the_default_fill() {
+        // [0030]決定3: `object-fit`の値によらず常にcontent-boxへクリップする
+        // (`Fill`は元々ぴったり収まるがno-opとして同じ経路を通る)。クリップ
+        // パスの構築(`re` → `W n`)が実際に発行されていることを確認する。
+        let bytes = build_object_fit_pdf("");
+        let decompressed = decompressed_stream_bytes(&bytes);
+        assert_eq!(count_occurrences(&decompressed, b" re\n"), 1);
+        assert!(count_occurrences(&decompressed, b"W\n") > 0);
+    }
+
+    #[test]
+    fn object_fit_cover_and_fill_produce_different_geometry_end_to_end() {
+        // intrinsic 32x24 を 150x80 のボックスへ描画する場合、`fill`
+        // (非一様に引き伸ばす)と`cover`(アスペクト比を保って拡大・はみ出し分は
+        // クリップ)は描画される画像の変換行列(`cm`)が異なるはずなので、
+        // コンテンツストリーム全体としてもバイト列が一致しないはず。
+        let fill_bytes = decompressed_stream_bytes(&build_object_fit_pdf("object-fit: fill;"));
+        let cover_bytes = decompressed_stream_bytes(&build_object_fit_pdf("object-fit: cover;"));
+        assert_ne!(fill_bytes, cover_bytes);
+    }
+
+    #[test]
+    fn object_position_moves_the_image_within_the_content_box_end_to_end() {
+        let center_bytes = decompressed_stream_bytes(&build_object_fit_pdf("object-fit: contain;"));
+        let right_bottom_bytes = decompressed_stream_bytes(&build_object_fit_pdf(
+            "object-fit: contain; object-position: right bottom;",
+        ));
+        assert_ne!(center_bytes, right_bottom_bytes);
+    }
+
     #[test]
     fn image_rendering_matches_between_batch_and_streaming_mode() {
         let html = format!(

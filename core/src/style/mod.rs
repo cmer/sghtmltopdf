@@ -16,7 +16,8 @@ mod values;
 pub use cascade::matching_declarations;
 pub use computed::{
     compute_single_element_style, compute_styles, compute_styles_with_parent,
-    resolve_margin_box_content, ComputedStyle, FirstLetterStyle, LineHeight, RgbaColor,
+    resolve_margin_box_content, ComputedBoxShadow, ComputedStyle, FirstLetterStyle, LineHeight,
+    RgbaColor,
 };
 pub use element_ref::ElementRef;
 pub use extract::extract_author_stylesheet;
@@ -33,6 +34,7 @@ pub use values::{
     BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
     BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
     CornerRadius, Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
-    TableLayout, TextAlign, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position,
+    QuotePair, TableLayout, TextAlign, TextTransform, VerticalAlign, Visibility, WhiteSpace,
+    ZIndex,
 };

@@ -549,3 +549,58 @@ pub enum Color {
         alpha: f32,
     },
 }
+
+/// `object-fit`。`<img>`(置換要素)専用、非継承プロパティ。
+/// [0030](../../../docs/decisions/0030-object-fit-position-design.md)参照。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ObjectFit {
+    /// 初期値。intrinsicアスペクト比を無視してcontent-box全体に引き伸ばす
+    /// (`object-fit`未対応時の既存の`<img>`描画と同じ挙動)。
+    #[default]
+    Fill,
+    Contain,
+    Cover,
+    None,
+    ScaleDown,
+}
+
+/// `box-shadow`の1つ分。パース直後の指定値(長さは`em`/`rem`未解決)。
+/// カンマ区切りの複数指定は`Vec<SpecifiedBoxShadow>`で保持する。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpecifiedBoxShadow {
+    pub offset_x: SpecifiedLength,
+    pub offset_y: SpecifiedLength,
+    pub blur_radius: SpecifiedLength,
+    pub spread_radius: SpecifiedLength,
+    /// 省略時は`currentcolor`相当(`None`のまま計算スタイル側で解決する)。
+    pub color: Option<Color>,
+    /// `inset`キーワード。パースはするが描画は非対応
+    /// ([0032](../../../docs/decisions/0032-box-shadow-design.md)決定、
+    /// 既知の簡略化)。
+    pub inset: bool,
+}
+
+impl SpecifiedBoxShadow {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> BoxShadow {
+        BoxShadow {
+            offset_x: self.offset_x.resolve(font_size, root_font_size).0,
+            offset_y: self.offset_y.resolve(font_size, root_font_size).0,
+            blur_radius: self.blur_radius.resolve(font_size, root_font_size).0,
+            spread_radius: self.spread_radius.resolve(font_size, root_font_size).0,
+            color: self.color,
+            inset: self.inset,
+        }
+    }
+}
+
+/// `box-shadow`の1つ分。長さはpx解決済みだが、`color`は`currentcolor`が
+/// 未解決のまま(`RgbaColor`への解決は計算スタイルの役割)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BoxShadow {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur_radius: f32,
+    pub spread_radius: f32,
+    pub color: Option<Color>,
+    pub inset: bool,
+}

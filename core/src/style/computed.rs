@@ -19,8 +19,8 @@ use super::values::{
     BackgroundAttachment, BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse,
     BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
     CornerRadius, Display, EmptyCells, Float, FontStyle, FontWeight, Length, LengthPercentage,
-    LengthPercentageOrAuto, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
-    SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
+    LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position,
+    QuotePair, SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout, TextAlign,
     TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
@@ -202,6 +202,30 @@ pub struct ComputedStyle {
     /// `::first-letter`の限定的な上書きスタイル(決定4)。マッチする宣言が
     /// 一つも無ければ`None`。
     pub first_letter_style: Option<FirstLetterStyle>,
+    /// `object-fit`。非継承プロパティ、`<img>`にのみ意味を持つ。
+    /// [0030](../../../docs/decisions/0030-object-fit-position-design.md)。
+    pub object_fit: ObjectFit,
+    /// `object-position`。非継承プロパティ、初期値`50% 50%`
+    /// (`background-position`の初期値`0% 0%`とは異なる)。
+    pub object_position: BackgroundPosition,
+    /// `box-shadow`。非継承プロパティ、初期値は空(影なし)。カンマ区切りの
+    /// 複数指定に対応、先頭が最前面(決定2)。[0032](
+    /// ../../../docs/decisions/0032-box-shadow-design.md)。
+    pub box_shadow: Vec<ComputedBoxShadow>,
+}
+
+/// `box-shadow`1つ分の計算値。長さはpx解決済み、`color`は`currentcolor`を
+/// 解決済み(`resolve_color`、この要素自身の計算済み`color`を基準にする)。
+/// [0032](../../../docs/decisions/0032-box-shadow-design.md)参照。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ComputedBoxShadow {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur_radius: f32,
+    pub spread_radius: f32,
+    pub color: RgbaColor,
+    /// `inset`キーワード。パースはするが描画は非対応(決定1、既知の簡略化)。
+    pub inset: bool,
 }
 
 /// `::first-letter`用の限定的な上書きスタイル。実装コストと需要のバランスを
@@ -353,6 +377,12 @@ impl Default for ComputedStyle {
                 },
             ]),
             first_letter_style: None,
+            object_fit: ObjectFit::Fill,
+            object_position: BackgroundPosition {
+                horizontal: LengthPercentage::Percentage(0.5),
+                vertical: LengthPercentage::Percentage(0.5),
+            },
+            box_shadow: Vec::new(),
         }
     }
 }
@@ -667,6 +697,9 @@ fn compute_element_style(
     let mut counter_reset = None;
     let mut counter_increment = None;
     let mut quotes = None;
+    let mut object_fit = None;
+    let mut object_position = None;
+    let mut box_shadow = None;
 
     // カスケード順(優先度昇順)に走査するので、後で見つかったものが自然に勝つ。
     // `data-page-break`属性糖衣は「スタイルシートで個別に上書きできる既定のヒント」
@@ -760,6 +793,9 @@ fn compute_element_style(
             PropertyDeclaration::CounterReset(v) => counter_reset = Some(v.clone()),
             PropertyDeclaration::CounterIncrement(v) => counter_increment = Some(v.clone()),
             PropertyDeclaration::Quotes(v) => quotes = Some(v.clone()),
+            PropertyDeclaration::ObjectFit(v) => object_fit = Some(*v),
+            PropertyDeclaration::ObjectPosition(v) => object_position = Some(*v),
+            PropertyDeclaration::BoxShadow(v) => box_shadow = Some(v.clone()),
         }
     }
 
@@ -881,6 +917,29 @@ fn compute_element_style(
     let resolved_border_left_color = resolve_color(border_left_color, resolved_color);
     // `outline-color`の初期値も`currentcolor`(仕様通り)。
     let resolved_outline_color = resolve_color(outline_color, resolved_color);
+
+    let resolved_object_position = object_position
+        .map(|specified| specified.resolve(own_font_size, root_font_size))
+        .unwrap_or(initial.object_position);
+    // `box-shadow`のカンマ区切り各要素のem/rem解決と`currentcolor`解決
+    // ([0032](../../../docs/decisions/0032-box-shadow-design.md)決定1)。
+    // `blur-radius`は仕様上負値は無効だが、パース時点では拒否せず
+    // ここで0未満をクランプする(簡易な頑健性、[0025]系の既存パターンに倣う)。
+    let resolved_box_shadow: Vec<ComputedBoxShadow> = box_shadow
+        .unwrap_or_default()
+        .into_iter()
+        .map(|specified| {
+            let resolved = specified.resolve(own_font_size, root_font_size);
+            ComputedBoxShadow {
+                offset_x: resolved.offset_x,
+                offset_y: resolved.offset_y,
+                blur_radius: resolved.blur_radius.max(0.0),
+                spread_radius: resolved.spread_radius,
+                color: resolve_color(resolved.color, resolved_color),
+                inset: resolved.inset,
+            }
+        })
+        .collect();
 
     let resolved_float = float.unwrap_or(initial.float);
     // CSS2.1 9.7: floatが`none`以外なら要素は自動的にblock-levelとして計算される
@@ -1041,6 +1100,9 @@ fn compute_element_style(
         outline_color: resolved_outline_color,
         quotes: resolved_quotes,
         first_letter_style,
+        object_fit: object_fit.unwrap_or(initial.object_fit),
+        object_position: resolved_object_position,
+        box_shadow: resolved_box_shadow,
     };
 
     (style, pushed_counter_names, after_parts)
@@ -1545,6 +1607,136 @@ mod tests {
                 LengthPercentageOrAuto::Auto
             )
         );
+    }
+
+    #[test]
+    fn object_fit_keywords_are_parsed_and_default_is_fill() {
+        let dom = html::parse(
+            br#"<img class="a"><img class="b"><img class="c"><img class="d"><img class="e"><img class="f">"#,
+        );
+        let mut imgs = Vec::new();
+        find_all(&dom, dom.document(), "img", &mut imgs);
+        let [a, b, c, d, e, f] = imgs[..] else {
+            panic!("expected exactly 6 imgs")
+        };
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(
+            r#".a { object-fit: fill; }
+               .b { object-fit: contain; }
+               .c { object-fit: cover; }
+               .d { object-fit: none; }
+               .e { object-fit: scale-down; }"#,
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(styles[&a].object_fit, ObjectFit::Fill);
+        assert_eq!(styles[&b].object_fit, ObjectFit::Contain);
+        assert_eq!(styles[&c].object_fit, ObjectFit::Cover);
+        assert_eq!(styles[&d].object_fit, ObjectFit::None);
+        assert_eq!(styles[&e].object_fit, ObjectFit::ScaleDown);
+        // 未指定時の初期値は`fill`。
+        assert_eq!(styles[&f].object_fit, ObjectFit::Fill);
+    }
+
+    #[test]
+    fn object_position_default_is_50_percent_and_can_be_overridden() {
+        let dom = html::parse(br#"<img class="a"><img class="b">"#);
+        let mut imgs = Vec::new();
+        find_all(&dom, dom.document(), "img", &mut imgs);
+        let [a, b] = imgs[..] else {
+            panic!("expected exactly 2 imgs")
+        };
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(".b { object-position: right bottom; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert_eq!(
+            styles[&a].object_position,
+            BackgroundPosition {
+                horizontal: LengthPercentage::Percentage(0.5),
+                vertical: LengthPercentage::Percentage(0.5),
+            }
+        );
+        assert_eq!(
+            styles[&b].object_position,
+            BackgroundPosition {
+                horizontal: LengthPercentage::Percentage(1.0),
+                vertical: LengthPercentage::Percentage(1.0),
+            }
+        );
+    }
+
+    #[test]
+    fn box_shadow_defaults_to_empty_and_parses_offsets_blur_spread() {
+        let dom = html::parse(br#"<div class="a"></div><div class="b"></div>"#);
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let [a, b] = divs[..] else {
+            panic!("expected exactly 2 divs")
+        };
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(".b { box-shadow: 2px 3px 4px 5px rgb(10, 20, 30); }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert!(styles[&a].box_shadow.is_empty());
+
+        let shadows = &styles[&b].box_shadow;
+        assert_eq!(shadows.len(), 1);
+        let shadow = shadows[0];
+        assert_eq!(shadow.offset_x, 2.0);
+        assert_eq!(shadow.offset_y, 3.0);
+        assert_eq!(shadow.blur_radius, 4.0);
+        assert_eq!(shadow.spread_radius, 5.0);
+        assert_eq!(
+            shadow.color,
+            RgbaColor {
+                red: 10,
+                green: 20,
+                blue: 30,
+                alpha: 1.0
+            }
+        );
+        assert!(!shadow.inset);
+    }
+
+    #[test]
+    fn box_shadow_supports_comma_separated_list_inset_and_currentcolor() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet(
+            "div { color: rgb(9, 8, 7); \
+             box-shadow: 1px 1px, inset 2px 2px 3px rgb(1,1,1); }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let shadows = &styles[&div].box_shadow;
+        assert_eq!(shadows.len(), 2);
+        // 1つ目: 色省略時は`currentcolor`(この要素の計算済み`color`)へ解決される。
+        assert_eq!(
+            shadows[0].color,
+            RgbaColor {
+                red: 9,
+                green: 8,
+                blue: 7,
+                alpha: 1.0
+            }
+        );
+        assert_eq!(shadows[0].blur_radius, 0.0);
+        assert!(!shadows[0].inset);
+        // 2つ目: `inset`はパースされる(描画は非対応、決定1)。
+        assert!(shadows[1].inset);
+    }
+
+    #[test]
+    fn box_shadow_none_clears_the_shorthand() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        let author = parse_stylesheet("div { box-shadow: none; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        assert!(styles[&div].box_shadow.is_empty());
     }
 
     #[test]

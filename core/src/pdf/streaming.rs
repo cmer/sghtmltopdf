@@ -28,8 +28,8 @@ use crate::sink::Sink;
 use crate::style::{ComputedStyle, PageRule};
 
 use super::document::{
-    collect_image_uses, collect_margin_box_usage, collect_usage, render_box, render_margin_boxes,
-    RefAllocator,
+    alpha_gs_resource_name, collect_image_uses, collect_margin_box_usage, collect_usage,
+    render_box, render_margin_boxes, RefAllocator, ALPHA_STEPS,
 };
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
 use super::img::{
@@ -63,6 +63,11 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// `@page`ルール(margin box描画用、[0028](
     /// ../../../docs/decisions/0028-paged-media-design.md))。
     page_rules: Vec<PageRule>,
+    /// `background-color`/`box-shadow`の半透明描画用ExtGState(0.05刻み・
+    /// 21段階、[0031](../../../docs/decisions/0031-fill-alpha-design.md)
+    /// 決定1)。バッチモード(`encode_pdf`)と同じく文書全体で1回だけ確保する。
+    alpha_gs_ids: Vec<Ref>,
+    alpha_gs_names: Vec<String>,
 }
 
 impl<S: Sink> StreamingPdfWriter<S> {
@@ -90,8 +95,10 @@ impl<S: Sink> StreamingPdfWriter<S> {
             .collect();
         let font_resource_names = (0..fonts.len()).map(|i| format!("F{i}")).collect();
         let usages = (0..fonts.len()).map(|_| FontUsage::default()).collect();
+        let alpha_gs_ids: Vec<Ref> = (0..=ALPHA_STEPS).map(|_| alloc.next()).collect();
+        let alpha_gs_names: Vec<String> = (0..=ALPHA_STEPS).map(alpha_gs_resource_name).collect();
 
-        Ok(Self {
+        let mut writer = Self {
             sink,
             output_len: PDF_HEADER.len(),
             offsets: Vec::new(),
@@ -105,7 +112,19 @@ impl<S: Sink> StreamingPdfWriter<S> {
             settings,
             image_ids: HashMap::new(),
             page_rules,
-        })
+            alpha_gs_ids: alpha_gs_ids.clone(),
+            alpha_gs_names,
+        };
+        for (step, id) in alpha_gs_ids.into_iter().enumerate() {
+            let a = step as f32 / ALPHA_STEPS as f32;
+            let mut chunk = Chunk::new();
+            chunk
+                .ext_graphics(id)
+                .non_stroking_alpha(a)
+                .stroking_alpha(a);
+            writer.write_chunk(id, &chunk)?;
+        }
+        Ok(writer)
     }
 
     /// 確定した1ページを即座にコンテンツストリームへエンコードし、`sink`へ
@@ -176,6 +195,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 &self.font_resource_names,
                 &self.image_ids,
                 background_images,
+                &self.alpha_gs_names,
             );
         }
         render_margin_boxes(
@@ -217,6 +237,11 @@ impl<S: Sink> StreamingPdfWriter<S> {
             let mut xobject_dict = resources.x_objects();
             for color_ref in &page_image_refs {
                 xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
+            }
+            xobject_dict.finish();
+            let mut ext_g_state_dict = resources.ext_g_states();
+            for (name, &id) in self.alpha_gs_names.iter().zip(self.alpha_gs_ids.iter()) {
+                ext_g_state_dict.pair(Name(name.as_bytes()), id);
             }
         }
         self.write_chunk(page_id, &chunk)?;

@@ -80,8 +80,62 @@ layout、Lists、Box model詳細、Generated content、Background詳細)を実�
 Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細・
 Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
 マイルストーン9(CSS3対応)は、Phase 1(`box-sizing`・Paged media)が完了。
-Phase 2はColor Level 4が完了、`object-fit`・`box-shadow`・CSS Custom
-Properties・Phase 3(Flexbox)は未着手。
+Phase 2はColor Level 4・`object-fit`/`object-position`・`box-shadow`が完了、
+CSS Custom Properties・Phase 3(Flexbox)は未着手。
+
+### `object-fit`/`object-position`
+
+`<img>`版の`background-size: cover/contain`に対応している。
+
+```css
+img { width: 150px; height: 80px; object-fit: cover; object-position: center; }
+```
+
+* `object-fit`は`fill`(初期値、非一様に引き伸ばす)/`contain`/`cover`/
+  `none`/`scale-down`に対応
+* `object-position`は`background-position`と同じ値の文法(初期値は
+  `50% 50%`、`background-position`の`0% 0%`とは異なる)
+* `object-fit`の値によらず、常にcontent-boxへクリップして描画する
+  (`fill`は元々ぴったり収まるがno-opとして同じ経路を通る)
+
+詳細は[docs/decisions/0030-object-fit-position-design.md](docs/decisions/0030-object-fit-position-design.md)
+参照。
+
+### `box-shadow`
+
+カンマ区切りの複数指定・ぼかし(`blur-radius`)・広がり(`spread-radius`)に
+対応している。
+
+```css
+.card { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.1); }
+```
+
+* `inset`はパースするが描画は非対応(既知の簡略化。外側の影のみ実務上の
+  需要が高いと判断)
+* ぼかしは真のガウスぼかしではなく、4段階の同心半透明矩形を重ね塗りして
+  近似する(`border-style`のgroove/ridge/inset/outsetの疑似陰影と同じ
+  判断基準)
+* リスト内の複数指定は、先頭が最前面になる(仕様通り)
+* この実装の前提として、`background-color: rgba(...)`等の半透明色が実際には
+  不透明として描画される既存の欠陥を発見・修正した(次節参照)
+
+詳細は[docs/decisions/0032-box-shadow-design.md](docs/decisions/0032-box-shadow-design.md)
+参照。
+
+### 単色塗りのアルファ透過(ExtGState)
+
+`background-color`/`box-shadow`の半透明色(`rgba()`等のアルファ値)が、
+PDFの`ExtGState`(`/ca`)を使って正しく半透明に描画されるようになった。
+
+* 0.05刻み・21段階のExtGStateを文書全体で1回だけ確保し、フォントと同じく
+  全ページの`Resources`辞書へ無条件で列挙する(画像のような使用状況の
+  動的収集は行わない)
+* 対象は`background-color`と`box-shadow`の塗りに限定する。`border-color`/
+  `outline-color`/テキストの`color`の半透明指定は今回のスコープ外で、
+  引き続き不透明として描画される(既知の簡略化)
+
+詳細は[docs/decisions/0031-fill-alpha-design.md](docs/decisions/0031-fill-alpha-design.md)
+参照。
 
 ### Color Level 4(`lab()`/`lch()`/`oklab()`/`oklch()`)
 

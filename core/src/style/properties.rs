@@ -6,11 +6,11 @@ use palette::{FromColor, Lab, Lch, Oklab, Oklch, Srgb};
 use super::values::{
     BackgroundAttachment, BackgroundRepeat, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
     BreakInside, CaptionSide, Clear, Color, ContentPart, Display, EmptyCells, Float, FontStyle,
-    FontWeight, ListStylePosition, ListStyleType, Overflow, Position, QuotePair,
-    SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedCornerRadius, SpecifiedLength,
-    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight,
-    SpecifiedSpacing, TableLayout, TextAlign, TextDecorationLine, TextTransform, VerticalAlign,
-    Visibility, WhiteSpace, ZIndex,
+    FontWeight, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
+    SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow,
+    SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing, TableLayout, TextAlign,
+    TextDecorationLine, TextTransform, VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -121,6 +121,14 @@ pub enum PropertyDeclaration {
     CounterIncrement(Vec<(String, i32)>),
     /// `quotes`。`None`は`none`(常に空文字列を生成する、決定3)。
     Quotes(Option<Vec<QuotePair>>),
+    /// `object-fit`。`<img>`にのみ意味を持つ([0030](
+    /// ../../../docs/decisions/0030-object-fit-position-design.md))。
+    ObjectFit(ObjectFit),
+    /// `object-position`。値の文法は`background-position`と同じため
+    /// `SpecifiedBackgroundPosition`を再利用する(決定1)。
+    ObjectPosition(SpecifiedBackgroundPosition),
+    /// `box-shadow`。カンマ区切りの複数指定(決定1)。
+    BoxShadow(Vec<SpecifiedBoxShadow>),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -231,6 +239,9 @@ pub fn parse_declaration<'i>(
         "counter-reset" => Ok(vec![D::CounterReset(parse_counter_list(input, 0)?)]),
         "counter-increment" => Ok(vec![D::CounterIncrement(parse_counter_list(input, 1)?)]),
         "quotes" => Ok(vec![D::Quotes(parse_quotes(input)?)]),
+        "object-fit" => Ok(vec![D::ObjectFit(parse_object_fit(input)?)]),
+        "object-position" => Ok(vec![D::ObjectPosition(parse_background_position(input)?)]),
+        "box-shadow" => Ok(vec![D::BoxShadow(parse_box_shadow(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -1037,6 +1048,105 @@ fn rgba_from_unit_floats(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
         blue: to_u8(blue),
         alpha: alpha.clamp(0.0, 1.0),
     }
+}
+
+/// `object-fit`。[0030](../../../docs/decisions/0030-object-fit-position-design.md)決定1。
+fn parse_object_fit<'i>(input: &mut Parser<'i, '_>) -> Result<ObjectFit, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "fill" => ObjectFit::Fill,
+        "contain" => ObjectFit::Contain,
+        "cover" => ObjectFit::Cover,
+        "none" => ObjectFit::None,
+        "scale-down" => ObjectFit::ScaleDown,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `box-shadow: none | <shadow>#`([0032](
+/// ../../../docs/decisions/0032-box-shadow-design.md)決定1)。
+fn parse_box_shadow<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<SpecifiedBoxShadow>, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(Vec::new());
+    }
+    input.parse_comma_separated(parse_single_box_shadow)
+}
+
+/// `<shadow>`1つ分。`inset`・`<color>`は前後どちらの位置にも書けるが、
+/// 長さの並び(`<length>{2,4}`、offset-x/offset-y/blur-radius/spread-radius
+/// の順)はCSS仕様通り一塊としてまとめてパースする。
+fn parse_single_box_shadow<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedBoxShadow, ParseError<'i, ()>> {
+    let mut inset = false;
+    let mut color = None;
+    let mut lengths = None;
+
+    loop {
+        if !inset
+            && input
+                .try_parse(|input| input.expect_ident_matching("inset"))
+                .is_ok()
+        {
+            inset = true;
+            continue;
+        }
+        if color.is_none() {
+            if let Ok(c) = input.try_parse(parse_color) {
+                color = Some(c);
+                continue;
+            }
+        }
+        if lengths.is_none() {
+            if let Ok(l) = input.try_parse(parse_box_shadow_lengths) {
+                lengths = Some(l);
+                continue;
+            }
+        }
+        break;
+    }
+
+    let Some((offset_x, offset_y, blur_radius, spread_radius)) = lengths else {
+        return Err(input.new_custom_error(()));
+    };
+    Ok(SpecifiedBoxShadow {
+        offset_x,
+        offset_y,
+        blur_radius,
+        spread_radius,
+        color,
+        inset,
+    })
+}
+
+/// `<length>{2,4}`(offset-x offset-y [blur-radius [spread-radius]])。
+/// offset-x/offset-yは必須、blur-radius/spread-radius省略時は`0`。
+#[allow(clippy::type_complexity)]
+fn parse_box_shadow_lengths<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<
+    (
+        SpecifiedLength,
+        SpecifiedLength,
+        SpecifiedLength,
+        SpecifiedLength,
+    ),
+    ParseError<'i, ()>,
+> {
+    let offset_x = parse_length(input)?;
+    let offset_y = parse_length(input)?;
+    let blur_radius = input
+        .try_parse(parse_length)
+        .unwrap_or(SpecifiedLength::Px(0.0));
+    let spread_radius = input
+        .try_parse(parse_length)
+        .unwrap_or(SpecifiedLength::Px(0.0));
+    Ok((offset_x, offset_y, blur_radius, spread_radius))
 }
 
 /// `content`。文字列リテラル・`attr()`・`counter()`/`counters()`・引用符

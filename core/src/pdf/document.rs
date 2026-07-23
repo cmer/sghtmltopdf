@@ -59,8 +59,8 @@ use crate::layout::{
 use crate::sink::Sink;
 use crate::style::{
     resolve_margin_box_content, resolve_page_rules, BackgroundRepeat, BackgroundSize,
-    BorderCollapse, BorderStyle, Color, ComputedStyle, CornerRadius, EmptyCells, Length,
-    LengthPercentage, LengthPercentageOrAuto, MarginBoxArea, PageRule, Position,
+    BorderCollapse, BorderStyle, Color, ComputedBoxShadow, ComputedStyle, CornerRadius, EmptyCells,
+    Length, LengthPercentage, LengthPercentageOrAuto, MarginBoxArea, ObjectFit, PageRule, Position,
     PropertyDeclaration, RgbaColor,
 };
 
@@ -95,6 +95,17 @@ pub fn encode_pdf(
         })
         .collect();
     let font_resource_names: Vec<String> = (0..fonts.len()).map(|i| format!("F{i}")).collect();
+
+    // `background-color`/`box-shadow`の半透明描画用ExtGState([0031](
+    // ../../../docs/decisions/0031-fill-alpha-design.md)決定1)。使用状況に
+    // 関わらず0.05刻み・21段階を文書全体で1回だけ確保し、フォントと同じく
+    // 全ページのResourcesへ無条件で列挙する。
+    let alpha_gs_ids: Vec<Ref> = (0..=ALPHA_STEPS).map(|_| alloc.next()).collect();
+    let alpha_gs_names: Vec<String> = (0..=ALPHA_STEPS).map(alpha_gs_resource_name).collect();
+    for (step, &id) in alpha_gs_ids.iter().enumerate() {
+        let a = step as f32 / ALPHA_STEPS as f32;
+        pdf.ext_graphics(id).non_stroking_alpha(a).stroking_alpha(a);
+    }
 
     // Pass 1: 使用グリフを収集する(コンテンツストリームはまだ書かない)。
     let mut usages: Vec<FontUsage> = (0..fonts.len()).map(|_| FontUsage::default()).collect();
@@ -149,6 +160,7 @@ pub fn encode_pdf(
                 &font_resource_names,
                 &image_ids,
                 background_images,
+                &alpha_gs_names,
             );
         }
         let content_bytes = content.finish();
@@ -172,6 +184,11 @@ pub fn encode_pdf(
             let mut xobject_dict = resources.x_objects();
             for color_ref in &page_image_refs {
                 xobject_dict.pair(Name(image_resource_name(*color_ref).as_bytes()), *color_ref);
+            }
+            xobject_dict.finish();
+            let mut ext_g_state_dict = resources.ext_g_states();
+            for (name, &id) in alpha_gs_names.iter().zip(alpha_gs_ids.iter()) {
+                ext_g_state_dict.pair(Name(name.as_bytes()), id);
             }
         }
         p.finish();
@@ -313,6 +330,7 @@ pub(super) fn render_box(
     font_resource_names: &[String],
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    alpha_gs_names: &[String],
 ) {
     let style = b
         .node
@@ -330,6 +348,7 @@ pub(super) fn render_box(
         font_resource_names,
         image_ids,
         background_images,
+        alpha_gs_names,
     );
 }
 
@@ -349,6 +368,7 @@ fn render_box_with_style(
     font_resource_names: &[String],
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    alpha_gs_names: &[String],
 ) {
     // `visibility: hidden`(`collapse`も同一視、[0023](
     // ../../../docs/decisions/0023-box-model-details-design.md)決定4)。
@@ -372,6 +392,7 @@ fn render_box_with_style(
                         font_resource_names,
                         image_ids,
                         background_images,
+                        alpha_gs_names,
                     );
                 }
             }
@@ -387,6 +408,7 @@ fn render_box_with_style(
                         font_resource_names,
                         image_ids,
                         background_images,
+                        alpha_gs_names,
                     );
                 }
                 for row in &table.rows {
@@ -401,6 +423,7 @@ fn render_box_with_style(
                             font_resource_names,
                             image_ids,
                             background_images,
+                            alpha_gs_names,
                         );
                     }
                 }
@@ -425,7 +448,14 @@ fn render_box_with_style(
                 })
         });
 
-    render_box_decoration(content, &b.layout, style, settings, background_image_paint);
+    render_box_decoration(
+        content,
+        &b.layout,
+        style,
+        settings,
+        background_image_paint,
+        alpha_gs_names,
+    );
     render_outline(content, &b.layout, style, settings);
 
     // `display: list-item`のマーカー。通常のテキスト行と同じ`render_line`を
@@ -468,6 +498,7 @@ fn render_box_with_style(
                     font_resource_names,
                     image_ids,
                     background_images,
+                    alpha_gs_names,
                 );
             }
         }
@@ -479,7 +510,14 @@ fn render_box_with_style(
         LaidOutContent::Image(image) => {
             if let Some(image) = image {
                 if let Some(&ids) = image_ids.get(&(Rc::as_ptr(image) as usize)) {
-                    render_image(content, b.layout.content, settings, ids.color);
+                    render_replaced_image(
+                        content,
+                        b.layout.content,
+                        style,
+                        settings,
+                        image,
+                        ids.color,
+                    );
                 }
             }
         }
@@ -495,6 +533,7 @@ fn render_box_with_style(
                     font_resource_names,
                     image_ids,
                     background_images,
+                    alpha_gs_names,
                 );
             }
             // `border-collapse`は`table`/`inline-table`要素にのみ適用されるため
@@ -546,6 +585,7 @@ fn render_box_with_style(
                             font_resource_names,
                             image_ids,
                             background_images,
+                            alpha_gs_names,
                         );
                     } else {
                         render_box(
@@ -558,6 +598,7 @@ fn render_box_with_style(
                             font_resource_names,
                             image_ids,
                             background_images,
+                            alpha_gs_names,
                         );
                     }
                 }
@@ -777,17 +818,21 @@ fn resolve_border_conflict(
 /// 背景画像のXObject Ref([0017](../../../docs/decisions/0017-background-image-design.md)
 /// 決定3、`border-radius`によるクリップは非対応)。背景色→背景画像→枠線の順で
 /// 描画する。
+#[allow(clippy::too_many_arguments)]
 fn render_box_decoration(
     content: &mut Content,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
     background_image_paint: Option<BackgroundImagePaint>,
+    alpha_gs_names: &[String],
 ) {
     let radii = effective_radii(layout, style);
     let has_radius = [radii.0, radii.1, radii.2, radii.3]
         .into_iter()
         .any(|(rx, ry)| rx > 0.0 || ry > 0.0);
+
+    render_box_shadows(content, layout, style, settings, radii, alpha_gs_names);
 
     if has_radius {
         render_rounded_decoration(
@@ -797,6 +842,7 @@ fn render_box_decoration(
             settings,
             radii,
             background_image_paint,
+            alpha_gs_names,
         );
         return;
     }
@@ -807,12 +853,113 @@ fn render_box_decoration(
             layout.border_box(),
             style.background_color,
             settings,
+            alpha_gs_names,
         );
     }
     if let Some(paint) = background_image_paint {
         render_background_image(content, layout.border_box(), style, settings, &paint);
     }
     render_border(content, layout, style, settings);
+}
+
+/// ぼかし近似の段階数([0032](../../../docs/decisions/0032-box-shadow-design.md)決定3)。
+const BOX_SHADOW_BLUR_STEPS: u32 = 4;
+
+/// `box-shadow`を描画する(要素本体の背景・枠線より前に呼ぶこと、決定2)。
+/// リストの先頭が最前面になるよう後ろから塗る。`inset`は非対応
+/// (決定1、既知の簡略化)。
+fn render_box_shadows(
+    content: &mut Content,
+    layout: &Layout,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+    radii: (
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+    ),
+    alpha_gs_names: &[String],
+) {
+    if style.box_shadow.is_empty() {
+        return;
+    }
+    let border_box = layout.border_box();
+    for shadow in style.box_shadow.iter().rev() {
+        if shadow.inset {
+            continue;
+        }
+        render_single_box_shadow(content, border_box, shadow, settings, radii, alpha_gs_names);
+    }
+}
+
+/// 1つの影を描く。ぼかしは真のガウスぼかしではなく、`spread-radius`分だけ
+/// 広げたコア矩形の外側に、`blur-radius`まで均等`BOX_SHADOW_BLUR_STEPS`段階で
+/// 広がる半透明の同心矩形を外側(最も広く・最も薄い)から内側(コアに近く・
+/// 最も濃い)の順に重ね塗りして近似する(決定3)。角丸は要素本体の半径
+/// (`radii`)をそのまま使い、拡大に応じて広げない。
+fn render_single_box_shadow(
+    content: &mut Content,
+    border_box: Rect,
+    shadow: &ComputedBoxShadow,
+    settings: &PageSettings,
+    radii: (
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+        CornerRadiusPx,
+    ),
+    alpha_gs_names: &[String],
+) {
+    if shadow.color.alpha <= 0.0 {
+        return;
+    }
+
+    let draw = |content: &mut Content, expand: f32, alpha: f32| {
+        let x0 = settings.margin.left + border_box.x + shadow.offset_x - expand;
+        let x1 = settings.margin.left + border_box.x + border_box.width + shadow.offset_x + expand;
+        let y_top = to_pdf_y(settings, border_box.y + shadow.offset_y - expand);
+        let y_bottom = to_pdf_y(
+            settings,
+            border_box.y + border_box.height + shadow.offset_y + expand,
+        );
+        // 決定3外の既知の簡略化: `spread-radius`が負で矩形が縮退する場合は
+        // そのリングを描画しない(ゼロ・負サイズの矩形は無意味なため)。
+        if x1 <= x0 || y_top <= y_bottom {
+            return;
+        }
+        let use_alpha = alpha < 1.0;
+        if use_alpha {
+            content.save_state();
+            apply_fill_alpha(content, alpha, alpha_gs_names);
+        }
+        content.set_fill_rgb(
+            shadow.color.red as f32 / 255.0,
+            shadow.color.green as f32 / 255.0,
+            shadow.color.blue as f32 / 255.0,
+        );
+        rounded_rect_path(content, x0, y_top, x1, y_bottom, radii);
+        content.fill_nonzero();
+        if use_alpha {
+            content.restore_state();
+        }
+    };
+
+    if shadow.blur_radius <= 0.0 {
+        draw(content, shadow.spread_radius, shadow.color.alpha);
+        return;
+    }
+
+    for step in (1..=BOX_SHADOW_BLUR_STEPS).rev() {
+        let expand =
+            shadow.spread_radius + shadow.blur_radius * step as f32 / BOX_SHADOW_BLUR_STEPS as f32;
+        let alpha = shadow.color.alpha * (BOX_SHADOW_BLUR_STEPS + 1 - step) as f32
+            / BOX_SHADOW_BLUR_STEPS as f32;
+        draw(content, expand, alpha);
+    }
+    // コア(spreadのみ、フルアルファ)を最後に重ね、blur-radius: 0の場合と
+    // 輪郭が確実に一致するようにする。
+    draw(content, shadow.spread_radius, shadow.color.alpha);
 }
 
 /// 1コーナー分の実効半径(水平, 垂直)のpx値。真円は水平=垂直
@@ -865,14 +1012,46 @@ fn effective_radii(
     )
 }
 
+/// アルファ量子化の段階数(0.05刻み・21段階、[0031](
+/// ../../../docs/decisions/0031-fill-alpha-design.md)決定1)。
+pub(super) const ALPHA_STEPS: usize = 20;
+
+/// アルファ値を`0..=ALPHA_STEPS`の段階(0.05刻み)へ丸める。
+fn quantize_alpha_step(alpha: f32) -> usize {
+    (alpha.clamp(0.0, 1.0) * ALPHA_STEPS as f32).round() as usize
+}
+
+/// `alpha_gs_names`(`ALPHA_STEPS + 1`要素、段階インデックスで引く)の
+/// 固定リソース名(`"GSA{段階}"`)。
+pub(super) fn alpha_gs_resource_name(step: usize) -> String {
+    format!("GSA{step}")
+}
+
+/// アルファ値に応じて`gs`演算子(`/ca`・`/CA`)を発行する。1.0(完全不透明)は
+/// 何もしない(PDFの既定状態のため、[0031]決定1)。呼び出し側が
+/// `save_state`/`restore_state`でスコープを囲むこと([0031]決定3)。
+fn apply_fill_alpha(content: &mut Content, alpha: f32, alpha_gs_names: &[String]) {
+    let step = quantize_alpha_step(alpha);
+    if step >= ALPHA_STEPS {
+        return;
+    }
+    content.set_parameters(Name(alpha_gs_names[step].as_bytes()));
+}
+
 fn render_background(
     content: &mut Content,
     border_box: Rect,
     color: RgbaColor,
     settings: &PageSettings,
+    alpha_gs_names: &[String],
 ) {
     let x = settings.margin.left + border_box.x;
     let y = to_pdf_y(settings, border_box.y + border_box.height);
+    let use_alpha = color.alpha < 1.0;
+    if use_alpha {
+        content.save_state();
+        apply_fill_alpha(content, color.alpha, alpha_gs_names);
+    }
     content.set_fill_rgb(
         color.red as f32 / 255.0,
         color.green as f32 / 255.0,
@@ -880,6 +1059,9 @@ fn render_background(
     );
     content.rect(x, y, border_box.width, border_box.height);
     content.fill_nonzero();
+    if use_alpha {
+        content.restore_state();
+    }
 }
 
 /// `rect`いっぱいに画像XObjectを描画する。`<img>`(content box)・
@@ -895,6 +1077,86 @@ fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, reso
     content.transform([rect.width, 0.0, 0.0, rect.height, x, y]);
     content.x_object(Name(name.as_bytes()));
     content.restore_state();
+}
+
+/// `<img>`(置換要素)を`object-fit`/`object-position`に従って描画する
+/// ([0030](../../../docs/decisions/0030-object-fit-position-design.md)決定2・3)。
+/// `object-fit`の値によらず常にcontent-boxへクリップする(決定3)。
+fn render_replaced_image(
+    content: &mut Content,
+    content_box: Rect,
+    style: &ComputedStyle,
+    settings: &PageSettings,
+    image: &PreparedImage,
+    resource_ref: Ref,
+) {
+    let rect = object_fit_rect(
+        content_box,
+        style,
+        (image.width as f32, image.height as f32),
+    );
+
+    let x = settings.margin.left + content_box.x;
+    let y = to_pdf_y(settings, content_box.y + content_box.height);
+    content.save_state();
+    content.rect(x, y, content_box.width, content_box.height);
+    content.clip_nonzero();
+    content.end_path();
+    render_image(content, rect, settings, resource_ref);
+    content.restore_state();
+}
+
+/// `object-fit`/`object-position`から実際に描画すべき画像の矩形(content-box
+/// 基準の座標系、レイアウト空間)を計算する([0030]決定2)。intrinsicサイズが
+/// 縮退している場合はcontent-box全体への単純な描画にフォールバックする
+/// (`background_tile_rects`と同じゼロ除算回避)。
+fn object_fit_rect(content_box: Rect, style: &ComputedStyle, intrinsic: (f32, f32)) -> Rect {
+    let (iw, ih) = intrinsic;
+    if iw <= 0.0 || ih <= 0.0 {
+        return content_box;
+    }
+
+    let (draw_w, draw_h) = match style.object_fit {
+        ObjectFit::Fill => (content_box.width, content_box.height),
+        ObjectFit::Cover => {
+            let scale = (content_box.width / iw).max(content_box.height / ih);
+            (iw * scale, ih * scale)
+        }
+        ObjectFit::Contain => {
+            let scale = (content_box.width / iw).min(content_box.height / ih);
+            (iw * scale, ih * scale)
+        }
+        ObjectFit::None => (iw, ih),
+        // 仕様通り`none`と`contain`のうち小さい方(決定2)。
+        ObjectFit::ScaleDown => {
+            if iw <= content_box.width && ih <= content_box.height {
+                (iw, ih)
+            } else {
+                let scale = (content_box.width / iw).min(content_box.height / ih);
+                (iw * scale, ih * scale)
+            }
+        }
+    };
+
+    let x = content_box.x
+        + resolve_background_position_offset(
+            style.object_position.horizontal,
+            content_box.width,
+            draw_w,
+        );
+    let y = content_box.y
+        + resolve_background_position_offset(
+            style.object_position.vertical,
+            content_box.height,
+            draw_h,
+        );
+
+    Rect {
+        x,
+        y,
+        width: draw_w,
+        height: draw_h,
+    }
 }
 
 /// `background-image`の描画に必要な情報。`render_box`が`b.node`から
@@ -1101,6 +1363,7 @@ fn render_rounded_decoration(
         CornerRadiusPx,
     ),
     background_image_paint: Option<BackgroundImagePaint>,
+    alpha_gs_names: &[String],
 ) {
     let border_box = layout.border_box();
     let x0 = settings.margin.left + border_box.x;
@@ -1109,6 +1372,11 @@ fn render_rounded_decoration(
     let y_bottom = to_pdf_y(settings, border_box.y + border_box.height);
 
     if style.background_color.alpha > 0.0 {
+        let use_alpha = style.background_color.alpha < 1.0;
+        if use_alpha {
+            content.save_state();
+            apply_fill_alpha(content, style.background_color.alpha, alpha_gs_names);
+        }
         content.set_fill_rgb(
             style.background_color.red as f32 / 255.0,
             style.background_color.green as f32 / 255.0,
@@ -1116,6 +1384,9 @@ fn render_rounded_decoration(
         );
         rounded_rect_path(content, x0, y_top, x1, y_bottom, radii);
         content.fill_nonzero();
+        if use_alpha {
+            content.restore_state();
+        }
     }
     // 角丸パスへのクリップは行わず、常に直線の矩形として描画する
     // (border-radiusとの組み合わせは非対応、[0025]決定7、0017決定3から継続)。
@@ -2159,6 +2430,7 @@ mod tests {
     use crate::html;
     use crate::layout::{paginate_document, PageSize};
     use crate::sink::MemorySink;
+    use crate::style::BackgroundPosition;
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet, Stylesheet};
 
     const DEJAVU_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
@@ -2256,6 +2528,118 @@ mod tests {
         }));
         // 幅100を40刻みで覆うには3列(0,40,80)、高さ60を30刻みで覆うには2行(0,30)必要。
         assert_eq!(rects.len(), 3 * 2);
+    }
+
+    #[test]
+    fn quantize_alpha_step_rounds_to_the_nearest_of_21_levels() {
+        assert_eq!(quantize_alpha_step(1.0), ALPHA_STEPS);
+        assert_eq!(quantize_alpha_step(0.0), 0);
+        // 0.3 * 20 = 6.0 ちょうど。
+        assert_eq!(quantize_alpha_step(0.3), 6);
+        // 範囲外はクランプする。
+        assert_eq!(quantize_alpha_step(-0.5), 0);
+        assert_eq!(quantize_alpha_step(1.5), ALPHA_STEPS);
+    }
+
+    fn content_box_150x80() -> Rect {
+        Rect {
+            x: 10.0,
+            y: 20.0,
+            width: 150.0,
+            height: 80.0,
+        }
+    }
+
+    #[test]
+    fn object_fit_rect_fill_stretches_to_the_content_box_non_uniformly() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle::default(); // object-fit初期値はFill
+        let rect = object_fit_rect(content_box, &style, (32.0, 24.0));
+        assert_eq!(rect, content_box);
+    }
+
+    #[test]
+    fn object_fit_rect_cover_scales_up_to_fill_and_overflows_the_shorter_axis() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle {
+            object_fit: ObjectFit::Cover,
+            ..Default::default()
+        };
+        // intrinsic 32x24(アスペクト比4:3) を 150x80(アスペクト比15:8) へcover。
+        // scale = max(150/32, 80/24) = max(4.6875, 3.333..) = 4.6875。
+        let rect = object_fit_rect(content_box, &style, (32.0, 24.0));
+        assert!((rect.width - 150.0).abs() < 0.01);
+        assert!((rect.height - 112.5).abs() < 0.01);
+        // 初期object-position(50% 50%)で中央寄せなので、はみ出し分の半分だけ
+        // content-box原点より上に描画開始する。
+        assert!((rect.y - (content_box.y - (112.5 - 80.0) / 2.0)).abs() < 0.01);
+    }
+
+    #[test]
+    fn object_fit_rect_contain_scales_down_and_letterboxes() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle {
+            object_fit: ObjectFit::Contain,
+            ..Default::default()
+        };
+        // scale = min(150/32, 80/24) = min(4.6875, 3.333..) = 3.333..
+        let rect = object_fit_rect(content_box, &style, (32.0, 24.0));
+        assert!((rect.width - 320.0 / 3.0).abs() < 0.01);
+        assert!((rect.height - 80.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn object_fit_rect_none_uses_intrinsic_size_regardless_of_content_box() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle {
+            object_fit: ObjectFit::None,
+            ..Default::default()
+        };
+        let rect = object_fit_rect(content_box, &style, (32.0, 24.0));
+        assert_eq!(rect.width, 32.0);
+        assert_eq!(rect.height, 24.0);
+    }
+
+    #[test]
+    fn object_fit_rect_scale_down_behaves_like_none_when_intrinsic_already_fits() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle {
+            object_fit: ObjectFit::ScaleDown,
+            ..Default::default()
+        };
+        // intrinsic(32x24)は既にcontent-box(150x80)より小さいので、noneと同じ。
+        let rect = object_fit_rect(content_box, &style, (32.0, 24.0));
+        assert_eq!(rect.width, 32.0);
+        assert_eq!(rect.height, 24.0);
+    }
+
+    #[test]
+    fn object_fit_rect_scale_down_behaves_like_contain_when_intrinsic_overflows() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle {
+            object_fit: ObjectFit::ScaleDown,
+            ..Default::default()
+        };
+        // intrinsic(320x240)はcontent-box(150x80)よりずっと大きいので、containと同じ。
+        let rect = object_fit_rect(content_box, &style, (320.0, 240.0));
+        assert!((rect.height - 80.0).abs() < 0.01);
+        assert!(rect.width < content_box.width);
+    }
+
+    #[test]
+    fn object_fit_rect_object_position_moves_the_image_within_the_content_box() {
+        let content_box = content_box_150x80();
+        let style = ComputedStyle {
+            object_fit: ObjectFit::Contain,
+            object_position: BackgroundPosition {
+                horizontal: LengthPercentage::Percentage(1.0),
+                vertical: LengthPercentage::Percentage(1.0),
+            },
+            ..Default::default()
+        };
+        let rect = object_fit_rect(content_box, &style, (32.0, 24.0));
+        // 高さが既にcontent-boxちょうどなので、右寄せ(x軸)のみ観測できる。
+        assert!((rect.x - (content_box.x + content_box.width - rect.width)).abs() < 0.01);
     }
 
     #[test]
