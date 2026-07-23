@@ -2,6 +2,7 @@
 
 mod cascade;
 mod computed;
+mod custom_properties;
 mod element_ref;
 mod extract;
 mod font_face;

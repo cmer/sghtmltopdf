@@ -80,8 +80,34 @@ layout、Lists、Box model詳細、Generated content、Background詳細)を実�
 Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細・
 Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
 マイルストーン9(CSS3対応)は、Phase 1(`box-sizing`・Paged media)が完了。
-Phase 2はColor Level 4・`object-fit`/`object-position`・`box-shadow`が完了、
-CSS Custom Properties・Phase 3(Flexbox)は未着手。
+**Phase 2(Color Level 4・`object-fit`/`object-position`・`box-shadow`・
+CSS Custom Propertiesすべて)が完了**。残るはPhase 3(Flexbox)のみ。
+
+### CSS Custom Properties(`--foo`/`var()`)
+
+```css
+:root { --brand-color: rgb(20, 90, 200); --gap: 24px; }
+.card {
+  width: var(--brand-width, 300px);
+  padding: var(--gap);
+  background-color: var(--brand-color);
+}
+```
+
+* 仕様通りのcascade/継承ベースの実装ではなく、`@import`展開(`resolve_imports`)
+  と同じ「パース前のテキスト置換」で実装している(目的はテンプレート側の
+  保守性向上であり、JS実行非対応の本プロジェクトでは要素ごとに動的に変わる
+  値はそもそも起こらないため)
+* カスタムプロパティは文書全体でフラットな名前空間になる。セレクタの詳細度・
+  オリジンは見ず、`<style>`/`<link>`を連結したテキスト上での出現順で
+  最後に定義されたものが文書全体で使われる
+* `var(--foo, fallback)`のフォールバックに対応。名前未定義かつフォールバック
+  も無い場合は`var(...)`をそのまま残し、後段のプロパティパーサが未知トークン
+  として黙って無視する既存の経路に乗る
+* `style="..."`インライン属性内の`var()`は非対応(既知の簡略化)
+
+詳細は[docs/decisions/0033-css-custom-properties-design.md](docs/decisions/0033-css-custom-properties-design.md)
+参照。
 
 ### `object-fit`/`object-position`
 

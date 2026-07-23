@@ -15,10 +15,15 @@
 //! `parse_stylesheet`自体は`@import`を知らないまま(cssparserのエラー回復で
 //! 無視される)なので、`extract_author_stylesheet`を経由しない直接呼び出しでは
 //! 従来通り`@import`は展開されず単に無視される。
+//!
+//! 連結後・パース前に[`substitute_custom_properties`]でCSS Custom
+//! Properties(`--foo`/`var()`)をテキスト置換で解決する([0033](../../../docs/decisions/0033-css-custom-properties-design.md)、
+//! `<style>`/`<link>`をまたいだ文書全体でフラットな名前空間として扱う)。
 
 use crate::html::{is_stylesheet_link, Dom, NodeData, NodeId};
 use crate::img::{DocumentImageCache, ImageFetcher};
 
+use super::custom_properties::substitute_custom_properties;
 use super::import::resolve_imports;
 use super::stylesheet::{parse_stylesheet, Stylesheet};
 
@@ -69,7 +74,7 @@ pub fn extract_author_stylesheet(
             },
         }
     }
-    parse_stylesheet(&css)
+    parse_stylesheet(&substitute_custom_properties(&css))
 }
 
 /// DOM木を1回走査し、document順を保ったまま「インラインCSSテキスト」か
