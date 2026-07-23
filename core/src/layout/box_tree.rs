@@ -25,7 +25,7 @@ use crate::html::{Dom, NodeData, NodeId};
 use crate::pdf::{ImageAssetCache, PreparedImage};
 use crate::style::{
     CaptionSide, ComputedStyle, Display, LengthPercentage, LengthPercentageOrAuto,
-    ListStylePosition, ListStyleType,
+    ListStylePosition, ListStyleType, RgbaColor,
 };
 
 #[derive(Debug, Clone)]
@@ -137,16 +137,31 @@ pub struct InlineSpan {
     /// `true`のとき`text`は`"\n"`で、`node`は`<br>`要素自身(空行の高さを
     /// その計算スタイルから求めるため)。
     pub is_forced_break: bool,
+    /// このテキストを囲む**インライン要素**(`<mark>`/`<span>`等)の
+    /// `background-color`。無ければ透明。
+    ///
+    /// テキストノードの計算スタイルは親の非継承プロパティ(背景色を含む)まで
+    /// クローンしている(`style::computed::compute_recursive`)ため、
+    /// `styles[&span.node].background_color`を使うとブロックの背景まで
+    /// インライン背景として塗ってしまう。ここでスパン構築時に「IFC内で
+    /// 直近のインライン要素が指定した背景」だけを取り出して持たせる。
+    pub background_color: RgbaColor,
 }
 
 impl InlineSpan {
-    /// 通常のテキスト区間。
+    /// 通常のテキスト区間(インライン背景なし)。
     fn text(node: NodeId, text: String) -> Self {
+        Self::text_with_background(node, text, RgbaColor::TRANSPARENT)
+    }
+
+    /// 通常のテキスト区間(囲むインライン要素の背景色つき)。
+    fn text_with_background(node: NodeId, text: String, background_color: RgbaColor) -> Self {
         Self {
             node,
             text,
             is_first_letter: false,
             is_forced_break: false,
+            background_color,
         }
     }
 
@@ -161,6 +176,7 @@ impl InlineSpan {
             text: "\n".to_string(),
             is_first_letter: false,
             is_forced_break: true,
+            background_color: RgbaColor::TRANSPARENT,
         }
     }
 }
@@ -391,6 +407,7 @@ fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<Inlin
             text: first_letter_text,
             is_first_letter: true,
             is_forced_break: false,
+            background_color: spans[span_index].background_color,
         },
     );
 }
@@ -729,8 +746,24 @@ fn collect_spans(
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {
+    collect_spans_with_background(dom, styles, node, RgbaColor::TRANSPARENT, out)
+}
+
+/// [`collect_spans`]の本体。`background`は「このノードを囲むインライン要素が
+/// 指定した背景色」(IFCの外側=ブロックの背景は含まない)。
+fn collect_spans_with_background(
+    dom: &Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    node: NodeId,
+    background: RgbaColor,
+    out: &mut Vec<InlineSpan>,
+) {
     match &dom.node(node).data {
-        NodeData::Text { contents } => out.push(InlineSpan::text(node, contents.clone())),
+        NodeData::Text { contents } => out.push(InlineSpan::text_with_background(
+            node,
+            contents.clone(),
+            background,
+        )),
         NodeData::Element { name, .. } => {
             // インライン文脈の子孫にも`display: none`を効かせる。`child_kind`は
             // ブロック/インラインの振り分け時にしか呼ばれないため、ここで見ないと
@@ -747,9 +780,16 @@ fn collect_spans(
                 out.push(InlineSpan::forced_break(node));
                 return;
             }
+            // このインライン要素自身が背景色を持つなら、以降の子孫はその背景で
+            // 塗られる(入れ子の場合は内側が勝つ、CSSの背景の重なりの簡略化)。
+            let background = styles
+                .get(&node)
+                .map(|s| s.background_color)
+                .filter(|c| c.alpha > 0.0)
+                .unwrap_or(background);
             push_before_content(styles, node, out);
             for child in dom.children(node) {
-                collect_spans(dom, styles, child, out);
+                collect_spans_with_background(dom, styles, child, background, out);
             }
             push_after_content(styles, node, out);
         }

@@ -222,15 +222,64 @@ pub enum EmptyCells {
     Hide,
 }
 
-/// `vertical-align`(テーブルセル文脈専用と割り切る、インライン文脈の
-/// `vertical-align`は非対応)。CSS2.1の初期値は`baseline`。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// `vertical-align`。CSS2.1の初期値は`baseline`。
+///
+/// インライン文脈([0041](../../../docs/decisions/0041-inline-vertical-align-design.md))と
+/// テーブルセル文脈([0021](../../../docs/decisions/0021-table-layout-design.md))で
+/// 値の集合を共有する。テーブルセルに適用できるのはCSS2.1どおり
+/// `top`/`middle`/`bottom`/`baseline`のみで、それ以外の値を指定した場合は
+/// `baseline`として扱う([0041]決定5)。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum VerticalAlign {
     Top,
     Middle,
     Bottom,
     #[default]
     Baseline,
+    /// 下付き([0041](../../../docs/decisions/0041-inline-vertical-align-design.md)
+    /// 決定3)。フォントサイズは変えない(縮小はUAスタイルシートの`sub`規則が担う)。
+    Sub,
+    /// 上付き(同上)。
+    Super,
+    /// 親(行の基準ラン、[0041]決定4)の文字上端に揃える。
+    TextTop,
+    /// 同じく文字下端に揃える。
+    TextBottom,
+    /// 長さ・パーセンテージ(正で上方向)。パーセンテージはそのランの
+    /// `line-height`基準([0041]決定5)。
+    LengthPercentage(LengthPercentage),
+}
+
+/// パース直後の`vertical-align`の指定値([0041]決定5)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedVerticalAlign {
+    Top,
+    Middle,
+    Bottom,
+    Baseline,
+    Sub,
+    Super,
+    TextTop,
+    TextBottom,
+    LengthPercentage(SpecifiedLengthPercentage),
+}
+
+impl SpecifiedVerticalAlign {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> VerticalAlign {
+        match self {
+            Self::Top => VerticalAlign::Top,
+            Self::Middle => VerticalAlign::Middle,
+            Self::Bottom => VerticalAlign::Bottom,
+            Self::Baseline => VerticalAlign::Baseline,
+            Self::Sub => VerticalAlign::Sub,
+            Self::Super => VerticalAlign::Super,
+            Self::TextTop => VerticalAlign::TextTop,
+            Self::TextBottom => VerticalAlign::TextBottom,
+            Self::LengthPercentage(lp) => {
+                VerticalAlign::LengthPercentage(lp.resolve(font_size, root_font_size))
+            }
+        }
+    }
 }
 
 /// `list-style-type`([0022](../../../docs/decisions/0022-list-style-design.md)決定2)。

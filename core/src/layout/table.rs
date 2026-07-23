@@ -289,7 +289,16 @@ pub(super) fn layout_table(
                 VerticalAlign::Top => 0.0,
                 VerticalAlign::Middle => deficit / 2.0,
                 VerticalAlign::Bottom => deficit,
-                VerticalAlign::Baseline => match own_baseline_offset(cell, fonts) {
+                // `sub`/`super`/`text-top`/`text-bottom`/長さはインライン文脈
+                // 専用の値で、CSS2.1ではテーブルセルに適用できない。`baseline`
+                // として扱う([0041](
+                // ../../../docs/decisions/0041-inline-vertical-align-design.md)決定5)。
+                VerticalAlign::Baseline
+                | VerticalAlign::Sub
+                | VerticalAlign::Super
+                | VerticalAlign::TextTop
+                | VerticalAlign::TextBottom
+                | VerticalAlign::LengthPercentage(_) => match own_baseline_offset(cell, fonts) {
                     Some(own_offset) => row_baseline_offset - own_offset,
                     // ベースラインを提供できないセル内容は`bottom`相当に
                     // フォールバックする(既知の簡略化、ファイル冒頭のコメント参照)。

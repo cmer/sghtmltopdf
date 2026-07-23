@@ -20,7 +20,7 @@ use crate::fonts::{measure_text, shape_text, FontCollection, ShapedGlyph};
 use crate::html::NodeId;
 use crate::style::{
     ComputedStyle, FontStyle, FontWeight, LengthPercentage, LineHeight, RgbaColor, TextAlign,
-    TextTransform, WhiteSpace,
+    TextTransform, VerticalAlign, WhiteSpace,
 };
 
 use super::box_tree::InlineSpan;
@@ -34,6 +34,11 @@ pub struct TextRun {
     pub font_index: usize,
     pub font_size: f32,
     pub color: RgbaColor,
+    /// このランの`background-color`。インライン要素の背景は、そのランの
+    /// (ascent〜descentの)矩形として描画層が塗る([0041](
+    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)で
+    /// `ascent`/`descent`を持たせたことで実装可能になった。`<mark>`等)。
+    pub background_color: RgbaColor,
     pub bold: bool,
     pub italic: bool,
     pub underline: bool,
@@ -56,12 +61,29 @@ pub struct TextRun {
     /// `word-spacing`の解決済みpx。単語間gap計算専用(描画には使わない、
     /// 決定1: PDFの`Tw`は複合フォントに効かないためgap幅への加算だけで実現)。
     pub word_spacing: f32,
+    /// このランのフォント・サイズにおけるアセント(px、ベースラインより上)。
+    /// 行ボックスの高さ・ベースライン位置の算出に使う([0041](
+    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
+    pub ascent: f32,
+    /// 同じくディセント(px、ベースラインより下、正の値)。
+    pub descent: f32,
+    /// `vertical-align`によるベースラインからのずれ(px、**正=上方向**)。
+    /// 描画層は`line.baseline`にこの値を加減して各ランのベースラインを求める。
+    pub baseline_shift: f32,
+    /// このランに適用された`vertical-align`の計算値(行の高さ確定後に
+    /// `top`/`bottom`を後追いで解決するため、レイアウト中だけ使う)。
+    pub(super) vertical_align: VerticalAlign,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LineBox {
     pub rect: Rect,
     pub runs: Vec<TextRun>,
+    /// 行ボックス上端からベースラインまでの距離(px)。`vertical-align`が
+    /// 絡むとランごとにベースラインがずれるため、レイアウト時に確定させて
+    /// 保持する([0041](
+    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
+    pub baseline: f32,
 }
 
 /// 1文字とその文字が属する[`InlineSpan`](=計算スタイル)への参照。
@@ -183,6 +205,7 @@ pub(crate) fn layout_inline_content(
                         line_left,
                         cursor_y,
                         break_height,
+                        fonts,
                     ));
                     cursor_y += break_height;
                 } else {
@@ -193,6 +216,7 @@ pub(crate) fn layout_inline_content(
                         line_left,
                         cursor_y,
                         line_height,
+                        fonts,
                     ));
                     // 強制改行で終わる行は最終行と同じ扱いで、`justify`の
                     // 伸縮対象にしない(決定2-1)。
@@ -270,6 +294,7 @@ pub(crate) fn layout_inline_content(
                     line_left,
                     cursor_y,
                     line_height,
+                    fonts,
                 ));
                 // 折返しで確定した行にtext-alignを適用する。最後の行ではない
                 // ため`justify`も伸縮対象になる(CSS仕様: 最後の行は伸縮しない)。
@@ -310,6 +335,7 @@ pub(crate) fn layout_inline_content(
             line_left,
             cursor_y,
             line_height,
+            fonts,
         ));
         // 最後の行は`justify`で伸縮しない(CSS仕様)。
         apply_text_align(
@@ -323,7 +349,14 @@ pub(crate) fn layout_inline_content(
         // 末尾の`<br>`は1行分の空行を残す(主要ブラウザと同じ挙動、
         // [0037]決定2-3)。
         let (left, _) = line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
-        lines.push(finish_line(Vec::new(), 0.0, left, cursor_y, break_height));
+        lines.push(finish_line(
+            Vec::new(),
+            0.0,
+            left,
+            cursor_y,
+            break_height,
+            fonts,
+        ));
     }
 
     lines
@@ -404,6 +437,11 @@ fn flatten_spans(
 
     for span in spans {
         let mut style = styles.get(&span.node).cloned().unwrap_or_default();
+        // インライン背景はスパンが持つ値(=直近のインライン要素の指定)を使う。
+        // テキストノードの計算スタイルは親の非継承プロパティまでクローンして
+        // いるため、そのまま使うとブロックの背景まで塗ってしまう
+        // (`box_tree::collect_spans_with_background`のコメント参照)。
+        style.background_color = span.background_color;
         if span.is_first_letter {
             apply_first_letter_style(&mut style);
         }
@@ -670,7 +708,14 @@ fn layout_pre_content(
 
         if segment.is_empty() {
             // 連続改行による空行。高さだけ消費するダミー行。
-            lines.push(finish_line(Vec::new(), 0.0, line_left, cursor_y, hint));
+            lines.push(finish_line(
+                Vec::new(),
+                0.0,
+                line_left,
+                cursor_y,
+                hint,
+                fonts,
+            ));
             cursor_y += hint;
             continue;
         }
@@ -690,6 +735,7 @@ fn layout_pre_content(
             line_left,
             cursor_y,
             line_height,
+            fonts,
         ));
         cursor_y += line_height;
     }
@@ -721,10 +767,14 @@ pub(super) fn shape_run(
     // [0020]既知の簡略化2)。PDF描画層は`run.letter_spacing`を`Tc`として使う
     // ため、ここでの幅計算とレンダリング結果が一致する。
     let width = shaped.width + style.letter_spacing * shaped.glyphs.len() as f32;
+    let units_per_em = font.units_per_em() as f32;
+    let ascent = font.ascender() as f32 / units_per_em * font_size;
+    let descent = -(font.descender() as f32) / units_per_em * font_size;
     TextRun {
         font_index,
         font_size,
         color: style.color,
+        background_color: style.background_color,
         bold: needs_synthetic_bold,
         italic: needs_synthetic_italic,
         underline: style.text_decoration_line.underline,
@@ -736,6 +786,11 @@ pub(super) fn shape_run(
         line_height,
         letter_spacing: style.letter_spacing,
         word_spacing: style.word_spacing,
+        ascent,
+        descent,
+        // `baseline_shift`は行が確定した時点で`resolve_baseline_shifts`が埋める。
+        baseline_shift: 0.0,
+        vertical_align: style.vertical_align,
     }
 }
 
@@ -782,15 +837,10 @@ pub fn shape_standalone_line(
         max_height = max_height.max(run.line_height);
     }
 
-    LineBox {
-        rect: Rect {
-            x: origin_x,
-            y: origin_y,
-            width: x_cursor,
-            height: max_height,
-        },
-        runs,
-    }
+    // margin box用の単一行も通常の行と同じ経路でベースラインを確定させる
+    // (`vertical-align`が効くわけではないが、`LineBox::baseline`を持たせる
+    // 責務を1箇所にまとめるため)。
+    finish_line(runs, x_cursor, origin_x, origin_y, max_height, fonts)
 }
 
 fn measure_space_width(fonts: &FontCollection, font_index: usize, font_size: f32) -> f32 {
@@ -805,15 +855,107 @@ fn line_height_for(runs: &[TextRun]) -> f32 {
     runs.iter().map(|r| r.line_height).fold(0.0f32, f32::max)
 }
 
-fn finish_line(runs: Vec<TextRun>, width: f32, x: f32, y: f32, height: f32) -> LineBox {
+/// 確定した行の`vertical-align`を解決し、行ボックスの高さとベースライン位置を
+/// 求めて[`LineBox`]を組み立てる([0041](
+/// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定2)。
+///
+/// `height`は`line-height`プロパティ由来の高さ(`line_height_for`の結果)で、
+/// 行ボックスの高さの**下限**として使う。`vertical-align`を使わない文書では
+/// 高さもベースライン位置も従来と完全に一致する。
+pub(super) fn finish_line(
+    mut runs: Vec<TextRun>,
+    width: f32,
+    x: f32,
+    y: f32,
+    height: f32,
+    fonts: &FontCollection,
+) -> LineBox {
+    resolve_baseline_shifts(&mut runs, fonts);
+
+    // `line-height`だけで決まる(=`vertical-align`が無いときの)ベースライン位置。
+    // 単一フォントの行では`Font::baseline_offset`と一致する。
+    let mut baseline = 0.0f32;
+    for run in &runs {
+        let half_leading = (height - (run.ascent + run.descent)) / 2.0;
+        baseline = baseline.max(half_leading + run.ascent);
+    }
+    let mut above = baseline;
+    let mut below = height - baseline;
+
+    // ずらされたランだけを、行ボックスからはみ出す分について考慮する。
+    // `baseline_shift`が0のランは行の高さに影響しないため、`vertical-align`を
+    // 使わない文書の行の高さ・ベースラインは従来と完全に一致する(決定2)。
+    // `top`/`bottom`は行の高さを増やさない(決定2の簡略化)。
+    for run in runs.iter().filter(|r| {
+        r.baseline_shift != 0.0
+            && !matches!(r.vertical_align, VerticalAlign::Top | VerticalAlign::Bottom)
+    }) {
+        above = above.max(run.ascent + run.baseline_shift);
+        below = below.max(run.descent - run.baseline_shift);
+    }
+
+    let line_height = if runs.is_empty() {
+        height
+    } else {
+        above + below
+    };
+    let baseline = if runs.is_empty() { 0.0 } else { above };
+
+    // 行ボックスの寸法が決まってはじめて解決できる値(決定3)。
+    for run in &mut runs {
+        match run.vertical_align {
+            VerticalAlign::Top => run.baseline_shift = baseline - run.ascent,
+            VerticalAlign::Bottom => run.baseline_shift = -(line_height - baseline - run.descent),
+            _ => {}
+        }
+    }
+
     LineBox {
         rect: Rect {
             x,
             y,
             width,
-            height,
+            height: line_height,
         },
         runs,
+        baseline,
+    }
+}
+
+/// 各ランの`vertical-align`から`baseline_shift`(px、正=上)を求める。
+/// `top`/`bottom`は行ボックスの寸法が要るため、ここでは0のままにして
+/// [`finish_line`]が後追いで解決する([0041]決定3)。
+fn resolve_baseline_shifts(runs: &mut [TextRun], fonts: &FontCollection) {
+    // `text-top`/`text-bottom`/`middle`の基準は行の先頭ラン(決定4)。
+    let Some(first) = runs.first() else {
+        return;
+    };
+    let base_ascent = first.ascent;
+    let base_descent = first.descent;
+    let base_x_height = fonts
+        .get(first.font_index)
+        .map(|f| f.x_height(first.font_size))
+        .unwrap_or(first.font_size * 0.5);
+
+    for run in runs.iter_mut() {
+        run.baseline_shift = match run.vertical_align {
+            VerticalAlign::Baseline | VerticalAlign::Top | VerticalAlign::Bottom => 0.0,
+            VerticalAlign::Sub => -fonts
+                .get(run.font_index)
+                .map(|f| f.subscript_offset(run.font_size))
+                .unwrap_or(run.font_size * 0.2),
+            VerticalAlign::Super => fonts
+                .get(run.font_index)
+                .map(|f| f.superscript_offset(run.font_size))
+                .unwrap_or(run.font_size * 0.33),
+            VerticalAlign::TextTop => base_ascent - run.ascent,
+            VerticalAlign::TextBottom => run.descent - base_descent,
+            VerticalAlign::Middle => base_x_height / 2.0 - (run.ascent - run.descent) / 2.0,
+            VerticalAlign::LengthPercentage(LengthPercentage::Length(px)) => px,
+            VerticalAlign::LengthPercentage(LengthPercentage::Percentage(fraction)) => {
+                run.line_height * fraction
+            }
+        };
     }
 }
 
@@ -1617,6 +1759,174 @@ mod tests {
             lines[1].rect.y >= 100.0,
             "the line after <br clear=left> must clear the float, got y={}",
             lines[1].rect.y
+        );
+    }
+
+    // ===== `vertical-align`(インライン文脈、[0041]) =====
+
+    /// 行内の各ランを`(テキスト, ベースラインからのずれ)`で返す。
+    fn run_shifts(line: &LineBox) -> Vec<(String, f32)> {
+        line.runs
+            .iter()
+            .map(|r| (r.text.clone(), r.baseline_shift))
+            .collect()
+    }
+
+    #[test]
+    fn baseline_is_the_default_and_shifts_nothing() {
+        let (_, spans, styles) = spans_for("plain <span>text</span>", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+
+        assert!(lines[0].runs.iter().all(|r| r.baseline_shift == 0.0));
+        assert!(lines[0].baseline > 0.0 && lines[0].baseline < lines[0].rect.height);
+    }
+
+    #[test]
+    fn a_line_without_vertical_align_keeps_its_previous_height_and_baseline() {
+        // 回帰確認: `finish_line`の書き換え前と同じ値([0041]決定2の下限規則)。
+        let (_, spans, styles) = spans_for("text", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let run = &lines[0].runs[0];
+        let font = fonts.get(run.font_index).unwrap();
+
+        assert_eq!(lines[0].rect.height, run.line_height);
+        let expected = font.baseline_offset(run.font_size, run.line_height);
+        assert!(
+            (lines[0].baseline - expected).abs() < 0.01,
+            "baseline {} should match Font::baseline_offset {}",
+            lines[0].baseline,
+            expected
+        );
+    }
+
+    #[test]
+    fn sup_raises_and_sub_lowers_the_run() {
+        let (_, spans, styles) = spans_for("H<sub>2</sub>O<sup>3</sup>", "");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let shifts = run_shifts(&lines[0]);
+
+        let sub = shifts.iter().find(|(t, _)| t == "2").expect("sub run");
+        let sup = shifts.iter().find(|(t, _)| t == "3").expect("sup run");
+        assert!(sub.1 < 0.0, "sub should be lowered: {sub:?}");
+        assert!(sup.1 > 0.0, "super should be raised: {sup:?}");
+        assert!(shifts.iter().find(|(t, _)| t == "H").unwrap().1 == 0.0);
+    }
+
+    #[test]
+    fn a_raised_run_grows_the_line_box() {
+        let fonts = dejavu_only();
+        let (_, plain_spans, plain_styles) = spans_for("Hx", "");
+        let plain =
+            layout_inline_content(&plain_spans, &plain_styles, &fonts, 500.0, 0.0, 0.0, None);
+
+        // 大きく持ち上げれば行の高さが伸びる(決定2の`content_height`)。
+        let (_, spans, styles) = spans_for("H<span>x</span>", "span { vertical-align: 30px; }");
+        let raised = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+
+        assert!(
+            raised[0].rect.height > plain[0].rect.height,
+            "{} should exceed {}",
+            raised[0].rect.height,
+            plain[0].rect.height
+        );
+        assert!(raised[0].baseline > plain[0].baseline);
+    }
+
+    #[test]
+    fn length_and_percentage_values_shift_by_the_specified_amount() {
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for(
+            "a<span class=\"px\">b</span><span class=\"pct\">c</span>",
+            ".px { vertical-align: 5px; } .pct { vertical-align: 50%; line-height: 20px; }",
+        );
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let shifts = run_shifts(&lines[0]);
+
+        assert_eq!(shifts.iter().find(|(t, _)| t == "b").unwrap().1, 5.0);
+        // パーセンテージはそのランの`line-height`(20px)基準。
+        assert_eq!(shifts.iter().find(|(t, _)| t == "c").unwrap().1, 10.0);
+    }
+
+    #[test]
+    fn negative_length_lowers_the_run() {
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for("a<span>b</span>", "span { vertical-align: -4px; }");
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let shifts = run_shifts(&lines[0]);
+        assert_eq!(shifts.iter().find(|(t, _)| t == "b").unwrap().1, -4.0);
+    }
+
+    #[test]
+    fn text_top_and_text_bottom_align_with_the_first_run() {
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for(
+            "big<span class=\"t\">t</span><span class=\"b\">b</span>",
+            "p { font-size: 30px; } .t, .b { font-size: 10px; } \
+             .t { vertical-align: text-top; } .b { vertical-align: text-bottom; }",
+        );
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let shifts = run_shifts(&lines[0]);
+        let small_run = lines[0].runs.iter().find(|r| r.text == "t").unwrap();
+        let base_run = lines[0].runs.iter().find(|r| r.text == "big").unwrap();
+
+        // 小さいフォントの文字上端が、基準ランの文字上端に一致する。
+        let t_shift = shifts.iter().find(|(t, _)| t == "t").unwrap().1;
+        assert!((t_shift - (base_run.ascent - small_run.ascent)).abs() < 0.01);
+        // 文字下端どうしが一致する(基準より浅いディセント = 下にずれる)。
+        let b_shift = shifts.iter().find(|(t, _)| t == "b").unwrap().1;
+        assert!(
+            b_shift < 0.0,
+            "text-bottom should lower a smaller run: {b_shift}"
+        );
+    }
+
+    #[test]
+    fn top_and_bottom_align_with_the_line_box_edges() {
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for(
+            "big<span class=\"t\">t</span><span class=\"b\">b</span>",
+            "p { font-size: 40px; } .t, .b { font-size: 10px; } \
+             .t { vertical-align: top; } .b { vertical-align: bottom; }",
+        );
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let line = &lines[0];
+        let top_run = line.runs.iter().find(|r| r.text == "t").unwrap();
+        let bottom_run = line.runs.iter().find(|r| r.text == "b").unwrap();
+
+        // 行ボックス座標(上端からの距離、下向きが正)では、ランのベースラインは
+        // `line.baseline - baseline_shift`(`baseline_shift`は上向きが正)。
+        // topのランは文字上端が行の上端に一致する。
+        let top_of_run = line.baseline - top_run.baseline_shift - top_run.ascent;
+        assert!(top_of_run.abs() < 0.01, "expected 0, got {top_of_run}");
+        // bottomのランは文字下端が行の下端に一致する。
+        let bottom_of_run = line.baseline - bottom_run.baseline_shift + bottom_run.descent;
+        assert!(
+            (bottom_of_run - line.rect.height).abs() < 0.01,
+            "expected {}, got {bottom_of_run}",
+            line.rect.height
+        );
+    }
+
+    #[test]
+    fn middle_centers_the_run_around_the_x_height() {
+        let fonts = dejavu_only();
+        let (_, spans, styles) = spans_for(
+            "big<span>m</span>",
+            "p { font-size: 40px; } span { font-size: 10px; vertical-align: middle; }",
+        );
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+        let run = lines[0].runs.iter().find(|r| r.text == "m").unwrap();
+        let base = lines[0].runs.iter().find(|r| r.text == "big").unwrap();
+        let x_height = fonts.get(base.font_index).unwrap().x_height(base.font_size);
+
+        let center_of_run = run.baseline_shift + (run.ascent - run.descent) / 2.0;
+        assert!(
+            (center_of_run - x_height / 2.0).abs() < 0.01,
+            "run center {center_of_run} should sit at half the x-height {}",
+            x_height / 2.0
         );
     }
 }

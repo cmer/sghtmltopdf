@@ -285,7 +285,7 @@ mod tests {
     use crate::html;
     use crate::style::values::{
         Clear, Color, Float, ListStyleType, SpecifiedLength, SpecifiedLengthPercentage,
-        SpecifiedLengthPercentageOrAuto, TextAlign, VerticalAlign, WhiteSpace,
+        SpecifiedLengthPercentageOrAuto, SpecifiedVerticalAlign, TextAlign, WhiteSpace,
     };
 
     /// 指定値の「px長さ」を取り出す(パーセンテージ・autoならNone)。
@@ -459,7 +459,9 @@ mod tests {
         let source = r#"<table><tr><td align="right" valign="top" nowrap>x</td></tr></table>"#;
         let hints = hints_for(source, "td");
         assert!(hints.contains(&PropertyDeclaration::TextAlign(TextAlign::Right)));
-        assert!(hints.contains(&PropertyDeclaration::VerticalAlign(VerticalAlign::Top)));
+        assert!(hints.contains(&PropertyDeclaration::VerticalAlign(
+            SpecifiedVerticalAlign::Top
+        )));
         assert!(hints.contains(&PropertyDeclaration::WhiteSpace(WhiteSpace::Nowrap)));
     }
 

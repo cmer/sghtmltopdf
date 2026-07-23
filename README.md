@@ -86,7 +86,41 @@ Phase4で対象外候補としていた`opacity`/`transform`にも対応した(`
 引き続き対象外)。マイルストーン10(HTML5のタグ対応)に着手し、**Phase 1(カテゴリA:
 UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`、カテゴリC:
 `<hr>`)とPhase 2(カテゴリD: `<colgroup>`/`<col>`、カテゴリE: レガシー表示
-属性、カテゴリF: `<base href>`)が完了**。
+属性、カテゴリF: `<base href>`)、Phase 3のカテゴリG(インライン文脈の
+`vertical-align`)が完了**。
+
+### `vertical-align`(インライン文脈)
+
+```html
+<p>H<sub>2</sub>O、E = mc<sup>2</sup>、脚注つきの本文<sup>1</sup></p>
+<span style="vertical-align: top;">上端揃え</span>
+<span style="vertical-align: -6px;">6px下げる</span>
+```
+
+設計は[0041](docs/decisions/0041-inline-vertical-align-design.md)。行ボックスの
+ベースライン位置をレイアウト時に確定させ(`LineBox::baseline`)、各テキスト
+ランがそこからのずれ(`TextRun::baseline_shift`)を持つ構造にした。
+
+* 対応する値: `baseline`(初期値)/`sub`/`super`/`top`/`middle`/`bottom`/
+  `text-top`/`text-bottom`/`<length>`/`<percentage>`
+* `<sub>`/`<sup>`はUAスタイルシートで`vertical-align: sub`/`super` +
+  `font-size: 0.83em`。ずらし幅はフォントの`OS/2`のsubscript/superscript
+  オフセット(無ければ`0.2em`/`0.33em`)
+* 上下にずれたランが行ボックスからはみ出す場合は行の高さが伸びる
+  (ブラウザと同じ挙動)。**`vertical-align`を使わない文書の行の高さ・
+  ベースライン位置は従来と完全に一致する**
+* `text-top`/`text-bottom`/`middle`の基準は「行の先頭ラン」(親インライン
+  ボックスのフォントを追跡する構造を持たないための簡略化)
+* `top`/`bottom`は行ボックスの高さを増やさない(収束計算を避けるための簡略化)
+* テーブルセルの`vertical-align`は従来どおり`top`/`middle`/`bottom`/`baseline`
+  のみ有効で、インライン専用の値を指定した場合は`baseline`扱い
+* `<img>`はブロックレベルの置換要素として扱うため対象外(M5からの既知の制約)
+
+**インライン要素の背景色**(`<mark>`や`<span style="background-color: ...">`)も
+このカテゴリで対応した。ランごとにascent〜descentの矩形として塗る。テキスト
+ノードの計算スタイルは親の非継承プロパティ(背景色を含む)までクローンして
+いるため、そのまま使うとブロックの背景が二重に塗られてしまう。`InlineSpan`が
+「直近のインライン要素が指定した背景」だけを保持することで区別している。
 
 ### レガシーHTML表示属性(presentational hints)
 
@@ -166,8 +200,11 @@ wkhtmltopdf時代の帳票HTMLをそのまま流し込めるよう、HTML4由来
 * 末尾の`<br>`も1行分の空行を残す(主要ブラウザと同じ挙動。wkhtmltopdf
   (WebKit)からの移行で見た目が変わらないことを優先)
 * 強制改行で終わる行は`text-align: justify`の伸縮対象にしない(CSS仕様)
-* `<br clear="...">`(float回避)は未対応。`<wbr>`(改行機会のヒント)も
-  現状の行分割(空白とCJK境界でのみ改行可能)の枠組みに載らないため未対応
+* `<br clear="left|right|all">`(float回避)にも対応(カテゴリEのレガシー
+  表示属性が`clear`プロパティへ変換し、強制改行時にfloatの下端まで押し下げる。
+  CSSで`br { clear: both }`と書いた場合も同じ経路)
+* `<wbr>`(改行機会のヒント)は、現状の行分割(空白とCJK境界でのみ改行可能)の
+  枠組みに載らないため未対応
 
 ### HTML5要素のUAデフォルトスタイル
 
@@ -518,7 +555,7 @@ bottom/baseline)・`table-layout`(auto/fixed)・`empty-cells`に対応してい�
 `text-align`(left/right/center/justify)・`line-height`・`text-indent`・
 `white-space`(normal/nowrap/pre)・`letter-spacing`・`word-spacing`・
 `text-transform`(uppercase/lowercase/capitalize)に対応している。
-`vertical-align`(インライン文脈)は非対応。
+インライン文脈の`vertical-align`はM10カテゴリGで対応した(下記)。
 
 * `text-align: justify`は最後の行を除く各行の単語間ギャップを均等に伸縮する
   (CJK文字列内部には配分しない)

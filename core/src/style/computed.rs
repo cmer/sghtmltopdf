@@ -37,6 +37,16 @@ pub struct RgbaColor {
     pub alpha: f32,
 }
 
+impl RgbaColor {
+    /// 完全に透明(`background-color`の初期値`transparent`)。
+    pub const TRANSPARENT: Self = Self {
+        red: 0,
+        green: 0,
+        blue: 0,
+        alpha: 0.0,
+    };
+}
+
 /// `line-height`の計算値。CSS2.1 §10.8.1: `<number>`/`<percentage>`の計算値は
 /// 「指定値の数値そのもの」(親のfont-sizeで先に乗算した絶対値ではない)。
 /// 継承時はこの値のまま伝わり、使用側(`layout::inline`)がそのテキストランの
@@ -1204,7 +1214,9 @@ fn compute_element_style(
         caption_side: caption_side.unwrap_or(inherited_caption_side),
         table_layout: table_layout.unwrap_or(initial.table_layout),
         empty_cells: empty_cells.unwrap_or(inherited_empty_cells),
-        vertical_align: vertical_align.unwrap_or(initial.vertical_align),
+        vertical_align: vertical_align
+            .map(|v| v.resolve(own_font_size, root_font_size))
+            .unwrap_or(initial.vertical_align),
         list_style_type: list_style_type.unwrap_or(inherited_list_style_type),
         list_style_position: list_style_position.unwrap_or(inherited_list_style_position),
         list_style_image: list_style_image.unwrap_or(inherited_list_style_image),

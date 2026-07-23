@@ -25,7 +25,7 @@ use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
 use super::flex::layout_flex;
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
-use super::inline::{layout_inline_content, shape_run, LineBox};
+use super::inline::{finish_line, layout_inline_content, shape_run, LineBox};
 use super::table::layout_table;
 
 /// マーカー(`list-style-position: outside`)と内容のcontent edgeの間の固定の隙間(px)。
@@ -561,15 +561,15 @@ fn layout_list_marker(
     )?;
     let run = shape_run(text, font_index, fonts, style);
     let width = run.width;
-    Some(LineBox {
-        rect: Rect {
-            x: content_x - LIST_MARKER_GAP - width,
-            y: content_y,
-            width,
-            height: run.line_height,
-        },
-        runs: vec![run],
-    })
+    let height = run.line_height;
+    Some(finish_line(
+        vec![run],
+        width,
+        content_x - LIST_MARKER_GAP - width,
+        content_y,
+        height,
+        fonts,
+    ))
 }
 
 /// float子要素を配置する。幅解決は`resolve_box_geometry`で(実際のレイアウトと)

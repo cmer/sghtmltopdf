@@ -11,8 +11,8 @@ use super::values::{
     SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow,
     SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing,
-    SpecifiedTransformFunction, TableLayout, TextAlign, TextDecorationLine, TextTransform,
-    VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    SpecifiedTransformFunction, SpecifiedVerticalAlign, TableLayout, TextAlign, TextDecorationLine,
+    TextTransform, Visibility, WhiteSpace, ZIndex,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -94,7 +94,7 @@ pub enum PropertyDeclaration {
     CaptionSide(CaptionSide),
     TableLayout(TableLayout),
     EmptyCells(EmptyCells),
-    VerticalAlign(VerticalAlign),
+    VerticalAlign(SpecifiedVerticalAlign),
     ListStyleType(ListStyleType),
     ListStylePosition(ListStylePosition),
     /// `url(...)`(生の値、解決は呼び出し側任せ)。`None`は`none`。
@@ -776,17 +776,28 @@ fn parse_empty_cells<'i>(input: &mut Parser<'i, '_>) -> Result<EmptyCells, Parse
 /// `vertical-align`。テーブルセル文脈専用と割り切る([0021]決定4)。
 /// `sub`/`super`/`text-top`/`text-bottom`/`<length>`/`<percentage>`
 /// (インライン文脈向けの値)は非対応。
+/// `vertical-align`。キーワード([0041](
+/// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定3)または
+/// 長さ・パーセンテージ。
 fn parse_vertical_align<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<VerticalAlign, ParseError<'i, ()>> {
-    let ident = input.expect_ident()?.clone();
-    Ok(match_ignore_ascii_case! { &ident,
-        "top" => VerticalAlign::Top,
-        "middle" => VerticalAlign::Middle,
-        "bottom" => VerticalAlign::Bottom,
-        "baseline" => VerticalAlign::Baseline,
-        _ => return Err(input.new_custom_error(())),
-    })
+) -> Result<SpecifiedVerticalAlign, ParseError<'i, ()>> {
+    if let Ok(ident) = input.try_parse(|i| i.expect_ident_cloned()) {
+        return Ok(match_ignore_ascii_case! { &ident,
+            "top" => SpecifiedVerticalAlign::Top,
+            "middle" => SpecifiedVerticalAlign::Middle,
+            "bottom" => SpecifiedVerticalAlign::Bottom,
+            "baseline" => SpecifiedVerticalAlign::Baseline,
+            "sub" => SpecifiedVerticalAlign::Sub,
+            "super" => SpecifiedVerticalAlign::Super,
+            "text-top" => SpecifiedVerticalAlign::TextTop,
+            "text-bottom" => SpecifiedVerticalAlign::TextBottom,
+            _ => return Err(input.new_custom_error(())),
+        });
+    }
+    Ok(SpecifiedVerticalAlign::LengthPercentage(
+        parse_length_percentage(input)?,
+    ))
 }
 
 fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'i, ()>> {

@@ -95,6 +95,36 @@ impl Font {
         ascent + half_leading
     }
 
+    /// x-height(px)。`OS/2`テーブルが持たない場合はアセントの半分で近似する
+    /// (`vertical-align: middle`の基準、[0041](
+    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定3)。
+    pub fn x_height(&self, font_size: f32) -> f32 {
+        let units_per_em = self.units_per_em() as f32;
+        match self.face().x_height() {
+            Some(x) => x as f32 / units_per_em * font_size,
+            None => self.ascender() as f32 / units_per_em * font_size * 0.5,
+        }
+    }
+
+    /// `vertical-align: sub`の下げ幅(px、正の値)。フォントの`OS/2`が
+    /// subscriptのYオフセットを持たない場合は`0.2em`で近似する([0041]決定3)。
+    pub fn subscript_offset(&self, font_size: f32) -> f32 {
+        let units_per_em = self.units_per_em() as f32;
+        match self.face().subscript_metrics() {
+            Some(m) => m.y_offset as f32 / units_per_em * font_size,
+            None => font_size * 0.2,
+        }
+    }
+
+    /// `vertical-align: super`の上げ幅(px、正の値)。持たない場合は`0.33em`。
+    pub fn superscript_offset(&self, font_size: f32) -> f32 {
+        let units_per_em = self.units_per_em() as f32;
+        match self.face().superscript_metrics() {
+            Some(m) => m.y_offset as f32 / units_per_em * font_size,
+            None => font_size * 0.33,
+        }
+    }
+
     pub fn italic_angle(&self) -> f32 {
         self.face().italic_angle()
     }

@@ -149,6 +149,12 @@ h6 { font-size: 0.67em; }
 small, sub, sup { font-size: 0.83em; }
 big { font-size: 1.17em; }
 
+/* 上下ずらしは`vertical-align`([0041](
+   ../../../docs/decisions/0041-inline-vertical-align-design.md))で行う。
+   縮小(上の`font-size`)とは独立した指定である点はCSS仕様どおり。 */
+sub { vertical-align: sub; }
+sup { vertical-align: super; }
+
 /* 等幅フォント。汎用family名`monospace`は`fonts::system`が自前の候補リストで
    具体フォントへ解決する([0036]決定3)。 */
 pre, code, kbd, samp, tt {

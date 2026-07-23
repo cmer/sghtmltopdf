@@ -778,6 +778,7 @@ fn render_box_with_style_inner(
             settings,
             remaps,
             font_resource_names,
+            alpha_gs_names,
         );
     }
 
@@ -816,7 +817,15 @@ fn render_box_with_style_inner(
         }
         LaidOutContent::Inline(lines) => {
             for line in lines {
-                render_line(content, line, fonts, settings, remaps, font_resource_names);
+                render_line(
+                    content,
+                    line,
+                    fonts,
+                    settings,
+                    remaps,
+                    font_resource_names,
+                    alpha_gs_names,
+                );
             }
         }
         LaidOutContent::Image(image) => {
@@ -2382,18 +2391,46 @@ fn render_line(
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
     font_resource_names: &[String],
+    alpha_gs_names: &[String],
 ) {
-    let Some(first_run) = line.runs.first() else {
+    if line.runs.is_empty() {
         return;
-    };
+    }
 
-    // 行内で複数フォントが混在していても、ベースラインは先頭ランのフォント・
-    // サイズのメトリクスを基準に統一する。
-    let baseline_font = fonts.get(first_run.font_index);
-    let baseline_offset_px = baseline_font
-        .map(|f| f.baseline_offset(first_run.font_size, line.rect.height))
-        .unwrap_or(first_run.font_size);
-    let baseline_y = to_pdf_y(settings, line.rect.y + baseline_offset_px);
+    // 行のベースライン位置はレイアウト時に確定済み([0041](
+    // ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
+    // 各ランは`vertical-align`由来の`baseline_shift`(正=上)だけそこからずれる。
+    let baseline_y = to_pdf_y(settings, line.rect.y + line.baseline);
+
+    // インライン要素の背景(`<mark>`等)は、ランのascent〜descentの矩形として
+    // テキストより先に塗る。ブロックの背景([`render_decoration`])と違い
+    // ボーダーボックスを持たないため、フォントメトリクスで代用する。
+    for run in &line.runs {
+        if run.background_color.alpha <= 0.0 || run.width <= 0.0 {
+            continue;
+        }
+        let run_baseline_y = baseline_y + run.baseline_shift;
+        let use_alpha = run.background_color.alpha < 1.0;
+        if use_alpha {
+            content.save_state();
+            apply_fill_alpha(content, run.background_color.alpha, alpha_gs_names);
+        }
+        content.set_fill_rgb(
+            run.background_color.red as f32 / 255.0,
+            run.background_color.green as f32 / 255.0,
+            run.background_color.blue as f32 / 255.0,
+        );
+        content.rect(
+            settings.margin.left + line.rect.x + run.x_offset,
+            run_baseline_y - run.descent,
+            run.width,
+            run.ascent + run.descent,
+        );
+        content.fill_nonzero();
+        if use_alpha {
+            content.restore_state();
+        }
+    }
 
     content.begin_text();
 
@@ -2470,7 +2507,7 @@ fn render_line(
         let x = settings.margin.left + line.rect.x + run.x_offset;
         let shear = if run.italic { ITALIC_SHEAR } else { 0.0 };
         content.set_font(Name(resource_name.as_bytes()), run.font_size);
-        content.set_text_matrix([1.0, 0.0, shear, 1.0, x, baseline_y]);
+        content.set_text_matrix([1.0, 0.0, shear, 1.0, x, baseline_y + run.baseline_shift]);
         // `letter-spacing`はグリフ幅そのもの(フォントの`/Widths`)には反映
         // できないため、PDFの`Tc`(character spacing)を使う。`Tw`(word
         // spacing)と異なり複合フォント(2バイトCID)にも適用される
@@ -2491,6 +2528,9 @@ fn render_line(
             continue;
         };
         let x = settings.margin.left + line.rect.x + run.x_offset;
+        // 装飾線もそのランのベースライン(=行のベースライン+`vertical-align`の
+        // ずれ)を基準に引く。
+        let run_baseline_y = baseline_y + run.baseline_shift;
         if run.underline {
             let (y, thickness) =
                 decoration_metrics(font, run.font_size, font.underline_metrics(), -0.1);
@@ -2498,8 +2538,8 @@ fn render_line(
                 content,
                 thickness,
                 run.color,
-                (x, baseline_y + y),
-                (x + run.width, baseline_y + y),
+                (x, run_baseline_y + y),
+                (x + run.width, run_baseline_y + y),
             );
         }
         if run.line_through {
@@ -2509,8 +2549,8 @@ fn render_line(
                 content,
                 thickness,
                 run.color,
-                (x, baseline_y + y),
-                (x + run.width, baseline_y + y),
+                (x, run_baseline_y + y),
+                (x + run.width, run_baseline_y + y),
             );
         }
     }
@@ -2782,7 +2822,15 @@ pub(super) fn render_margin_boxes(
             VAlign::Middle => shaped.rect.y + (shaped.rect.height - line.rect.height) / 2.0,
             VAlign::Bottom => shaped.rect.y + shaped.rect.height - line.rect.height,
         };
-        render_line(content, &line, fonts, settings, remaps, font_resource_names);
+        render_line(
+            content,
+            &line,
+            fonts,
+            settings,
+            remaps,
+            font_resource_names,
+            &[],
+        );
     }
 }
 
