@@ -256,9 +256,27 @@ pub(super) fn layout_box_with_forced_size(
 /// `b`のcontent幅・margin・padding・borderを解決する(置換要素のauto-size適用込み)。
 /// `layout_box_impl`本体と、float配置のための事前幅計算(`layout_float_child`)の
 /// 両方から呼ばれる共通ロジック。
+/// shrink-to-fit(内容に合わせた)content幅([0047](
+/// ../../../docs/decisions/0047-float-shrink-to-fit-design.md)決定1)。
+/// `display: inline-block`のアトミックボックス([0043])とfloatの`width: auto`で
+/// 共有する。CSS2.1のpreferred minimum widthは持たないため
+/// `min(preferred, available)`に簡略化する(内容がavailableを超えると折り返す)。
+pub(super) fn shrink_to_fit_content_width(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    style: &ComputedStyle,
+    available_width: f32,
+) -> f32 {
+    let _ = style;
+    let natural = super::table::measure_natural_content_width(&b.content, styles, fonts);
+    natural.min(available_width).max(0.0)
+}
+
 fn resolve_box_geometry(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: Option<f32>,
 ) -> (ComputedStyle, EdgeSizes, EdgeSizes, EdgeSizes, f32) {
@@ -300,6 +318,25 @@ fn resolve_box_geometry(
                 resolve_lpa_or_zero(style.margin_right, containing_width),
             )
         }
+        // floatで`width: auto`は内容に合わせて縮む(shrink-to-fit、CSS2.1
+        // §10.3.5、[0047](../../../docs/decisions/0047-float-shrink-to-fit-design.md))。
+        // 通常フロー用の`resolve_width_and_horizontal_margins`(containing width
+        // いっぱいに広げる)には落とさない。margin autoはfloatでは0。
+        None if style.float != Float::None => {
+            let available = (containing_width
+                - resolve_lpa_or_zero(style.margin_left, containing_width)
+                - resolve_lpa_or_zero(style.margin_right, containing_width)
+                - padding.left
+                - padding.right
+                - border.left
+                - border.right)
+                .max(0.0);
+            (
+                shrink_to_fit_content_width(b, styles, fonts, &style, available),
+                resolve_lpa_or_zero(style.margin_left, containing_width),
+                resolve_lpa_or_zero(style.margin_right, containing_width),
+            )
+        }
         None => resolve_width_and_horizontal_margins(
             &style,
             containing_width,
@@ -329,13 +366,13 @@ fn layout_box_impl(
     x: f32,
     y: f32,
 ) -> LaidOutBox {
-    let (style, padding, border, margin, content_width) =
-        resolve_box_geometry(b, styles, containing_width, forced_content_width);
+    let (style, padding, border, mut margin, content_width) =
+        resolve_box_geometry(b, styles, fonts, containing_width, forced_content_width);
 
     let content_x = x + margin.left + border.left + padding.left;
-    let content_y = y + margin.top + border.top + padding.top;
+    let mut content_y = y + margin.top + border.top + padding.top;
 
-    let (content, content_height) = match &b.content {
+    let (mut content, content_height) = match &b.content {
         BoxContent::Blocks(children) => {
             let mut cursor_y = content_y;
             let mut max_float_bottom = content_y;
@@ -501,7 +538,24 @@ fn layout_box_impl(
     };
     // taffyが確定した高さを最終レイアウトパスでそのまま反映する
     // (`layout_box_with_forced_size`専用、[0034]決定2)。
-    let content_height = forced_content_height.unwrap_or(content_height);
+    let mut content_height = forced_content_height.unwrap_or(content_height);
+
+    // 親子間・空ブロックのマージン相殺([0048](
+    // ../../../docs/decisions/0048-margin-collapse-parent-child-empty-design.md))。
+    // `layout.margin`を実効(相殺後)値に、`content.y`/`content_height`を
+    // それに合わせて調整する。親子相殺は`height: auto`のブロックのみ対象
+    // (決定2の簡略化)。
+    let height_is_auto =
+        forced_content_height.is_none() && matches!(style.height, LengthPercentageOrAuto::Auto);
+    apply_margin_collapse(
+        &mut content,
+        &mut content_height,
+        &mut margin,
+        &mut content_y,
+        &border,
+        &padding,
+        height_is_auto,
+    );
 
     // `position: relative`の視覚的オフセット。後続兄弟の`cursor_y`計算は
     // `margin_box_height()`(座標に依存しない)を使うため、ここでcontent座標を
@@ -597,7 +651,7 @@ fn layout_float_child(
     preferred_top: f32,
 ) -> LaidOutBox {
     let (_, padding, border, margin, child_content_width) =
-        resolve_box_geometry(child, styles, containing_width, None);
+        resolve_box_geometry(child, styles, fonts, containing_width, None);
     let margin_box_width = margin.left
         + border.left
         + padding.left
@@ -798,6 +852,85 @@ fn derive_via_aspect_ratio(known: f32, ratio_basis: Option<(f32, f32)>) -> f32 {
             known * other_intrinsic / known_intrinsic
         }
         _ => 0.0,
+    }
+}
+
+/// 親子間・空ブロックのマージン相殺を適用する([0048](
+/// ../../../docs/decisions/0048-margin-collapse-parent-child-empty-design.md))。
+///
+/// `margin`を実効(相殺後)値へ、`content.y`と`content_height`をそれに合わせて
+/// 調整する。呼び出し側は、返された実効`margin`をそのまま`LaidOutBox`へ格納する
+/// ことで、祖先の隣接兄弟相殺ループが多階層の相殺へ自然につながる(決定1)。
+fn apply_margin_collapse(
+    content: &mut LaidOutContent,
+    content_height: &mut f32,
+    margin: &mut EdgeSizes,
+    content_y: &mut f32,
+    border: &EdgeSizes,
+    padding: &EdgeSizes,
+    height_is_auto: bool,
+) {
+    // 空ブロック(決定3): 高さ0・border/padding無し・子が空。自身の上下
+    // マージンを1つに相殺する(`margin_box_height`が相殺値1つ分になるよう
+    // 上へ寄せる)。上の兄弟とはこの相殺値で相殺され、二重マージンを防ぐ。
+    let content_is_empty = match content {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => children.is_empty(),
+        // 子を持たない`<div></div>`は`Inline`(空)になる。
+        LaidOutContent::Inline(lines) => lines.is_empty(),
+        LaidOutContent::Table(_) | LaidOutContent::Image(_) => false,
+    };
+    let is_empty_block = *content_height == 0.0
+        && border.top == 0.0
+        && border.bottom == 0.0
+        && padding.top == 0.0
+        && padding.bottom == 0.0
+        && content_is_empty;
+    if is_empty_block {
+        let collapsed = collapse_adjacent_margins(margin.top, margin.bottom);
+        margin.top = collapsed;
+        margin.bottom = 0.0;
+        return;
+    }
+
+    let LaidOutContent::Blocks(children) = content else {
+        return;
+    };
+
+    // 親と最初の子(決定2): 親に上境界(border-top/padding-top)が無ければ、
+    // 最初の非float子の実効`margin-top`を親の外へ持ち上げて相殺する。
+    if border.top == 0.0 && padding.top == 0.0 && height_is_auto {
+        if let Some(first_top) = children
+            .iter()
+            .find(|c| !c.is_float)
+            .map(|c| c.layout.margin.top)
+        {
+            let effective = collapse_adjacent_margins(margin.top, first_top);
+            // 子はすべて、最初の子の`margin-top`が親contentから抜けた分だけ
+            // 上へ動く。delta <= 0。
+            let child_delta = effective - first_top - margin.top;
+            for child in children.iter_mut() {
+                *child = shift_box_y(child, -child_delta);
+            }
+            *content_y += effective - margin.top;
+            *content_height -= first_top;
+            margin.top = effective;
+        }
+    }
+
+    // 親と最後の子(決定2): 親に下境界(border-bottom/padding-bottom/明示height)が
+    // 無ければ、最後の非float子の`margin-bottom`を親の外へ持ち上げて相殺する。
+    if border.bottom == 0.0 && padding.bottom == 0.0 && height_is_auto {
+        if let Some(last_bottom) = children
+            .iter()
+            .rev()
+            .find(|c| !c.is_float)
+            .map(|c| c.layout.margin.bottom)
+        {
+            let effective = collapse_adjacent_margins(margin.bottom, last_bottom);
+            // 最後の子のmargin-bottomが親contentから抜けるので、その分縮める。
+            *content_height -= last_bottom;
+            margin.bottom = effective;
+        }
     }
 }
 
@@ -1501,9 +1634,9 @@ mod tests {
     }
 
     #[test]
-    fn parent_and_first_child_margins_are_not_collapsed() {
-        // 親子間のマージン相殺は本実装のスコープ外(隣接兄弟間のみ対応)。
-        // 最初の子の上マージンは、親のcontent開始位置にそのまま加算されるはず。
+    fn parent_and_first_child_top_margins_collapse_through_the_parent() {
+        // [0048]決定2: 親に border-top/padding-top が無ければ、最初の子の
+        // margin-top は親を突き抜けて親の margin-top と相殺する。
         let dom = html::parse(br#"<div class="outer"><p class="inner">x</p></div>"#);
         let ua = user_agent_stylesheet();
         let author =
@@ -1513,14 +1646,63 @@ mod tests {
         let fonts = test_fonts();
         let laid = layout_document(&tree, &styles, &fonts, 800.0);
 
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let outer = find_laid_out(&laid, divs[0]).expect("outer not found");
         let mut ps = Vec::new();
         find_all(&dom, dom.document(), "p", &mut ps);
-        let p = find_laid_out(&laid, ps[0]).expect("p not found");
+        let inner = find_laid_out(&laid, ps[0]).expect("inner not found");
 
-        assert_eq!(
-            p.layout.margin.top, 12.0,
-            "the child's own top margin should still apply in full (no parent-child collapsing)"
+        // 相殺の結果、親の実効 margin-top は collapse(0, 12) = 12 になる。
+        assert_eq!(outer.layout.margin.top, 12.0);
+        // 子の border 上端は親の content 上端に一致する(間に余白なし)。
+        assert_eq!(inner.layout.content.y, outer.layout.content.y);
+        // 親の高さは子の内容分(子の margin は外へ出たので含まない)。
+        assert_eq!(outer.layout.content.height, 20.0);
+    }
+
+    #[test]
+    fn a_top_border_on_the_parent_prevents_the_collapse() {
+        // 親に border-top があれば相殺は起きず、子の margin-top は親の中に入る。
+        let dom = html::parse(br#"<div class="outer"><p class="inner">x</p></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            ".outer { margin: 0; border-top: 5px solid black; }              .inner { height: 20px; margin: 12px 0; }",
         );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let outer = find_laid_out(&laid, divs[0]).expect("outer not found");
+        let mut ps = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut ps);
+        let inner = find_laid_out(&laid, ps[0]).expect("inner not found");
+
+        assert_eq!(outer.layout.margin.top, 0.0, "no collapse through a border");
+        // 子は親の content 上端から margin-top 分下がる。
+        assert_eq!(inner.layout.content.y, outer.layout.content.y + 12.0);
+    }
+
+    #[test]
+    fn an_empty_block_collapses_its_own_top_and_bottom_margins() {
+        // [0048]決定3: 空ブロック(高さ0・border/padding無し)の上下マージンは
+        // 1つに相殺され、二重に効かない。
+        let dom = html::parse(br#"<div class="empty"></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(".empty { margin: 30px 0; }");
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let empty = find_laid_out(&laid, divs[0]).expect("empty not found");
+        // margin box の高さは 60(=30+30)ではなく 30(相殺された1つ分)。
+        assert_eq!(empty.layout.margin_box_height(), 30.0);
     }
 
     #[test]

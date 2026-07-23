@@ -333,3 +333,61 @@ fn float_content_is_reachable_on_the_page_it_spans() {
         .any(|page| page.boxes.iter().any(|b| box_contains_node(b, item)));
     assert!(found, "content inside a float should still be reachable");
 }
+
+#[test]
+fn a_float_without_width_shrinks_to_its_content() {
+    // [0047]: `width: auto`のfloatは内容(短いテキスト)に合わせて縮む。
+    // containing widthいっぱいには広がらない。
+    let (dom, laid) = layout(
+        r#"<div class="f">hi</div><p>body text that wraps beside the float</p>"#,
+        "body { margin: 0; } .f { float: left; }",
+    );
+    let mut floats = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut floats);
+    let float_box = find_laid_out(&laid, floats[0]).expect("float box");
+
+    let content_width = PageSettings::default().content_width();
+    assert!(
+        float_box.layout.content.width < content_width * 0.5,
+        "an auto-width float must shrink to its content, got {} of {}",
+        float_box.layout.content.width,
+        content_width
+    );
+    assert!(float_box.layout.content.width > 0.0);
+}
+
+#[test]
+fn a_wider_content_float_is_wider_than_a_narrow_one() {
+    let narrow = {
+        let (dom, laid) = layout(
+            r#"<div class="f">x</div>"#,
+            "body { margin: 0; } .f { float: left; }",
+        );
+        let mut ds = Vec::new();
+        find_all_tags(&dom, dom.document(), "div", &mut ds);
+        find_laid_out(&laid, ds[0]).unwrap().layout.content.width
+    };
+    let wide = {
+        let (dom, laid) = layout(
+            r#"<div class="f">a much longer caption here</div>"#,
+            "body { margin: 0; } .f { float: left; }",
+        );
+        let mut ds = Vec::new();
+        find_all_tags(&dom, dom.document(), "div", &mut ds);
+        find_laid_out(&laid, ds[0]).unwrap().layout.content.width
+    };
+    assert!(wide > narrow, "wide={wide} narrow={narrow}");
+}
+
+#[test]
+fn an_auto_width_float_is_clamped_to_the_available_width() {
+    // 内容が使える幅を超える場合はクランプされる(はみ出さない)。
+    let (dom, laid) = layout(
+        r#"<div class="f">wordwordwordwordwordwordwordwordwordwordwordwordword</div>"#,
+        "body { margin: 0; } .f { float: left; }",
+    );
+    let mut ds = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut ds);
+    let width = find_laid_out(&laid, ds[0]).unwrap().layout.content.width;
+    assert!(width <= PageSettings::default().content_width() + 0.5);
+}

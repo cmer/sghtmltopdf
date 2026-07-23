@@ -181,3 +181,72 @@ fn border_radius_longhand_and_shorthand_render_a_valid_pdf() {
     let (page_count, _bytes) = build_pdf(html_src, "body { margin: 0; }");
     assert_eq!(page_count, 1);
 }
+
+// ===== 親子間・空ブロックのマージン相殺(M11 Phase 2、T271、[0048]) =====
+
+#[test]
+fn a_child_top_margin_collapses_through_a_borderless_parent() {
+    let (dom, laid) = layout(
+        r#"<div class="wrap"><p>child</p></div><p class="sib">sibling</p>"#,
+        "body { margin: 0; } .wrap { margin: 0; } p { margin: 30px 0; }",
+    );
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let mut ps = Vec::new();
+    find_all_tags(&dom, dom.document(), "p", &mut ps);
+    let wrap = find_laid_out(&laid, divs[0]).unwrap();
+    let child = find_laid_out(&laid, ps[0]).unwrap();
+
+    // 子の margin-top が親を突き抜け、子は親の content 上端に密着する。
+    assert_eq!(child.layout.content.y, wrap.layout.content.y);
+    // 親自身が実効 margin-top 30 を持つ(= 子の margin と相殺)。
+    assert_eq!(wrap.layout.margin.top, 30.0);
+}
+
+#[test]
+fn the_gap_between_a_wrapped_child_and_a_following_sibling_collapses() {
+    // 親子相殺(下)と隣接兄弟相殺が連鎖し、余白は二重にならず 40 の1つになる。
+    let (dom, laid) = layout(
+        r#"<div class="wrap"><p class="inner">child</p></div><p class="sib">sibling</p>"#,
+        "body { margin: 0; } .wrap { margin: 0; }          .inner { margin-bottom: 40px; } .sib { margin-top: 20px; }",
+    );
+    let mut ps = Vec::new();
+    find_all_tags(&dom, dom.document(), "p", &mut ps);
+    let inner = find_laid_out(&laid, ps[0]).unwrap();
+    let sib = find_laid_out(&laid, ps[1]).unwrap();
+
+    let gap = sib.layout.content.y - (inner.layout.content.y + inner.layout.content.height);
+    // 単純加算(40+20=60)ではなく、相殺で max(40, 20) = 40。
+    assert!(
+        (gap - 40.0).abs() < 0.5,
+        "gap should collapse to 40, got {gap}"
+    );
+}
+
+#[test]
+fn an_empty_block_does_not_double_its_margins() {
+    let (dom, laid) = layout(
+        r#"<p class="a">above</p><div class="empty"></div><p class="b">below</p>"#,
+        "body { margin: 0; } p { margin: 0; } .empty { margin: 25px 0; }",
+    );
+    let mut ps = Vec::new();
+    find_all_tags(&dom, dom.document(), "p", &mut ps);
+    let above = find_laid_out(&laid, ps[0]).unwrap();
+    let below = find_laid_out(&laid, ps[1]).unwrap();
+
+    let gap = below.layout.content.y - (above.layout.content.y + above.layout.content.height);
+    // 空 div の上下 25px が二重(50)にならず、相殺で 25。
+    assert!(
+        (gap - 25.0).abs() < 0.5,
+        "empty block margins should collapse, got {gap}"
+    );
+}
+
+#[test]
+fn a_document_using_margin_collapse_renders_a_valid_pdf() {
+    let (_, bytes) = build_pdf(
+        r#"<div class="card"><h2>Title</h2><p>body</p></div>"#,
+        ".card { margin: 20px 0; } h2 { margin: 16px 0; } p { margin: 12px 0; }",
+    );
+    assert!(bytes.starts_with(b"%PDF-"));
+}

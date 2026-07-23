@@ -1217,10 +1217,16 @@ fn layout_atomic_inline(
             }
         }
         // shrink-to-fit相当([0043]決定1-2): 内容の自然幅を使える幅でクランプ。
+        // floatの`width: auto`([0047])と同じ`shrink_to_fit_content_width`を共有する。
         LengthPercentageOrAuto::Auto => {
-            let natural = super::table::measure_natural_content_width(&b.content, styles, fonts);
             let outer = padding.left + padding.right + border.left + border.right;
-            natural.min((available_width - outer).max(0.0)).max(0.0)
+            super::block::shrink_to_fit_content_width(
+                b,
+                styles,
+                fonts,
+                &style,
+                (available_width - outer).max(0.0),
+            )
         }
     };
 
