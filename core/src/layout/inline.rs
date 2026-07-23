@@ -1231,7 +1231,7 @@ fn layout_atomic_inline(
     };
 
     let mut float_ctx = FloatContext::new();
-    super::block::layout_box_with_forced_width(
+    super::block::layout_box_with_forced_width_ignoring_positioned(
         b,
         styles,
         fonts,

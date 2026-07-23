@@ -129,6 +129,84 @@ pub struct LaidOutTableRow {
     pub section: TableSection,
 }
 
+/// 絶対配置([0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))された
+/// ボックス1つ分。`laid`はcontaining block基準(絶対座標)でレイアウト済みで、
+/// ページ分割層がこれを属するページへオーバーレイとして配置する。
+#[derive(Debug, Clone)]
+pub struct PositionedBox {
+    pub laid: LaidOutBox,
+    pub kind: PositionedKind,
+}
+
+/// 絶対配置ボックスの配置先の種別([0049]決定2)。
+#[derive(Debug, Clone, Copy)]
+pub enum PositionedKind {
+    /// `position: fixed`。全ページのコンテンツ領域に、レイアウト時の座標
+    /// そのままで繰り返す。
+    Fixed,
+    /// `position: absolute`でpositioned祖先が無い場合。最初のページの
+    /// コンテンツ領域に、レイアウト時の座標そのままで置く。
+    AbsoluteInitial,
+    /// `position: absolute`でpositioned祖先がある場合。祖先(`node`)が最初に
+    /// 現れたページに、祖先padding boxのページ内位置と`padding_box_origin`
+    /// (レイアウト時の祖先padding box左上)の差分だけずらして置く。
+    AbsoluteAncestor {
+        node: NodeId,
+        padding_box_origin: (f32, f32),
+    },
+}
+
+/// レイアウト中に持ち回る絶対配置のコンテキスト([0049])。`float_ctx`と
+/// 同じく`&mut`で子孫へ渡す。
+pub(super) struct PosCtx<'a> {
+    /// 現在の`absolute`のcontaining block(最も近いpositioned祖先の
+    /// padding box、無ければ最初のページのコンテンツ領域)。
+    abs_cb: AbsCB,
+    /// `fixed`のcontaining block = ページのコンテンツ領域の`(width, height)`。
+    page_size: (f32, f32),
+    /// 収集した絶対配置ボックス。
+    out: &'a mut Vec<PositionedBox>,
+}
+
+/// `absolute`のcontaining block。
+#[derive(Debug, Clone, Copy)]
+enum AbsCB {
+    /// initial containing block(positioned祖先が無い)= 最初のページの
+    /// コンテンツ領域。原点は`(0, 0)`。
+    InitialPage,
+    /// positioned祖先のpadding box(絶対座標)。
+    Ancestor { node: NodeId, rect: Rect },
+}
+
+impl<'a> PosCtx<'a> {
+    pub(super) fn new(out: &'a mut Vec<PositionedBox>, page_size: (f32, f32)) -> Self {
+        Self {
+            abs_cb: AbsCB::InitialPage,
+            page_size,
+            out,
+        }
+    }
+}
+
+/// [`layout_document`]の絶対配置対応版。通常フローの`LaidOutBox`と、
+/// 絶対配置ボックス([`PositionedBox`])のリストを返す([0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
+/// `page_size`は`(content_width, content_height)`で、`fixed`のcontaining
+/// blockとして使う。
+pub fn layout_document_positioned(
+    root: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    page_size: (f32, f32),
+) -> (LaidOutBox, Vec<PositionedBox>) {
+    let mut absolutes = Vec::new();
+    let mut pos = PosCtx::new(&mut absolutes, page_size);
+    let laid =
+        layout_document_from_positioned(root, styles, fonts, page_size.0, 0.0, 0.0, &mut pos);
+    (laid, absolutes)
+}
+
 /// ページ幅を初期containing blockとして、ボックスツリー全体をレイアウトする。
 pub fn layout_document(
     root: &LayoutBox,
@@ -157,6 +235,32 @@ pub fn layout_document_from(
     start_x: f32,
     start_y: f32,
 ) -> LaidOutBox {
+    // 絶対配置を集めない後方互換の入り口(既存の呼び出し元・テスト用)。
+    let mut absolutes = Vec::new();
+    let mut pos = PosCtx::new(&mut absolutes, (containing_width, 0.0));
+    layout_document_from_positioned(
+        root,
+        styles,
+        fonts,
+        containing_width,
+        start_x,
+        start_y,
+        &mut pos,
+    )
+}
+
+/// [`layout_document_from`]の絶対配置対応版。`pos`に絶対配置ボックスを集める
+/// ([0049](../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn layout_document_from_positioned(
+    root: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    start_x: f32,
+    start_y: f32,
+    pos: &mut PosCtx,
+) -> LaidOutBox {
     // `layout_document`/`layout_document_from`1回の呼び出し全体で1つの
     // `FloatContext`を共有する([0019]決定1)。
     let mut float_ctx = FloatContext::new();
@@ -168,11 +272,13 @@ pub fn layout_document_from(
         &mut float_ctx,
         start_x,
         start_y,
+        pos,
     )
 }
 
 /// `<caption>`(通常のwidth解決を経る、`table.rs`のcaption配置専用)や
 /// block.rs内部の再帰呼び出しで使う。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -181,6 +287,7 @@ pub(super) fn layout_box(
     float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
+    pos: &mut PosCtx,
 ) -> LaidOutBox {
     layout_box_impl(
         b,
@@ -192,6 +299,7 @@ pub(super) fn layout_box(
         float_ctx,
         x,
         y,
+        pos,
     )
 }
 
@@ -208,6 +316,7 @@ pub(super) fn layout_box_with_forced_width(
     float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
+    pos: &mut PosCtx,
 ) -> LaidOutBox {
     layout_box_impl(
         b,
@@ -219,6 +328,7 @@ pub(super) fn layout_box_with_forced_width(
         float_ctx,
         x,
         y,
+        pos,
     )
 }
 
@@ -239,6 +349,7 @@ pub(super) fn layout_box_with_forced_size(
     float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
+    pos: &mut PosCtx,
 ) -> LaidOutBox {
     layout_box_impl(
         b,
@@ -250,12 +361,210 @@ pub(super) fn layout_box_with_forced_size(
         float_ctx,
         x,
         y,
+        pos,
+    )
+}
+
+/// `table`/`flex`/`inline`のセル・アイテム・アトミックボックスから呼ぶ、
+/// 絶対配置を集めない版のラッパー([0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定5:
+/// これらのフォーマッティングコンテキスト内の`absolute`/`fixed`は非対応)。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn layout_box_ignoring_positioned(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    float_ctx: &mut FloatContext,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
+    let mut sink = Vec::new();
+    let mut pos = PosCtx::new(&mut sink, (0.0, 0.0));
+    layout_box(
+        b,
+        styles,
+        fonts,
+        containing_width,
+        float_ctx,
+        x,
+        y,
+        &mut pos,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn layout_box_with_forced_width_ignoring_positioned(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    forced_content_width: f32,
+    float_ctx: &mut FloatContext,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
+    let mut sink = Vec::new();
+    let mut pos = PosCtx::new(&mut sink, (0.0, 0.0));
+    layout_box_with_forced_width(
+        b,
+        styles,
+        fonts,
+        containing_width,
+        forced_content_width,
+        float_ctx,
+        x,
+        y,
+        &mut pos,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn layout_box_with_forced_size_ignoring_positioned(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    containing_width: f32,
+    forced_content_width: f32,
+    forced_content_height: f32,
+    float_ctx: &mut FloatContext,
+    x: f32,
+    y: f32,
+) -> LaidOutBox {
+    let mut sink = Vec::new();
+    let mut pos = PosCtx::new(&mut sink, (0.0, 0.0));
+    layout_box_with_forced_size(
+        b,
+        styles,
+        fonts,
+        containing_width,
+        forced_content_width,
+        forced_content_height,
+        float_ctx,
+        x,
+        y,
+        &mut pos,
     )
 }
 
 /// `b`のcontent幅・margin・padding・borderを解決する(置換要素のauto-size適用込み)。
 /// `layout_box_impl`本体と、float配置のための事前幅計算(`layout_float_child`)の
 /// 両方から呼ばれる共通ロジック。
+/// `position: absolute`/`fixed`の子を、containing block基準でレイアウトして
+/// `pos.out`へ集める([0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定1・3)。
+/// bottom/rightのうち、`bottom`はcontaining blockの高さが確定しないため
+/// `top`へフォールバックする(決定3改訂、既知の限界)。
+fn layout_out_of_flow_child(
+    child: &LayoutBox,
+    child_style: &ComputedStyle,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    pos: &mut PosCtx,
+) {
+    let (cb_rect, kind) = if child_style.position == Position::Fixed {
+        (
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                width: pos.page_size.0,
+                height: pos.page_size.1,
+            },
+            PositionedKind::Fixed,
+        )
+    } else {
+        match pos.abs_cb {
+            AbsCB::InitialPage => (
+                Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: pos.page_size.0,
+                    height: pos.page_size.1,
+                },
+                PositionedKind::AbsoluteInitial,
+            ),
+            AbsCB::Ancestor { node, rect } => (
+                rect,
+                PositionedKind::AbsoluteAncestor {
+                    node,
+                    padding_box_origin: (rect.x, rect.y),
+                },
+            ),
+        }
+    };
+
+    let padding = resolve_padding(child_style, cb_rect.width);
+    let border = resolve_border(child_style);
+    let margin_left = resolve_lpa_or_zero(child_style.margin_left, cb_rect.width);
+    let margin_right = resolve_lpa_or_zero(child_style.margin_right, cb_rect.width);
+    let non_content_width =
+        margin_left + border.left + padding.left + padding.right + border.right + margin_right;
+
+    let has_left = !matches!(child_style.left, LengthPercentageOrAuto::Auto);
+    let has_right = !matches!(child_style.right, LengthPercentageOrAuto::Auto);
+    let left = resolve_lpa_or_zero(child_style.left, cb_rect.width);
+    let right = resolve_lpa_or_zero(child_style.right, cb_rect.width);
+
+    // content幅の解決(決定3)。
+    let content_width = match child_style.width {
+        LengthPercentageOrAuto::LengthPercentage(lp) => {
+            let w = resolve_lp(lp, cb_rect.width);
+            if child_style.box_sizing == BoxSizing::BorderBox {
+                (w - padding.left - padding.right - border.left - border.right).max(0.0)
+            } else {
+                w
+            }
+        }
+        LengthPercentageOrAuto::Auto if has_left && has_right => {
+            (cb_rect.width - left - right - non_content_width).max(0.0)
+        }
+        LengthPercentageOrAuto::Auto => {
+            let avail = (cb_rect.width - non_content_width).max(0.0);
+            shrink_to_fit_content_width(child, styles, fonts, child_style, avail)
+        }
+    };
+
+    let margin_box_width = non_content_width + content_width;
+    // マージンボックス左上のx(決定3)。
+    let margin_box_x = if has_left {
+        cb_rect.x + left
+    } else if has_right {
+        cb_rect.x + cb_rect.width - margin_box_width - right
+    } else {
+        cb_rect.x
+    };
+    let has_top = !matches!(child_style.top, LengthPercentageOrAuto::Auto);
+    let has_bottom = !matches!(child_style.bottom, LengthPercentageOrAuto::Auto);
+    let top = resolve_lpa_or_zero(child_style.top, cb_rect.height);
+    let bottom = resolve_lpa_or_zero(child_style.bottom, cb_rect.height);
+    // まず`top`(無ければcb上端)でレイアウトする。
+    let margin_box_y = cb_rect.y + if has_top { top } else { 0.0 };
+
+    let mut float_ctx = FloatContext::new();
+    let mut laid = layout_box_with_forced_width(
+        child,
+        styles,
+        fonts,
+        cb_rect.width,
+        content_width,
+        &mut float_ctx,
+        margin_box_x,
+        margin_box_y,
+        pos,
+    );
+
+    // `bottom`指定(かつ`top`未指定)は、レイアウト後の高さが分かってから
+    // 下端合わせで再配置する([0049]決定3)。cb高さが確定している`fixed`・
+    // initial containing block・明示heightのabsoluteで効く。positioned祖先の
+    // cb高さは0(未確定)なのでこのケースには入らない(既知の限界)。
+    if !has_top && has_bottom && cb_rect.height > 0.0 {
+        let mbh = laid.layout.margin_box_height();
+        let target_y = cb_rect.y + cb_rect.height - mbh - bottom;
+        laid = shift_box_y(&laid, margin_box_y - target_y);
+    }
+    pos.out.push(PositionedBox { laid, kind });
+}
+
 /// shrink-to-fit(内容に合わせた)content幅([0047](
 /// ../../../docs/decisions/0047-float-shrink-to-fit-design.md)決定1)。
 /// `display: inline-block`のアトミックボックス([0043])とfloatの`width: auto`で
@@ -365,12 +674,32 @@ fn layout_box_impl(
     float_ctx: &mut FloatContext,
     x: f32,
     y: f32,
+    pos: &mut PosCtx,
 ) -> LaidOutBox {
     let (style, padding, border, mut margin, content_width) =
         resolve_box_geometry(b, styles, fonts, containing_width, forced_content_width);
 
     let content_x = x + margin.left + border.left + padding.left;
     let mut content_y = y + margin.top + border.top + padding.top;
+
+    // positioned要素(relative/absolute/fixed)は、子孫の`absolute`の
+    // containing blockを自分のpadding boxにする([0049](
+    // ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定2)。
+    // 高さは循環を避けるため使わない(bottom配置は非対応、決定3改訂)。
+    let saved_cb = pos.abs_cb;
+    if style.position != Position::Static {
+        if let Some(node) = b.node {
+            pos.abs_cb = AbsCB::Ancestor {
+                node,
+                rect: Rect {
+                    x: content_x - padding.left,
+                    y: content_y - padding.top,
+                    width: padding.left + content_width + padding.right,
+                    height: 0.0,
+                },
+            };
+        }
+    }
 
     let (mut content, content_height) = match &b.content {
         BoxContent::Blocks(children) => {
@@ -379,6 +708,13 @@ fn layout_box_impl(
             let mut laid_children: Vec<LaidOutBox> = Vec::with_capacity(children.len());
             for child in children {
                 let child_style = box_style(child, styles);
+
+                // `position: absolute`/`fixed`はフロー外(スペースを占めない、
+                // [0049]決定1)。containing block基準で配置して`pos.out`へ集める。
+                if child_style.position.is_out_of_flow() {
+                    layout_out_of_flow_child(child, &child_style, styles, fonts, pos);
+                    continue;
+                }
 
                 if child_style.clear != Clear::None {
                     cursor_y = float_ctx.clearance(child_style.clear, cursor_y);
@@ -398,6 +734,7 @@ fn layout_box_impl(
                         float_ctx,
                         content_x,
                         cursor_y,
+                        pos,
                     );
                     let float_top = child_laid.layout.content.y
                         - child_laid.layout.padding.top
@@ -429,6 +766,7 @@ fn layout_box_impl(
                     float_ctx,
                     content_x,
                     cursor_y,
+                    pos,
                 );
                 cursor_y += child_laid.layout.margin_box_height();
                 laid_children.push(child_laid);
@@ -536,6 +874,8 @@ fn layout_box_impl(
             (LaidOutContent::Image(image_content.image.clone()), height)
         }
     };
+    // 子孫のレイアウトが終わったのでcontaining blockを復元する([0049])。
+    pos.abs_cb = saved_cb;
     // taffyが確定した高さを最終レイアウトパスでそのまま反映する
     // (`layout_box_with_forced_size`専用、[0034]決定2)。
     let mut content_height = forced_content_height.unwrap_or(content_height);
@@ -649,6 +989,7 @@ fn layout_float_child(
     float_ctx: &mut FloatContext,
     containing_left: f32,
     preferred_top: f32,
+    pos: &mut PosCtx,
 ) -> LaidOutBox {
     let (_, padding, border, margin, child_content_width) =
         resolve_box_geometry(child, styles, fonts, containing_width, None);
@@ -676,6 +1017,7 @@ fn layout_float_child(
         float_ctx,
         float_x,
         float_y,
+        pos,
     );
     float_ctx.register(
         child_style.float,

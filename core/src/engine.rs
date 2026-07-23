@@ -49,7 +49,7 @@ use crate::html::{collect_anchor_targets, find_base_href, Dom, NodeId, Streaming
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
-    layout_document_from, paginate_document, paginate_document_streaming,
+    layout_document_from, paginate_document, paginate_document_with_absolutes,
     resolve_background_images, resolve_border, resolve_images, resolve_lpa_or_zero,
     resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
 };
@@ -635,26 +635,22 @@ impl<S: Sink> Engine<S> {
         // `styles`から一度だけ構築できる([0017]決定2)。
         let background_images = resolve_background_images(&styles, &image_cache);
 
-        let mut write_error: Option<S::Error> = None;
-        paginate_document_streaming(
+        // `Mode::Batch`は全ページを確定させてから絶対配置([0049](
+        // ../docs/decisions/0049-absolute-fixed-positioning-design.md))を
+        // オーバーレイし、順に書き出す。`fixed`の全ページ複製・`absolute`の
+        // 祖先ページ解決が全ページ確定後でないとできないため、
+        // `paginate_document_streaming`(逐次解放)ではなくこちらを使う。
+        let pages = paginate_document_with_absolutes(
             &mut dom,
             &styles,
             &fonts,
             &page_settings,
             &image_cache,
-            &mut |page| {
-                if write_error.is_some() {
-                    return;
-                }
-                if let Err(e) =
-                    writer.write_page(&page, &styles, &background_images, &fonts, total_pages)
-                {
-                    write_error = Some(e);
-                }
-            },
         );
-        if let Some(e) = write_error {
-            return Err(EngineError::Io(e));
+        for page in &pages {
+            writer
+                .write_page(page, &styles, &background_images, &fonts, total_pages)
+                .map_err(EngineError::Io)?;
         }
 
         writer.finish(&fonts).map_err(EngineError::Io)

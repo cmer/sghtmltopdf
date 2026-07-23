@@ -72,10 +72,8 @@ pub enum PropertyDeclaration {
     Widows(u32),
     Float(Float),
     Clear(Clear),
-    /// `absolute`/`fixed`は非対応
-    /// ([0018](../../../docs/decisions/0018-css21-css3-coverage-strategy.md))。
-    /// `parse_position`がこれらのキーワードをパースエラーとして拒否するため、
-    /// このバリアントは常に`Static`/`Relative`のいずれかを持つ。
+    /// `static`/`relative`/`absolute`/`fixed`([0049](
+    /// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
     Position(Position),
     Top(SpecifiedLengthPercentageOrAuto),
     Right(SpecifiedLengthPercentageOrAuto),
@@ -931,6 +929,8 @@ fn parse_position<'i>(input: &mut Parser<'i, '_>) -> Result<Position, ParseError
     Ok(match_ignore_ascii_case! { &ident,
         "static" => Position::Static,
         "relative" => Position::Relative,
+        "absolute" => Position::Absolute,
+        "fixed" => Position::Fixed,
         _ => return Err(input.new_custom_error(())),
     })
 }

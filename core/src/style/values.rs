@@ -118,15 +118,25 @@ pub enum Clear {
     Both,
 }
 
-/// `position`。`absolute`/`fixed`は
-/// [0018](../../../docs/decisions/0018-css21-css3-coverage-strategy.md)で
-/// 帳票用途での必要性が`relative`より低いと判断し非対応(既存の`border-style`
-/// groove/ridge等と同じパターンで、パース時に宣言ごと無視する)。
+/// `position`。`absolute`/`fixed`は[0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)で対応
+/// (M11 T270。`Mode::Streaming`では無視、決定4)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Position {
     #[default]
     Static,
     Relative,
+    /// 最も近いpositioned祖先(無ければinitial containing block)を基準に配置。
+    Absolute,
+    /// 各ページのコンテンツ領域を基準に、全ページへ繰り返し配置。
+    Fixed,
+}
+
+impl Position {
+    /// フロー外に配置される(通常フローのスペースを占めない)positioning か。
+    pub fn is_out_of_flow(self) -> bool {
+        matches!(self, Position::Absolute | Position::Fixed)
+    }
 }
 
 /// `text-align`。`start`/`end`(bidi対応)は非対応、`direction`自体が非対応のため

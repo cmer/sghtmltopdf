@@ -28,6 +28,6 @@ pub use inline::{shape_standalone_line, LineBox, TextRun};
 pub use page::{PageSettings, PageSize};
 pub(crate) use paginate::collect_completed_subtree_roots;
 pub use paginate::{
-    paginate, paginate_document, paginate_document_streaming, paginate_streaming, Page,
-    StreamingPaginator,
+    paginate, paginate_document, paginate_document_streaming, paginate_document_with_absolutes,
+    paginate_streaming, Page, StreamingPaginator,
 };

@@ -25,9 +25,9 @@ use crate::style::{
 };
 
 use super::block::{
-    box_style, layout_box, layout_box_with_forced_width, resolve_border, resolve_lp,
-    resolve_padding, shift_box_y, shift_content_vertical, LaidOutBox, LaidOutContent, LaidOutTable,
-    LaidOutTableRow,
+    box_style, layout_box_ignoring_positioned, layout_box_with_forced_width_ignoring_positioned,
+    resolve_border, resolve_lp, resolve_padding, shift_box_y, shift_content_vertical, LaidOutBox,
+    LaidOutContent, LaidOutTable, LaidOutTableRow,
 };
 use super::box_tree::{BoxContent, TableBox, TableCell, TableRow};
 use super::float_ctx::FloatContext;
@@ -59,7 +59,7 @@ pub(super) fn layout_table(
     // floatとは独立させる(テーブル本体のセルと同じ方針、[0019]決定1)。
     let laid_caption = table.caption.as_deref().map(|caption| {
         let mut caption_float_ctx = FloatContext::new();
-        layout_box(
+        layout_box_ignoring_positioned(
             caption,
             styles,
             fonts,
@@ -191,7 +191,7 @@ pub(super) fn layout_table(
                     // コンテキストを渡す
                     // ([0019](../../../docs/decisions/0019-float-clear-position-relative-design.md)決定1)。
                     let mut cell_float_ctx = FloatContext::new();
-                    layout_box_with_forced_width(
+                    layout_box_with_forced_width_ignoring_positioned(
                         &gc.cell.content,
                         styles,
                         fonts,

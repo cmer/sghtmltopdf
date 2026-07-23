@@ -39,8 +39,8 @@ use crate::style::{BreakBetween, BreakInside, ComputedStyle};
 use crate::pdf::ImageAssetCache;
 
 use super::block::{
-    layout_document, shift_box_y, FragmentationHints, LaidOutBox, LaidOutContent, LaidOutTable,
-    LaidOutTableRow,
+    layout_document, layout_document_positioned, shift_box_x, shift_box_y, FragmentationHints,
+    LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow, PositionedBox, PositionedKind,
 };
 use super::box_tree::TableSection;
 use super::box_tree::{build_box_tree, resolve_images};
@@ -287,8 +287,119 @@ pub fn paginate_document(
     settings: &PageSettings,
 ) -> Vec<Page> {
     let tree = build_box_tree(dom, styles);
-    let laid_out = layout_document(&tree, styles, fonts, settings.content_width());
-    paginate(&laid_out, settings.content_height())
+    let (laid_out, positioned) = layout_document_positioned(
+        &tree,
+        styles,
+        fonts,
+        (settings.content_width(), settings.content_height()),
+    );
+    let mut pages = paginate(&laid_out, settings.content_height());
+    apply_positioned_overlays(&mut pages, &positioned);
+    pages
+}
+
+/// 絶対配置ボックス([`PositionedBox`])を、属するページへオーバーレイとして
+/// 追加する([0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定1)。
+/// `page.boxes`の末尾に足すので、通常フローの上(最前面)に描かれる(決定5)。
+pub(crate) fn apply_positioned_overlays(pages: &mut [Page], positioned: &[PositionedBox]) {
+    for pb in positioned {
+        match pb.kind {
+            // `fixed`は全ページのコンテンツ領域に、レイアウト座標そのまま。
+            PositionedKind::Fixed => {
+                for page in pages.iter_mut() {
+                    page.boxes.push(pb.laid.clone());
+                }
+            }
+            // positioned祖先が無い`absolute`は最初のページに。
+            PositionedKind::AbsoluteInitial => {
+                if let Some(first) = pages.first_mut() {
+                    first.boxes.push(pb.laid.clone());
+                }
+            }
+            // positioned祖先がある`absolute`は、祖先が現れたページに、祖先の
+            // padding boxのページ内位置とレイアウト時位置の差分だけずらして置く。
+            PositionedKind::AbsoluteAncestor {
+                node,
+                padding_box_origin,
+            } => {
+                if let Some((idx, (px, py))) = find_ancestor_padding_box_origin(pages, node) {
+                    let dx = px - padding_box_origin.0;
+                    let dy = py - padding_box_origin.1;
+                    // `shift_box_y`のdeltaは「引く量」なので、下げるには`-dy`。
+                    let shifted = shift_box_x(&shift_box_y(&pb.laid, -dy), dx);
+                    pages[idx].boxes.push(shifted);
+                }
+            }
+        }
+    }
+}
+
+/// `node`が最初に現れるページと、そのpadding box左上のページ内座標を探す。
+fn find_ancestor_padding_box_origin(pages: &[Page], node: NodeId) -> Option<(usize, (f32, f32))> {
+    for (i, page) in pages.iter().enumerate() {
+        for b in &page.boxes {
+            if let Some(origin) = find_node_padding_origin(b, node) {
+                return Some((i, origin));
+            }
+        }
+    }
+    None
+}
+
+fn find_node_padding_origin(b: &LaidOutBox, node: NodeId) -> Option<(f32, f32)> {
+    if b.node == Some(node) {
+        return Some((
+            b.layout.content.x - b.layout.padding.left,
+            b.layout.content.y - b.layout.padding.top,
+        ));
+    }
+    match &b.content {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => children
+            .iter()
+            .find_map(|c| find_node_padding_origin(c, node)),
+        LaidOutContent::Table(table) => table
+            .caption
+            .as_deref()
+            .and_then(|c| find_node_padding_origin(c, node))
+            .or_else(|| {
+                table
+                    .rows
+                    .iter()
+                    .flat_map(|r| &r.cells)
+                    .find_map(|c| find_node_padding_origin(c, node))
+            }),
+        LaidOutContent::Inline(lines) => lines
+            .iter()
+            .flat_map(|l| &l.atomics)
+            .find_map(|a| find_node_padding_origin(&a.content, node)),
+        LaidOutContent::Image(_) => None,
+    }
+}
+
+/// `Mode::Batch`用: 全ページを確定させてから絶対配置([0049](
+/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))を
+/// オーバーレイして返す。`fixed`の全ページ複製・`absolute`の祖先ページ解決は
+/// 全ページが揃ってからでないとできないため、ストリーミング解放は行わない
+/// (batchは全体をメモリに載せてよい前提)。
+pub fn paginate_document_with_absolutes(
+    dom: &mut Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    image_cache: &ImageAssetCache,
+) -> Vec<Page> {
+    let mut tree = build_box_tree(dom, styles);
+    resolve_images(&mut tree, dom, image_cache);
+    let (laid_out, positioned) = layout_document_positioned(
+        &tree,
+        styles,
+        fonts,
+        (settings.content_width(), settings.content_height()),
+    );
+    let mut pages = paginate(&laid_out, settings.content_height());
+    apply_positioned_overlays(&mut pages, &positioned);
+    pages
 }
 
 /// [`paginate_document`]のストリーミング版。ページが確定するたびに、

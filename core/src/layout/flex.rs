@@ -25,8 +25,8 @@ use crate::style::{
 };
 
 use super::block::{
-    box_style, layout_box_with_forced_size, layout_box_with_forced_width, resolve_border,
-    resolve_padding, LaidOutBox,
+    box_style, layout_box_with_forced_size_ignoring_positioned,
+    layout_box_with_forced_width_ignoring_positioned, resolve_border, resolve_padding, LaidOutBox,
 };
 use super::box_tree::FlexBox;
 use super::float_ctx::FloatContext;
@@ -100,7 +100,7 @@ pub(super) fn layout_flex(
                 let outer_width = width + padding.left + padding.right + border.left + border.right;
 
                 let mut float_ctx = FloatContext::new();
-                let laid = layout_box_with_forced_width(
+                let laid = layout_box_with_forced_width_ignoring_positioned(
                     item,
                     styles,
                     fonts,
@@ -156,7 +156,7 @@ pub(super) fn layout_flex(
         // アイテムごとに独立した`FloatContext`を使う(`table.rs`のセルと同じ
         // 方針)。
         let mut item_float_ctx = FloatContext::new();
-        let laid = layout_box_with_forced_size(
+        let laid = layout_box_with_forced_size_ignoring_positioned(
             item,
             styles,
             fonts,

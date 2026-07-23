@@ -91,6 +91,33 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 `<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
 フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
 
+### `position: absolute`/`fixed`
+
+透かし・印影・カード内ラベル・全ページ共通のヘッダ/フッタ向けに、絶対配置に
+対応した。設計は[0049](docs/decisions/0049-absolute-fixed-positioning-design.md)。
+
+```html
+<div style="position: relative;">
+  <span style="position: absolute; top: 8px; right: 8px;">NEW</span>
+  カード本文
+</div>
+<div style="position: fixed; bottom: 20px; right: 40px;">ページ番号</div>
+```
+
+* `absolute`のcontaining blockは最も近いpositioned祖先(無ければ最初のページ
+  のコンテンツ領域)、`fixed`は各ページのコンテンツ領域で**全ページに繰り返す**
+* `absolute`/`fixed`は`display`が`block`化されるため、`<span>`ベースの
+  ラベルも絶対配置できる
+* top/left/rightで配置。`bottom`はcontaining blockの高さが確定する`fixed`・
+  明示`height`の要素で有効(positioned祖先基準のabsoluteの`bottom`は非対応)
+* 絶対配置はフローから外れ、通常フロー要素の位置に影響しない。描画は通常
+  フローの上(最前面)
+* **`Mode::Batch`でのみ有効**(全ページ確定後にオーバーレイするため。
+  `Mode::Streaming`では絶対配置要素は描画されない)
+* 既知の限界: positioned祖先が複数ページにまたがる場合は祖先の1ページ目に
+  配置。`<table>`/flexコンテナやインラインテキストの途中にある絶対配置、
+  絶対配置要素自身のページ分割は非対応
+
 ### マージン相殺(親子間・空ブロック)
 
 隣接兄弟間に加えて、親子間・空ブロックのマージン相殺(CSS2.1 §8.3.1)に対応した。
@@ -670,7 +697,7 @@ bottom/baseline)・`table-layout`(auto/fixed)・`empty-cells`に対応してい�
 
 CSS2.1の`float`(left/right)・`clear`(left/right/both)、および
 `position: relative`(top/right/bottom/leftによる視覚的オフセット)に対応している。
-`position: absolute`/`fixed`は非対応。
+`position: absolute`/`fixed`にも対応した(下記)。
 
 * floatの周りのinlineコンテンツ(テキスト)は回り込む。floatの高さを過ぎた行は
   元の幅に復帰する

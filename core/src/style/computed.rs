@@ -141,7 +141,7 @@ pub struct ComputedStyle {
     pub float: Float,
     /// `clear`。非継承プロパティ。
     pub clear: Clear,
-    /// `position`。非継承プロパティ。`absolute`/`fixed`は非対応
+    /// `position`。非継承プロパティ([0049])。
     /// ([0018](../../../docs/decisions/0018-css21-css3-coverage-strategy.md))。
     pub position: Position,
     pub top: LengthPercentageOrAuto,
@@ -1069,13 +1069,17 @@ fn compute_element_style(
     let resolved_opacity = opacity.unwrap_or(initial.opacity);
 
     let resolved_float = float.unwrap_or(initial.float);
-    // CSS2.1 9.7: floatが`none`以外なら要素は自動的にblock-levelとして計算される
-    // (`display: inline`でも)。これにより`box_tree.rs::child_kind`の既存の
-    // `Display::Block => ChildKind::Block`分岐がそのまま機能し、box tree構築側に
-    // floatの特殊扱いを持ち込む必要がなくなる([0019](
-    // ../../../docs/decisions/0019-float-clear-position-relative-design.md)決定2)。
+    let resolved_position = position.unwrap_or(initial.position);
+    // CSS2.1 9.7: floatが`none`以外、または`position: absolute`/`fixed`なら
+    // 要素は自動的にblock-levelとして計算される(`display: inline`でも)。
+    // これにより`box_tree.rs::child_kind`の`Block`分岐がそのまま機能し、
+    // インライン要素(`<span style="position: absolute">`)も`box_tree`の
+    // Blocksループで捕捉できる([0019]決定2・[0049](
+    // ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
     let resolved_display = match display.unwrap_or(initial.display) {
-        Display::Inline if resolved_float != Float::None => Display::Block,
+        Display::Inline if resolved_float != Float::None || resolved_position.is_out_of_flow() => {
+            Display::Block
+        }
         other => other,
     };
 
@@ -1196,7 +1200,7 @@ fn compute_element_style(
         widows: widows.unwrap_or(initial.widows),
         float: resolved_float,
         clear: clear.unwrap_or(initial.clear),
-        position: position.unwrap_or(initial.position),
+        position: resolved_position,
         top: resolve_lp_or_auto(top, initial.top),
         right: resolve_lp_or_auto(right, initial.right),
         bottom: resolve_lp_or_auto(bottom, initial.bottom),
@@ -2900,21 +2904,41 @@ mod tests {
     }
 
     #[test]
-    fn position_absolute_and_fixed_are_rejected_as_unsupported() {
+    fn absolute_and_fixed_are_block_level() {
+        // CSS2.1 9.7 / [0049]決定2-0: absolute/fixedはdisplayをblock化する。
+        // これによりインライン要素(span)も絶対配置の対象になる。
+        let dom = html::parse(br#"<span>x</span>"#);
+        let span = find(&dom, dom.document(), "span").expect("span not found");
+        for value in ["absolute", "fixed"] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("span {{ position: {value}; }}")),
+            );
+            assert_eq!(
+                styles[&span].display,
+                super::Display::Block,
+                "position: {value} should block-ify an inline element"
+            );
+        }
+    }
+
+    #[test]
+    fn position_absolute_and_fixed_parse() {
+        // M11 T270([0049])で対応。以前は非対応で`Static`に落としていた。
         let dom = html::parse(br#"<div>a</div>"#);
         let div = find(&dom, dom.document(), "div").expect("div not found");
 
-        for value in ["absolute", "fixed"] {
+        for (value, expected) in [
+            ("absolute", super::Position::Absolute),
+            ("fixed", super::Position::Fixed),
+        ] {
             let styles = compute_styles(
                 &dom,
                 &Stylesheet::default(),
                 &parse_stylesheet(&format!("div {{ position: {value}; }}")),
             );
-            assert_eq!(
-                styles[&div].position,
-                super::Position::Static,
-                "position: {value} should be ignored as an unsupported declaration"
-            );
+            assert_eq!(styles[&div].position, expected);
         }
     }
 
