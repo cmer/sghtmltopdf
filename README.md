@@ -87,7 +87,60 @@ Phase4で対象外候補としていた`opacity`/`transform`にも対応した(`
 UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`、カテゴリC:
 `<hr>`)とPhase 2(カテゴリD: `<colgroup>`/`<col>`、カテゴリE: レガシー表示
 属性、カテゴリF: `<base href>`)、Phase 3のカテゴリG(インライン文脈の
-`vertical-align`)が完了**。
+`vertical-align`)とPhase 3(カテゴリG: `vertical-align`、カテゴリH:
+`<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
+フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
+
+### `display: inline-block`とフォーム要素
+
+```html
+<span style="display: inline-block; width: 120px; border: 1px solid #999;">カード</span>
+<p>お名前: <input type="text" value="山田 太郎"></p>
+<p><input type="checkbox" checked> 資料送付 <select><option selected>法人</option></select></p>
+```
+
+設計は[0043](docs/decisions/0043-inline-block-and-form-controls-design.md)。
+
+* `display: inline-block`は「行に参加する分割不可能な箱」として実装。行の
+  折り返し・行の高さ・`vertical-align`(`top`/`bottom`/長さ)が効く
+* 幅は明示指定があればそれ、無ければ内容の自然幅を使える幅でクランプする
+  (CSS仕様のshrink-to-fitの簡略版。floatと同じ簡略化)
+* ベースラインは**マージンボックスの下端**(CSS仕様の「最後の行ボックスの
+  ベースライン」は非対応の簡略化)
+* フォーム要素(`<input>`/`<select>`/`<textarea>`/`<button>`)は枠線付きの
+  静的な箱として描画する。`value`/`placeholder`/選択中の`<option>`の
+  テキスト、`checked`の塗りつぶし、`disabled`のグレーアウトに対応
+* サイズは`size`/`rows`/`cols`属性ではなくUAスタイルシートの`width`/`height`
+  で決める(文字数からの算出はフォント依存で再現性が低いため)。作者CSSで
+  上書きできる
+* 対象外: インタラクティブなPDFフォーム(AcroForm)、`<progress>`/`<meter>`、
+  `<input type="file|color|range">`の専用UI、`<select multiple>`の複数行表示
+
+### `<a href>`のPDFリンク注釈
+
+```html
+<ul><li><a href="#ch1">第1章</a></li></ul>
+<p><a href="https://example.com">外部リンク</a></p>
+<h2 id="ch1">第1章</h2>
+```
+
+設計は[0042](docs/decisions/0042-link-annotations-design.md)。生成したPDFの
+リンクは実際にクリックできる(`/Annots`+`/Link`注釈)。
+
+* 外部URL(`http(s)`/`mailto:`等)は`/URI`アクション。`<base href>`が絶対URL
+  なら相対hrefを解決してから書く
+* 内部アンカー(`#id`)は**名前付き宛先**(カタログの`/Dests`)を使う。
+  注釈側は名前だけを書き、名前→ページの対応表は最後にまとめて書くため、
+  **目次から後続ページへの前方参照も、`Mode::Streaming`で解決できる**
+* 複数行に折り返されたリンクは行ごとに別々の注釈矩形になる(各行が
+  クリック可能)。矩形の縦位置はランのascent〜descent(`vertical-align`の
+  ずれ込み)
+* アンカー対象は`id`属性を持つ要素と`<a name>`。ただし**インライン要素は
+  独立したボックスを持たないため位置を特定できず、宛先が生成されない**
+  (リンク自体は書かれるが、クリックしても何も起きない)
+* `javascript:`スキームのhrefは注釈を生成しない。`target`/`rel`/`download`は
+  無視する
+* PDFブックマーク(アウトライン)・タグ付きPDFは対象外
 
 ### `vertical-align`(インライン文脈)
 

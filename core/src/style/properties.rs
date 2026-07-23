@@ -805,6 +805,7 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
     Ok(match_ignore_ascii_case! { &ident,
         "block" => Display::Block,
         "inline" => Display::Inline,
+        "inline-block" => Display::InlineBlock,
         "table" => Display::Table,
         "table-row" => Display::TableRow,
         "table-cell" => Display::TableCell,

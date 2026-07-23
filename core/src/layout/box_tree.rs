@@ -137,6 +137,14 @@ pub struct InlineSpan {
     /// `true`のとき`text`は`"\n"`で、`node`は`<br>`要素自身(空行の高さを
     /// その計算スタイルから求めるため)。
     pub is_forced_break: bool,
+    /// `display: inline-block`のアトミックボックス([0043](
+    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+    /// `Some`のとき`text`は空で、このスパンは「テキストではなく1つの箱」を表す。
+    pub atomic: Option<Box<LayoutBox>>,
+    /// このテキストを囲む`<a href>`のhref値([0042](
+    /// ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
+    /// 同じリンク配下に多数のランが生成されるため`Rc`で共有する。
+    pub link: Option<Rc<str>>,
     /// このテキストを囲む**インライン要素**(`<mark>`/`<span>`等)の
     /// `background-color`。無ければ透明。
     ///
@@ -149,19 +157,34 @@ pub struct InlineSpan {
 }
 
 impl InlineSpan {
-    /// 通常のテキスト区間(インライン背景なし)。
+    /// 通常のテキスト区間(囲むインライン要素の装飾なし)。
     fn text(node: NodeId, text: String) -> Self {
-        Self::text_with_background(node, text, RgbaColor::TRANSPARENT)
+        Self::text_in_inline_context(node, text, &InlineContext::default())
     }
 
-    /// 通常のテキスト区間(囲むインライン要素の背景色つき)。
-    fn text_with_background(node: NodeId, text: String, background_color: RgbaColor) -> Self {
+    /// 通常のテキスト区間(囲むインライン要素から受け継ぐ情報つき)。
+    fn text_in_inline_context(node: NodeId, text: String, context: &InlineContext) -> Self {
         Self {
             node,
             text,
             is_first_letter: false,
             is_forced_break: false,
-            background_color,
+            atomic: None,
+            link: context.link.clone(),
+            background_color: context.background_color,
+        }
+    }
+
+    /// `display: inline-block`のアトミックボックス([0043]決定1)。
+    fn atomic(node: NodeId, atomic: LayoutBox) -> Self {
+        Self {
+            node,
+            text: String::new(),
+            is_first_letter: false,
+            is_forced_break: false,
+            atomic: Some(Box::new(atomic)),
+            link: None,
+            background_color: RgbaColor::TRANSPARENT,
         }
     }
 
@@ -176,6 +199,28 @@ impl InlineSpan {
             text: "\n".to_string(),
             is_first_letter: false,
             is_forced_break: true,
+            atomic: None,
+            link: None,
+            background_color: RgbaColor::TRANSPARENT,
+        }
+    }
+}
+
+/// インラインフォーマッティングコンテキストを下りながら受け継ぐ情報
+/// (囲んでいるインライン要素に由来し、テキストノードの計算スタイルからは
+/// 復元できないもの)。
+#[derive(Debug, Clone)]
+struct InlineContext {
+    /// 直近の`<a href>`のhref([0042]決定1)。
+    link: Option<Rc<str>>,
+    /// 直近のインライン要素が指定した背景色([0041])。
+    background_color: RgbaColor,
+}
+
+impl Default for InlineContext {
+    fn default() -> Self {
+        Self {
+            link: None,
             background_color: RgbaColor::TRANSPARENT,
         }
     }
@@ -407,6 +452,8 @@ fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<Inlin
             text: first_letter_text,
             is_first_letter: true,
             is_forced_break: false,
+            atomic: None,
+            link: spans[span_index].link.clone(),
             background_color: spans[span_index].background_color,
         },
     );
@@ -562,6 +609,159 @@ fn collect_column_widths(
     widths
 }
 
+/// フォームコントロールの表示テキストを生成する([0043](
+/// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定4)。
+///
+/// `<input>`はvoid要素でテキストノードを持たないため、`value`/`placeholder`
+/// 属性から生成する必要がある。`<select>`は選択中の`<option>`のテキストを
+/// 表示する(`<option>`自身はUAスタイルシートで`display: none`のまま)。
+fn push_form_control_content(
+    dom: &Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    node: NodeId,
+    out: &mut Vec<InlineSpan>,
+) {
+    let NodeData::Element { name, attrs, .. } = &dom.node(node).data else {
+        return;
+    };
+    let attr = |key: &str| {
+        attrs
+            .iter()
+            .find(|a| &*a.name.local == key)
+            .map(|a| a.value.to_string())
+    };
+
+    let text = match &*name.local {
+        "input" => {
+            let input_type = attr("type").unwrap_or_else(|| "text".to_string());
+            match input_type.trim().to_ascii_lowercase().as_str() {
+                // チェックボックス・ラジオは枠と塗りだけで表す(決定4)。
+                "checkbox" | "radio" | "hidden" | "file" | "color" | "range" => None,
+                "submit" => Some(attr("value").unwrap_or_else(|| "Submit".to_string())),
+                "reset" => Some(attr("value").unwrap_or_else(|| "Reset".to_string())),
+                _ => attr("value").or_else(|| attr("placeholder")),
+            }
+        }
+        // `<select>`は`selected`が付いた`<option>`、無ければ最初の`<option>`。
+        "select" => selected_option_text(dom, node),
+        _ => None,
+    };
+
+    if let Some(text) = text.filter(|t| !t.is_empty()) {
+        let mut span = InlineSpan::text(node, text);
+        // 生成テキストは要素自身の計算スタイルで描画する(`::before`と同じ扱い)。
+        span.background_color = styles
+            .get(&node)
+            .map(|s| s.background_color)
+            .filter(|c| c.alpha > 0.0)
+            .unwrap_or(RgbaColor::TRANSPARENT);
+        out.push(span);
+    }
+}
+
+/// `<select>`の表示テキスト(選択中の`<option>`、無ければ最初の`<option>`)。
+fn selected_option_text(dom: &Dom, select: NodeId) -> Option<String> {
+    let mut first: Option<String> = None;
+    let mut stack: Vec<NodeId> = dom.children(select).collect();
+    stack.reverse();
+    while let Some(node) = stack.pop() {
+        let NodeData::Element { name, attrs, .. } = &dom.node(node).data else {
+            continue;
+        };
+        match &*name.local {
+            "option" => {
+                let text = collect_text_content(dom, node);
+                if attrs.iter().any(|a| &*a.name.local == "selected") {
+                    return Some(text);
+                }
+                if first.is_none() && !text.is_empty() {
+                    first = Some(text);
+                }
+            }
+            // `<optgroup>`の中の`<option>`も対象にする。
+            "optgroup" => {
+                let mut children: Vec<NodeId> = dom.children(node).collect();
+                children.reverse();
+                stack.extend(children);
+            }
+            _ => {}
+        }
+    }
+    first
+}
+
+/// `node`以下のテキストノードを連結する(前後の空白は落とす)。
+fn collect_text_content(dom: &Dom, node: NodeId) -> String {
+    fn walk(dom: &Dom, node: NodeId, out: &mut String) {
+        if let NodeData::Text { contents } = &dom.node(node).data {
+            out.push_str(contents);
+        }
+        for child in dom.children(node) {
+            walk(dom, child, out);
+        }
+    }
+    let mut out = String::new();
+    walk(dom, node, &mut out);
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `display: inline-block`要素の中身を、通常のブロックと同じ規則で組み立てる
+/// ([0043](../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+fn build_inline_block_box(
+    dom: &Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    node: NodeId,
+) -> Option<LayoutBox> {
+    let child_ids: Vec<NodeId> = dom.children(node).collect();
+    let has_block_child = child_ids
+        .iter()
+        .any(|&c| child_kind(dom, styles, c) == ChildKind::Block);
+
+    let content = if has_block_child {
+        BoxContent::Blocks(build_children_boxes(dom, styles, &child_ids, 1))
+    } else {
+        let style = styles.get(&node)?;
+        let mut spans = Vec::new();
+        push_before_content(styles, node, &mut spans);
+        push_form_control_content(dom, styles, node, &mut spans);
+        for &child in &child_ids {
+            if child_kind(dom, styles, child) == ChildKind::Inline {
+                collect_spans(dom, styles, child, &mut spans);
+            }
+        }
+        push_after_content(styles, node, &mut spans);
+        apply_first_letter(node, style, &mut spans);
+        BoxContent::Inline(spans)
+    };
+
+    Some(LayoutBox {
+        node: Some(node),
+        content,
+        marker: None,
+    })
+}
+
+/// `node`が`href`を持つ`<a>`要素であれば、その値([0042](
+/// ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
+/// `javascript:`スキームはリンクとして扱わない(決定6)。
+fn link_href(dom: &Dom, node: NodeId) -> Option<Rc<str>> {
+    let NodeData::Element { name, attrs, .. } = &dom.node(node).data else {
+        return None;
+    };
+    if &*name.local != "a" {
+        return None;
+    }
+    let href = attrs
+        .iter()
+        .find(|attr| &*attr.name.local == "href")
+        .map(|attr| attr.value.trim())
+        .filter(|href| !href.is_empty())?;
+    if href.len() >= 11 && href[..11].eq_ignore_ascii_case("javascript:") {
+        return None;
+    }
+    Some(Rc::from(href))
+}
+
 fn element_local_name(dom: &Dom, node: NodeId) -> Option<String> {
     match &dom.node(node).data {
         NodeData::Element { name, .. } => Some(name.local.to_string()),
@@ -709,6 +909,9 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
                 return ChildKind::Block;
             }
             match display {
+                // `inline-block`は親の行に参加する(中身はブロックとして
+                // レイアウトされる、[0043]決定1)。
+                Some(Display::InlineBlock) => ChildKind::Inline,
                 Some(Display::Block)
                 | Some(Display::Table)
                 | Some(Display::ListItem)
@@ -746,23 +949,23 @@ fn collect_spans(
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {
-    collect_spans_with_background(dom, styles, node, RgbaColor::TRANSPARENT, out)
+    collect_spans_in_context(dom, styles, node, &InlineContext::default(), out)
 }
 
-/// [`collect_spans`]の本体。`background`は「このノードを囲むインライン要素が
-/// 指定した背景色」(IFCの外側=ブロックの背景は含まない)。
-fn collect_spans_with_background(
+/// [`collect_spans`]の本体。`context`は「このノードを囲むインライン要素から
+/// 受け継ぐ情報」(IFCの外側=ブロック側の指定は含まない)。
+fn collect_spans_in_context(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
     node: NodeId,
-    background: RgbaColor,
+    context: &InlineContext,
     out: &mut Vec<InlineSpan>,
 ) {
     match &dom.node(node).data {
-        NodeData::Text { contents } => out.push(InlineSpan::text_with_background(
+        NodeData::Text { contents } => out.push(InlineSpan::text_in_inline_context(
             node,
             contents.clone(),
-            background,
+            context,
         )),
         NodeData::Element { name, .. } => {
             // インライン文脈の子孫にも`display: none`を効かせる。`child_kind`は
@@ -780,16 +983,32 @@ fn collect_spans_with_background(
                 out.push(InlineSpan::forced_break(node));
                 return;
             }
+            // `display: inline-block`は1つの箱として行に参加する([0043]決定1)。
+            // 中身は通常のブロックと同じ規則で構築する。
+            if styles.get(&node).map(|s| s.display) == Some(Display::InlineBlock) {
+                if let Some(mut atomic) = build_inline_block_box(dom, styles, node) {
+                    atomic.marker = None;
+                    out.push(InlineSpan::atomic(node, atomic));
+                }
+                return;
+            }
             // このインライン要素自身が背景色を持つなら、以降の子孫はその背景で
             // 塗られる(入れ子の場合は内側が勝つ、CSSの背景の重なりの簡略化)。
-            let background = styles
+            // `<a href>`のリンクも同様に、以降の子孫へ受け継がれる。
+            let mut context = context.clone();
+            if let Some(background) = styles
                 .get(&node)
                 .map(|s| s.background_color)
                 .filter(|c| c.alpha > 0.0)
-                .unwrap_or(background);
+            {
+                context.background_color = background;
+            }
+            if let Some(href) = link_href(dom, node) {
+                context.link = Some(href);
+            }
             push_before_content(styles, node, out);
             for child in dom.children(node) {
-                collect_spans_with_background(dom, styles, child, background, out);
+                collect_spans_in_context(dom, styles, child, &context, out);
             }
             push_after_content(styles, node, out);
         }

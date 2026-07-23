@@ -137,13 +137,17 @@ fn option_text_does_not_leak_into_the_document() {
 }
 
 #[test]
-fn form_control_inside_an_inline_context_is_hidden_too() {
-    // 回帰テスト: `collect_spans`が`display: none`を見ていなかったため、
-    // インライン文脈(<p>の中)にあるコントロールの中身だけは漏れていた。
-    assert_eq!(
-        text_of(r#"<p>a <select><option>LEAK</option></select> b</p>"#),
-        "a b"
+fn a_form_control_inside_a_paragraph_does_not_leak_text_into_the_flow() {
+    // 元は「`collect_spans`が`display: none`を見ていなかったためコントロールの
+    // 中身が本文に漏れる」回帰テスト。M10カテゴリI([0043])でフォーム要素は
+    // `display: inline-block`の箱になったため、選択肢のテキストは箱の中に入り、
+    // 本文の行(runs)には現れない。
+    let text = text_of(r#"<p>a <select><option>INSIDE</option></select> b</p>"#);
+    assert!(
+        !text.contains("INSIDE"),
+        "the option text must stay inside the control box, got {text:?}"
     );
+    assert!(text.starts_with("a") && text.ends_with("b"), "got {text:?}");
 }
 
 #[test]

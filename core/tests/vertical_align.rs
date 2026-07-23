@@ -209,3 +209,85 @@ fn an_inline_background_moves_with_a_raised_run() {
     // 背景の矩形はランのascent/descentから作られるため、メトリクスが要る。
     assert!(raised.ascent > 0.0 && raised.descent > 0.0);
 }
+
+#[test]
+fn probe_block_heights() {
+    let (_, laid) = layout(
+        r#"<p>text <span class="b">B</span> tail</p><p><span class="c">C1<br>L2</span> <span class="c">C2</span></p><p>after</p>"#,
+        ".b { display: inline-block; padding: 2px 8px; } .c { display: inline-block; width: 100px; border: 1px solid #999; }",
+    );
+    let dom2 = html::parse(r#"<p>text <span class="b">B</span> tail</p><p><span class="c">C1<br>L2</span> <span class="c">C2</span></p><p>after</p>"#.as_bytes());
+    let styles2 = compute_styles(&dom2, &user_agent_stylesheet(), &parse_stylesheet(".b { display: inline-block; padding: 2px 8px; } .c { display: inline-block; width: 100px; border: 1px solid #999; }"));
+    let pages = paginate_document(&dom2, &styles2, &test_fonts(), &PageSettings::default());
+    for (i, page) in pages.iter().enumerate() {
+        fn dump(b: &LaidOutBox, page: usize, depth: usize) {
+            match &b.content {
+                LaidOutContent::Inline(lines) => {
+                    for l in lines {
+                        println!(
+                            "P{page}{:i$} LINE y={} h={} atomics={}",
+                            "",
+                            l.rect.y,
+                            l.rect.height,
+                            l.atomics.len(),
+                            i = depth * 2
+                        );
+                        for a in &l.atomics {
+                            println!(
+                                "P{page}{:i$}   ATOMIC y={} h={}",
+                                "",
+                                a.content.layout.content.y,
+                                a.content.layout.content.height,
+                                i = depth * 2
+                            );
+                        }
+                    }
+                }
+                LaidOutContent::Blocks(children) => {
+                    println!(
+                        "P{page}{:i$} BLOCK node={:?} y={}",
+                        "",
+                        b.node,
+                        b.layout.content.y,
+                        i = depth * 2
+                    );
+                    for c in children {
+                        dump(c, page, depth + 1)
+                    }
+                }
+                _ => {}
+            }
+        }
+        for b in &page.boxes {
+            dump(b, i, 0);
+        }
+    }
+
+    fn walk(b: &LaidOutBox, depth: usize) {
+        println!(
+            "{:i$}box node={:?} content={:?}",
+            "",
+            b.node,
+            b.layout.content,
+            i = depth * 2
+        );
+        if let LaidOutContent::Blocks(children) = &b.content {
+            for c in children {
+                walk(c, depth + 1)
+            }
+        }
+        if let LaidOutContent::Inline(lines) = &b.content {
+            for l in lines {
+                println!(
+                    "{:i$}  line y={} h={} atomics={}",
+                    "",
+                    l.rect.y,
+                    l.rect.height,
+                    l.atomics.len(),
+                    i = depth * 2
+                );
+            }
+        }
+    }
+    walk(&laid, 0);
+}

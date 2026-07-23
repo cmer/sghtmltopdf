@@ -3,5 +3,8 @@
 mod dom;
 mod parse;
 
-pub use dom::{find_base_href, is_stylesheet_link, Children, Dom, Node, NodeData, NodeId};
+pub use dom::{
+    collect_anchor_targets, find_base_href, is_stylesheet_link, Children, Dom, Node, NodeData,
+    NodeId,
+};
 pub use parse::{parse, StreamingParser};

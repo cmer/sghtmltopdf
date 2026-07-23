@@ -5,7 +5,9 @@ mod font;
 mod img;
 mod streaming;
 
-pub use document::{encode_pdf, write_document};
+pub use document::{
+    anchor_destination_name, encode_pdf, encode_pdf_with_anchors, write_document, LinkSettings,
+};
 pub use font::{embed_font, FontIds};
 pub use img::{ImageAssetCache, ImagePlane, PlaneColorSpace, PreparedImage};
 pub use streaming::StreamingPdfWriter;

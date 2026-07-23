@@ -15,17 +15,23 @@
 //!   という単純化した判定にとどめる
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::fonts::{measure_text, shape_text, FontCollection, ShapedGlyph};
 use crate::html::NodeId;
 use crate::style::{
-    ComputedStyle, FontStyle, FontWeight, LengthPercentage, LineHeight, RgbaColor, TextAlign,
-    TextTransform, VerticalAlign, WhiteSpace,
+    BoxSizing, ComputedStyle, FontStyle, FontWeight, LengthPercentage, LengthPercentageOrAuto,
+    LineHeight, RgbaColor, TextAlign, TextTransform, VerticalAlign, WhiteSpace,
 };
 
-use super::box_tree::InlineSpan;
+use super::block::LaidOutBox;
+use super::box_tree::{InlineSpan, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::Rect;
+
+/// `display: inline-block`のプレースホルダ文字(U+FFFC OBJECT REPLACEMENT
+/// CHARACTER)。実際には描画されず、行組みが箱の位置を保つためだけに使う。
+const ATOMIC_PLACEHOLDER: char = '\u{FFFC}';
 
 /// 同一スタイル・同一フォントで連続する区間(1単語の一部、または1単語全体)。
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +40,10 @@ pub struct TextRun {
     pub font_index: usize,
     pub font_size: f32,
     pub color: RgbaColor,
+    /// このランを囲む`<a href>`のhref値([0042](
+    /// ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
+    /// PDF層がこの値ごとに`/Link`注釈を作る。
+    pub link: Option<Rc<str>>,
     /// このランの`background-color`。インライン要素の背景は、そのランの
     /// (ascent〜descentの)矩形として描画層が塗る([0041](
     /// ../../../docs/decisions/0041-inline-vertical-align-design.md)で
@@ -75,7 +85,7 @@ pub struct TextRun {
     pub(super) vertical_align: VerticalAlign,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct LineBox {
     pub rect: Rect,
     pub runs: Vec<TextRun>,
@@ -84,6 +94,26 @@ pub struct LineBox {
     /// 保持する([0041](
     /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
     pub baseline: f32,
+    /// この行に置かれた`display: inline-block`のボックス([0043](
+    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+    pub atomics: Vec<AtomicInline>,
+}
+
+/// 行に置かれたアトミックインラインボックス(`display: inline-block`)。
+#[derive(Debug, Clone)]
+pub struct AtomicInline {
+    /// レイアウト済みの中身。座標は`layout::block`が行の位置確定後に補正する。
+    pub content: LaidOutBox,
+    /// 行ボックス左端からのx方向オフセット。
+    pub x_offset: f32,
+    /// マージンボックスの寸法(行送り・折り返し判定に使う)。
+    pub margin_box_width: f32,
+    pub margin_box_height: f32,
+    /// `vertical-align`によるベースラインからのずれ(px、正=上)。
+    pub baseline_shift: f32,
+    /// このボックスの`vertical-align`(行の高さ確定後に`top`/`bottom`を
+    /// 解決するために保持する、[0041]決定2と同じ扱い)。
+    pub(super) vertical_align: VerticalAlign,
 }
 
 /// 1文字とその文字が属する[`InlineSpan`](=計算スタイル)への参照。
@@ -91,6 +121,11 @@ pub struct LineBox {
 struct StyledChar {
     ch: char,
     style_index: usize,
+    /// `display: inline-block`のプレースホルダなら、その`InlineSpan`の
+    /// インデックス([0043](
+    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+    /// `ch`はU+FFFC(OBJECT REPLACEMENT CHARACTER)。
+    atomic_span: Option<usize>,
     /// `<br>`由来の強制改行文字かどうか([0037](
     /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
     /// `ch`は`'\n'`。`white-space: pre`の経路はこのフラグを見ずに`'\n'`だけで
@@ -101,12 +136,20 @@ struct StyledChar {
 /// 通常フロー(`white-space: normal`/`nowrap`)の行組みの入力単位
 /// ([0037]決定2)。
 enum InlineItem<'a> {
-    Word(&'a [StyledChar]),
+    Word {
+        chars: &'a [StyledChar],
+        /// 直前に空白があったか(単語間スペースを入れるかの判定)。
+        space_before: bool,
+    },
+    /// `display: inline-block`の箱([0043]決定1)。`span_index`は`InlineSpan`の
+    /// インデックス。
+    Atomic {
+        span_index: usize,
+        space_before: bool,
+    },
     /// `<br>`由来の強制改行。`style_index`は`<br>`要素自身のスタイル
     /// (空行の高さ算出に使う)。
-    ForcedBreak {
-        style_index: usize,
-    },
+    ForcedBreak { style_index: usize },
 }
 
 /// `spans`(テキストノード単位の区間列)を`available_width`に収まるよう行分割し、
@@ -133,27 +176,40 @@ pub(crate) fn layout_inline_content(
         return Vec::new();
     }
 
-    let (chars, span_styles) = flatten_spans(spans, styles);
+    let (chars, span_styles, span_links) = flatten_spans(spans, styles);
     // `text-align`/`text-indent`/`white-space`はIFC内の先頭spanの計算値で
     // 代表する(無名ボックスのbox_style欠陥を回避する設計、[0020]決定4)。
-    let white_space = span_styles
-        .first()
-        .map(|s| s.white_space)
-        .unwrap_or_default();
-    let text_align = span_styles
-        .first()
-        .map(|s| s.text_align)
-        .unwrap_or_default();
+    // ただし`display: inline-block`のスパンは**除外**する([0043](
+    // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1):
+    // 箱は独自のIFCを内側に持つため、その`white-space`等が親の行組みを
+    // 支配してはいけない(UAスタイルシートが`input`に付ける
+    // `white-space: pre`が段落全体をpre扱いにしてしまう)。
+    // 箱しか無いIFC(`<p><input></p>`等)ではテキスト由来の代表値が存在しない
+    // ため、初期値(`white-space: normal`/`text-align: left`/`text-indent: 0`)を
+    // 使う(既知の簡略化: この場合コンテナの`text-align`は効かない)。
+    let representative = spans
+        .iter()
+        .position(|span| span.atomic.is_none())
+        .and_then(|i| span_styles.get(i));
+    let white_space = representative.map(|s| s.white_space).unwrap_or_default();
+    let text_align = representative.map(|s| s.text_align).unwrap_or_default();
     // パーセンテージはこのIFCのcontaining width(`available_width`)基準で解決する
     // (`width`/`margin`と同じ「使用値は使う側で解決」パターン)。
-    let text_indent = span_styles
-        .first()
+    let text_indent = representative
         .map(|s| resolve_length_percentage(s.text_indent, available_width))
         .unwrap_or(0.0);
     if white_space == WhiteSpace::Pre {
+        // `white-space: pre`の経路は`display: inline-block`の箱を扱えない
+        // (既知の限界)。プレースホルダ文字がそのままグリフとして描かれるのを
+        // 防ぐため、ここで取り除く。
+        let chars: Vec<StyledChar> = chars
+            .into_iter()
+            .filter(|sc| sc.atomic_span.is_none())
+            .collect();
         return layout_pre_content(
             &chars,
             &span_styles,
+            &span_links,
             fonts,
             available_width,
             origin_x,
@@ -169,6 +225,7 @@ pub(crate) fn layout_inline_content(
 
     let mut lines = Vec::new();
     let mut current_runs: Vec<TextRun> = Vec::new();
+    let mut current_atomics: Vec<AtomicInline> = Vec::new();
     let mut current_width = 0.0f32;
     let mut cursor_y = origin_y;
     let mut line_left = origin_x;
@@ -182,10 +239,97 @@ pub(crate) fn layout_inline_content(
     let mut trailing_break_height: Option<f32> = None;
 
     for item in items {
-        let word = match item {
-            InlineItem::Word(word) => {
+        let (word, word_space_before) = match item {
+            InlineItem::Word {
+                chars,
+                space_before,
+            } => {
                 trailing_break_height = None;
-                word
+                (chars, space_before)
+            }
+            InlineItem::Atomic {
+                span_index,
+                space_before,
+            } => {
+                trailing_break_height = None;
+                let Some(atomic) = spans.get(span_index).and_then(|s| s.atomic.as_deref()) else {
+                    continue;
+                };
+                let style = span_styles.get(span_index).cloned().unwrap_or_default();
+
+                // 空行の場合は先に帯を引く(通常の単語と同じ手順)。
+                if current_runs.is_empty() && current_atomics.is_empty() {
+                    (line_left, line_available_width) =
+                        line_band(float_ctx, cursor_y, 0.0, origin_x, available_width);
+                    if lines.is_empty() {
+                        line_left += text_indent;
+                        line_available_width -= text_indent;
+                    }
+                }
+
+                let laid = layout_atomic_inline(atomic, styles, fonts, line_available_width);
+                let margin_box_width = margin_box_width_of(&laid);
+                let margin_box_height = laid.layout.margin_box_height();
+
+                let gap_width = if space_before {
+                    current_runs
+                        .last()
+                        .map(|last| {
+                            measure_space_width(fonts, last.font_index, last.font_size)
+                                + last.word_spacing
+                        })
+                        .unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                let line_is_empty = current_runs.is_empty() && current_atomics.is_empty();
+
+                // 行に収まらなければ先に改行する(箱自体は分割しない、決定3)。
+                if !line_is_empty
+                    && white_space != WhiteSpace::Nowrap
+                    && current_width + gap_width + margin_box_width > line_available_width
+                {
+                    let line_height = line_height_for(&current_runs);
+                    lines.push(finish_line(
+                        std::mem::take(&mut current_runs),
+                        std::mem::take(&mut current_atomics),
+                        current_width,
+                        line_left,
+                        cursor_y,
+                        line_height,
+                        fonts,
+                    ));
+                    apply_text_align(
+                        lines.last_mut().expect("just pushed"),
+                        text_align,
+                        false,
+                        line_available_width,
+                        &word_boundaries,
+                    );
+                    word_boundaries.clear();
+                    cursor_y += lines.last().expect("just pushed").rect.height;
+                    current_width = 0.0;
+                    (line_left, line_available_width) = line_band(
+                        float_ctx,
+                        cursor_y,
+                        margin_box_height,
+                        origin_x,
+                        available_width,
+                    );
+                } else if !line_is_empty {
+                    current_width += gap_width;
+                }
+
+                current_atomics.push(AtomicInline {
+                    content: laid,
+                    x_offset: current_width,
+                    margin_box_width,
+                    margin_box_height,
+                    baseline_shift: 0.0,
+                    vertical_align: style.vertical_align,
+                });
+                current_width += margin_box_width;
+                continue;
             }
             InlineItem::ForcedBreak { style_index } => {
                 // 強制改行は行幅の残りに関係なく行を確定させる
@@ -194,12 +338,13 @@ pub(crate) fn layout_inline_content(
                     .get(style_index)
                     .map(resolve_line_height)
                     .unwrap_or(0.0);
-                if current_runs.is_empty() {
+                if current_runs.is_empty() && current_atomics.is_empty() {
                     // 行に何も無い状態での強制改行(連続する`<br>`や
                     // 段落先頭の`<br>`)は、高さだけを持つ空行になる(決定2-2)。
                     (line_left, line_available_width) =
                         line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
                     lines.push(finish_line(
+                        Vec::new(),
                         Vec::new(),
                         0.0,
                         line_left,
@@ -212,6 +357,7 @@ pub(crate) fn layout_inline_content(
                     let line_height = line_height_for(&current_runs);
                     lines.push(finish_line(
                         std::mem::take(&mut current_runs),
+                        std::mem::take(&mut current_atomics),
                         current_width,
                         line_left,
                         cursor_y,
@@ -244,7 +390,7 @@ pub(crate) fn layout_inline_content(
                 continue;
             }
         };
-        let word_runs = split_word_into_runs(word, &span_styles, fonts);
+        let word_runs = split_word_into_runs(word, &span_styles, &span_links, fonts);
 
         // 単語内であっても、CJK文字が絡む改行可能な境界ごとに「まとめて
         // 1行に収まるか判定する最小単位」(chunk)へグループ化する。空白による
@@ -252,7 +398,7 @@ pub(crate) fn layout_inline_content(
         for (chunk_index, chunk) in group_into_chunks(word_runs).into_iter().enumerate() {
             let chunk_width: f32 = chunk.iter().map(|r| r.width).sum();
             let is_first_chunk_of_word = chunk_index == 0;
-            let starting_new_line = current_runs.is_empty();
+            let starting_new_line = current_runs.is_empty() && current_atomics.is_empty();
 
             if starting_new_line {
                 // 新しい行の先頭: floatに応じた帯を、このchunkのフォントサイズ
@@ -271,7 +417,7 @@ pub(crate) fn layout_inline_content(
 
             // 単語の先頭のchunkにのみ、直前のランとの間に単語間スペースを
             // 挟む。単語内のCJK境界で分かれた後続chunkは隙間0で直接続ける。
-            let gap_width = if is_first_chunk_of_word {
+            let gap_width = if is_first_chunk_of_word && word_space_before {
                 current_runs
                     .last()
                     .map(|last| {
@@ -290,6 +436,7 @@ pub(crate) fn layout_inline_content(
                 let line_height = line_height_for(&current_runs);
                 lines.push(finish_line(
                     std::mem::take(&mut current_runs),
+                    std::mem::take(&mut current_atomics),
                     current_width,
                     line_left,
                     cursor_y,
@@ -327,10 +474,14 @@ pub(crate) fn layout_inline_content(
         }
     }
 
-    if !current_runs.is_empty() {
+    // 行にテキストが1つも無く`display: inline-block`の箱だけが載っている場合も
+    // 行として確定させる([0043]決定1。`current_runs`だけを見ていると
+    // `<p><input></p>`のような行がまるごと捨てられる)。
+    if !current_runs.is_empty() || !current_atomics.is_empty() {
         let line_height = line_height_for(&current_runs);
         lines.push(finish_line(
             current_runs,
+            current_atomics,
             current_width,
             line_left,
             cursor_y,
@@ -350,6 +501,7 @@ pub(crate) fn layout_inline_content(
         // [0037]決定2-3)。
         let (left, _) = line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
         lines.push(finish_line(
+            Vec::new(),
             Vec::new(),
             0.0,
             left,
@@ -429,9 +581,13 @@ fn line_band(
 fn flatten_spans(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, ComputedStyle>,
-) -> (Vec<StyledChar>, Vec<ComputedStyle>) {
+) -> (Vec<StyledChar>, Vec<ComputedStyle>, Vec<Option<Rc<str>>>) {
     let mut chars = Vec::new();
     let mut span_styles = Vec::with_capacity(spans.len());
+    // スパンと同じインデックスで引く`<a href>`([0042](
+    // ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
+    // CSSプロパティではないため`ComputedStyle`には載せない。
+    let mut span_links: Vec<Option<Rc<str>>> = Vec::with_capacity(spans.len());
     // spanを跨いでも語頭判定を継続する(先頭は語頭扱い)。
     let mut prev_is_boundary = true;
 
@@ -448,6 +604,21 @@ fn flatten_spans(
         let style_index = span_styles.len();
         let transform = style.text_transform;
         span_styles.push(style);
+        span_links.push(span.link.clone());
+
+        if span.atomic.is_some() {
+            // `display: inline-block`は文字列を持たないため、位置を保つための
+            // プレースホルダを1つだけ置く([0043](
+            // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+            chars.push(StyledChar {
+                ch: ATOMIC_PLACEHOLDER,
+                style_index,
+                atomic_span: Some(style_index),
+                is_forced_break: false,
+            });
+            prev_is_boundary = false;
+            continue;
+        }
 
         for ch in span.text.chars() {
             let is_word_start = prev_is_boundary;
@@ -455,13 +626,14 @@ fn flatten_spans(
             chars.push(StyledChar {
                 ch: transformed,
                 style_index,
+                atomic_span: None,
                 is_forced_break: span.is_forced_break,
             });
             prev_is_boundary = ch.is_whitespace();
         }
     }
 
-    (chars, span_styles)
+    (chars, span_styles, span_links)
 }
 
 /// `style.first_letter_style`(あれば)で対応するプロパティのみを上書きする
@@ -516,23 +688,49 @@ fn apply_text_transform(ch: char, transform: TextTransform, is_word_start: bool)
 fn split_into_items(chars: &[StyledChar]) -> Vec<InlineItem<'_>> {
     let mut items = Vec::new();
     let mut word_start = 0usize;
+    // 直前に空白があったか(単語間スペースを入れるかの判定、[0043]決定3)。
+    let mut space_pending = false;
 
     for (i, sc) in chars.iter().enumerate() {
+        if let Some(span_index) = sc.atomic_span {
+            if word_start < i {
+                items.push(InlineItem::Word {
+                    chars: &chars[word_start..i],
+                    space_before: space_pending,
+                });
+                space_pending = false;
+            }
+            items.push(InlineItem::Atomic {
+                span_index,
+                space_before: space_pending,
+            });
+            space_pending = false;
+            word_start = i + 1;
+            continue;
+        }
         if !sc.ch.is_whitespace() {
             continue;
         }
         if word_start < i {
-            items.push(InlineItem::Word(&chars[word_start..i]));
+            items.push(InlineItem::Word {
+                chars: &chars[word_start..i],
+                space_before: space_pending,
+            });
         }
+        space_pending = true;
         if sc.is_forced_break {
             items.push(InlineItem::ForcedBreak {
                 style_index: sc.style_index,
             });
+            space_pending = false;
         }
         word_start = i + 1;
     }
     if word_start < chars.len() {
-        items.push(InlineItem::Word(&chars[word_start..]));
+        items.push(InlineItem::Word {
+            chars: &chars[word_start..],
+            space_before: space_pending,
+        });
     }
 
     items
@@ -546,6 +744,7 @@ fn split_into_items(chars: &[StyledChar]) -> Vec<InlineItem<'_>> {
 fn split_word_into_runs(
     word: &[StyledChar],
     span_styles: &[ComputedStyle],
+    span_links: &[Option<Rc<str>>],
     fonts: &FontCollection,
 ) -> Vec<TextRun> {
     let mut runs = Vec::new();
@@ -577,12 +776,9 @@ fn split_word_into_runs(
             current_text.push(sc.ch);
         } else {
             if let Some((style_index, fi)) = current {
-                runs.push(shape_run(
-                    &current_text,
-                    fi,
-                    fonts,
-                    &span_styles[style_index],
-                ));
+                let mut run = shape_run(&current_text, fi, fonts, &span_styles[style_index]);
+                run.link = span_links.get(style_index).cloned().flatten();
+                runs.push(run);
             }
             current_text = sc.ch.to_string();
             current = Some((sc.style_index, font_index));
@@ -590,12 +786,9 @@ fn split_word_into_runs(
         last_char = Some(sc.ch);
     }
     if let Some((style_index, fi)) = current {
-        runs.push(shape_run(
-            &current_text,
-            fi,
-            fonts,
-            &span_styles[style_index],
-        ));
+        let mut run = shape_run(&current_text, fi, fonts, &span_styles[style_index]);
+        run.link = span_links.get(style_index).cloned().flatten();
+        runs.push(run);
     }
 
     runs
@@ -674,9 +867,11 @@ fn resolve_line_height(style: &ComputedStyle) -> f32 {
 /// `split_word_into_runs`/`group_into_chunks`は変更せず再利用できるが、
 /// `group_into_chunks`はCJK境界の改行可能判定用でpreでは折り返さないため
 /// 使わず、`split_word_into_runs`の結果をそのまま1行に連結する。
+#[allow(clippy::too_many_arguments)]
 fn layout_pre_content(
     chars: &[StyledChar],
     span_styles: &[ComputedStyle],
+    span_links: &[Option<Rc<str>>],
     fonts: &FontCollection,
     available_width: f32,
     origin_x: f32,
@@ -710,6 +905,7 @@ fn layout_pre_content(
             // 連続改行による空行。高さだけ消費するダミー行。
             lines.push(finish_line(
                 Vec::new(),
+                Vec::new(),
                 0.0,
                 line_left,
                 cursor_y,
@@ -720,7 +916,7 @@ fn layout_pre_content(
             continue;
         }
 
-        let runs = split_word_into_runs(segment, span_styles, fonts);
+        let runs = split_word_into_runs(segment, span_styles, span_links, fonts);
         let mut current_width = 0.0;
         let mut placed_runs = Vec::with_capacity(runs.len());
         for mut run in runs {
@@ -731,6 +927,7 @@ fn layout_pre_content(
         let line_height = line_height_for(&placed_runs);
         lines.push(finish_line(
             placed_runs,
+            Vec::new(),
             current_width,
             line_left,
             cursor_y,
@@ -774,6 +971,7 @@ pub(super) fn shape_run(
         font_index,
         font_size,
         color: style.color,
+        link: None,
         background_color: style.background_color,
         bold: needs_synthetic_bold,
         italic: needs_synthetic_italic,
@@ -840,7 +1038,15 @@ pub fn shape_standalone_line(
     // margin box用の単一行も通常の行と同じ経路でベースラインを確定させる
     // (`vertical-align`が効くわけではないが、`LineBox::baseline`を持たせる
     // 責務を1箇所にまとめるため)。
-    finish_line(runs, x_cursor, origin_x, origin_y, max_height, fonts)
+    finish_line(
+        runs,
+        Vec::new(),
+        x_cursor,
+        origin_x,
+        origin_y,
+        max_height,
+        fonts,
+    )
 }
 
 fn measure_space_width(fonts: &FontCollection, font_index: usize, font_size: f32) -> f32 {
@@ -864,6 +1070,7 @@ fn line_height_for(runs: &[TextRun]) -> f32 {
 /// 高さもベースライン位置も従来と完全に一致する。
 pub(super) fn finish_line(
     mut runs: Vec<TextRun>,
+    mut atomics: Vec<AtomicInline>,
     width: f32,
     x: f32,
     y: f32,
@@ -871,6 +1078,20 @@ pub(super) fn finish_line(
     fonts: &FontCollection,
 ) -> LineBox {
     resolve_baseline_shifts(&mut runs, fonts);
+    // アトミックボックスはマージンボックスの下端をベースラインに合わせる
+    // ([0043](../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定2)。
+    // つまりascent=マージンボックス高さ・descent=0として行に参加する。
+    for atomic in atomics.iter_mut() {
+        atomic.baseline_shift = match atomic.vertical_align {
+            VerticalAlign::LengthPercentage(LengthPercentage::Length(px)) => px,
+            VerticalAlign::LengthPercentage(LengthPercentage::Percentage(fraction)) => {
+                height * fraction
+            }
+            // `sub`/`super`/`text-*`/`middle`は箱に対する厳密な定義が
+            // 本エンジンの簡略化(決定2)と噛み合わないため、`baseline`扱い。
+            _ => 0.0,
+        };
+    }
 
     // `line-height`だけで決まる(=`vertical-align`が無いときの)ベースライン位置。
     // 単一フォントの行では`Font::baseline_offset`と一致する。
@@ -881,6 +1102,23 @@ pub(super) fn finish_line(
     }
     let mut above = baseline;
     let mut below = height - baseline;
+
+    // アトミックボックスは**必ず**行の高さに参加する(下端=ベースライン、決定2)。
+    // テキストランと違い`top`/`bottom`でも除外しない: 箱しか無い行
+    // (`<p><input></p>`や並べたカード)で行の高さが0になり、後続の内容と
+    // 重なってしまうため。`top`/`bottom`の場合は「行の高さが箱の高さ以上」で
+    // ありさえすればよく、実際の位置は行の寸法確定後に決める。
+    for atomic in atomics.iter() {
+        if matches!(
+            atomic.vertical_align,
+            VerticalAlign::Top | VerticalAlign::Bottom
+        ) {
+            above = above.max(atomic.margin_box_height);
+        } else {
+            above = above.max(atomic.margin_box_height + atomic.baseline_shift);
+            below = below.max(-atomic.baseline_shift);
+        }
+    }
 
     // ずらされたランだけを、行ボックスからはみ出す分について考慮する。
     // `baseline_shift`が0のランは行の高さに影響しないため、`vertical-align`を
@@ -894,18 +1132,33 @@ pub(super) fn finish_line(
         below = below.max(run.descent - run.baseline_shift);
     }
 
-    let line_height = if runs.is_empty() {
+    let line_height = if runs.is_empty() && atomics.is_empty() {
         height
     } else {
         above + below
     };
-    let baseline = if runs.is_empty() { 0.0 } else { above };
+    let baseline = if runs.is_empty() && atomics.is_empty() {
+        0.0
+    } else {
+        above
+    };
 
     // 行ボックスの寸法が決まってはじめて解決できる値(決定3)。
     for run in &mut runs {
         match run.vertical_align {
             VerticalAlign::Top => run.baseline_shift = baseline - run.ascent,
             VerticalAlign::Bottom => run.baseline_shift = -(line_height - baseline - run.descent),
+            _ => {}
+        }
+    }
+    // アトミックボックスの`top`/`bottom`も同様(箱はascent=マージンボックス
+    // 高さ・descent=0として扱う、決定2)。
+    for atomic in &mut atomics {
+        match atomic.vertical_align {
+            VerticalAlign::Top => {
+                atomic.baseline_shift = baseline - atomic.margin_box_height;
+            }
+            VerticalAlign::Bottom => atomic.baseline_shift = -(line_height - baseline),
             _ => {}
         }
     }
@@ -919,7 +1172,68 @@ pub(super) fn finish_line(
         },
         runs,
         baseline,
+        atomics,
     }
+}
+
+/// `display: inline-block`の中身をレイアウトする([0043]決定1-1・1-2)。
+/// 新しいBlock Formatting Contextを確立するため、空の`FloatContext`を渡す。
+/// 幅は明示指定があればそれ、無ければ内容の自然幅を使える幅でクランプする。
+fn layout_atomic_inline(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    available_width: f32,
+) -> LaidOutBox {
+    let style = b
+        .node
+        .and_then(|n| styles.get(&n))
+        .cloned()
+        .unwrap_or_default();
+    let padding = super::block::resolve_padding(&style, available_width);
+    let border = super::block::resolve_border(&style);
+
+    // 通常フロー用の`resolve_width_and_horizontal_margins`は使わない。あの関数の
+    // over-constrained規則(CSS2.1 §10.3.3、width/margin両方が非autoのとき
+    // margin-rightを残り幅いっぱいに再計算する)はインラインレベルの箱には
+    // 適用されず、そのまま通すと巨大なmargin-rightが行送りの幅に混入する
+    // (floatが同じ理由で迂回している、[0019](
+    // ../../../docs/decisions/0019-float-clear-position-relative-design.md)決定4)。
+    // 代わりに使用content幅を自分で決めて`forced_content_width`として渡す。
+    let content_width = match style.width {
+        LengthPercentageOrAuto::LengthPercentage(lp) => {
+            let width = super::block::resolve_lp(lp, available_width);
+            if style.box_sizing == BoxSizing::BorderBox {
+                (width - padding.left - padding.right - border.left - border.right).max(0.0)
+            } else {
+                width
+            }
+        }
+        // shrink-to-fit相当([0043]決定1-2): 内容の自然幅を使える幅でクランプ。
+        LengthPercentageOrAuto::Auto => {
+            let natural = super::table::measure_natural_content_width(&b.content, styles, fonts);
+            let outer = padding.left + padding.right + border.left + border.right;
+            natural.min((available_width - outer).max(0.0)).max(0.0)
+        }
+    };
+
+    let mut float_ctx = FloatContext::new();
+    super::block::layout_box_with_forced_width(
+        b,
+        styles,
+        fonts,
+        available_width,
+        content_width,
+        &mut float_ctx,
+        0.0,
+        0.0,
+    )
+}
+
+/// マージンボックスの幅(行送りに使う)。
+fn margin_box_width_of(b: &LaidOutBox) -> f32 {
+    let border_box = b.layout.border_box();
+    b.layout.margin.left + border_box.width + b.layout.margin.right
 }
 
 /// 各ランの`vertical-align`から`baseline_shift`(px、正=上)を求める。
@@ -1177,7 +1491,17 @@ mod tests {
         let with_empty_ctx =
             layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, Some(&empty_ctx));
 
-        assert_eq!(with_none, with_empty_ctx);
+        // `LineBox`は`display: inline-block`のボックス([0043])を含むように
+        // なりPartialEqを持たないため、行の幾何とテキストで比較する。
+        assert_eq!(with_none.len(), with_empty_ctx.len());
+        for (a, b) in with_none.iter().zip(with_empty_ctx.iter()) {
+            assert_eq!(a.rect, b.rect);
+            assert_eq!(a.baseline, b.baseline);
+            assert_eq!(
+                line_texts(std::slice::from_ref(a)),
+                line_texts(std::slice::from_ref(b))
+            );
+        }
     }
 
     #[test]

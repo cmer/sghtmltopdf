@@ -864,6 +864,14 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
     let shift = line.rect.y - *cursor;
     let mut translated = line.clone();
     translated.rect.y -= shift;
+    // 行内の`display: inline-block`ボックス([0043](
+    // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))も
+    // 行と一緒に動かす(行のrectだけを動かすと箱が元の位置に取り残される)。
+    // `shift_box_y`の`delta`は引く量(`rect.y -= delta`)なので、行の
+    // `rect.y -= shift`と同じ移動量は`shift`をそのまま渡せばよい。
+    for atomic in translated.atomics.iter_mut() {
+        atomic.content = shift_box_y(&atomic.content, shift);
+    }
 
     let fragment = LaidOutBox {
         node: None,

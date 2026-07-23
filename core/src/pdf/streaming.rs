@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use pdf_writer::writers::Catalog;
-use pdf_writer::{Chunk, Content, Filter, Finish, Rect as PdfRect, Ref};
+use pdf_writer::{Chunk, Content, Filter, Finish, Name, Rect as PdfRect, Ref};
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
@@ -28,8 +28,9 @@ use crate::sink::Sink;
 use crate::style::{ComputedStyle, PageRule};
 
 use super::document::{
-    alpha_gs_resource_name, collect_image_uses, collect_margin_box_usage, collect_opacity_uses,
-    collect_usage, render_box, render_margin_boxes, write_resources, RefAllocator, ALPHA_STEPS,
+    alpha_gs_resource_name, collect_anchor_positions, collect_image_uses, collect_link_areas,
+    collect_margin_box_usage, collect_opacity_uses, collect_usage, render_box, render_margin_boxes,
+    write_link_annotation, write_resources, LinkSettings, RefAllocator, ALPHA_STEPS,
 };
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
 use super::img::{embed_image_streaming_chunks, ids_for_image, ImageIds, PreparedImage};
@@ -66,15 +67,25 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// 決定1)。バッチモード(`encode_pdf`)と同じく文書全体で1回だけ確保する。
     alpha_gs_ids: Vec<Ref>,
     alpha_gs_names: Vec<String>,
+    /// リンク注釈の生成設定([0042](
+    /// ../../../docs/decisions/0042-link-annotations-design.md))。
+    links: LinkSettings,
+    /// これまでに書いたページで見つかったアンカーの位置
+    /// (名前, ページのRef, x, y)。`finish`で`/Dests`辞書として書き出す。
+    destinations: Vec<(String, Ref, f32, f32)>,
 }
 
 impl<S: Sink> StreamingPdfWriter<S> {
     /// 新しいライターを作り、PDFファイルヘッダを即座に`sink`へ書き出す。
+    /// `links`は内部アンカーの対応表と`<base href>`([`LinkSettings`])。
+    /// 既定値なら外部リンクの注釈だけを生成する([0042](
+    /// ../../../docs/decisions/0042-link-annotations-design.md)決定5)。
     pub fn new(
         fonts: &FontCollection,
         settings: PageSettings,
         mut sink: S,
         page_rules: Vec<PageRule>,
+        links: LinkSettings,
     ) -> Result<Self, S::Error> {
         sink.write(PDF_HEADER)?;
 
@@ -112,6 +123,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
             page_rules,
             alpha_gs_ids: alpha_gs_ids.clone(),
             alpha_gs_names,
+            links,
+            destinations: Vec::new(),
         };
         for (step, id) in alpha_gs_ids.into_iter().enumerate() {
             let a = step as f32 / ALPHA_STEPS as f32;
@@ -230,6 +243,38 @@ impl<S: Sink> StreamingPdfWriter<S> {
         content_stream.finish();
         self.write_chunk(content_id, &chunk)?;
 
+        // `<a href>`の注釈と、このページに落ちたアンカーの位置([0042])。
+        // 注釈は名前付き宛先を参照するだけなので、後方のページを指すリンクも
+        // このページの時点で書き切れる(決定3-1)。
+        let mut page_links = Vec::new();
+        let mut page_anchors = Vec::new();
+        for b in &page.boxes {
+            collect_link_areas(b, &self.settings, &mut page_links);
+            collect_anchor_positions(
+                b,
+                &self.links.anchor_names,
+                &self.settings,
+                &mut page_anchors,
+            );
+        }
+        for (name, x, y) in page_anchors {
+            if !self
+                .destinations
+                .iter()
+                .any(|(existing, ..)| *existing == name)
+            {
+                self.destinations.push((name, page_id, x, y));
+            }
+        }
+        let mut annotation_ids = Vec::with_capacity(page_links.len());
+        for area in &page_links {
+            let id = self.alloc.next();
+            annotation_ids.push(id);
+            let mut chunk = Chunk::new();
+            write_link_annotation(chunk.annotation(id), area, self.links.base_href.as_deref());
+            self.write_chunk(id, &chunk)?;
+        }
+
         let form_refs: Vec<Ref> = pending_forms.iter().map(|(id, _)| *id).collect();
         let mut chunk = Chunk::new();
         {
@@ -242,6 +287,9 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 self.settings.size.height,
             ));
             p.contents(content_id);
+            if !annotation_ids.is_empty() {
+                p.annotations(annotation_ids.iter().copied());
+            }
             write_resources(
                 p.resources(),
                 &self.font_resource_names,
@@ -301,11 +349,32 @@ impl<S: Sink> StreamingPdfWriter<S> {
             .count(self.page_ids.len() as i32);
         self.write_chunk(self.pages_tree_id, &chunk)?;
 
+        // 名前付き宛先はすべてのページを書き終えたこの時点で解決する
+        // ([0042]決定3-1)。前方参照のリンクもここで初めて宛先が定まる。
+        let destinations = std::mem::take(&mut self.destinations);
+        let dests_id = (!destinations.is_empty()).then(|| self.alloc.next());
+        if let Some(dests_id) = dests_id {
+            let mut chunk = Chunk::new();
+            {
+                let mut dests = chunk.destinations(dests_id);
+                for (name, page_id, x, y) in &destinations {
+                    dests
+                        .insert(Name(name.as_bytes()))
+                        .page(*page_id)
+                        .xyz(*x, *y, None);
+                }
+            }
+            self.write_chunk(dests_id, &chunk)?;
+        }
+
         let mut chunk = Chunk::new();
-        chunk
-            .indirect(self.catalog_id)
-            .start::<Catalog>()
-            .pages(self.pages_tree_id);
+        {
+            let mut catalog = chunk.indirect(self.catalog_id).start::<Catalog>();
+            catalog.pages(self.pages_tree_id);
+            if let Some(dests_id) = dests_id {
+                catalog.destinations(dests_id);
+            }
+        }
         self.write_chunk(self.catalog_id, &chunk)?;
 
         self.write_xref_and_trailer()?;
@@ -400,8 +469,14 @@ mod tests {
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
-            .expect("new should not fail");
+        let mut writer = StreamingPdfWriter::new(
+            &fonts,
+            settings,
+            MemorySink::new(),
+            Vec::new(),
+            LinkSettings::default(),
+        )
+        .expect("new should not fail");
         for page in &pages {
             writer
                 .write_page(page, &styles, &HashMap::new(), &fonts, None)
@@ -443,8 +518,14 @@ mod tests {
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         assert!(pages.len() > 1, "expected multiple pages");
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
-            .expect("new should not fail");
+        let mut writer = StreamingPdfWriter::new(
+            &fonts,
+            settings,
+            MemorySink::new(),
+            Vec::new(),
+            LinkSettings::default(),
+        )
+        .expect("new should not fail");
         for page in &pages {
             writer
                 .write_page(page, &styles, &HashMap::new(), &fonts, None)
@@ -467,8 +548,14 @@ mod tests {
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
-            .expect("new should not fail");
+        let mut writer = StreamingPdfWriter::new(
+            &fonts,
+            settings,
+            MemorySink::new(),
+            Vec::new(),
+            LinkSettings::default(),
+        )
+        .expect("new should not fail");
         for page in &pages {
             writer
                 .write_page(page, &styles, &HashMap::new(), &fonts, None)
@@ -504,8 +591,14 @@ mod tests {
         let pages1 = paginate_document(&dom1, &styles1, &fonts, &settings);
         let pages2 = paginate_document(&dom2, &styles2, &fonts, &settings);
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
-            .expect("new should not fail");
+        let mut writer = StreamingPdfWriter::new(
+            &fonts,
+            settings,
+            MemorySink::new(),
+            Vec::new(),
+            LinkSettings::default(),
+        )
+        .expect("new should not fail");
         for page in &pages1 {
             writer
                 .write_page(page, &styles1, &HashMap::new(), &fonts, None)
@@ -542,8 +635,14 @@ mod tests {
         let laid_out =
             crate::layout::layout_document(&tree, &styles, &fonts, settings.content_width());
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, MemorySink::new(), Vec::new())
-            .expect("new should not fail");
+        let mut writer = StreamingPdfWriter::new(
+            &fonts,
+            settings,
+            MemorySink::new(),
+            Vec::new(),
+            LinkSettings::default(),
+        )
+        .expect("new should not fail");
         let mut page_count = 0usize;
         paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
             writer
@@ -590,8 +689,9 @@ mod tests {
             Ok(())
         });
 
-        let mut writer = StreamingPdfWriter::new(&fonts, settings, sink, Vec::new())
-            .expect("new should not fail");
+        let mut writer =
+            StreamingPdfWriter::new(&fonts, settings, sink, Vec::new(), LinkSettings::default())
+                .expect("new should not fail");
         for page in &pages {
             writer
                 .write_page(page, &styles, &HashMap::new(), &fonts, None)

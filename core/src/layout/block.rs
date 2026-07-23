@@ -405,7 +405,7 @@ fn layout_box_impl(
             (LaidOutContent::Blocks(laid_children), height)
         }
         BoxContent::Inline(spans) => {
-            let lines = layout_inline_content(
+            let mut lines = layout_inline_content(
                 spans,
                 styles,
                 fonts,
@@ -414,6 +414,10 @@ fn layout_box_impl(
                 content_y,
                 Some(&*float_ctx),
             );
+            // 行内の`display: inline-block`ボックスは、行の位置が確定した
+            // この時点で最終座標へ移動させる([0043](
+            // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+            place_atomic_inlines(&mut lines);
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
             let height = resolve_height(
                 &style,
@@ -564,6 +568,7 @@ fn layout_list_marker(
     let height = run.line_height;
     Some(finish_line(
         vec![run],
+        Vec::new(),
         width,
         content_x - LIST_MARKER_GAP - width,
         content_y,
@@ -863,6 +868,73 @@ pub(crate) fn resolve_width_and_horizontal_margins(
 /// 1ページ全体の連続座標からページ内相対座標への変換に使う(`delta`を引く)。
 /// `table.rs`がcaptionを`caption-side: bottom`で配置する際にも使う(`delta`に
 /// 負の値を渡すことで下方向に移動する)。
+/// 各行のアトミックインラインボックス(`display: inline-block`)を、行の
+/// 確定した位置(`line.rect`とベースライン)に合わせて移動する。
+///
+/// `layout::inline`は行の縦位置が決まる前に中身をレイアウトする(原点0,0)ため、
+/// ここでまとめて平行移動する。縦は「マージンボックスの下端がベースラインに
+/// 乗る」([0043]決定2)ように置く。
+fn place_atomic_inlines(lines: &mut [LineBox]) {
+    for line in lines.iter_mut() {
+        let baseline_y = line.rect.y + line.baseline;
+        for atomic in line.atomics.iter_mut() {
+            // マージンボックス左上の目標位置。
+            let target_x = line.rect.x + atomic.x_offset;
+            let target_y = baseline_y - atomic.baseline_shift - atomic.margin_box_height;
+            // 現在のマージンボックス左上(原点0でレイアウトしてあるので、
+            // content座標からmargin/border/paddingを引けば求まる)。
+            let layout = atomic.content.layout;
+            let current_x =
+                layout.content.x - layout.padding.left - layout.border.left + -layout.margin.left;
+            let current_y =
+                layout.content.y - layout.padding.top - layout.border.top - layout.margin.top;
+            // `shift_box_y`の`delta`は**引く**量(`shift_rect_y`が`y -= delta`)
+            // である点に注意。`shift_box_x`は逆に足す量。
+            atomic.content = shift_box_x(
+                &shift_box_y(&atomic.content, current_y - target_y),
+                target_x - current_x,
+            );
+        }
+    }
+}
+
+/// [`shift_box_y`]のx方向版(アトミックインラインボックスの水平配置に使う)。
+pub(super) fn shift_box_x(b: &LaidOutBox, delta: f32) -> LaidOutBox {
+    let mut b = b.clone();
+    b.layout.content.x += delta;
+    if let Some(marker) = &mut b.marker {
+        marker.rect.x += delta;
+    }
+
+    match &mut b.content {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+            for child in children.iter_mut() {
+                *child = shift_box_x(child, delta);
+            }
+        }
+        LaidOutContent::Inline(lines) => {
+            for line in lines.iter_mut() {
+                line.rect.x += delta;
+                for atomic in line.atomics.iter_mut() {
+                    atomic.content = shift_box_x(&atomic.content, delta);
+                }
+            }
+        }
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &mut table.caption {
+                **caption = shift_box_x(caption, delta);
+            }
+            for row in table.rows.iter_mut() {
+                for cell in row.cells.iter_mut() {
+                    *cell = shift_box_x(cell, delta);
+                }
+            }
+        }
+        LaidOutContent::Image(_) => {}
+    }
+    b
+}
+
 pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     let mut b = b.clone();
     shift_rect_y(&mut b.layout.content, delta);
@@ -879,6 +951,10 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         LaidOutContent::Inline(lines) => {
             for line in lines.iter_mut() {
                 shift_rect_y(&mut line.rect, delta);
+                // 行内のアトミックボックスも行と一緒に動かす([0043]決定1)。
+                for atomic in line.atomics.iter_mut() {
+                    atomic.content = shift_box_y(&atomic.content, delta);
+                }
             }
         }
         LaidOutContent::Table(table) => {
@@ -921,6 +997,10 @@ pub(super) fn shift_content_vertical(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         LaidOutContent::Inline(lines) => {
             for line in lines.iter_mut() {
                 shift_rect_y(&mut line.rect, delta);
+                // 行内のアトミックボックスも行と一緒に動かす([0043]決定1)。
+                for atomic in line.atomics.iter_mut() {
+                    atomic.content = shift_box_y(&atomic.content, delta);
+                }
             }
         }
         LaidOutContent::Table(table) => {

@@ -47,11 +47,12 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use pdf_writer::types::{LineCapStyle, TextRenderingMode};
+use pdf_writer::types::{ActionType, AnnotationType, LineCapStyle, TextRenderingMode};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
+use crate::img::resolve_against_base_href;
 use crate::layout::{
     resolve_border, shape_standalone_line, EdgeSizes, FragmentPosition, LaidOutBox, LaidOutContent,
     LaidOutTableRow, Layout, LineBox, Page, PageSettings, Rect,
@@ -74,6 +75,30 @@ pub fn encode_pdf(
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
+) -> Vec<u8> {
+    encode_pdf_with_anchors(
+        pages,
+        styles,
+        background_images,
+        fonts,
+        settings,
+        &LinkSettings::default(),
+    )
+}
+
+/// [`encode_pdf`]に、内部アンカー(`<a href="#id">`)の対応表を渡せるようにした版。
+///
+/// `links`は内部アンカーの対応表と`<base href>`([`LinkSettings`])。
+/// 既定値を渡した場合は外部リンクの注釈だけが生成される([0042](
+/// ../../../docs/decisions/0042-link-annotations-design.md)決定5。既存の
+/// `encode_pdf`のシグネチャを変えずに済ませるための分割)。
+pub fn encode_pdf_with_anchors(
+    pages: &[Page],
+    styles: &HashMap<NodeId, ComputedStyle>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    links: &LinkSettings,
 ) -> Vec<u8> {
     let mut pdf = Pdf::new();
     let mut alloc = RefAllocator::default();
@@ -130,6 +155,9 @@ pub fn encode_pdf(
     // ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
     let mut image_ids: HashMap<usize, ImageIds> = HashMap::new();
     let mut page_ids = Vec::with_capacity(pages.len());
+    // 名前付き宛先(`/Dests`)は全ページを書き終えてから解決する([0042]決定3-1)。
+    let mut destinations: Vec<(String, Ref, f32, f32)> = Vec::new();
+    let mut link_annotations: Vec<(Ref, LinkArea)> = Vec::new();
     for page in pages {
         let page_id = alloc.next();
         let content_id = alloc.next();
@@ -179,6 +207,27 @@ pub fn encode_pdf(
         }
         let content_bytes = content.finish();
 
+        // `<a href>`の注釈と、このページに落ちたアンカーの位置を集める([0042])。
+        let mut page_links = Vec::new();
+        let mut page_anchors = Vec::new();
+        for b in &page.boxes {
+            collect_link_areas(b, settings, &mut page_links);
+            collect_anchor_positions(b, &links.anchor_names, settings, &mut page_anchors);
+        }
+        for (name, x, y) in page_anchors {
+            if !destinations.iter().any(|(existing, ..)| *existing == name) {
+                destinations.push((name, page_id, x, y));
+            }
+        }
+        let page_annotation_ids: Vec<Ref> = page_links
+            .into_iter()
+            .map(|area| {
+                let id = alloc.next();
+                link_annotations.push((id, area));
+                id
+            })
+            .collect();
+
         let form_refs: Vec<Ref> = pending_forms.iter().map(|(id, _)| *id).collect();
         let mut p = pdf.page(page_id);
         p.parent(pages_tree_id);
@@ -189,6 +238,9 @@ pub fn encode_pdf(
             settings.size.height,
         ));
         p.contents(content_id);
+        if !page_annotation_ids.is_empty() {
+            p.annotations(page_annotation_ids.iter().copied());
+        }
         write_resources(
             p.resources(),
             &font_resource_names,
@@ -231,12 +283,87 @@ pub fn encode_pdf(
         }
     }
 
+    // 注釈本体を書く。内部アンカーは名前付き宛先を参照するだけなので、
+    // 対象がどのページにあるか(前方参照かどうか)を気にしなくてよい([0042]決定3-1)。
+    for (id, area) in &link_annotations {
+        write_link_annotation(pdf.annotation(*id), area, links.base_href.as_deref());
+    }
+
+    let dests_id = (!destinations.is_empty()).then(|| alloc.next());
+    if let Some(dests_id) = dests_id {
+        let mut dests = pdf.destinations(dests_id);
+        for (name, page_id, x, y) in &destinations {
+            dests
+                .insert(Name(name.as_bytes()))
+                .page(*page_id)
+                .xyz(*x, *y, None);
+        }
+    }
+
     pdf.pages(pages_tree_id)
         .kids(page_ids.iter().copied())
         .count(page_ids.len() as i32);
-    pdf.catalog(catalog_id).pages(pages_tree_id);
+    let mut catalog = pdf.catalog(catalog_id);
+    catalog.pages(pages_tree_id);
+    if let Some(dests_id) = dests_id {
+        catalog.destinations(dests_id);
+    }
+    catalog.finish();
 
     pdf.finish()
+}
+
+/// `/Link`注釈1つを書く([0042](
+/// ../../../docs/decisions/0042-link-annotations-design.md)決定3)。
+/// 内部アンカー(`#id`)は名前付き宛先(`/Dest`)を、外部リンクは
+/// `/URI`アクションを書く。
+pub(super) fn write_link_annotation(
+    mut annotation: pdf_writer::writers::Annotation<'_>,
+    area: &LinkArea,
+    base_href: Option<&str>,
+) {
+    annotation.subtype(AnnotationType::Link);
+    annotation.rect(PdfRect::new(area.x0, area.y0, area.x1, area.y1));
+    // 既定の枠線(ビューアによっては黒枠が出る)を消す。
+    annotation.border(0.0, 0.0, 0.0, None);
+
+    match internal_anchor_target(&area.href) {
+        // 名前を書くだけなので、対象がまだ書き出していない後方のページに
+        // あっても構わない([0042]決定3-1)。対象が存在しない場合は
+        // `/Dests`に名前が現れず、ビューアはクリックしても何もしない。
+        Some(id) => {
+            let name = anchor_destination_name(id);
+            annotation.pair(Name(b"Dest"), Name(name.as_bytes()));
+        }
+        None => {
+            // 相対URLのままではPDFビューアが解決できないため、`<base href>`が
+            // 絶対URLなら解決してから書く([0042]決定3)。
+            let uri = resolve_against_base_href(base_href, &area.href);
+            annotation
+                .action()
+                .action_type(ActionType::Uri)
+                .uri(pdf_writer::Str(uri.as_bytes()));
+        }
+    }
+}
+
+/// アンカーの`id`から、PDFの名前付き宛先で使う名前を作る。
+///
+/// `id`の値をそのまま名前オブジェクトにすると、空白・`#`・区切り文字の
+/// エスケープが必要になる。ASCIIの英数字と`-`/`_`だけを残し、それ以外を
+/// `_`に置き換えた上で接頭辞を付ける(衝突しても「同じ名前の宛先が最初の
+/// 1つに解決される」だけで壊れない)。
+pub fn anchor_destination_name(id: &str) -> String {
+    let mut name = String::with_capacity(id.len() + 2);
+    name.push_str("a_");
+    for ch in id.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            name.push(ch);
+        } else {
+            name.push('_');
+        }
+    }
+    name
 }
 
 /// [`crate::layout::paginate_document`]の結果を、実際に`sink`へ書き出すところまで行う。
@@ -309,6 +436,12 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
         LaidOutContent::Inline(lines) => {
             for line in lines {
                 collect_line_usage(line, fonts, usages);
+                // 行内の`display: inline-block`([0043](
+                // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))
+                // の中身も同じ文書のグリフを使う。
+                for atomic in &line.atomics {
+                    collect_usage(&atomic.content, fonts, usages);
+                }
             }
         }
         LaidOutContent::Table(table) => {
@@ -374,8 +507,168 @@ pub(super) fn collect_image_uses(
             }
         }
         LaidOutContent::Image(Some(image)) => push_unique_image(out, image),
-        LaidOutContent::Image(None) | LaidOutContent::Inline(_) => {}
+        LaidOutContent::Inline(lines) => {
+            for line in lines {
+                for atomic in &line.atomics {
+                    collect_image_uses(&atomic.content, background_images, out);
+                }
+            }
+        }
+        LaidOutContent::Image(None) => {}
     }
+}
+
+/// リンク注釈の生成に必要な文書単位の設定([0042](
+/// ../../../docs/decisions/0042-link-annotations-design.md))。
+#[derive(Debug, Clone, Default)]
+pub struct LinkSettings {
+    /// アンカー対象要素の`NodeId` → 名前付き宛先の名前(決定4・5)。
+    /// 空なら内部アンカーの宛先は生成されない(リンク自体は書かれるが、
+    /// ビューアがクリックしても何も起きない)。
+    pub anchor_names: HashMap<NodeId, String>,
+    /// `<base href>`(決定3)。外部リンクの相対URLをこれに対して解決する。
+    pub base_href: Option<String>,
+}
+
+/// PDFの`/Link`注釈1個分(ページ内の矩形+リンク先)。
+///
+/// 矩形はPDF座標系(左下原点、y上向き、ページ左下からの絶対座標)。
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct LinkArea {
+    pub href: Rc<str>,
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+}
+
+/// ページ内のボックスを走査し、`<a href>`に属するテキストランから
+/// `/Link`注釈の矩形を集める([0042](
+/// ../../../docs/decisions/0042-link-annotations-design.md)決定2)。
+/// 行内で同じリンクが連続するランは1つの矩形にまとめ、折り返しで別の行に
+/// なった分は別の矩形にする。
+pub(super) fn collect_link_areas(b: &LaidOutBox, settings: &PageSettings, out: &mut Vec<LinkArea>) {
+    match &b.content {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+            for child in children {
+                collect_link_areas(child, settings, out);
+            }
+        }
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &table.caption {
+                collect_link_areas(caption, settings, out);
+            }
+            for row in &table.rows {
+                for cell in &row.cells {
+                    collect_link_areas(cell, settings, out);
+                }
+            }
+        }
+        LaidOutContent::Inline(lines) => {
+            for line in lines {
+                push_line_link_areas(line, settings, out);
+                for atomic in &line.atomics {
+                    collect_link_areas(&atomic.content, settings, out);
+                }
+            }
+        }
+        LaidOutContent::Image(_) => {}
+    }
+}
+
+fn push_line_link_areas(line: &LineBox, settings: &PageSettings, out: &mut Vec<LinkArea>) {
+    let mut current: Option<LinkArea> = None;
+    for run in &line.runs {
+        let Some(href) = &run.link else {
+            if let Some(area) = current.take() {
+                out.push(area);
+            }
+            continue;
+        };
+        let x0 = settings.margin.left + line.rect.x + run.x_offset;
+        let x1 = x0 + run.width;
+        // ランのベースライン(`vertical-align`のずれ込み)を基準に、
+        // ascent〜descentの範囲を注釈の高さにする([0042]決定2)。
+        let baseline_y = to_pdf_y(settings, line.rect.y + line.baseline) + run.baseline_shift;
+        let y0 = baseline_y - run.descent;
+        let y1 = baseline_y + run.ascent;
+
+        match &mut current {
+            // 同じリンクが連続する間は1つの矩形へ広げる。
+            Some(area) if area.href == *href => {
+                area.x1 = area.x1.max(x1);
+                area.y0 = area.y0.min(y0);
+                area.y1 = area.y1.max(y1);
+            }
+            _ => {
+                if let Some(area) = current.take() {
+                    out.push(area);
+                }
+                current = Some(LinkArea {
+                    href: href.clone(),
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                });
+            }
+        }
+    }
+    if let Some(area) = current {
+        out.push(area);
+    }
+}
+
+/// ページ内のボックスを走査し、アンカー対象(`anchor_names`に含まれる
+/// `NodeId`)が最初に現れた位置(border box上端のPDF y座標)を集める
+/// ([0042]決定4)。
+pub(super) fn collect_anchor_positions(
+    b: &LaidOutBox,
+    anchor_names: &HashMap<NodeId, String>,
+    settings: &PageSettings,
+    out: &mut Vec<(String, f32, f32)>,
+) {
+    if let Some(name) = b.node.and_then(|n| anchor_names.get(&n)) {
+        if !out.iter().any(|(existing, _, _)| existing == name) {
+            let border_box = b.layout.border_box();
+            out.push((
+                name.clone(),
+                settings.margin.left + border_box.x,
+                to_pdf_y(settings, border_box.y),
+            ));
+        }
+    }
+
+    match &b.content {
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+            for child in children {
+                collect_anchor_positions(child, anchor_names, settings, out);
+            }
+        }
+        LaidOutContent::Table(table) => {
+            if let Some(caption) = &table.caption {
+                collect_anchor_positions(caption, anchor_names, settings, out);
+            }
+            for row in &table.rows {
+                for cell in &row.cells {
+                    collect_anchor_positions(cell, anchor_names, settings, out);
+                }
+            }
+        }
+        LaidOutContent::Inline(lines) => {
+            for line in lines {
+                for atomic in &line.atomics {
+                    collect_anchor_positions(&atomic.content, anchor_names, settings, out);
+                }
+            }
+        }
+        LaidOutContent::Image(_) => {}
+    }
+}
+
+/// `href`が内部アンカー(`#id`)なら、その`id`部分を返す([0042]決定3)。
+pub(super) fn internal_anchor_target(href: &str) -> Option<&str> {
+    href.strip_prefix('#').filter(|id| !id.is_empty())
 }
 
 /// ページ(群)を再帰的に走査し、`opacity < 1`の要素の`NodeId`を集める。
@@ -409,7 +702,14 @@ pub(super) fn collect_opacity_uses(
                 }
             }
         }
-        LaidOutContent::Inline(_) | LaidOutContent::Image(_) => {}
+        LaidOutContent::Inline(lines) => {
+            for line in lines {
+                for atomic in &line.atomics {
+                    collect_opacity_uses(&atomic.content, styles, out);
+                }
+            }
+        }
+        LaidOutContent::Image(_) => {}
     }
 }
 
@@ -826,6 +1126,25 @@ fn render_box_with_style_inner(
                     font_resource_names,
                     alpha_gs_names,
                 );
+                // 行内の`display: inline-block`([0043](
+                // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))は
+                // 通常のブロックと同じ描画経路を通す(枠線・背景・中身のテキスト)。
+                for atomic in &line.atomics {
+                    render_box(
+                        content,
+                        &atomic.content,
+                        styles,
+                        fonts,
+                        settings,
+                        remaps,
+                        font_resource_names,
+                        image_ids,
+                        background_images,
+                        alpha_gs_names,
+                        opacity_form_ids,
+                        pending_forms,
+                    );
+                }
             }
         }
         LaidOutContent::Image(image) => {
@@ -4339,5 +4658,146 @@ mod tests {
         let order: Vec<String> = ordered.iter().map(|b| text_of(b)).collect();
         // b(z-index:-1) < c/d(static、z-indexが効かずauto=0扱い、文書順でc→d) < a(z-index:2)。
         assert_eq!(order, vec!["b", "c", "d", "a"]);
+    }
+
+    // ===== `<a href>`のリンク注釈([0042]) =====
+
+    fn link_areas_of(html_src: &str, css: &str) -> Vec<LinkArea> {
+        let dom = html::parse(html_src.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(css);
+        let styles = compute_styles(&dom, &ua, &author);
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+
+        let mut out = Vec::new();
+        for page in &pages {
+            for b in &page.boxes {
+                collect_link_areas(b, &settings, &mut out);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn a_link_produces_one_area_per_line() {
+        let areas = link_areas_of(
+            r#"<p><a href="https://example.com">link text</a></p>"#,
+            "body { margin: 0; }",
+        );
+        assert_eq!(areas.len(), 1);
+        assert_eq!(&*areas[0].href, "https://example.com");
+        assert!(areas[0].x1 > areas[0].x0, "{areas:?}");
+        assert!(areas[0].y1 > areas[0].y0, "{areas:?}");
+    }
+
+    #[test]
+    fn text_outside_the_link_is_not_part_of_the_area() {
+        let areas = link_areas_of(
+            r#"<p>before <a href="https://example.com">link</a> after</p>"#,
+            "body { margin: 0; }",
+        );
+        assert_eq!(areas.len(), 1);
+        // リンクは行頭ではないので、矩形は左端から始まらない。
+        assert!(areas[0].x0 > 0.0, "{areas:?}");
+    }
+
+    #[test]
+    fn a_link_broken_across_lines_produces_one_area_per_line() {
+        let areas = link_areas_of(
+            r#"<p><a href="https://example.com">word word word word word word word word word word word word word word word word</a></p>"#,
+            "body { margin: 0; } p { width: 120px; }",
+        );
+        assert!(
+            areas.len() > 1,
+            "expected several line areas, got {areas:?}"
+        );
+        assert!(areas.iter().all(|a| &*a.href == "https://example.com"));
+        // 行ごとに縦位置が異なる。
+        assert!(areas[0].y0 > areas[1].y0, "{areas:?}");
+    }
+
+    #[test]
+    fn two_different_links_on_one_line_produce_two_areas() {
+        let areas = link_areas_of(
+            r#"<p><a href="https://a.example">a</a> <a href="https://b.example">b</a></p>"#,
+            "body { margin: 0; }",
+        );
+        assert_eq!(areas.len(), 2);
+        assert_eq!(&*areas[0].href, "https://a.example");
+        assert_eq!(&*areas[1].href, "https://b.example");
+    }
+
+    #[test]
+    fn a_javascript_href_is_not_turned_into_a_link() {
+        let areas = link_areas_of(
+            r#"<p><a href="javascript:alert(1)">click</a></p>"#,
+            "body { margin: 0; }",
+        );
+        assert!(areas.is_empty(), "{areas:?}");
+    }
+
+    #[test]
+    fn an_anchor_without_href_is_not_a_link() {
+        let areas = link_areas_of(r#"<p><a name="x">anchor</a></p>"#, "body { margin: 0; }");
+        assert!(areas.is_empty(), "{areas:?}");
+    }
+
+    #[test]
+    fn internal_anchor_targets_are_detected_by_their_hash() {
+        assert_eq!(internal_anchor_target("#section-1"), Some("section-1"));
+        assert_eq!(internal_anchor_target("#"), None);
+        assert_eq!(internal_anchor_target("https://example.com/#frag"), None);
+    }
+
+    #[test]
+    fn destination_names_are_sanitised_for_pdf_names() {
+        assert_eq!(anchor_destination_name("sec1"), "a_sec1");
+        assert_eq!(anchor_destination_name("sec 1"), "a_sec_1");
+        assert_eq!(anchor_destination_name("日本語"), "a____");
+        assert_eq!(anchor_destination_name("a-b_c"), "a_a-b_c");
+    }
+
+    #[test]
+    fn anchor_positions_are_collected_per_page() {
+        let dom = html::parse(
+            br#"<p id="top">top</p><p style="break-before: page;" id="second">second</p>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &parse_stylesheet("body { margin: 0; }"));
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        assert_eq!(pages.len(), 2, "the test document should span two pages");
+
+        let anchor_names: HashMap<NodeId, String> = crate::html::collect_anchor_targets(&dom)
+            .into_iter()
+            .map(|(node, id)| (node, anchor_destination_name(&id)))
+            .collect();
+
+        let mut first_page = Vec::new();
+        for b in &pages[0].boxes {
+            collect_anchor_positions(b, &anchor_names, &settings, &mut first_page);
+        }
+        let mut second_page = Vec::new();
+        for b in &pages[1].boxes {
+            collect_anchor_positions(b, &anchor_names, &settings, &mut second_page);
+        }
+
+        assert_eq!(
+            first_page
+                .iter()
+                .map(|(n, ..)| n.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a_top"]
+        );
+        assert_eq!(
+            second_page
+                .iter()
+                .map(|(n, ..)| n.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a_second"]
+        );
     }
 }

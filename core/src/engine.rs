@@ -45,7 +45,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
-use crate::html::{find_base_href, Dom, NodeId, StreamingParser};
+use crate::html::{collect_anchor_targets, find_base_href, Dom, NodeId, StreamingParser};
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
@@ -53,7 +53,9 @@ use crate::layout::{
     resolve_background_images, resolve_border, resolve_images, resolve_lpa_or_zero,
     resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
 };
-use crate::pdf::{ImageAssetCache, PreparedImage, StreamingPdfWriter};
+use crate::pdf::{
+    anchor_destination_name, ImageAssetCache, LinkSettings, PreparedImage, StreamingPdfWriter,
+};
 use crate::sink::Sink;
 use crate::style::{
     compute_single_element_style, compute_styles, compute_styles_with_parent,
@@ -343,6 +345,18 @@ impl<S: Sink> Engine<S> {
             ));
         }
 
+        // `<a href="#id">`の宛先候補([0042](
+        // ../docs/decisions/0042-link-annotations-design.md)決定4)。
+        // `Mode::Streaming`ではこの時点(最初のトップレベル要素が確定した
+        // 時点)までにパースできた範囲しか見えないが、宛先は「そのページを
+        // 書き出す時に見つかったボックス」から記録されるため、後から
+        // パースされる要素も対象になる(ここで集めるのは`id`の一覧ではなく、
+        // 「どのノードがどの名前か」の対応表であるため)。
+        let anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&self.parser.dom())
+            .into_iter()
+            .map(|(node, id)| (node, anchor_destination_name(&id)))
+            .collect();
+
         let page_width = page_settings.content_width();
         let body_padding = resolve_padding(&body_style, page_width);
         let (body_content_width, body_margin_left, _) = resolve_width_and_horizontal_margins(
@@ -356,9 +370,17 @@ impl<S: Sink> Engine<S> {
             + body_border.top
             + body_padding.top;
 
-        let writer =
-            StreamingPdfWriter::new(&fonts, page_settings, sink, author.page_rules.clone())
-                .map_err(EngineError::Io)?;
+        let writer = StreamingPdfWriter::new(
+            &fonts,
+            page_settings,
+            sink,
+            author.page_rules.clone(),
+            LinkSettings {
+                anchor_names: anchor_names.clone(),
+                base_href: base_href.clone(),
+            },
+        )
+        .map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::with_base_href(
             base_dir.to_path_buf(),
             self.options.allow_remote_assets,
@@ -560,6 +582,11 @@ impl<S: Sink> Engine<S> {
         let css_cache = DocumentImageCache::new();
         let author = extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
         let styles = compute_styles(&dom, &ua, &author);
+        // `<a href="#id">`の宛先候補([0042]決定4)。
+        let anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&dom)
+            .into_iter()
+            .map(|(node, id)| (node, anchor_destination_name(&id)))
+            .collect();
         let page_settings = apply_page_rule_settings_override(options.settings, &author.page_rules);
 
         let system_fonts = SystemFonts::scan();
@@ -587,9 +614,17 @@ impl<S: Sink> Engine<S> {
             None
         };
 
-        let mut writer =
-            StreamingPdfWriter::new(&fonts, page_settings, sink, author.page_rules.clone())
-                .map_err(EngineError::Io)?;
+        let mut writer = StreamingPdfWriter::new(
+            &fonts,
+            page_settings,
+            sink,
+            author.page_rules.clone(),
+            LinkSettings {
+                anchor_names: anchor_names.clone(),
+                base_href: base_href.clone(),
+            },
+        )
+        .map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::with_base_href(
             base_dir.to_path_buf(),
             options.allow_remote_assets,

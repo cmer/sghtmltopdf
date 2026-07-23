@@ -125,6 +125,38 @@ pub fn find_base_href(dom: &Dom) -> Option<String> {
     walk(dom, dom.document(), &mut seen_body)
 }
 
+/// アンカーの対象になりうる要素(`id`属性を持つ要素、および`<a name>`)を
+/// `NodeId` → 名前(`id`/`name`の値)として集める([0042](
+/// ../../../docs/decisions/0042-link-annotations-design.md)決定4)。
+///
+/// 同じ名前が複数回現れた場合はドキュメント順で最初のものを採用する
+/// (HTML仕様どおり)。
+pub fn collect_anchor_targets(dom: &Dom) -> Vec<(NodeId, String)> {
+    fn walk(dom: &Dom, node: NodeId, out: &mut Vec<(NodeId, String)>) {
+        if let NodeData::Element { name, attrs, .. } = &dom.node(node).data {
+            let is_anchor_element = &*name.local == "a";
+            let target = attrs
+                .iter()
+                .find(|attr| {
+                    &*attr.name.local == "id" || (is_anchor_element && &*attr.name.local == "name")
+                })
+                .map(|attr| attr.value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            if let Some(target) = target {
+                if !out.iter().any(|(_, existing)| *existing == target) {
+                    out.push((node, target));
+                }
+            }
+        }
+        for child in dom.children(node) {
+            walk(dom, child, out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(dom, dom.document(), &mut out);
+    out
+}
+
 /// パース済みのDOM木。
 pub struct Dom {
     pub(crate) nodes: Vec<Node>,

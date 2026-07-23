@@ -11,6 +11,10 @@
 pub enum Display {
     Block,
     Inline,
+    /// 外側はインラインレベル(親の行に参加する)だが、中身はブロックとして
+    /// レイアウトされる分割不可能な箱([0043](
+    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+    InlineBlock,
     /// `table`要素専用。テーブルフォーマッティングコンテキストを確立する
     /// (`table-row`/`table-cell`の子孫を集めて列幅アルゴリズムでレイアウトする)。
     Table,

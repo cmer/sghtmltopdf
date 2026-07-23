@@ -3,8 +3,7 @@
 //! WHATWG HTML仕様の"Rendering"節を出発点に、印刷/PDF出力で意味を持つ宣言だけを
 //! 移植したもの([0036](
 //! ../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)決定1)。
-//! 対話状態(フォーカス・hover)、bidi、スクロール関連、および本エンジンが
-//! 未対応のプロパティ(`inline-block`等)を使う規則は移植していない。
+//! 対話状態(フォーカス・hover)、bidi、スクロール関連は移植していない。
 //!
 //! `thead`/`tbody`/`tfoot`は`display: block`のままで、専用のボックスは持たない。
 //! テーブルの行収集([`crate::layout::box_tree`])がこれらを透過的に素通りして
@@ -17,7 +16,10 @@
 //! `Inline`なので、UA規則の無い要素はインラインとして扱われ、その子孫テキストが
 //! 本文に流れ込む。描画できない埋め込みコンテンツ(`svg`/`canvas`/`video`等)や
 //! フォームコントロールは、代替内容・選択肢のテキストが本文に漏れないよう
-//! 明示的に`display: none`にする([0036]決定2・決定7)。
+//! 明示的に`display: none`にする([0036]決定2)。フォームコントロールは
+//! M10カテゴリI([0043](
+//! ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))で
+//! `display: inline-block`の静的な見た目に置き換えた。
 
 use super::stylesheet::{parse_stylesheet, Stylesheet};
 
@@ -79,10 +81,14 @@ area, map {
   display: none;
 }
 
-/* フォームコントロール([0036]決定7)。カテゴリI(T249〜)で静的描画を
-   実装する際にこの規則を置き換える。`<option>`のテキストが本文に漏れる
-   現行バグをここで止めるのが主目的。 */
-input, select, option, optgroup, datalist, textarea, button, progress, meter {
+/* フォームコントロールのうち、値の視覚化が帳票用途で意味を持たないもの・
+   選択肢そのもの(表示テキストは`<select>`側が生成する)は非表示のまま
+   ([0043](../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定4)。 */
+option, optgroup, datalist, progress, meter {
+  display: none;
+}
+
+input[type="hidden"] {
   display: none;
 }
 
@@ -231,6 +237,71 @@ th {
   text-align: center;
 }
 
+/* ===== フォームコントロールの静的描画([0043]決定4) ===== */
+
+/* 枠線付きの箱として行の中に置く。中身のテキスト(`value`/`placeholder`/
+   選択中の`<option>`)はbox tree構築時に生成する(決定4)。
+   サイズは属性ではなくここで決める(決定4-1)。 */
+input, select, textarea, button {
+  display: inline-block;
+  border: 1px solid #767676;
+  padding: 1px 2px;
+  background-color: #ffffff;
+  color: #000000;
+  text-align: left;
+  white-space: pre;
+}
+
+input, select {
+  width: 12em;
+  height: 1.6em;
+  /* 中身の行の高さ(フォントによってはCJKのように大きくなる)が箱の高さを
+     超えても外へはみ出さないようにする。ブラウザのフォームコントロールと
+     同じ挙動。 */
+  overflow: hidden;
+}
+
+textarea {
+  width: 20em;
+  height: 4em;
+  overflow: hidden;
+  font-family: monospace;
+}
+
+button, input[type="submit"], input[type="reset"], input[type="button"] {
+  width: auto;
+  padding: 2px 8px;
+  background-color: #efefef;
+  text-align: center;
+}
+
+/* チェックボックス・ラジオは小さな枠。`checked`なら塗りつぶす(決定4-2)。 */
+input[type="checkbox"], input[type="radio"] {
+  width: 11px;
+  height: 11px;
+  padding: 0;
+}
+
+/* `border-radius`のパーセンテージは非対応([0023])なので、箱の半分の
+   px値で円にする。 */
+input[type="radio"] {
+  border-radius: 6px;
+}
+
+input[type="checkbox"][checked], input[type="radio"][checked] {
+  background-color: #333333;
+}
+
+/* `disabled`は薄いグレーで表す(決定4-2)。 */
+input[disabled], select[disabled], textarea[disabled], button[disabled] {
+  background-color: #ebebeb;
+  color: #6d6d6d;
+}
+
+fieldset {
+  min-width: 0;
+}
+
 /* `<q>`の自動引用符([0036]決定8)。`quotes`の初期値はM8で実装済みなので、
    入れ子の深さに応じた引用符がこれだけで出る。 */
 q::before {
@@ -332,21 +403,57 @@ mod tests {
     }
 
     #[test]
-    fn form_controls_are_hidden_for_now() {
-        for tag in ["select", "textarea", "button", "progress", "meter"] {
+    fn form_controls_are_inline_blocks_with_a_border() {
+        for tag in ["input", "select", "textarea", "button"] {
             let html_src = format!("<form><{tag}>x</{tag}></form>");
+            let style = style_of(&html_src, tag);
             assert_eq!(
-                style_of(&html_src, tag).display,
-                Display::None,
-                "<{tag}> should be hidden until the form rendering category ([0036]決定7)"
+                style.display,
+                Display::InlineBlock,
+                "<{tag}> should be drawn as a static box ([0043]決定4)"
+            );
+            assert_eq!(
+                style.border_top_width.0, 1.0,
+                "<{tag}> should have a border"
             );
         }
+        // 値の視覚化に意味が無いもの・選択肢そのものは非表示のまま。
+        for tag in ["progress", "meter", "datalist"] {
+            let html_src = format!("<form><{tag}>x</{tag}></form>");
+            assert_eq!(style_of(&html_src, tag).display, Display::None);
+        }
+        assert_eq!(
+            style_of("<select><option>a</option></select>", "option").display,
+            Display::None
+        );
+        assert_eq!(
+            style_of(r#"<input type="hidden" value="x">"#, "input").display,
+            Display::None
+        );
         // フォームそのもの・label・fieldsetは中身が文章として意味を持つので隠さない。
         assert_eq!(style_of("<form>x</form>", "form").display, Display::Block);
         assert_eq!(
             style_of("<p><label>x</label></p>", "label").display,
             Display::Inline
         );
+    }
+
+    #[test]
+    fn a_checked_checkbox_is_filled() {
+        let unchecked = style_of(r#"<input type="checkbox">"#, "input");
+        let checked = style_of(r#"<input type="checkbox" checked>"#, "input");
+        assert_ne!(
+            checked.background_color, unchecked.background_color,
+            "a checked box must be visually distinct ([0043]決定4-2)"
+        );
+    }
+
+    #[test]
+    fn a_disabled_control_is_greyed_out() {
+        let normal = style_of("<input>", "input");
+        let disabled = style_of("<input disabled>", "input");
+        assert_ne!(disabled.background_color, normal.background_color);
+        assert_ne!(disabled.color, normal.color);
     }
 
     #[test]
