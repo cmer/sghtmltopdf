@@ -21,7 +21,7 @@ use crate::style::{
     ComputedStyle, Display, Float, Length, LengthPercentage, LengthPercentageOrAuto, Position,
 };
 
-use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox};
+use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox, TableSection};
 use super::flex::layout_flex;
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
@@ -123,6 +123,10 @@ pub struct LaidOutTable {
 pub struct LaidOutTableRow {
     pub node: NodeId,
     pub cells: Vec<LaidOutBox>,
+    /// この行が属するセクション([0045](
+    /// ../../../docs/decisions/0045-table-header-repetition-design.md)決定1)。
+    /// `paginate`が`<thead>`の行を各ページの先頭へ複製するために使う。
+    pub section: TableSection,
 }
 
 /// ページ幅を初期containing blockとして、ボックスツリー全体をレイアウトする。

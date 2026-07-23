@@ -98,11 +98,27 @@ pub struct TableBox {
     pub column_widths: Vec<Option<LengthPercentage>>,
 }
 
+/// テーブル行が属するセクション([0045](
+/// ../../../docs/decisions/0045-table-header-repetition-design.md)決定1)。
+/// `<thead>`/`<tbody>`/`<tfoot>`は専用の`display`値を持たない「透明な入れ物」
+/// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定4関連)なので、
+/// 入れ物の要素名から判定してここに残す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TableSection {
+    Head,
+    #[default]
+    Body,
+    Foot,
+}
+
 /// `display: table-row`要素(`<tr>`)1行分。
 #[derive(Debug, Clone)]
 pub struct TableRow {
     pub node: NodeId,
     pub cells: Vec<TableCell>,
+    /// この行が属するセクション([0045]決定1)。ページ分割層が`<thead>`の
+    /// 行を各ページの先頭に複製するために使う。
+    pub section: TableSection,
 }
 
 /// `display: table-cell`要素(`<td>`/`<th>`)1セル分。
@@ -817,16 +833,48 @@ fn collect_table_rows(
     out: &mut Vec<TableRow>,
     out_caption: &mut Option<NodeId>,
 ) {
+    collect_table_rows_in_section(dom, styles, node, TableSection::Body, out, out_caption);
+    // `<tfoot>`はHTML4では`<tbody>`より前に書く決まりだった。セクションが
+    // 分かるようになったので、ソース順に関わらず末尾へ寄せる([0045]決定2)。
+    // 安定ソートなのでセクション内の順序は保たれる。
+    out.sort_by_key(|row| match row.section {
+        TableSection::Head => 0,
+        TableSection::Body => 1,
+        TableSection::Foot => 2,
+    });
+}
+
+/// [`collect_table_rows`]の本体。`section`は「今いる入れ物」が示すセクション。
+fn collect_table_rows_in_section(
+    dom: &Dom,
+    styles: &HashMap<NodeId, ComputedStyle>,
+    node: NodeId,
+    section: TableSection,
+    out: &mut Vec<TableRow>,
+    out_caption: &mut Option<NodeId>,
+) {
     for child in dom.children(node) {
         match styles.get(&child).map(|s| s.display) {
-            Some(Display::TableRow) => out.push(build_table_row(dom, styles, child)),
+            Some(Display::TableRow) => {
+                out.push(build_table_row(dom, styles, child, section));
+            }
             Some(Display::TableCaption) => {
                 if out_caption.is_none() {
                     *out_caption = Some(child);
                 }
             }
             Some(Display::Table) | Some(Display::None) | None => {}
-            _ => collect_table_rows(dom, styles, child, out, out_caption),
+            _ => {
+                // `<thead>`/`<tfoot>`に入ったらそこから下の行のセクションが決まる
+                // ([0045]決定1)。入れ子の`<tbody>`等は現れない前提。
+                let child_section = match element_local_name(dom, child).as_deref() {
+                    Some("thead") => TableSection::Head,
+                    Some("tfoot") => TableSection::Foot,
+                    Some("tbody") => TableSection::Body,
+                    _ => section,
+                };
+                collect_table_rows_in_section(dom, styles, child, child_section, out, out_caption);
+            }
         }
     }
 }
@@ -835,6 +883,7 @@ fn build_table_row(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
     row_node: NodeId,
+    section: TableSection,
 ) -> TableRow {
     let cells = dom
         .children(row_node)
@@ -853,6 +902,7 @@ fn build_table_row(
     TableRow {
         node: row_node,
         cells,
+        section,
     }
 }
 

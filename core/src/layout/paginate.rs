@@ -38,11 +38,16 @@ use crate::style::{BreakBetween, BreakInside, ComputedStyle};
 
 use crate::pdf::ImageAssetCache;
 
-use super::block::{layout_document, shift_box_y, FragmentationHints, LaidOutBox, LaidOutContent};
+use super::block::{
+    layout_document, shift_box_y, FragmentationHints, LaidOutBox, LaidOutContent, LaidOutTable,
+    LaidOutTableRow,
+};
+use super::box_tree::TableSection;
 use super::box_tree::{build_box_tree, resolve_images};
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
 use super::inline::LineBox;
 use super::page::PageSettings;
+use crate::style::CaptionSide;
 
 #[derive(Debug, Clone, Default)]
 pub struct Page {
@@ -418,6 +423,13 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
                     place_box(child, ph, ps, c);
                 },
             );
+            return;
+        }
+        // テーブルは行単位で分割する([0044](
+        // ../../../docs/decisions/0044-table-pagination-design.md))。
+        // これが無いと、ページに収まらない行が描画されずに失われる。
+        LaidOutContent::Table(table) if !table.rows.is_empty() => {
+            place_table(b, table, page_height, state, cursor);
             return;
         }
         LaidOutContent::Inline(lines) if lines.len() > 1 => {
@@ -892,6 +904,212 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
     };
     *cursor += line.rect.height;
     state.last_mut().boxes.push(fragment);
+}
+
+/// テーブルを行単位でページへ分割して配置する([0044](
+/// ../../../docs/decisions/0044-table-pagination-design.md))。
+///
+/// 同じページに載る連続した行を1つの断片(`LaidOutContent::Table`を持つ
+/// `LaidOutBox`)にまとめる(決定1)。断片はテーブル自身のノードとジオメトリを
+/// 引き継ぎ、`content.y`/`content.height`と`FragmentPosition`だけを差し替える
+/// (決定2)。
+fn place_table(
+    b: &LaidOutBox,
+    table: &LaidOutTable,
+    page_height: f32,
+    state: &mut PaginationState<'_>,
+    cursor: &mut f32,
+) {
+    let top_extra = container_top_extra(b);
+    let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
+
+    // 断片に積む行と、その断片の絶対座標→ページ内座標への平行移動量(決定3)。
+    let mut pending: Vec<LaidOutTableRow> = Vec::new();
+    let mut shift = 0.0f32;
+    let mut fragment_top = 0.0f32;
+    let mut is_first_fragment = true;
+
+    // 2ページ目以降の先頭に複製する`<thead>`の行([0045](
+    // ../../../docs/decisions/0045-table-header-repetition-design.md)決定3)。
+    // 見出しだけでページが埋まる(=1行も進まない)場合は繰り返さない(決定3-2)。
+    let head_rows: Vec<&LaidOutTableRow> = table
+        .rows
+        .iter()
+        .filter(|row| row.section == TableSection::Head)
+        .collect();
+    let head_top = head_rows
+        .iter()
+        .map(|row| table_row_top(row))
+        .fold(f32::MAX, f32::min);
+    let head_bottom = head_rows
+        .iter()
+        .map(|row| table_row_bottom(row))
+        .fold(f32::MIN, f32::max);
+    let head_height = if head_rows.is_empty() {
+        0.0
+    } else {
+        head_bottom - head_top
+    };
+    let repeat_head = !head_rows.is_empty() && head_height < page_height;
+    // `caption-side: top`のcaptionは最初の断片に付ける(決定5)。
+    let caption_is_top = table.caption_side == CaptionSide::Top;
+    let mut pending_caption = table.caption.as_deref().filter(|_| caption_is_top).cloned();
+
+    // 最初の断片の前に、コンテナ自身の上マージン/枠線/パディング分を確保する
+    // (`place_split`と同じ扱い)。
+    *cursor += top_extra;
+
+    // captionの高さも最初の断片に含める。
+    let caption_height = pending_caption
+        .as_ref()
+        .map(|c| c.layout.margin_box_height())
+        .unwrap_or(0.0);
+
+    let start_new_fragment = |cursor: &f32, first_row_top: f32, extra_above: f32| {
+        // 断片の上端(ページ内座標)と、そこへ動かすための平行移動量。
+        let top = *cursor;
+        (top, first_row_top - extra_above - *cursor)
+    };
+
+    for (index, row) in table.rows.iter().enumerate() {
+        let row_top = table_row_top(row);
+        let row_bottom = table_row_bottom(row);
+        let extra_above = if index == 0 { caption_height } else { 0.0 };
+
+        if pending.is_empty() {
+            let (top, s) = start_new_fragment(cursor, row_top, extra_above);
+            fragment_top = top;
+            shift = s;
+        }
+
+        // この行を今のページに置くと溢れるなら、ここまでの断片を確定して改ページ。
+        // 判定は「この断片に既に1行以上ある」こと(`current_page_has_content`では
+        // ない): テーブルがページ先頭の唯一の内容でも行単位で分割する必要があり、
+        // かつ空の断片を作らないことで必ず前進する。
+        let row_bottom_on_page = row_bottom - shift;
+        if row_bottom_on_page > page_height && !pending.is_empty() {
+            flush_table_fragment(
+                b,
+                &mut pending,
+                &mut pending_caption,
+                fragment_top,
+                *cursor,
+                is_first_fragment,
+                false,
+                state,
+            );
+            is_first_fragment = false;
+            new_page(state, cursor);
+            fragment_top = *cursor;
+            // 新しいページの先頭に見出し行を複製する(決定3・決定4: 最初の
+            // ページには元の行がそのまま置かれるので複製は2ページ目以降だけ)。
+            if repeat_head {
+                let head_shift = head_top - *cursor;
+                for head_row in &head_rows {
+                    pending.push(shift_table_row_y(head_row, head_shift));
+                }
+                *cursor += head_height;
+            }
+            shift = row_top - *cursor;
+        }
+
+        pending.push(shift_table_row_y(row, shift));
+        *cursor = row_bottom - shift;
+    }
+
+    // `caption-side: bottom`のcaptionは最後の断片に付ける(決定5)。
+    if !caption_is_top {
+        if let Some(caption) = table.caption.as_deref() {
+            let translated = shift_box_y(caption, shift);
+            *cursor += caption.layout.margin_box_height();
+            pending_caption = Some(translated);
+        }
+    }
+
+    flush_table_fragment(
+        b,
+        &mut pending,
+        &mut pending_caption,
+        fragment_top,
+        *cursor,
+        is_first_fragment,
+        true,
+        state,
+    );
+    *cursor += bottom_extra;
+}
+
+/// [`place_table`]が組み立てた行群を1つの断片としてページへ積む。
+#[allow(clippy::too_many_arguments)]
+fn flush_table_fragment(
+    b: &LaidOutBox,
+    rows: &mut Vec<LaidOutTableRow>,
+    caption: &mut Option<LaidOutBox>,
+    fragment_top: f32,
+    fragment_bottom: f32,
+    is_first: bool,
+    is_last: bool,
+    state: &mut PaginationState<'_>,
+) {
+    if rows.is_empty() && caption.is_none() {
+        return;
+    }
+
+    let mut layout = b.layout;
+    layout.content.y =
+        fragment_top + b.layout.margin.top + b.layout.border.top + b.layout.padding.top;
+    layout.content.height = (fragment_bottom
+        - fragment_top
+        - b.layout.margin.top
+        - b.layout.border.top
+        - b.layout.padding.top)
+        .max(0.0);
+    layout.fragment = match (is_first, is_last) {
+        (true, true) => FragmentPosition::Whole,
+        (true, false) => FragmentPosition::First,
+        (false, true) => FragmentPosition::Last,
+        (false, false) => FragmentPosition::Middle,
+    };
+
+    let fragment = LaidOutBox {
+        node: b.node,
+        layout,
+        fragmentation: FragmentationHints::default(),
+        has_visible_decoration: b.has_visible_decoration,
+        is_float: false,
+        content: LaidOutContent::Table(LaidOutTable {
+            caption: caption.take().map(Box::new),
+            caption_side: CaptionSide::Top,
+            rows: std::mem::take(rows),
+        }),
+        marker: None,
+    };
+    state.last_mut().boxes.push(fragment);
+}
+
+/// テーブル行のマージンボックス上端(セルの中で最も上のもの)の絶対Y座標。
+fn table_row_top(row: &LaidOutTableRow) -> f32 {
+    row.cells
+        .iter()
+        .map(margin_box_top)
+        .fold(f32::MAX, f32::min)
+}
+
+/// テーブル行のマージンボックス下端(セルの中で最も下のもの)の絶対Y座標。
+fn table_row_bottom(row: &LaidOutTableRow) -> f32 {
+    row.cells
+        .iter()
+        .map(|cell| margin_box_top(cell) + cell.layout.margin_box_height())
+        .fold(f32::MIN, f32::max)
+}
+
+/// 行(のセル全部)を縦に平行移動する。`shift`は`shift_box_y`と同じ「引く量」。
+fn shift_table_row_y(row: &LaidOutTableRow, shift: f32) -> LaidOutTableRow {
+    LaidOutTableRow {
+        node: row.node,
+        cells: row.cells.iter().map(|c| shift_box_y(c, shift)).collect(),
+        section: row.section,
+    }
 }
 
 fn place_leaf(b: &LaidOutBox, state: &mut PaginationState<'_>, cursor: &mut f32) {
@@ -2114,5 +2332,192 @@ mod tests {
         for (batched, streamed) in batched_pages.iter().zip(streamed_pages.iter()) {
             assert_eq!(batched.boxes.len(), streamed.boxes.len());
         }
+    }
+
+    // ===== テーブルの行単位ページ分割([0044]) =====
+
+    /// `html_src`をページ分割し、ページごとのテーブル行数を返す。
+    fn table_rows_per_page(html_src: &str) -> Vec<usize> {
+        let dom = html::parse(html_src.as_bytes());
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+
+        fn count(b: &LaidOutBox) -> usize {
+            match &b.content {
+                LaidOutContent::Table(table) => table.rows.len(),
+                LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                    children.iter().map(count).sum()
+                }
+                _ => 0,
+            }
+        }
+        pages
+            .iter()
+            .map(|page| page.boxes.iter().map(count).sum())
+            .collect()
+    }
+
+    fn rows_html(n: usize) -> String {
+        let rows: String = (0..n).map(|i| format!("<tr><td>{i}</td></tr>")).collect();
+        format!("<table>{rows}</table>")
+    }
+
+    #[test]
+    fn a_table_is_split_row_by_row_instead_of_being_treated_as_atomic() {
+        let counts = table_rows_per_page(&rows_html(120));
+        assert!(counts.len() >= 2, "got {counts:?}");
+        assert_eq!(counts.iter().sum::<usize>(), 120, "got {counts:?}");
+        assert!(counts.iter().all(|&c| c > 0), "got {counts:?}");
+    }
+
+    #[test]
+    fn table_fragments_are_marked_first_middle_last() {
+        let dom = html::parse(rows_html(200).as_bytes());
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let fonts = test_fonts();
+        let pages = paginate_document(&dom, &styles, &fonts, &PageSettings::default());
+
+        fn positions(b: &LaidOutBox, out: &mut Vec<FragmentPosition>) {
+            match &b.content {
+                LaidOutContent::Table(_) => out.push(b.layout.fragment),
+                LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                    for c in children {
+                        positions(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        for page in &pages {
+            for b in &page.boxes {
+                positions(b, &mut found);
+            }
+        }
+        assert!(
+            found.len() >= 3,
+            "expected several fragments, got {found:?}"
+        );
+        assert_eq!(found.first(), Some(&FragmentPosition::First));
+        assert_eq!(found.last(), Some(&FragmentPosition::Last));
+        assert!(found[1..found.len() - 1]
+            .iter()
+            .all(|p| *p == FragmentPosition::Middle));
+    }
+
+    #[test]
+    fn rows_keep_their_order_and_spacing_after_being_split() {
+        let dom = html::parse(rows_html(120).as_bytes());
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+
+        fn rows_of(b: &LaidOutBox, out: &mut Vec<f32>) {
+            match &b.content {
+                LaidOutContent::Table(table) => {
+                    for row in &table.rows {
+                        out.push(row.cells[0].layout.content.y);
+                    }
+                }
+                LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                    for c in children {
+                        rows_of(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for page in &pages {
+            let mut ys = Vec::new();
+            for b in &page.boxes {
+                rows_of(b, &mut ys);
+            }
+            // 各ページ内で行が上から順に並び、ページ高さに収まっている。
+            assert!(ys.windows(2).all(|w| w[1] > w[0]), "got {ys:?}");
+            assert!(
+                ys.iter().all(|y| *y >= 0.0 && *y <= settings.size.height),
+                "a row was placed outside the page: {ys:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn thead_rows_are_repeated_on_every_page_but_body_rows_are_not() {
+        let rows: String = (0..120)
+            .map(|i| format!("<tr><td>b{i}</td></tr>"))
+            .collect();
+        let html_src =
+            format!("<table><thead><tr><td>H</td></tr></thead><tbody>{rows}</tbody></table>");
+        let dom = html::parse(html_src.as_bytes());
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let fonts = test_fonts();
+        let pages = paginate_document(&dom, &styles, &fonts, &PageSettings::default());
+
+        fn sections(b: &LaidOutBox, out: &mut Vec<TableSection>) {
+            match &b.content {
+                LaidOutContent::Table(table) => {
+                    out.extend(table.rows.iter().map(|r| r.section));
+                }
+                LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                    for c in children {
+                        sections(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut head_total = 0;
+        let mut body_total = 0;
+        for page in &pages {
+            let mut found = Vec::new();
+            for b in &page.boxes {
+                sections(b, &mut found);
+            }
+            assert_eq!(
+                found.first(),
+                Some(&TableSection::Head),
+                "each page must start with the repeated header: {found:?}"
+            );
+            head_total += found.iter().filter(|s| **s == TableSection::Head).count();
+            body_total += found.iter().filter(|s| **s == TableSection::Body).count();
+        }
+        assert_eq!(head_total, pages.len(), "one header row per page");
+        assert_eq!(body_total, 120, "body rows must not be duplicated");
+    }
+
+    #[test]
+    fn a_header_taller_than_the_page_is_not_repeated() {
+        // 見出しだけでページが埋まると1行も進めなくなるため繰り返さない
+        // ([0045]決定3-2)。
+        let rows: String = (0..40).map(|i| format!("<tr><td>b{i}</td></tr>")).collect();
+        let head: String = (0..80).map(|i| format!("<tr><td>h{i}</td></tr>")).collect();
+        let html_src = format!("<table><thead>{head}</thead><tbody>{rows}</tbody></table>");
+        let dom = html::parse(html_src.as_bytes());
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let fonts = test_fonts();
+        let pages = paginate_document(&dom, &styles, &fonts, &PageSettings::default());
+
+        fn head_count(b: &LaidOutBox) -> usize {
+            match &b.content {
+                LaidOutContent::Table(table) => table
+                    .rows
+                    .iter()
+                    .filter(|r| r.section == TableSection::Head)
+                    .count(),
+                LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                    children.iter().map(head_count).sum()
+                }
+                _ => 0,
+            }
+        }
+        let total: usize = pages
+            .iter()
+            .map(|p| p.boxes.iter().map(head_count).sum::<usize>())
+            .sum();
+        assert_eq!(total, 80, "the oversized header must not be duplicated");
     }
 }

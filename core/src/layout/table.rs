@@ -313,6 +313,7 @@ pub(super) fn layout_table(
         laid_rows.push(LaidOutTableRow {
             node: row.node,
             cells: laid_cells,
+            section: row.section,
         });
     }
 
@@ -1152,6 +1153,7 @@ mod tests {
         TableRow {
             node: NodeId(0),
             cells,
+            section: super::super::box_tree::TableSection::Body,
         }
     }
 
