@@ -20,6 +20,7 @@ flate2 = "1.1.9"
 fontdb = "0.23.0"
 html5ever = "0.39.0"
 image = { version = "0.25.10", default-features = false, features = ["webp"] }
+palette = { version = "0.7.6", default-features = false, features = ["std"] }
 pdf-writer = "0.15.0"
 png = "0.18.1"
 precomputed-hash = "0.1.1"

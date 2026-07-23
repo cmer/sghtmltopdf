@@ -1679,6 +1679,70 @@ mod tests {
     }
 
     #[test]
+    fn lab_color_function_resolves_to_expected_rgb() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // lab(53.2408% 80.0925 67.2032) は純粋な赤 rgb(255, 0, 0) に相当する。
+        let author = parse_stylesheet("div { color: lab(53.2408% 80.0925 67.2032); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let color = styles[&div].color;
+        assert_eq!(color.red, 255);
+        assert!(color.green <= 1);
+        assert_eq!(color.blue, 0);
+    }
+
+    #[test]
+    fn lch_color_function_resolves_to_expected_rgb() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // lch(53.2408% 104.5518 39.999deg) は純粋な赤 rgb(255, 0, 0) に相当する。
+        let author = parse_stylesheet("div { color: lch(53.2408% 104.5518 39.999deg); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let color = styles[&div].color;
+        assert_eq!(color.red, 255);
+        assert!(color.green <= 1);
+        assert_eq!(color.blue, 0);
+    }
+
+    #[test]
+    fn oklab_color_function_resolves_to_expected_rgb() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // oklab(62.8% 0.2249 0.1258) は純粋な赤 rgb(255, 0, 0) に相当する。
+        let author = parse_stylesheet("div { color: oklab(62.8% 0.2249 0.1258); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let color = styles[&div].color;
+        assert_eq!(color.red, 255);
+        assert!(color.green <= 1);
+        assert_eq!(color.blue, 0);
+    }
+
+    #[test]
+    fn oklch_color_function_with_alpha_is_preserved() {
+        let dom = html::parse(br#"<div>t</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let ua = Stylesheet::default();
+        // oklch(59.686% 0.15619 49.7694deg)は#ba5d06相当(rgb(198, 93, 6))。
+        let author =
+            parse_stylesheet("div { background-color: oklch(59.686% 0.15619 49.7694deg / 50%); }");
+
+        let styles = compute_styles(&dom, &ua, &author);
+        let bg = styles[&div].background_color;
+        assert_eq!((bg.red, bg.green, bg.blue), (198, 93, 6));
+        assert!((bg.alpha - 0.5).abs() < 0.01);
+    }
+
+    #[test]
     fn current_color_background_resolves_to_own_computed_color() {
         let dom = html::parse(br#"<div>text</div>"#);
         let div = find(&dom, dom.document(), "div").expect("div not found");

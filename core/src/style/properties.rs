@@ -1,6 +1,7 @@
 //! `Declaration: value;`のパースと、プロパティ宣言の型。
 
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
+use palette::{FromColor, Lab, Lch, Oklab, Oklch, Srgb};
 
 use super::values::{
     BackgroundAttachment, BackgroundRepeat, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
@@ -942,10 +943,9 @@ fn parse_length_unit<'i>(
     }
 }
 
-/// `lab()`/`lch()`/`oklab()`/`oklch()`はCIE系色空間からsRGBへの変換
-/// (行列演算・ガンマ補正)の実装が必要で、請求書・帳票用途での実用性に対して
-/// 実装コストが見合わないため非対応(`hsl()`/`hwb()`はcssparser-colorが
-/// sRGB変換関数を公開しているため対応する)。
+/// `lab()`/`lch()`/`oklab()`/`oklch()`は`cssparser-color`がsRGB変換関数を
+/// 公開していないため、`palette`クレートで変換する
+/// ([0029](../../../../docs/decisions/0029-color-level4-design.md)参照)。
 fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
     let color = cssparser_color::Color::parse(input).map_err(|_| input.new_custom_error(()))?;
     match color {
@@ -971,6 +971,58 @@ fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, (
                 hwb.blackness.unwrap_or(0.0),
             );
             Ok(rgba_from_unit_floats(r, g, b, hwb.alpha.unwrap_or(1.0)))
+        }
+        cssparser_color::Color::Lab(lab) => {
+            let srgb = Srgb::from_color(Lab::new(
+                lab.lightness.unwrap_or(0.0),
+                lab.a.unwrap_or(0.0),
+                lab.b.unwrap_or(0.0),
+            ));
+            Ok(rgba_from_unit_floats(
+                srgb.red,
+                srgb.green,
+                srgb.blue,
+                lab.alpha.unwrap_or(1.0),
+            ))
+        }
+        cssparser_color::Color::Lch(lch) => {
+            let srgb = Srgb::from_color(Lch::new(
+                lch.lightness.unwrap_or(0.0),
+                lch.chroma.unwrap_or(0.0),
+                lch.hue.unwrap_or(0.0),
+            ));
+            Ok(rgba_from_unit_floats(
+                srgb.red,
+                srgb.green,
+                srgb.blue,
+                lch.alpha.unwrap_or(1.0),
+            ))
+        }
+        cssparser_color::Color::Oklab(oklab) => {
+            let srgb = Srgb::from_color(Oklab::new(
+                oklab.lightness.unwrap_or(0.0),
+                oklab.a.unwrap_or(0.0),
+                oklab.b.unwrap_or(0.0),
+            ));
+            Ok(rgba_from_unit_floats(
+                srgb.red,
+                srgb.green,
+                srgb.blue,
+                oklab.alpha.unwrap_or(1.0),
+            ))
+        }
+        cssparser_color::Color::Oklch(oklch) => {
+            let srgb = Srgb::from_color(Oklch::new(
+                oklch.lightness.unwrap_or(0.0),
+                oklch.chroma.unwrap_or(0.0),
+                oklch.hue.unwrap_or(0.0),
+            ));
+            Ok(rgba_from_unit_floats(
+                srgb.red,
+                srgb.green,
+                srgb.blue,
+                oklch.alpha.unwrap_or(1.0),
+            ))
         }
         _ => Err(input.new_custom_error(())),
     }

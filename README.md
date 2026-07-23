@@ -80,8 +80,31 @@ layout、Lists、Box model詳細、Generated content、Background詳細)を実�
 Typography詳細・Table layout完全対応・Lists)・Phase 2(Box model詳細・
 Generated content・Background詳細)ともに完了し、**マイルストーン8全体が完了**。
 マイルストーン9(CSS3対応)は、Phase 1(`box-sizing`・Paged media)が完了。
-Phase 2(Color Level 4・`object-fit`・`box-shadow`・CSS Custom Properties)・
-Phase 3(Flexbox)は未着手。
+Phase 2はColor Level 4が完了、`object-fit`・`box-shadow`・CSS Custom
+Properties・Phase 3(Flexbox)は未着手。
+
+### Color Level 4(`lab()`/`lch()`/`oklab()`/`oklch()`)
+
+CIE Lab/LCH・Oklab/Oklchの各色関数からsRGBへの変換に対応している。
+
+```css
+.box { background-color: oklch(59.686% 0.15619 49.7694deg); }
+```
+
+* 変換は`palette`クレート(`default-features = false, features = ["std"]`
+  に絞り込み、実行時依存は`palette`本体と`fast-srgb8`のみ)に委ねている。
+  自前で変換行列(CIE Lab→XYZ→linear sRGB、Oklab→linear sRGB)を実装する
+  よりも、型安全な変換を低コストに使える判断とした
+* `hsl()`/`hwb()`と同じ設計で、パース時点でsRGBへ変換し保持する
+  (`Color`型にLab/LCH等の色空間情報を保持する新バリアントは追加しない)
+* 各成分がCSS仕様のnominal range(`lab()`のL: 0〜100、`oklch()`のC: 0〜0.4
+  等)を超える値は、`hsl()`/`hwb()`と同じくsRGBへの変換結果を0〜1へクランプ
+  する
+* 相対色構文(`lab(from ...)`)・`color-mix()`・`color()`(`display-p3`等の
+  予測済み色空間)はCSS Color 5相当・スコープ外のため非対応
+
+詳細は[docs/decisions/0029-color-level4-design.md](docs/decisions/0029-color-level4-design.md)
+参照。
 
 ### Paged media(`@page`/`@media`/margin box/ページ番号)
 
