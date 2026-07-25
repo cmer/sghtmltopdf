@@ -68,6 +68,63 @@ use crate::style::{
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
 use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, PreparedImage};
+use super::options::{current_datetime, producer_string, DocumentMetadata, PdfOutputOptions};
+
+/// `Content`に色変換を挟むラッパー([0057](
+/// ../../../docs/decisions/0057-pdf-output-options-design.md)決定4)。
+///
+/// `--grayscale`のために描画関数すべてへ`PdfOutputOptions`を配るのは
+/// 影響が大きい(`settings`は244箇所で参照されている)ため、
+/// **色を書く経路だけ**をこの型で包む。`Deref`/`DerefMut`により
+/// `Content`のメソッドはそのまま使え、`set_fill_rgb`/`set_stroke_rgb`だけが
+/// ここの実装で上書きされる。
+pub(super) struct RenderTarget<'a> {
+    content: &'a mut Content,
+    grayscale: bool,
+}
+
+impl<'a> RenderTarget<'a> {
+    pub(super) fn new(content: &'a mut Content, grayscale: bool) -> Self {
+        Self { content, grayscale }
+    }
+
+    /// 同じ設定で別の`Content`(form XObjectの中身など)を包む。
+    pub(super) fn wrap<'b>(&self, content: &'b mut Content) -> RenderTarget<'b> {
+        RenderTarget::new(content, self.grayscale)
+    }
+
+    fn map(&self, r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+        if !self.grayscale {
+            return (r, g, b);
+        }
+        let y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        (y, y, y)
+    }
+
+    pub(super) fn set_fill_rgb(&mut self, r: f32, g: f32, b: f32) -> &mut Content {
+        let (r, g, b) = self.map(r, g, b);
+        self.content.set_fill_rgb(r, g, b)
+    }
+
+    pub(super) fn set_stroke_rgb(&mut self, r: f32, g: f32, b: f32) -> &mut Content {
+        let (r, g, b) = self.map(r, g, b);
+        self.content.set_stroke_rgb(r, g, b)
+    }
+}
+
+impl std::ops::Deref for RenderTarget<'_> {
+    type Target = Content;
+
+    fn deref(&self) -> &Self::Target {
+        self.content
+    }
+}
+
+impl std::ops::DerefMut for RenderTarget<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.content
+    }
+}
 
 /// DOM由来のレイアウト結果(ページ列)をPDFバイト列にエンコードする。
 pub fn encode_pdf(
@@ -100,6 +157,29 @@ pub fn encode_pdf_with_anchors(
     fonts: &FontCollection,
     settings: &PageSettings,
     links: &LinkSettings,
+) -> Vec<u8> {
+    encode_pdf_with_options(
+        pages,
+        styles,
+        background_images,
+        fonts,
+        settings,
+        links,
+        &PdfOutputOptions::default(),
+    )
+}
+
+/// [`encode_pdf_with_anchors`]に、PDF書き出しオプション
+/// (メタデータ・圧縮・スケール・グレースケール)を渡せるようにした版
+/// ([0057](../../../docs/decisions/0057-pdf-output-options-design.md)決定1)。
+pub fn encode_pdf_with_options(
+    pages: &[Page],
+    styles: &HashMap<NodeId, ComputedStyle>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    links: &LinkSettings,
+    output: &PdfOutputOptions,
 ) -> Vec<u8> {
     let mut pdf = Pdf::new();
     let mut alloc = RefAllocator::default();
@@ -147,7 +227,11 @@ pub fn encode_pdf_with_anchors(
         .iter()
         .zip(font_ids.iter())
         .zip(usages.iter())
-        .map(|((font, &ids), usage)| embed_font(&mut pdf, font, ids, usage).into_iter().collect())
+        .map(|((font, &ids), usage)| {
+            embed_font(&mut pdf, font, ids, usage, output.compress)
+                .into_iter()
+                .collect()
+        })
         .collect();
 
     // Pass 2: 実際にページのコンテンツストリームを書く。画像XObjectは、
@@ -172,7 +256,7 @@ pub fn encode_pdf_with_anchors(
         for image in &used_images {
             let (ids, is_new) = ids_for_image(&mut alloc, &mut image_ids, image);
             if is_new {
-                embed_image(&mut pdf, image, &ids);
+                embed_image(&mut pdf, image, &ids, output.grayscale);
             }
             page_image_refs.push(ids.color);
         }
@@ -190,9 +274,13 @@ pub fn encode_pdf_with_anchors(
         let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
 
         let mut content = Content::new();
+        // CSS px → PDF ptの換算はページ全体のCTMで行う([0057]決定2)。
+        content.transform([output.scale, 0.0, 0.0, output.scale, 0.0, 0.0]);
+        // 色変換([0057]決定4)を挟むラッパー。
+        let mut target = RenderTarget::new(&mut content, output.grayscale);
         for b in &page.boxes {
             render_box(
-                &mut content,
+                &mut target,
                 b,
                 styles,
                 fonts,
@@ -235,8 +323,8 @@ pub fn encode_pdf_with_anchors(
         p.media_box(PdfRect::new(
             0.0,
             0.0,
-            settings.size.width,
-            settings.size.height,
+            output.to_pt(settings.size.width),
+            output.to_pt(settings.size.height),
         ));
         p.contents(content_id);
         if !page_annotation_ids.is_empty() {
@@ -253,9 +341,15 @@ pub fn encode_pdf_with_anchors(
         );
         p.finish();
 
-        let compressed_content = deflate(&content_bytes);
-        let mut content_stream = pdf.stream(content_id, &compressed_content);
-        content_stream.filter(pdf_writer::Filter::FlateDecode);
+        let stream_bytes = if output.compress {
+            deflate(&content_bytes)
+        } else {
+            content_bytes.to_vec()
+        };
+        let mut content_stream = pdf.stream(content_id, &stream_bytes);
+        if output.compress {
+            content_stream.filter(pdf_writer::Filter::FlateDecode);
+        }
         content_stream.finish();
 
         // opacityグループのForm XObjectを実際に書き出す(決定2)。`/BBox`は
@@ -287,17 +381,23 @@ pub fn encode_pdf_with_anchors(
     // 注釈本体を書く。内部アンカーは名前付き宛先を参照するだけなので、
     // 対象がどのページにあるか(前方参照かどうか)を気にしなくてよい([0042]決定3-1)。
     for (id, area) in &link_annotations {
-        write_link_annotation(pdf.annotation(*id), area, links.base_href.as_deref());
+        write_link_annotation(
+            pdf.annotation(*id),
+            area,
+            links.base_href.as_deref(),
+            output.scale,
+        );
     }
 
     let dests_id = (!destinations.is_empty()).then(|| alloc.next());
     if let Some(dests_id) = dests_id {
         let mut dests = pdf.destinations(dests_id);
         for (name, page_id, x, y) in &destinations {
-            dests
-                .insert(Name(name.as_bytes()))
-                .page(*page_id)
-                .xyz(*x, *y, None);
+            dests.insert(Name(name.as_bytes())).page(*page_id).xyz(
+                output.to_pt(*x),
+                output.to_pt(*y),
+                None,
+            );
         }
     }
 
@@ -311,6 +411,9 @@ pub fn encode_pdf_with_anchors(
     }
     catalog.finish();
 
+    let info_id = alloc.next();
+    write_document_info(pdf.document_info(info_id), &output.metadata);
+
     pdf.finish()
 }
 
@@ -322,9 +425,17 @@ pub(super) fn write_link_annotation(
     mut annotation: pdf_writer::writers::Annotation<'_>,
     area: &LinkArea,
     base_href: Option<&str>,
+    scale: f32,
 ) {
     annotation.subtype(AnnotationType::Link);
-    annotation.rect(PdfRect::new(area.x0, area.y0, area.x1, area.y1));
+    // 注釈の`/Rect`はページ座標系(content streamのCTMの影響を受けない)なので、
+    // ここでCSS px → ptへ換算する([0057]決定2)。
+    annotation.rect(PdfRect::new(
+        area.x0 * scale,
+        area.y0 * scale,
+        area.x1 * scale,
+        area.y1 * scale,
+    ));
     // 既定の枠線(ビューアによっては黒枠が出る)を消す。
     annotation.border(0.0, 0.0, 0.0, None);
 
@@ -374,11 +485,76 @@ pub fn write_document<S: Sink>(
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
+    sink: S,
+) -> Result<S::Output, S::Error> {
+    write_document_with_options(
+        pages,
+        styles,
+        background_images,
+        fonts,
+        settings,
+        &LinkSettings::default(),
+        &PdfOutputOptions::default(),
+        sink,
+    )
+}
+
+/// [`write_document`]に、リンク設定とPDF書き出しオプションを渡せる版。
+#[allow(clippy::too_many_arguments)]
+pub fn write_document_with_options<S: Sink>(
+    pages: &[Page],
+    styles: &HashMap<NodeId, ComputedStyle>,
+    background_images: &HashMap<NodeId, Rc<PreparedImage>>,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    links: &LinkSettings,
+    output: &PdfOutputOptions,
     mut sink: S,
 ) -> Result<S::Output, S::Error> {
-    let bytes = encode_pdf(pages, styles, background_images, fonts, settings);
+    let bytes = encode_pdf_with_options(
+        pages,
+        styles,
+        background_images,
+        fonts,
+        settings,
+        links,
+        output,
+    );
     sink.write(&bytes)?;
     sink.finish()
+}
+
+/// PDF Info辞書を書く([0057]決定6)。`/Producer`と`/CreationDate`は常時、
+/// 残りは指定されたものだけを書く。
+pub(super) fn write_document_info(
+    mut info: pdf_writer::writers::DocumentInfo<'_>,
+    metadata: &DocumentMetadata,
+) {
+    if let Some(title) = metadata.title.as_deref() {
+        info.title(TextStr(title));
+    }
+    if let Some(author) = metadata.author.as_deref() {
+        info.author(TextStr(author));
+    }
+    if let Some(subject) = metadata.subject.as_deref() {
+        info.subject(TextStr(subject));
+    }
+    if let Some(keywords) = metadata.keywords.as_deref() {
+        info.keywords(TextStr(keywords));
+    }
+    info.producer(TextStr(&producer_string()));
+
+    let (year, month, day, hour, minute, second) = current_datetime();
+    let date = pdf_writer::Date::new(year as u16)
+        .month(month as u8)
+        .day(day as u8)
+        .hour(hour as u8)
+        .minute(minute as u8)
+        .second(second as u8)
+        .utc_offset_hour(0)
+        .utc_offset_minute(0);
+    info.creation_date(date);
+    info.finish();
 }
 
 /// ページの`/Resources`辞書、および各opacityグループForm XObjectの
@@ -762,7 +938,7 @@ fn push_unique_image(out: &mut Vec<Rc<PreparedImage>>, image: &Rc<PreparedImage>
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_box(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
@@ -808,7 +984,7 @@ pub(super) fn render_box(
 /// レイアウトには一切影響しない(視覚効果のみ、CSS仕様通り)。
 #[allow(clippy::too_many_arguments)]
 fn render_box_with_style(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     style: &ComputedStyle,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -871,7 +1047,7 @@ fn render_box_with_style(
 /// `render_box_with_style`から分離してある。
 #[allow(clippy::too_many_arguments)]
 fn render_box_opacity_wrapped(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     style: &ComputedStyle,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -912,8 +1088,9 @@ fn render_box_opacity_wrapped(
         .expect("opacity < 1の要素は事前にRefが払い出されているはず");
 
     let mut sub_content = Content::new();
+    let mut sub_target = content.wrap(&mut sub_content);
     render_box_with_style_inner(
-        &mut sub_content,
+        &mut sub_target,
         b,
         style,
         styles,
@@ -996,7 +1173,7 @@ fn apply_transform_origin(m: [f32; 6], ox: f32, oy: f32) -> [f32; 6] {
 /// より内側に置く必要があるため分離してある。
 #[allow(clippy::too_many_arguments)]
 fn render_box_with_style_inner(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     style: &ComputedStyle,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -1544,7 +1721,7 @@ fn resolve_border_conflict(
 /// 描画する。
 #[allow(clippy::too_many_arguments)]
 fn render_box_decoration(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -1593,7 +1770,7 @@ const BOX_SHADOW_BLUR_STEPS: u32 = 4;
 /// リストの先頭が最前面になるよう後ろから塗る。`inset`は非対応
 /// (決定1、既知の簡略化)。
 fn render_box_shadows(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -1623,7 +1800,7 @@ fn render_box_shadows(
 /// 最も濃い)の順に重ね塗りして近似する(決定3)。角丸は要素本体の半径
 /// (`radii`)をそのまま使い、拡大に応じて広げない。
 fn render_single_box_shadow(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     border_box: Rect,
     shadow: &ComputedBoxShadow,
     settings: &PageSettings,
@@ -1639,7 +1816,7 @@ fn render_single_box_shadow(
         return;
     }
 
-    let draw = |content: &mut Content, expand: f32, alpha: f32| {
+    let draw = |content: &mut RenderTarget<'_>, expand: f32, alpha: f32| {
         let x0 = settings.margin.left + border_box.x + shadow.offset_x - expand;
         let x1 = settings.margin.left + border_box.x + border_box.width + shadow.offset_x + expand;
         let y_top = to_pdf_y(settings, border_box.y + shadow.offset_y - expand);
@@ -1754,7 +1931,7 @@ pub(super) fn alpha_gs_resource_name(step: usize) -> String {
 /// アルファ値に応じて`gs`演算子(`/ca`・`/CA`)を発行する。1.0(完全不透明)は
 /// 何もしない(PDFの既定状態のため、[0031]決定1)。呼び出し側が
 /// `save_state`/`restore_state`でスコープを囲むこと([0031]決定3)。
-fn apply_fill_alpha(content: &mut Content, alpha: f32, alpha_gs_names: &[String]) {
+fn apply_fill_alpha(content: &mut RenderTarget<'_>, alpha: f32, alpha_gs_names: &[String]) {
     let step = quantize_alpha_step(alpha);
     if step >= ALPHA_STEPS {
         return;
@@ -1763,7 +1940,7 @@ fn apply_fill_alpha(content: &mut Content, alpha: f32, alpha_gs_names: &[String]
 }
 
 fn render_background(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     border_box: Rect,
     color: RgbaColor,
     settings: &PageSettings,
@@ -1793,7 +1970,12 @@ fn render_background(
 /// いずれの呼び出し元からも使う共通ヘルパー。`resource_ref`が指すXObjectは、
 /// 呼び出し元がページの`/Resources/XObject`辞書へ既に登録済みであること
 /// ([`image_resource_name`]と同じ命名規則でリソース名を導出する)。
-fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, resource_ref: Ref) {
+fn render_image(
+    content: &mut RenderTarget<'_>,
+    rect: Rect,
+    settings: &PageSettings,
+    resource_ref: Ref,
+) {
     let x = settings.margin.left + rect.x;
     let y = to_pdf_y(settings, rect.y + rect.height);
     let name = image_resource_name(resource_ref);
@@ -1807,7 +1989,7 @@ fn render_image(content: &mut Content, rect: Rect, settings: &PageSettings, reso
 /// ([0030](../../../docs/decisions/0030-object-fit-position-design.md)決定2・3)。
 /// `object-fit`の値によらず常にcontent-boxへクリップする(決定3)。
 fn render_replaced_image(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     content_box: Rect,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -2026,7 +2208,7 @@ fn tile_starts(origin: f32, tile: f32, min: f32, max: f32, repeat: bool) -> Vec<
 /// (`overflow`クリップと同じパターン)を挟んでタイルがboxからはみ出さない
 /// ようにする。
 fn render_background_image(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     border_box: Rect,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -2078,7 +2260,7 @@ fn render_background_image(
 /// ボックスを持たない([`crate::style::user_agent_stylesheet`])ため、
 /// それらへの背景指定は引き続き効かない(既知の制約)。
 fn render_row_background(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     row: &LaidOutTableRow,
     styles: &HashMap<NodeId, ComputedStyle>,
     settings: &PageSettings,
@@ -2134,7 +2316,7 @@ fn render_row_background(
 /// 直線4辺の[`render_border`]にフォールバックする)。
 #[allow(clippy::too_many_arguments)]
 fn render_rounded_decoration(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -2258,7 +2440,7 @@ const BEZIER_KAPPA: f32 = 0.552_284_8;
 /// は`(水平半径, 垂直半径)`のペア([0023](../../../docs/decisions/0023-box-model-details-design.md)
 /// 決定6、楕円コーナー対応)。
 fn rounded_rect_path(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     x0: f32,
     y_top: f32,
     x1: f32,
@@ -2365,7 +2547,7 @@ fn shrink_radii(
 /// ([0023](../../../docs/decisions/0023-box-model-details-design.md)決定3)。
 /// `outline-offset`(outlineとborder-boxの間隔)は非対応、常に0固定。
 fn render_outline(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -2436,7 +2618,7 @@ fn render_outline(
 /// ストロークする(ダッシュの境界はどのみち辺ごとに揃わないため、ミトー結合の
 /// 恩恵が薄く実装コストに見合わない簡略化)。
 fn render_border(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     layout: &Layout,
     style: &ComputedStyle,
     settings: &PageSettings,
@@ -2617,7 +2799,7 @@ impl BorderSideCorners {
 
 /// 1辺分の枠線を描く。
 fn render_border_side(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     side: BorderSideKind,
     border_style: BorderStyle,
     color: RgbaColor,
@@ -2707,7 +2889,7 @@ fn render_border_side(
 /// 単純な実線を太さ・色を指定してストロークする(text-decorationの下線・
 /// 取り消し線用。border描画とは異なりミトー結合等は関係ない単発の直線)。
 fn stroke_line(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     thickness: f32,
     color: RgbaColor,
     from: (f32, f32),
@@ -2734,7 +2916,13 @@ fn lerp(a: (f32, f32), b: (f32, f32), t: f32) -> (f32, f32) {
 }
 
 /// 4頂点(a→b→c→d→閉じる)の四角形パスを構築して塗りつぶす。
-fn fill_quad(content: &mut Content, a: (f32, f32), b: (f32, f32), c: (f32, f32), d: (f32, f32)) {
+fn fill_quad(
+    content: &mut RenderTarget<'_>,
+    a: (f32, f32),
+    b: (f32, f32),
+    c: (f32, f32),
+    d: (f32, f32),
+) {
     content.move_to(a.0, a.1);
     content.line_to(b.0, b.1);
     content.line_to(c.0, c.1);
@@ -2748,7 +2936,11 @@ fn fill_quad(content: &mut Content, a: (f32, f32), b: (f32, f32), c: (f32, f32),
 /// `Groove`/`Ridge`/`Inset`/`Outset`は角丸パスのストロークでは表現できず
 /// 常に直線4辺へフォールバックする([0023]決定5)ためここには来ないが、
 /// `match`を網羅するため`Solid`と同じ扱いにしておく。
-fn apply_border_style_dash(content: &mut Content, border_style: BorderStyle, thickness: f32) {
+fn apply_border_style_dash(
+    content: &mut RenderTarget<'_>,
+    border_style: BorderStyle,
+    thickness: f32,
+) {
     match border_style {
         BorderStyle::Solid
         | BorderStyle::Double
@@ -2779,7 +2971,7 @@ const ITALIC_SHEAR: f32 = 0.2126; // tan(12°)
 const BOLD_STROKE_RATIO: f32 = 0.03;
 
 fn render_line(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     line: &LineBox,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -2981,7 +3173,7 @@ fn render_line(
 /// マークは空白でない文字1つごとに1個置く(`text-emphasis-skip`は非対応)。
 #[allow(clippy::too_many_arguments)]
 fn render_emphasis_marks(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     line: &LineBox,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -3031,7 +3223,7 @@ fn render_emphasis_marks(
 /// マーク1つ分を`(center_x, center_y)`を中心に描く。
 #[allow(clippy::too_many_arguments)]
 fn render_emphasis_mark(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     mark: &EmphasisMark,
     center_x: f32,
     center_y: f32,
@@ -3118,7 +3310,7 @@ fn render_emphasis_mark(
 /// 字形を持たないフォントでは何も描かれない(既知の限界、[0053]決定6)。
 #[allow(clippy::too_many_arguments)]
 fn render_emphasis_glyph(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     ch: char,
     center_x: f32,
     center_y: f32,
@@ -3168,7 +3360,7 @@ fn render_emphasis_glyph(
 }
 
 /// マークのパスを塗る(`filled`)か輪郭を描く(`open`)。
-fn finish_mark_path(content: &mut Content, filled: bool) {
+fn finish_mark_path(content: &mut RenderTarget<'_>, filled: bool) {
     if filled {
         content.fill_nonzero();
     } else {
@@ -3177,12 +3369,12 @@ fn finish_mark_path(content: &mut Content, filled: bool) {
 }
 
 /// 中心と半径から真円のパスを引く(4本のベジェ曲線で近似)。
-fn circle_path(content: &mut Content, cx: f32, cy: f32, r: f32) {
+fn circle_path(content: &mut RenderTarget<'_>, cx: f32, cy: f32, r: f32) {
     ellipse_path(content, cx, cy, r, r);
 }
 
 /// 中心と水平/垂直半径から楕円のパスを引く。
-fn ellipse_path(content: &mut Content, cx: f32, cy: f32, rx: f32, ry: f32) {
+fn ellipse_path(content: &mut RenderTarget<'_>, cx: f32, cy: f32, rx: f32, ry: f32) {
     let (kx, ky) = (rx * BEZIER_KAPPA, ry * BEZIER_KAPPA);
     content.move_to(cx + rx, cy);
     content.cubic_to(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry);
@@ -3202,7 +3394,7 @@ const TEXT_SHADOW_BLUR_STEPS: usize = 2;
 /// 重ね描きして近似する。カンマ区切りの複数指定は後ろに書いたものほど奥に描く。
 #[allow(clippy::too_many_arguments)]
 fn render_text_shadows(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     line: &LineBox,
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
@@ -3544,7 +3736,7 @@ fn shape_margin_boxes_for_page(
 /// 再利用する)。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_margin_boxes(
-    content: &mut Content,
+    content: &mut RenderTarget<'_>,
     settings: &PageSettings,
     fonts: &FontCollection,
     page_rules: &[PageRule],

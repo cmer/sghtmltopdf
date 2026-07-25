@@ -383,7 +383,17 @@ pub fn embed_image(
     pdf: &mut impl std::ops::DerefMut<Target = Chunk>,
     image: &PreparedImage,
     ids: &ImageIds,
+    grayscale: bool,
 ) {
+    let color = if grayscale {
+        to_grayscale_plane(&image.color).0
+    } else {
+        image.color.clone()
+    };
+    let image = &PreparedImage {
+        color,
+        ..image.clone()
+    };
     if let (Some(alpha), Some(alpha_id)) = (&image.alpha, ids.alpha) {
         write_plane(pdf, alpha_id, image.width, image.height, alpha, None);
     }
@@ -399,7 +409,26 @@ pub fn embed_image(
 
 /// [`embed_image`]のストリーミング版。`(Ref, Chunk)`の列を返し、呼び出し側が
 /// `Sink`へ都度書き出す(フォントの`embed_font_streaming_chunks`と同じ形)。
-pub fn embed_image_streaming_chunks(image: &PreparedImage, ids: &ImageIds) -> Vec<(Ref, Chunk)> {
+pub fn embed_image_streaming_chunks(
+    image: &PreparedImage,
+    ids: &ImageIds,
+    grayscale: bool,
+) -> Vec<(Ref, Chunk)> {
+    let color = if grayscale {
+        let (plane, converted) = to_grayscale_plane(&image.color);
+        if !converted {
+            eprintln!(
+                "警告: この画像はグレースケール化できません(JPEG/CMYKはデコーダを持たないため、[0057]決定4)"
+            );
+        }
+        plane
+    } else {
+        image.color.clone()
+    };
+    let image = &PreparedImage {
+        color,
+        ..image.clone()
+    };
     let mut chunks = Vec::with_capacity(2);
     if let (Some(alpha), Some(alpha_id)) = (&image.alpha, ids.alpha) {
         let mut chunk = Chunk::new();
@@ -417,6 +446,60 @@ pub fn embed_image_streaming_chunks(image: &PreparedImage, ids: &ImageIds) -> Ve
     );
     chunks.push((ids.color, chunk));
     chunks
+}
+
+/// 画像のカラープレーンをグレースケール化する([0057](
+/// ../../../docs/decisions/0057-pdf-output-options-design.md)決定4)。
+///
+/// 変換できるのはピクセルデータを持てる`Rgb`プレーン(無圧縮または
+/// `/FlateDecode`)だけ。JPEGパススルー(`/DCTDecode`)とCMYKは
+/// **デコーダを持たないため変換できず、そのまま返す**(既知の限界)。
+/// 変換しなかった場合に`false`を返すので、呼び出し側が警告を出せる。
+pub fn to_grayscale_plane(plane: &ImagePlane) -> (ImagePlane, bool) {
+    if plane.color_space != PlaneColorSpace::Rgb || plane.bits_per_component != 8 {
+        // Grayは変換不要、CmykとDctDecodeは変換できない。
+        let converted = plane.color_space == PlaneColorSpace::Gray;
+        return (plane.clone(), converted);
+    }
+
+    let raw = match plane.filter {
+        Filter::FlateDecode => match inflate(&plane.data) {
+            Some(bytes) => bytes,
+            None => return (plane.clone(), false),
+        },
+        Filter::DctDecode => return (plane.clone(), false),
+        _ => plane.data.clone(),
+    };
+
+    let mut gray = Vec::with_capacity(raw.len() / 3);
+    for px in raw.chunks_exact(3) {
+        let y = 0.2126 * px[0] as f32 + 0.7152 * px[1] as f32 + 0.0722 * px[2] as f32;
+        gray.push(y.round().clamp(0.0, 255.0) as u8);
+    }
+
+    let (data, filter) = match plane.filter {
+        Filter::FlateDecode => (deflate(&gray), Filter::FlateDecode),
+        other => (gray, other),
+    };
+    (
+        ImagePlane {
+            data,
+            filter,
+            color_space: PlaneColorSpace::Gray,
+            bits_per_component: 8,
+        },
+        true,
+    )
+}
+
+/// zlib展開。壊れていた場合は`None`(呼び出し側で変換をあきらめる)。
+fn inflate(data: &[u8]) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    flate2::read::ZlibDecoder::new(data)
+        .read_to_end(&mut out)
+        .ok()?;
+    Some(out)
 }
 
 fn write_plane(

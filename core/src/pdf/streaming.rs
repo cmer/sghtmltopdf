@@ -30,10 +30,12 @@ use crate::style::{ComputedStyle, PageRule};
 use super::document::{
     alpha_gs_resource_name, collect_anchor_positions, collect_image_uses, collect_link_areas,
     collect_margin_box_usage, collect_opacity_uses, collect_usage, render_box, render_margin_boxes,
-    write_link_annotation, write_resources, LinkSettings, RefAllocator, ALPHA_STEPS,
+    write_document_info, write_link_annotation, write_resources, LinkSettings, RefAllocator,
+    RenderTarget, ALPHA_STEPS,
 };
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
 use super::img::{embed_image_streaming_chunks, ids_for_image, ImageIds, PreparedImage};
+use super::options::PdfOutputOptions;
 
 const PDF_HEADER: &[u8] = b"%PDF-1.7\n%\x80\x80\x80\x80\n\n";
 
@@ -73,6 +75,9 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// これまでに書いたページで見つかったアンカーの位置
     /// (名前, ページのRef, x, y)。`finish`で`/Dests`辞書として書き出す。
     destinations: Vec<(String, Ref, f32, f32)>,
+    /// メタデータ・圧縮・スケール・グレースケール([0057](
+    /// ../../../docs/decisions/0057-pdf-output-options-design.md))。
+    output: PdfOutputOptions,
 }
 
 impl<S: Sink> StreamingPdfWriter<S> {
@@ -83,9 +88,28 @@ impl<S: Sink> StreamingPdfWriter<S> {
     pub fn new(
         fonts: &FontCollection,
         settings: PageSettings,
+        sink: S,
+        page_rules: Vec<PageRule>,
+        links: LinkSettings,
+    ) -> Result<Self, S::Error> {
+        Self::with_options(
+            fonts,
+            settings,
+            sink,
+            page_rules,
+            links,
+            PdfOutputOptions::default(),
+        )
+    }
+
+    /// [`PdfOutputOptions`]を明示して作る版([0057]決定1)。
+    pub fn with_options(
+        fonts: &FontCollection,
+        settings: PageSettings,
         mut sink: S,
         page_rules: Vec<PageRule>,
         links: LinkSettings,
+        output: PdfOutputOptions,
     ) -> Result<Self, S::Error> {
         sink.write(PDF_HEADER)?;
 
@@ -125,6 +149,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
             alpha_gs_names,
             links,
             destinations: Vec::new(),
+            output,
         };
         for (step, id) in alpha_gs_ids.into_iter().enumerate() {
             let a = step as f32 / ALPHA_STEPS as f32;
@@ -182,7 +207,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
         for image in &used_images {
             let (ids, is_new) = ids_for_image(&mut self.alloc, &mut self.image_ids, image);
             if is_new {
-                for (id, chunk) in embed_image_streaming_chunks(image, &ids) {
+                for (id, chunk) in embed_image_streaming_chunks(image, &ids, self.output.grayscale)
+                {
                     self.write_chunk(id, &chunk)?;
                 }
             }
@@ -207,10 +233,16 @@ impl<S: Sink> StreamingPdfWriter<S> {
         self.page_ids.push(page_id);
 
         let mut content = Content::new();
+        // CSS px → PDF ptの換算はページ全体のCTMで行う([0057]決定2)。
+        // これ以降のcontent stream内の座標はすべてCSS pxのままでよい。
+        let scale = self.output.scale;
+        content.transform([scale, 0.0, 0.0, scale, 0.0, 0.0]);
+        // 色変換([0057]決定4)を挟むラッパー。
+        let mut target = RenderTarget::new(&mut content, self.output.grayscale);
         for b in &page.boxes {
             // `remaps: None` — CIDは常に元のグリフIDのまま使う(モジュールdoc参照)。
             render_box(
-                &mut content,
+                &mut target,
                 b,
                 styles,
                 fonts,
@@ -225,7 +257,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
             );
         }
         render_margin_boxes(
-            &mut content,
+            &mut target,
             &self.settings,
             fonts,
             &self.page_rules,
@@ -235,11 +267,17 @@ impl<S: Sink> StreamingPdfWriter<S> {
             &self.font_resource_names,
         );
         let content_bytes = content.finish();
-        let compressed_content = deflate(&content_bytes);
+        let stream_bytes = if self.output.compress {
+            deflate(&content_bytes)
+        } else {
+            content_bytes.to_vec()
+        };
 
         let mut chunk = Chunk::new();
-        let mut content_stream = chunk.stream(content_id, &compressed_content);
-        content_stream.filter(Filter::FlateDecode);
+        let mut content_stream = chunk.stream(content_id, &stream_bytes);
+        if self.output.compress {
+            content_stream.filter(Filter::FlateDecode);
+        }
         content_stream.finish();
         self.write_chunk(content_id, &chunk)?;
 
@@ -263,7 +301,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 .iter()
                 .any(|(existing, ..)| *existing == name)
             {
-                self.destinations.push((name, page_id, x, y));
+                self.destinations
+                    .push((name, page_id, self.output.to_pt(x), self.output.to_pt(y)));
             }
         }
         let mut annotation_ids = Vec::with_capacity(page_links.len());
@@ -271,7 +310,12 @@ impl<S: Sink> StreamingPdfWriter<S> {
             let id = self.alloc.next();
             annotation_ids.push(id);
             let mut chunk = Chunk::new();
-            write_link_annotation(chunk.annotation(id), area, self.links.base_href.as_deref());
+            write_link_annotation(
+                chunk.annotation(id),
+                area,
+                self.links.base_href.as_deref(),
+                self.output.scale,
+            );
             self.write_chunk(id, &chunk)?;
         }
 
@@ -283,8 +327,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
             p.media_box(PdfRect::new(
                 0.0,
                 0.0,
-                self.settings.size.width,
-                self.settings.size.height,
+                self.output.to_pt(self.settings.size.width),
+                self.output.to_pt(self.settings.size.height),
             ));
             p.contents(content_id);
             if !annotation_ids.is_empty() {
@@ -337,7 +381,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         let font_ids = self.font_ids.clone();
         let usages = std::mem::take(&mut self.usages);
         for ((font, &ids), usage) in fonts.fonts().iter().zip(font_ids.iter()).zip(usages.iter()) {
-            for (id, chunk) in embed_font_streaming_chunks(font, ids, usage) {
+            for (id, chunk) in embed_font_streaming_chunks(font, ids, usage, self.output.compress) {
                 self.write_chunk(id, &chunk)?;
             }
         }
@@ -377,7 +421,17 @@ impl<S: Sink> StreamingPdfWriter<S> {
         }
         self.write_chunk(self.catalog_id, &chunk)?;
 
-        self.write_xref_and_trailer()?;
+        let info_id = self.alloc.next();
+        let mut chunk = Chunk::new();
+        write_document_info(
+            chunk
+                .indirect(info_id)
+                .start::<pdf_writer::writers::DocumentInfo>(),
+            &self.output.metadata,
+        );
+        self.write_chunk(info_id, &chunk)?;
+
+        self.write_xref_and_trailer(info_id)?;
 
         self.sink.finish()
     }
@@ -391,7 +445,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         self.sink.write(bytes)
     }
 
-    fn write_xref_and_trailer(&mut self) -> Result<(), S::Error> {
+    fn write_xref_and_trailer(&mut self, info_id: Ref) -> Result<(), S::Error> {
         let xref_offset = self.output_len;
         let size = self
             .offsets
@@ -411,8 +465,9 @@ impl<S: Sink> StreamingPdfWriter<S> {
         }
         buf.extend_from_slice(
             format!(
-                "trailer\n<< /Size {size} /Root {} 0 R >>\n",
-                self.catalog_id.get()
+                "trailer\n<< /Size {size} /Root {} 0 R /Info {} 0 R >>\n",
+                self.catalog_id.get(),
+                info_id.get()
             )
             .as_bytes(),
         );

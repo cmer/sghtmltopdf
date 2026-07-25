@@ -27,6 +27,16 @@ fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
         .count()
 }
 
+/// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ。
+/// PDFへはpt(既定で0.75倍、[0057])で書かれるため、ここで換算する。
+fn media_box(width_px: f32, height_px: f32) -> String {
+    format!(
+        "/MediaBox [0 0 {} {}]",
+        width_px * sghtmltopdf_core::pdf::DEFAULT_SCALE,
+        height_px * sghtmltopdf_core::pdf::DEFAULT_SCALE
+    )
+}
+
 fn temp_output_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("sghtmltopdf-e2e-{}-{name}.pdf", std::process::id()))
 }
@@ -417,4 +427,278 @@ fn the_server_subcommand_reports_that_it_is_not_implemented_yet() {
         .expect("failed to run sghtmltopdf binary");
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("server"));
+}
+
+// ---------------------------------------------------------------------------
+// M12 Phase 2(T285〜T288): ページ設定オプションと`@page`との合成
+// ---------------------------------------------------------------------------
+
+/// HTMLを一時ディレクトリへ書き、指定した引数でCLIを走らせてPDFバイト列を返す。
+fn run_cli_with(html: &str, extra_args: &[&str], name: &str) -> Vec<u8> {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    std::fs::write(&input, html).unwrap();
+    let output = dir.join("out.pdf");
+
+    let status = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("-o")
+        .arg(&output)
+        .args(extra_args)
+        .arg("--quiet")
+        .status()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(status.success(), "CLI should succeed for case {name}");
+
+    let bytes = std::fs::read(&output).expect("output PDF should exist");
+    std::fs::remove_dir_all(&dir).ok();
+    bytes
+}
+
+const PLAIN_HTML: &str = "<html><body><p>hello</p></body></html>";
+
+#[test]
+fn page_size_option_changes_the_media_box() {
+    // MediaBoxの値はレイアウト内部単位(CSS px)がそのまま入る。
+    let bytes = run_cli_with(PLAIN_HTML, &["--page-size", "A5"], "page-size");
+    assert_eq!(
+        count_occurrences(&bytes, media_box(559.4, 793.7).as_bytes()),
+        1,
+        "A5 should be used"
+    );
+}
+
+#[test]
+fn orientation_landscape_swaps_the_page_dimensions() {
+    let bytes = run_cli_with(
+        PLAIN_HTML,
+        &["--page-size", "A5", "--orientation", "Landscape"],
+        "orientation",
+    );
+    assert_eq!(
+        count_occurrences(&bytes, media_box(793.7, 559.4).as_bytes()),
+        1
+    );
+}
+
+#[test]
+fn explicit_page_width_and_height_override_the_page_size() {
+    let bytes = run_cli_with(
+        PLAIN_HTML,
+        &[
+            "--page-size",
+            "A4",
+            "--page-width",
+            "400px",
+            "--page-height",
+            "500px",
+        ],
+        "page-wh",
+    );
+    assert_eq!(
+        count_occurrences(&bytes, media_box(400.0, 500.0).as_bytes()),
+        1
+    );
+}
+
+#[test]
+fn margin_options_change_how_much_content_fits_on_a_page() {
+    // 同じHTMLでも上下マージンを増やすとページ数が増える。
+    let html = format!(
+        "<html><body>{}</body></html>",
+        "<p style=\"margin:0\">line</p>".repeat(40)
+    );
+    let narrow = run_cli_with(
+        &html,
+        &["--margin-top", "10mm", "--margin-bottom", "10mm"],
+        "margin-narrow",
+    );
+    let wide = run_cli_with(
+        &html,
+        &["--margin-top", "80mm", "--margin-bottom", "80mm"],
+        "margin-wide",
+    );
+
+    let narrow_pages = count_occurrences(&narrow, b"/MediaBox");
+    let wide_pages = count_occurrences(&wide, b"/MediaBox");
+    assert!(
+        wide_pages > narrow_pages,
+        "larger margins should need more pages: {narrow_pages} -> {wide_pages}"
+    );
+}
+
+#[test]
+fn an_author_at_page_size_wins_over_the_cli_option() {
+    // [0055]決定2: CLIは初期値で、著者CSSの`@page`宣言が優先される。
+    let html = r#"<html><head><style>@page { size: 300px 400px; }</style></head>
+                  <body><p>hello</p></body></html>"#;
+    let bytes = run_cli_with(html, &["--page-size", "A4"], "at-page-wins");
+    assert_eq!(
+        count_occurrences(&bytes, media_box(300.0, 400.0).as_bytes()),
+        1
+    );
+    assert_eq!(
+        count_occurrences(&bytes, media_box(793.7, 1122.5).as_bytes()),
+        0
+    );
+}
+
+#[test]
+fn cli_and_at_page_are_merged_per_property() {
+    // `@page`がmarginだけを宣言している場合、sizeはCLI指定が残る。
+    let html = r#"<html><head><style>@page { margin: 0; }</style></head>
+                  <body><p>hello</p></body></html>"#;
+    let bytes = run_cli_with(
+        html,
+        &["--page-width", "400px", "--page-height", "500px"],
+        "per-property",
+    );
+    assert_eq!(
+        count_occurrences(&bytes, media_box(400.0, 500.0).as_bytes()),
+        1,
+        "size comes from the CLI because @page only declared margin"
+    );
+}
+
+#[test]
+fn an_impossible_page_geometry_is_a_usage_error() {
+    // 左右マージンの合計が用紙幅以上。
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("--page-width")
+        .arg("100px")
+        .arg("-o")
+        .arg(temp_output_path("impossible-geometry"))
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("マージン"));
+}
+
+// ---------------------------------------------------------------------------
+// M12 Phase 3(T289〜T293): PDFメタデータ・圧縮・スケール・グレースケール
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_info_dictionary_always_carries_a_producer() {
+    let bytes = run_cli_with(PLAIN_HTML, &[], "producer");
+    assert!(
+        count_occurrences(&bytes, b"/Producer") > 0,
+        "the Info dictionary should always be written"
+    );
+    assert!(count_occurrences(&bytes, b"/CreationDate") > 0);
+    assert!(
+        count_occurrences(&bytes, b"/Info ") > 0,
+        "the trailer must point at the Info dictionary"
+    );
+}
+
+#[test]
+fn the_title_option_wins_over_the_html_title() {
+    let html = "<html><head><title>from html</title></head><body><p>x</p></body></html>";
+
+    let from_html = run_cli_with(html, &[], "title-html");
+    assert!(count_occurrences(&from_html, b"from html") > 0);
+
+    let from_option = run_cli_with(html, &["--title", "from option"], "title-option");
+    assert!(count_occurrences(&from_option, b"from option") > 0);
+    assert_eq!(count_occurrences(&from_option, b"from html"), 0);
+}
+
+#[test]
+fn author_subject_and_keywords_are_written_when_given() {
+    let bytes = run_cli_with(
+        PLAIN_HTML,
+        &[
+            "--author",
+            "waka",
+            "--subject",
+            "invoice",
+            "--keywords",
+            "pdf,rust",
+        ],
+        "metadata",
+    );
+    assert!(count_occurrences(&bytes, b"/Author (waka)") > 0);
+    assert!(count_occurrences(&bytes, b"/Subject (invoice)") > 0);
+    assert!(count_occurrences(&bytes, b"/Keywords (pdf,rust)") > 0);
+}
+
+#[test]
+fn no_pdf_compression_removes_every_flate_filter() {
+    let compressed = run_cli_with(PLAIN_HTML, &[], "compressed");
+    let plain = run_cli_with(PLAIN_HTML, &["--no-pdf-compression"], "uncompressed");
+
+    assert!(count_occurrences(&compressed, b"/FlateDecode") > 0);
+    assert_eq!(
+        count_occurrences(&plain, b"/FlateDecode"),
+        0,
+        "content stream and font objects must be stored uncompressed"
+    );
+    assert!(
+        plain.len() > compressed.len(),
+        "the uncompressed PDF should be larger"
+    );
+}
+
+#[test]
+fn grayscale_maps_fill_colors_to_their_luminance() {
+    let html = r#"<html><body><p style="color:#ff0000">red</p></body></html>"#;
+    let colored = run_cli_with(html, &["--no-pdf-compression"], "colored");
+    let gray = run_cli_with(html, &["--no-pdf-compression", "--grayscale"], "grayscaled");
+
+    assert!(count_occurrences(&colored, b"1 0 0 rg") > 0, "red is kept");
+    assert_eq!(count_occurrences(&gray, b"1 0 0 rg"), 0);
+    assert!(
+        count_occurrences(&gray, b"0.2126 0.2126 0.2126 rg") > 0,
+        "red must become its sRGB luminance"
+    );
+}
+
+#[test]
+fn the_default_output_uses_real_paper_dimensions_in_points() {
+    // A4 = 793.7 × 1122.5 CSS px → 595.275 × 841.875 pt(= 210 × 297mm)。
+    let bytes = run_cli_with(PLAIN_HTML, &[], "a4-pt");
+    assert_eq!(
+        count_occurrences(&bytes, media_box(793.7, 1122.5).as_bytes()),
+        1
+    );
+    assert!(
+        count_occurrences(&bytes, b"/MediaBox [0 0 595.275 841.875]") > 0,
+        "A4 must be 595.275 x 841.875 pt"
+    );
+}
+
+#[test]
+fn dpi_72_keeps_one_css_px_as_one_pt() {
+    // M12以前の挙動(1px=1pt)に戻す逃げ道([0057]決定3)。
+    let bytes = run_cli_with(PLAIN_HTML, &["--dpi", "72"], "dpi72");
+    assert!(count_occurrences(&bytes, b"/MediaBox [0 0 793.7 1122.5]") > 0);
+}
+
+#[test]
+fn zoom_scales_the_page_geometry() {
+    let bytes = run_cli_with(PLAIN_HTML, &["--zoom", "2"], "zoom2");
+    assert!(count_occurrences(&bytes, b"/MediaBox [0 0 1190.55 1683.75]") > 0);
+}
+
+#[test]
+fn a_non_positive_dpi_or_zoom_is_a_usage_error() {
+    for args in [["--dpi", "0"], ["--zoom", "-1"]] {
+        let out = Command::new(BIN)
+            .arg(SAMPLE_HTML)
+            .arg("--font")
+            .arg(FONT_PATH)
+            .args(args)
+            .arg("-o")
+            .arg(temp_output_path("bad-scaling"))
+            .output()
+            .expect("failed to run sghtmltopdf binary");
+        assert_eq!(out.status.code(), Some(1), "{args:?} should be rejected");
+    }
 }

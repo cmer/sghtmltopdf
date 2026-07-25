@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use clap::ArgMatches;
 
 use crate::engine::{Engine, EngineError, EngineOptions, FontSpec as EngineFontSpec, Mode};
-use crate::layout::PageSettings;
 use crate::sink::{FileSink, Sink, StdoutSink};
 
 use super::options::ConvertArgs;
@@ -45,9 +44,15 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     let html_bytes = read_input(args)?;
     let (base_dir, base_href) = resolve_base(args)?;
 
+    // CLIのページ設定は「初期値」であり、著者CSSの`@page`宣言があれば
+    // プロパティ単位でそちらが優先される([0055]決定2)。合成は
+    // `engine::apply_page_rule_settings_override`が行う。
+    let settings = args.page_settings().map_err(CliError::Usage)?;
+    args.validate_scaling().map_err(CliError::Usage)?;
+
     let engine_options = EngineOptions {
         mode: Mode::Batch,
-        settings: PageSettings::default(),
+        settings,
         fonts: fonts
             .iter()
             .map(|spec| EngineFontSpec {
@@ -62,6 +67,7 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
         base_dir,
         base_href,
         allow_remote_assets: args.allow_remote_assets,
+        output: args.pdf_output_options(),
     };
 
     let sink = match output_path.as_ref() {

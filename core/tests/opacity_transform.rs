@@ -104,8 +104,15 @@ fn transform_emits_a_cm_operator_but_a_plain_box_does_not() {
     );
     let with_transform_content = decompressed_stream_bytes(&with_transform);
     let plain_content = decompressed_stream_bytes(&plain);
-    assert!(count_occurrences(&with_transform_content, b" cm\n") > 0);
-    assert_eq!(count_occurrences(&plain_content, b" cm\n"), 0);
+    // 各ページの先頭にはCSS px → ptの換算CTMが1つ積まれる([0057]決定2)ため、
+    // `transform`を使わないページでも`cm`は1つ出る。`transform`はその上に
+    // さらに`cm`を積む。
+    let plain_cm = count_occurrences(&plain_content, b" cm\n");
+    assert_eq!(plain_cm, 1, "only the page scale CTM should be present");
+    assert!(
+        count_occurrences(&with_transform_content, b" cm\n") > plain_cm,
+        "transform must emit an additional cm operator"
+    );
 }
 
 #[test]

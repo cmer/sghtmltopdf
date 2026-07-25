@@ -92,6 +92,35 @@ pub fn is_stylesheet_link(attrs: &[Attribute]) -> bool {
         })
 }
 
+/// 文書内の最初の`<title>`のテキスト(PDF Info辞書の`/Title`用、
+/// [0057](../../../docs/decisions/0057-pdf-output-options-design.md)決定6)。
+/// `--title`が指定されていない場合のフォールバックとして使う。
+pub fn find_document_title(dom: &Dom) -> Option<String> {
+    fn walk(dom: &Dom, node: NodeId) -> Option<String> {
+        if let NodeData::Element { name, .. } = &dom.node(node).data {
+            if &*name.local == "title" {
+                let mut text = String::new();
+                for child in dom.children(node) {
+                    if let NodeData::Text { contents } = &dom.node(child).data {
+                        text.push_str(contents);
+                    }
+                }
+                let text = text.trim().to_string();
+                if !text.is_empty() {
+                    return Some(text);
+                }
+            }
+        }
+        for child in dom.children(node) {
+            if let Some(found) = walk(dom, child) {
+                return Some(found);
+            }
+        }
+        None
+    }
+    walk(dom, dom.document())
+}
+
 /// 文書内の最初の`<base href>`の値([0040](
 /// ../../../docs/decisions/0040-base-href-design.md)決定3)。`<body>`より後に
 /// 現れた`<base>`は無視する(`Mode::Streaming`では原理的に反映できないため、

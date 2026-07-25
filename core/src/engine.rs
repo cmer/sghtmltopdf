@@ -45,7 +45,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
-use crate::html::{collect_anchor_targets, find_base_href, Dom, NodeId, StreamingParser};
+use crate::html::{
+    collect_anchor_targets, find_base_href, find_document_title, Dom, NodeId, StreamingParser,
+};
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
@@ -54,7 +56,8 @@ use crate::layout::{
     resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
 };
 use crate::pdf::{
-    anchor_destination_name, ImageAssetCache, LinkSettings, PreparedImage, StreamingPdfWriter,
+    anchor_destination_name, ImageAssetCache, LinkSettings, PdfOutputOptions, PreparedImage,
+    StreamingPdfWriter,
 };
 use crate::sink::Sink;
 use crate::style::{
@@ -113,6 +116,9 @@ pub struct EngineOptions {
     /// 決定2により、画像・外部スタイルシート双方をこの1つのフラグで
     /// 統括する)。ローカル相対パス・`data:`URIはこの値に関わらず常に許可する。
     pub allow_remote_assets: bool,
+    /// PDF書き出しオプション(メタデータ・圧縮・スケール・グレースケール、
+    /// [0057](../docs/decisions/0057-pdf-output-options-design.md))。
+    pub output: PdfOutputOptions,
 }
 
 /// `Engine`が返すエラー。`Sink`からのエラー(`Io`)、コア自身が判定する
@@ -401,7 +407,13 @@ impl<S: Sink> Engine<S> {
             + body_border.top
             + body_padding.top;
 
-        let writer = StreamingPdfWriter::new(
+        // `--title`未指定なら`<title>`をPDFの`/Title`に使う([0057]決定6)。
+        let mut output = self.options.output.clone();
+        output
+            .metadata
+            .fill_title_from_document(find_document_title(&self.parser.dom()));
+
+        let writer = StreamingPdfWriter::with_options(
             &fonts,
             page_settings,
             sink,
@@ -410,6 +422,7 @@ impl<S: Sink> Engine<S> {
                 anchor_names: anchor_names.clone(),
                 base_href: base_href.clone(),
             },
+            output,
         )
         .map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::with_base_href(
@@ -646,7 +659,12 @@ impl<S: Sink> Engine<S> {
             None
         };
 
-        let mut writer = StreamingPdfWriter::new(
+        let mut output = options.output.clone();
+        output
+            .metadata
+            .fill_title_from_document(find_document_title(&dom));
+
+        let mut writer = StreamingPdfWriter::with_options(
             &fonts,
             page_settings,
             sink,
@@ -655,6 +673,7 @@ impl<S: Sink> Engine<S> {
                 anchor_names: anchor_names.clone(),
                 base_href: base_href.clone(),
             },
+            output,
         )
         .map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::with_base_href(
@@ -772,6 +791,15 @@ mod tests {
             .windows(needle.len())
             .filter(|w| *w == needle)
             .count()
+    }
+
+    /// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ([0057])。
+    fn media_box(width_px: f32, height_px: f32) -> String {
+        format!(
+            "/MediaBox [0 0 {} {}]",
+            width_px * crate::pdf::DEFAULT_SCALE,
+            height_px * crate::pdf::DEFAULT_SCALE
+        )
     }
 
     /// PDFバイト列中の全`stream`〜`endstream`区間を展開して連結したものを
@@ -1147,7 +1175,7 @@ mod tests {
             .unwrap();
         let bytes = engine.finish().unwrap();
         assert!(
-            count_occurrences(&bytes, b"/MediaBox [0 0 300 400]") > 0,
+            count_occurrences(&bytes, media_box(300.0, 400.0).as_bytes()) > 0,
             "@page size should override the PDF MediaBox"
         );
     }
@@ -1165,7 +1193,7 @@ mod tests {
             .unwrap();
         let bytes = engine.finish().unwrap();
         assert!(
-            count_occurrences(&bytes, b"/MediaBox [0 0 300 400]") > 0,
+            count_occurrences(&bytes, media_box(300.0, 400.0).as_bytes()) > 0,
             "@page size should override the PDF MediaBox in streaming mode too"
         );
     }
@@ -1256,7 +1284,7 @@ mod tests {
         let bytes = engine.finish().unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
         assert_eq!(
-            count_occurrences(&bytes, b"/MediaBox [0 0 200 300]"),
+            count_occurrences(&bytes, media_box(200.0, 300.0).as_bytes()),
             2,
             "expected exactly 2 pages"
         );

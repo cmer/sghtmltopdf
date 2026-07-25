@@ -77,6 +77,7 @@ pub fn embed_font(
     font: &Font,
     ids: FontIds,
     usage: &FontUsage,
+    compress: bool,
 ) -> BTreeMap<u16, u16> {
     let mut remapper = GlyphRemapper::new();
     remapper.remap(0); // .notdef
@@ -86,10 +87,12 @@ pub fn embed_font(
 
     let subset_data = subsetter::subset(font.data(), font.face_index(), &remapper)
         .unwrap_or_else(|_| font.data().to_vec());
-    let compressed = deflate(&subset_data);
+    let compressed = maybe_deflate(&subset_data, compress);
 
     let mut font_file = pdf.stream(ids.font_file, &compressed);
-    font_file.filter(Filter::FlateDecode);
+    if compress {
+        font_file.filter(Filter::FlateDecode);
+    }
     // Length1はフォントプログラム本体の「圧縮前」の長さ(PDF仕様上の規定)。
     font_file.pair(Name(b"Length1"), subset_data.len() as i32);
     font_file.finish();
@@ -159,9 +162,11 @@ pub fn embed_font(
     for (&old_gid, &(_, unicode)) in &usage.glyphs {
         cmap.pair(old_to_new[&old_gid], unicode);
     }
-    let cmap_bytes = deflate(&cmap.finish());
+    let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut to_unicode = pdf.cmap(ids.to_unicode, &cmap_bytes);
-    to_unicode.filter(Filter::FlateDecode);
+    if compress {
+        to_unicode.filter(Filter::FlateDecode);
+    }
     to_unicode.finish();
 
     pdf.type0_font(ids.type0_font)
@@ -187,6 +192,7 @@ pub fn embed_font_streaming_chunks(
     font: &Font,
     ids: FontIds,
     usage: &FontUsage,
+    compress: bool,
 ) -> Vec<(Ref, Chunk)> {
     let mut chunks = Vec::with_capacity(6);
 
@@ -198,10 +204,12 @@ pub fn embed_font_streaming_chunks(
     let subset_data = subsetter::subset(font.data(), font.face_index(), &remapper)
         .unwrap_or_else(|_| font.data().to_vec());
 
-    let compressed_font = deflate(&subset_data);
+    let compressed_font = maybe_deflate(&subset_data, compress);
     let mut chunk = Chunk::new();
     let mut font_file = chunk.stream(ids.font_file, &compressed_font);
-    font_file.filter(Filter::FlateDecode);
+    if compress {
+        font_file.filter(Filter::FlateDecode);
+    }
     font_file.pair(Name(b"Length1"), subset_data.len() as i32);
     font_file.finish();
     chunks.push((ids.font_file, chunk));
@@ -242,10 +250,12 @@ pub fn embed_font_streaming_chunks(
         let idx = old_gid as usize * 2;
         cid_to_gid_bytes[idx..idx + 2].copy_from_slice(&new_gid.to_be_bytes());
     }
-    let compressed_cid_to_gid = deflate(&cid_to_gid_bytes);
+    let compressed_cid_to_gid = maybe_deflate(&cid_to_gid_bytes, compress);
     let mut chunk = Chunk::new();
     let mut cid_to_gid_stream = chunk.stream(ids.cid_to_gid_map, &compressed_cid_to_gid);
-    cid_to_gid_stream.filter(Filter::FlateDecode);
+    if compress {
+        cid_to_gid_stream.filter(Filter::FlateDecode);
+    }
     cid_to_gid_stream.finish();
     chunks.push((ids.cid_to_gid_map, chunk));
 
@@ -285,10 +295,12 @@ pub fn embed_font_streaming_chunks(
     for (&old_gid, &(_, unicode)) in &usage.glyphs {
         cmap.pair(old_gid, unicode);
     }
-    let cmap_bytes = deflate(&cmap.finish());
+    let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut chunk = Chunk::new();
     let mut to_unicode = chunk.cmap(ids.to_unicode, &cmap_bytes);
-    to_unicode.filter(Filter::FlateDecode);
+    if compress {
+        to_unicode.filter(Filter::FlateDecode);
+    }
     to_unicode.finish();
     chunks.push((ids.to_unicode, chunk));
 
@@ -305,6 +317,17 @@ pub fn embed_font_streaming_chunks(
 }
 
 /// zlib(`/FlateDecode`)圧縮する。
+/// `compress`がfalseなら無圧縮のまま返す(`--no-pdf-compression`、
+/// [0057](../../../docs/decisions/0057-pdf-output-options-design.md)決定5)。
+/// 呼び出し側は同じ条件で`/Filter`を書くかどうかを決める。
+pub(super) fn maybe_deflate(data: &[u8], compress: bool) -> Vec<u8> {
+    if compress {
+        deflate(data)
+    } else {
+        data.to_vec()
+    }
+}
+
 pub(super) fn deflate(data: &[u8]) -> Vec<u8> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     encoder

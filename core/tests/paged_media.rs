@@ -29,6 +29,16 @@ fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
         .count()
 }
 
+/// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ。
+/// PDFへはpt(既定で0.75倍、[0057])で書かれるため、ここで換算する。
+fn media_box(width_px: f32, height_px: f32) -> String {
+    format!(
+        "/MediaBox [0 0 {} {}]",
+        width_px * sghtmltopdf_core::pdf::DEFAULT_SCALE,
+        height_px * sghtmltopdf_core::pdf::DEFAULT_SCALE
+    )
+}
+
 /// PDFのcontent streamはFlateDecodeで圧縮されているため、`/ToUnicode`CMap内の
 /// 文字を検索するには解凍が必要(`engine.rs`/`pdf::document`テストモジュール
 /// 内の同名関数と同じロジック、`/Length N`で正確にストリーム境界を切り出す)。
@@ -98,7 +108,10 @@ fn at_page_size_and_margin_override_the_whole_document() {
              @page { size: 300px 400px; margin: 10px; }
            </style></head><body><p>hello</p></body></html>"#,
     );
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 300 400]"), 1);
+    assert_eq!(
+        count_occurrences(&bytes, media_box(300.0, 400.0).as_bytes()),
+        1
+    );
 }
 
 #[test]
@@ -111,8 +124,14 @@ fn at_page_pseudo_class_size_is_ignored_only_unconditional_rules_apply() {
              @page :first { size: 999px 999px; }
            </style></head><body><p>hello</p></body></html>"#,
     );
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 300 400]"), 1);
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 999 999]"), 0);
+    assert_eq!(
+        count_occurrences(&bytes, media_box(300.0, 400.0).as_bytes()),
+        1
+    );
+    assert_eq!(
+        count_occurrences(&bytes, media_box(999.0, 999.0).as_bytes()),
+        0
+    );
 }
 
 #[test]
@@ -123,7 +142,10 @@ fn media_screen_rules_are_ignored_and_media_print_rules_apply() {
              @media print { @page { size: 300px 400px; } }
            </style></head><body><p>hello</p></body></html>"#,
     );
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 300 400]"), 1);
+    assert_eq!(
+        count_occurrences(&bytes, media_box(300.0, 400.0).as_bytes()),
+        1
+    );
 }
 
 #[test]
@@ -140,7 +162,10 @@ fn margin_box_content_renders_a_valid_pdf_with_the_expected_page_count() {
              body { margin: 0; } div { height: 300px; }
            </style></head><body><div></div><div></div><div></div></body></html>"#,
     );
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 200 300]"), 3);
+    assert_eq!(
+        count_occurrences(&bytes, media_box(200.0, 300.0).as_bytes()),
+        3
+    );
 }
 
 #[test]
@@ -177,7 +202,10 @@ fn at_page_first_selects_different_margin_box_content_than_other_pages() {
              body { margin: 0; } div { height: 300px; }
            </style></head><body><div></div><div></div></body></html>"#,
     );
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 200 300]"), 2);
+    assert_eq!(
+        count_occurrences(&bytes, media_box(200.0, 300.0).as_bytes()),
+        2
+    );
 }
 
 #[test]
@@ -216,7 +244,10 @@ fn counter_page_alone_works_in_streaming_mode() {
         )
         .expect("counter(page) alone should be allowed in streaming mode");
     let bytes = engine.finish().unwrap();
-    assert_eq!(count_occurrences(&bytes, b"/MediaBox [0 0 200 300]"), 2);
+    assert_eq!(
+        count_occurrences(&bytes, media_box(200.0, 300.0).as_bytes()),
+        2
+    );
 }
 
 #[test]
