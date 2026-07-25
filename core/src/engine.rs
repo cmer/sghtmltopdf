@@ -101,6 +101,12 @@ pub struct EngineOptions {
     /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
     /// 相対パス解決にも同じ基準ディレクトリを使う。
     pub base_dir: Option<PathBuf>,
+    /// 相対参照の解決基準URL(`--base-url`相当)。HTMLに`<base href>`が
+    /// あればそちらが優先される([0040](../docs/decisions/0040-base-href-design.md)
+    /// が定めるのは文書内の指定であり、この値はその既定を外から与えるもの)。
+    /// http(s)のURLを想定し、ローカルディレクトリを基準にしたい場合は
+    /// `base_dir`を使う。
+    pub base_href: Option<String>,
     /// `<img src>`・`<link rel=stylesheet href>`のhttp(s)絶対URLフェッチを
     /// 許可するか。既定`false`([0013](../docs/decisions/0013-image-fetch-security.md)
     /// の「既定無効・明示オプトイン」方針。[0015](../docs/decisions/0015-external-stylesheet-fetch-design.md)
@@ -283,7 +289,8 @@ impl<S: Sink> Engine<S> {
         // `<base href>`は`<head>`に現れるため、この時点(最初のトップレベル
         // 要素が確定した時点)で既にパース済み([0040](
         // ../docs/decisions/0040-base-href-design.md)決定3)。
-        let base_href = find_base_href(&self.parser.dom());
+        let base_href =
+            find_base_href(&self.parser.dom()).or_else(|| self.options.base_href.clone());
         let css_fetcher =
             ImageFetcher::new(base_dir.to_path_buf(), self.options.allow_remote_assets)
                 .with_base_href(base_href.clone());
@@ -600,7 +607,7 @@ impl<S: Sink> Engine<S> {
             .base_dir
             .as_deref()
             .unwrap_or_else(|| Path::new("."));
-        let base_href = find_base_href(&dom);
+        let base_href = find_base_href(&dom).or_else(|| options.base_href.clone());
         let css_fetcher = ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets)
             .with_base_href(base_href.clone());
         let css_cache = DocumentImageCache::new();

@@ -11,9 +11,28 @@ path = "src/lib.rs"
 [[bin]]
 name = "sghtmltopdf"
 path = "src/main.rs"
+required-features = ["cli"]
+
+# CLI(clap・将来のtiny_http)はfeatureで切り離す。ライブラリとして使う側
+# (Ruby binding等)は`--no-default-features`でこれらを引き込まずに済む
+# (docs/decisions/0055-cli-design.md 決定1)。
+[features]
+default = ["cli"]
+cli = ["dep:clap"]
 
 [dependencies]
 base64 = "0.22.1"
+# 既定featureとの差はヘルプの色付け(anstream等6クレート)のみで実測差もほぼ
+# 無いため最小構成にし、タイポ時の候補提示(suggestions)だけ足している
+# (docs/decisions/0056-cli-and-server-crates.md 決定1)。
+clap = { version = "4", default-features = false, features = [
+    "std",
+    "derive",
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+], optional = true }
 cssparser = "0.37.0"
 cssparser-color = "0.5.0"
 flate2 = "1.1.9"

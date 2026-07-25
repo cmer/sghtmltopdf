@@ -6,6 +6,10 @@
 //! マイルストーン3で、これらを1つのAPIとして統合する[`engine::Engine`]を
 //! 追加した。
 
+/// CLI実装。`cli` feature(既定ON)でのみ有効
+/// ([0055](../docs/decisions/0055-cli-design.md)決定1)。
+#[cfg(feature = "cli")]
+pub mod cli;
 pub mod engine;
 pub mod fonts;
 pub mod html;

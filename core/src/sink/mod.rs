@@ -10,7 +10,7 @@
 
 use std::fs::File;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub trait Sink {
     type Output;
@@ -47,14 +47,35 @@ impl Sink for MemorySink {
 }
 
 /// ファイルへ書き出すSink(CLI向け)。
+///
+/// 一時ファイル(`<出力先>.tmp-<pid>`)へ書き、[`Sink::finish`]が成功した
+/// ときだけ最終的な出力先へ`rename`する。レンダリング途中で失敗しても
+/// 壊れたPDFが出力先に残らないようにするため
+/// ([0055](../../../docs/decisions/0055-cli-design.md)決定4)。
+/// `finish`されないまま破棄された場合は`Drop`で一時ファイルを消す。
 pub struct FileSink {
-    file: File,
+    /// `finish`で`take`する。`None`は「既に`finish`済み」を意味し、
+    /// `Drop`での一時ファイル削除の要否判定を兼ねる。
+    file: Option<File>,
+    temp_path: PathBuf,
+    final_path: PathBuf,
 }
 
 impl FileSink {
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
+        let final_path = path.as_ref().to_path_buf();
+        let mut temp_name = final_path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("output.pdf"))
+            .to_os_string();
+        temp_name.push(format!(".tmp-{}", std::process::id()));
+        let temp_path = final_path.with_file_name(temp_name);
+
+        let file = File::create(&temp_path)?;
         Ok(Self {
-            file: File::create(path)?,
+            file: Some(file),
+            temp_path,
+            final_path,
         })
     }
 }
@@ -64,11 +85,69 @@ impl Sink for FileSink {
     type Error = io::Error;
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
-        self.file.write_all(bytes)
+        match self.file.as_mut() {
+            Some(file) => file.write_all(bytes),
+            None => Err(io::Error::other(
+                "finish済みのFileSinkへ書き込もうとしました",
+            )),
+        }
     }
 
-    fn finish(self) -> Result<Self::Output, Self::Error> {
+    fn finish(mut self) -> Result<Self::Output, Self::Error> {
+        let Some(mut file) = self.file.take() else {
+            return Err(io::Error::other("FileSink::finishが二重に呼ばれました"));
+        };
+        file.flush()?;
+        drop(file);
+        if let Err(e) = std::fs::rename(&self.temp_path, &self.final_path) {
+            // renameに失敗した場合は一時ファイルを残さない。
+            let _ = std::fs::remove_file(&self.temp_path);
+            return Err(e);
+        }
         Ok(())
+    }
+}
+
+impl Drop for FileSink {
+    fn drop(&mut self) {
+        // `finish`まで到達しなかった(=エラーで中断した)場合のみ後始末する。
+        if self.file.take().is_some() {
+            let _ = std::fs::remove_file(&self.temp_path);
+        }
+    }
+}
+
+/// 標準出力へ書き出すSink(`-o -`向け)。
+///
+/// 既に書き出したバイトは取り消せないため、途中で失敗した場合は
+/// 呼び出し側がstderrとexit codeで失敗を伝える([0055]決定4)。
+#[derive(Debug)]
+pub struct StdoutSink {
+    out: io::Stdout,
+}
+
+impl StdoutSink {
+    pub fn new() -> Self {
+        Self { out: io::stdout() }
+    }
+}
+
+impl Default for StdoutSink {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Sink for StdoutSink {
+    type Output = ();
+    type Error = io::Error;
+
+    fn write(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+        self.out.write_all(bytes)
+    }
+
+    fn finish(mut self) -> Result<Self::Output, Self::Error> {
+        self.out.flush()
     }
 }
 
