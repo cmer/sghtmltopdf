@@ -26,7 +26,7 @@ use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox, TableSection};
 use super::flex::layout_flex;
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
-use super::inline::{finish_line, layout_inline_content, shape_run, LineBox};
+use super::inline::{apply_text_overflow, finish_line, layout_inline_content, shape_run, LineBox};
 use super::table::layout_table;
 
 /// マーカー(`list-style-position: outside`)と内容のcontent edgeの間の固定の隙間(px)。
@@ -822,6 +822,9 @@ fn layout_box_impl(
             // この時点で最終座標へ移動させる([0043](
             // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
             place_atomic_inlines(&mut lines);
+            // `text-overflow: ellipsis`は行組みの後処理として適用する
+            // ([0053](../../../docs/decisions/0053-text-details-design.md)決定4)。
+            apply_text_overflow(&mut lines, &style, content_width, fonts);
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
             let height =
                 resolve_used_height(&style, &padding, &border, content_width, lines_height);

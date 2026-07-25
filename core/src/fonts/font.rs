@@ -167,6 +167,11 @@ impl Font {
 
     /// `c`に対応するグリフをこのフォントが持っているか。
     /// font-familyフォールバック(どのフォントでこの文字を描画できるか)の判定に使う。
+    /// 文字に対応するグリフID(cmapに無ければ`None`)。
+    pub fn glyph_id(&self, c: char) -> Option<u16> {
+        self.face().glyph_index(c).map(|id| id.0)
+    }
+
     pub fn has_glyph(&self, c: char) -> bool {
         self.face().glyph_index(c).is_some()
     }

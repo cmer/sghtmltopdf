@@ -24,7 +24,7 @@ pub use box_tree::{
     LayoutBox, TableBox, TableCell, TableRow,
 };
 pub use geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
-pub use inline::{shape_standalone_line, LineBox, TextRun};
+pub use inline::{shape_standalone_line, EmphasisMark, LineBox, TextRun};
 pub use page::{PageSettings, PageSize};
 pub(crate) use paginate::collect_completed_subtree_roots;
 pub use paginate::{

@@ -54,15 +54,16 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::img::resolve_against_base_href;
 use crate::layout::{
-    resolve_border, shape_standalone_line, EdgeSizes, FragmentPosition, LaidOutBox, LaidOutContent,
-    LaidOutTableRow, Layout, LineBox, Page, PageSettings, Rect,
+    resolve_border, shape_standalone_line, EdgeSizes, EmphasisMark, FragmentPosition, LaidOutBox,
+    LaidOutContent, LaidOutTableRow, Layout, LineBox, Page, PageSettings, Rect, TextRun,
 };
 use crate::sink::Sink;
 use crate::style::{
     compose_transform, resolve_margin_box_content, resolve_page_rules, BackgroundRepeat,
     BackgroundSize, BorderCollapse, BorderStyle, Color, ComputedBoxShadow, ComputedStyle,
-    CornerRadius, EmptyCells, Length, LengthPercentage, LengthPercentageOrAuto, MarginBoxArea,
-    ObjectFit, PageRule, Position, PropertyDeclaration, RgbaColor,
+    CornerRadius, EmphasisPosition, EmphasisShape, EmphasisStyle, EmptyCells, Length,
+    LengthPercentage, LengthPercentageOrAuto, MarginBoxArea, ObjectFit, PageRule, Position,
+    PropertyDeclaration, RgbaColor,
 };
 
 use super::font::{deflate, embed_font, FontIds, FontUsage};
@@ -472,6 +473,15 @@ fn collect_line_usage(line: &LineBox, fonts: &FontCollection, usages: &mut [Font
                 .next()
                 .unwrap_or('\u{FFFD}');
             usages[run.font_index].record(font, glyph.glyph_id, unicode);
+        }
+        // `text-emphasis-style: <string>`のマークはテキストに現れない文字を
+        // グリフとして描くため、サブセットから落ちないようここで記録する
+        // ([0053](../../../docs/decisions/0053-text-details-design.md)決定6。
+        // キーワード指定のマークはパスで描くので収集は不要)。
+        if let Some(EmphasisStyle::String(ch)) = run.emphasis.as_ref().map(|mark| &mark.style) {
+            if let Some(glyph_id) = font.glyph_id(*ch) {
+                usages[run.font_index].record(font, glyph_id, *ch);
+            }
         }
     }
 }
@@ -2750,6 +2760,18 @@ fn render_line(
         }
     }
 
+    // `text-shadow`はテキスト本体より先に描く([0053](
+    // ../../../docs/decisions/0053-text-details-design.md)決定5)。
+    render_text_shadows(
+        content,
+        line,
+        settings,
+        remaps,
+        font_resource_names,
+        alpha_gs_names,
+        baseline_y,
+    );
+
     content.begin_text();
 
     // ランどうしの間に、実際のグリフ幅の合計を超える隙間があれば単語境界
@@ -2872,6 +2894,344 @@ fn render_line(
             );
         }
     }
+
+    // `text-emphasis`のマークは装飾線と同じくテキスト本体の後に描く
+    // ([0053](../../../docs/decisions/0053-text-details-design.md)決定6)。
+    render_emphasis_marks(
+        content,
+        line,
+        fonts,
+        settings,
+        remaps,
+        font_resource_names,
+        baseline_y,
+    );
+}
+
+/// `text-emphasis`のマークを描く([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定6)。
+/// `dot`/`circle`/`double-circle`/`triangle`/`sesame`はフォントの字形に依存しない
+/// ようパスで描き、`<string>`指定だけはグリフとして描く。
+/// マークは空白でない文字1つごとに1個置く(`text-emphasis-skip`は非対応)。
+#[allow(clippy::too_many_arguments)]
+fn render_emphasis_marks(
+    content: &mut Content,
+    line: &LineBox,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+    baseline_y: f32,
+) {
+    for run in &line.runs {
+        let Some(mark) = &run.emphasis else {
+            continue;
+        };
+        let run_baseline_y = baseline_y + run.baseline_shift;
+        // マーク分の高さは`ascent`/`descent`に加算済み([0053]決定6)。
+        // その帯の中央にマークを置く。
+        let center_y = match mark.position {
+            EmphasisPosition::Over => run_baseline_y + run.ascent - mark.size / 2.0,
+            EmphasisPosition::Under => run_baseline_y - run.descent + mark.size / 2.0,
+        };
+
+        let mut x = settings.margin.left + line.rect.x + run.x_offset;
+        for glyph in &run.glyphs {
+            let advance = glyph.x_advance + run.letter_spacing;
+            // 空白文字にはマークを付けない(仕様の"skip: spaces"相当)。
+            // `cluster`はランのテキスト内バイトオフセットだが、範囲外でも
+            // panicしないよう`get`で引く。
+            let ch = run
+                .text
+                .get(glyph.cluster as usize..)
+                .and_then(|rest| rest.chars().next());
+            if !ch.is_some_and(|ch| ch.is_whitespace()) {
+                render_emphasis_mark(
+                    content,
+                    mark,
+                    x + advance / 2.0,
+                    center_y,
+                    run,
+                    fonts,
+                    remaps,
+                    font_resource_names,
+                );
+            }
+            x += advance;
+        }
+    }
+}
+
+/// マーク1つ分を`(center_x, center_y)`を中心に描く。
+#[allow(clippy::too_many_arguments)]
+fn render_emphasis_mark(
+    content: &mut Content,
+    mark: &EmphasisMark,
+    center_x: f32,
+    center_y: f32,
+    run: &TextRun,
+    fonts: &FontCollection,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+) {
+    let (r, g, b) = (
+        mark.color.red as f32 / 255.0,
+        mark.color.green as f32 / 255.0,
+        mark.color.blue as f32 / 255.0,
+    );
+
+    let (shape, filled) = match &mark.style {
+        EmphasisStyle::None => return,
+        EmphasisStyle::Shape { shape, filled } => (*shape, *filled),
+        EmphasisStyle::String(ch) => {
+            render_emphasis_glyph(
+                content,
+                *ch,
+                center_x,
+                center_y,
+                mark,
+                run,
+                fonts,
+                remaps,
+                font_resource_names,
+            );
+            return;
+        }
+    };
+
+    content.set_fill_rgb(r, g, b);
+    content.set_stroke_rgb(r, g, b);
+    // 輪郭のみ(`open`)の線幅はマークサイズに比例させる。
+    let stroke_width = (mark.size * 0.08).max(0.3);
+    content.set_line_width(stroke_width);
+    content.set_line_cap(LineCapStyle::ButtCap);
+    content.set_dash_pattern([], 0.0);
+
+    match shape {
+        // `dot`は小さめ、`circle`は大きめ(仕様に厳密な寸法規定は無いため、
+        // 一般的なブラウザの見た目に近い比率を採用する)。
+        EmphasisShape::Dot => {
+            circle_path(content, center_x, center_y, mark.size * 0.16);
+            finish_mark_path(content, filled);
+        }
+        EmphasisShape::Circle => {
+            circle_path(content, center_x, center_y, mark.size * 0.3);
+            finish_mark_path(content, filled);
+        }
+        EmphasisShape::DoubleCircle => {
+            // 二重丸(◉/◎)は外側を常に輪郭で描く。外側を塗ってしまうと
+            // 内側が潰れて単なる丸に見える。
+            circle_path(content, center_x, center_y, mark.size * 0.34);
+            finish_mark_path(content, false);
+            circle_path(content, center_x, center_y, mark.size * 0.15);
+            finish_mark_path(content, filled);
+        }
+        EmphasisShape::Triangle => {
+            let s = mark.size * 0.34;
+            content.move_to(center_x, center_y + s);
+            content.line_to(center_x + s, center_y - s);
+            content.line_to(center_x - s, center_y - s);
+            content.close_path();
+            finish_mark_path(content, filled);
+        }
+        // `sesame`(ゴマ点)は縦長の楕円で近似する。
+        EmphasisShape::Sesame => {
+            ellipse_path(
+                content,
+                center_x,
+                center_y,
+                mark.size * 0.12,
+                mark.size * 0.3,
+            );
+            finish_mark_path(content, filled);
+        }
+    }
+}
+
+/// `text-emphasis-style: <string>`のマークを、そのランのフォントのグリフとして描く。
+/// 字形を持たないフォントでは何も描かれない(既知の限界、[0053]決定6)。
+#[allow(clippy::too_many_arguments)]
+fn render_emphasis_glyph(
+    content: &mut Content,
+    ch: char,
+    center_x: f32,
+    center_y: f32,
+    mark: &EmphasisMark,
+    run: &TextRun,
+    fonts: &FontCollection,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+) {
+    let Some(resource_name) = font_resource_names.get(run.font_index) else {
+        return;
+    };
+    let Some(glyph_id) = fonts.get(run.font_index).and_then(|font| font.glyph_id(ch)) else {
+        return;
+    };
+    let cid = match remaps {
+        Some(remaps) => match remaps.get(run.font_index) {
+            Some(remap) => remap.get(&glyph_id).copied().unwrap_or(0),
+            None => return,
+        },
+        None => glyph_id,
+    };
+    if cid == 0 {
+        return;
+    }
+
+    content.begin_text();
+    content.set_fill_rgb(
+        mark.color.red as f32 / 255.0,
+        mark.color.green as f32 / 255.0,
+        mark.color.blue as f32 / 255.0,
+    );
+    content.set_text_rendering_mode(TextRenderingMode::Fill);
+    content.set_font(Name(resource_name.as_bytes()), mark.size);
+    content.set_char_spacing(0.0);
+    // マークサイズを1emとみなし、中心に来るよう左下へずらす。
+    content.set_text_matrix([
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        center_x - mark.size / 2.0,
+        center_y - mark.size / 2.0,
+    ]);
+    content.show(pdf_writer::Str(&cid.to_be_bytes()));
+    content.end_text();
+}
+
+/// マークのパスを塗る(`filled`)か輪郭を描く(`open`)。
+fn finish_mark_path(content: &mut Content, filled: bool) {
+    if filled {
+        content.fill_nonzero();
+    } else {
+        content.stroke();
+    }
+}
+
+/// 中心と半径から真円のパスを引く(4本のベジェ曲線で近似)。
+fn circle_path(content: &mut Content, cx: f32, cy: f32, r: f32) {
+    ellipse_path(content, cx, cy, r, r);
+}
+
+/// 中心と水平/垂直半径から楕円のパスを引く。
+fn ellipse_path(content: &mut Content, cx: f32, cy: f32, rx: f32, ry: f32) {
+    let (kx, ky) = (rx * BEZIER_KAPPA, ry * BEZIER_KAPPA);
+    content.move_to(cx + rx, cy);
+    content.cubic_to(cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry);
+    content.cubic_to(cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy);
+    content.cubic_to(cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry);
+    content.cubic_to(cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy);
+    content.close_path();
+}
+
+/// `text-shadow`のぼかし近似の段階数([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定5)。中心+この段階数×
+/// 4方向を重ね描きする。
+const TEXT_SHADOW_BLUR_STEPS: usize = 2;
+
+/// `text-shadow`を描く(テキスト本体より先に呼ぶこと、[0053]決定5)。
+/// PDFにはぼかしフィルタが無いため、アルファを下げた同じグリフ列を微小オフセットで
+/// 重ね描きして近似する。カンマ区切りの複数指定は後ろに書いたものほど奥に描く。
+#[allow(clippy::too_many_arguments)]
+fn render_text_shadows(
+    content: &mut Content,
+    line: &LineBox,
+    settings: &PageSettings,
+    remaps: Option<&[HashMap<u16, u16>]>,
+    font_resource_names: &[String],
+    alpha_gs_names: &[String],
+    baseline_y: f32,
+) {
+    for run in &line.runs {
+        if run.text_shadow.is_empty() || run.glyphs.is_empty() {
+            continue;
+        }
+        let remap = match remaps {
+            Some(remaps) => match remaps.get(run.font_index) {
+                Some(remap) => Some(remap),
+                None => continue,
+            },
+            None => None,
+        };
+        let Some(resource_name) = font_resource_names.get(run.font_index) else {
+            continue;
+        };
+
+        let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
+        for glyph in &run.glyphs {
+            let cid = match remap {
+                Some(remap) => remap.get(&glyph.glyph_id).copied().unwrap_or(0),
+                None => glyph.glyph_id,
+            };
+            glyph_bytes.extend_from_slice(&cid.to_be_bytes());
+        }
+
+        let x = settings.margin.left + line.rect.x + run.x_offset;
+        let run_baseline_y = baseline_y + run.baseline_shift;
+        let shear = if run.italic { ITALIC_SHEAR } else { 0.0 };
+
+        // 先頭が最前面 = 後ろに書いたものほど奥。奥から順に描く。
+        for shadow in run.text_shadow.iter().rev() {
+            for (dx, dy, alpha_scale) in shadow_blur_offsets(shadow.blur_radius) {
+                let alpha = shadow.color.alpha * alpha_scale;
+                if quantize_alpha_step_is_transparent(alpha) {
+                    continue;
+                }
+                content.save_state();
+                apply_fill_alpha(content, alpha, alpha_gs_names);
+                content.begin_text();
+                content.set_fill_rgb(
+                    shadow.color.red as f32 / 255.0,
+                    shadow.color.green as f32 / 255.0,
+                    shadow.color.blue as f32 / 255.0,
+                );
+                content.set_text_rendering_mode(TextRenderingMode::Fill);
+                content.set_font(Name(resource_name.as_bytes()), run.font_size);
+                // CSSのoffset-yは下向き正、PDFのYは上向き正。
+                content.set_text_matrix([
+                    1.0,
+                    0.0,
+                    shear,
+                    1.0,
+                    x + shadow.offset_x + dx,
+                    run_baseline_y - shadow.offset_y - dy,
+                ]);
+                content.set_char_spacing(run.letter_spacing);
+                content.show(pdf_writer::Str(&glyph_bytes));
+                content.end_text();
+                content.restore_state();
+            }
+        }
+    }
+}
+
+/// ぼかし近似のオフセット列(`(dx, dy, アルファ倍率)`、[0053]決定5)。
+/// `blur_radius`が0なら中心1回だけ。それ以外は中心+各段階の4方向を、
+/// 合計のアルファが概ね1になるよう分配する。
+fn shadow_blur_offsets(blur_radius: f32) -> Vec<(f32, f32, f32)> {
+    if blur_radius <= 0.0 {
+        return vec![(0.0, 0.0, 1.0)];
+    }
+    let mut offsets = Vec::with_capacity(1 + TEXT_SHADOW_BLUR_STEPS * 4);
+    let count = 1 + TEXT_SHADOW_BLUR_STEPS * 4;
+    let alpha_scale = 1.0 / count as f32;
+    offsets.push((0.0, 0.0, alpha_scale));
+    for step in 1..=TEXT_SHADOW_BLUR_STEPS {
+        // ぼかし半径の内側から外側へ均等に配置する。
+        let r = blur_radius * step as f32 / TEXT_SHADOW_BLUR_STEPS as f32;
+        offsets.push((r, 0.0, alpha_scale));
+        offsets.push((-r, 0.0, alpha_scale));
+        offsets.push((0.0, r, alpha_scale));
+        offsets.push((0.0, -r, alpha_scale));
+    }
+    offsets
+}
+
+/// 量子化後に完全透明になる(=描いても見えない)アルファかどうか。
+fn quantize_alpha_step_is_transparent(alpha: f32) -> bool {
+    quantize_alpha_step(alpha) == 0
 }
 
 /// フォントの`post`(下線)/`OS2`(取り消し線)テーブルから、ベースラインからの

@@ -161,6 +161,111 @@ pub enum WhiteSpace {
     Pre,
 }
 
+/// `word-break`([0053](../../../docs/decisions/0053-text-details-design.md)決定3)。
+/// 改行機会そのものを切り替える。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WordBreak {
+    /// 従来どおり: CJK文字が隣接する境界のみ改行可。
+    #[default]
+    Normal,
+    /// すべての文字境界で改行可。
+    BreakAll,
+    /// CJK境界でも改行しない(空白のみが改行機会)。
+    KeepAll,
+}
+
+/// `overflow-wrap`(別名`word-wrap`)([0053]決定3)。改行機会は増やさず、
+/// 「行頭に置いてもなお収まらない」場合のフォールバックとして働く。
+/// `anywhere`は`break-word`と同一視する(min-content幅への影響の違いだけで、
+/// 本エンジンはその区別を持たない。既知の簡略化)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OverflowWrap {
+    #[default]
+    Normal,
+    BreakWord,
+}
+
+/// `hyphens`([0053]決定2)。`auto`は辞書を持たないため`manual`と同じ挙動
+/// (soft hyphen(U+00AD)でのみ分割する)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Hyphens {
+    /// soft hyphenでも分割しない。
+    None,
+    /// soft hyphenを改行機会として扱い、分割時にハイフンを表示する。
+    #[default]
+    Manual,
+}
+
+/// `text-overflow`([0053]決定4)。`<string>`指定は非対応。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextOverflow {
+    #[default]
+    Clip,
+    Ellipsis,
+}
+
+/// `text-emphasis-style`のマーク形状([0053]決定6)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EmphasisShape {
+    #[default]
+    Dot,
+    Circle,
+    DoubleCircle,
+    Triangle,
+    Sesame,
+}
+
+/// `text-emphasis-style`。`None`はマークなし(初期値)。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum EmphasisStyle {
+    #[default]
+    None,
+    /// キーワード指定。`filled`(塗り)か`open`(輪郭のみ)かと形状の組。
+    Shape { shape: EmphasisShape, filled: bool },
+    /// `<string>`指定。先頭1文字だけを使う(仕様通り)。
+    String(char),
+}
+
+/// `text-emphasis-position`。横書きでは`over`/`under`のみが意味を持つ
+/// (`right`/`left`は読み飛ばす、[0053]決定1)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EmphasisPosition {
+    #[default]
+    Over,
+    Under,
+}
+
+/// `text-shadow`の1つ分。パース直後の指定値(長さは`em`/`rem`未解決)。
+/// `box-shadow`と違いspread・insetを持たない。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpecifiedTextShadow {
+    pub offset_x: SpecifiedLength,
+    pub offset_y: SpecifiedLength,
+    pub blur_radius: SpecifiedLength,
+    /// 省略時は`currentcolor`相当(`None`のまま計算スタイル側で解決する)。
+    pub color: Option<Color>,
+}
+
+impl SpecifiedTextShadow {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> TextShadow {
+        TextShadow {
+            offset_x: self.offset_x.resolve(font_size, root_font_size).0,
+            offset_y: self.offset_y.resolve(font_size, root_font_size).0,
+            blur_radius: self.blur_radius.resolve(font_size, root_font_size).0,
+            color: self.color,
+        }
+    }
+}
+
+/// `text-shadow`1つ分の計算値(長さはpx解決済み、色は未解決)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextShadow {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur_radius: f32,
+    pub color: Option<Color>,
+}
+
 /// `text-transform`。`full-width`/`full-size-kana`(日本語組版の特殊変換)は非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextTransform {

@@ -19,13 +19,14 @@ use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
     AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment, BackgroundPosition,
     BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
-    BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display, EmptyCells,
-    FlexBasis, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent, Length,
-    LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, MaxSize, ObjectFit,
-    Overflow, Position, QuotePair, SpecifiedCornerRadius, SpecifiedLength,
-    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight,
-    SpecifiedMaxSize, TableLayout, TextAlign, TextDecorationLine, TextTransform, TransformFunction,
-    VerticalAlign, Visibility, WhiteSpace, ZIndex,
+    BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display, EmphasisPosition,
+    EmphasisStyle, EmptyCells, FlexBasis, FlexDirection, FlexWrap, Float, FontStyle, FontWeight,
+    Hyphens, JustifyContent, Length, LengthPercentage, LengthPercentageOrAuto, ListStylePosition,
+    ListStyleType, MaxSize, ObjectFit, Overflow, OverflowWrap, Position, QuotePair,
+    SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
+    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedMaxSize, TableLayout, TextAlign,
+    TextDecorationLine, TextOverflow, TextTransform, TransformFunction, VerticalAlign, Visibility,
+    WhiteSpace, WordBreak, ZIndex,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -177,6 +178,24 @@ pub struct ComputedStyle {
     pub word_spacing: f32,
     /// 継承プロパティ。
     pub text_transform: TextTransform,
+    /// `text-shadow`。継承プロパティ、空のVecは`none`([0053](
+    /// ../../../docs/decisions/0053-text-details-design.md)決定1)。色は解決済み。
+    pub text_shadow: Vec<ComputedTextShadow>,
+    /// `text-overflow`。**非**継承プロパティ(仕様通り)。`overflow`が
+    /// `visible`以外のときにのみ効く(決定4)。
+    pub text_overflow: TextOverflow,
+    /// `word-break`。継承プロパティ(決定3)。
+    pub word_break: WordBreak,
+    /// `overflow-wrap`(別名`word-wrap`)。継承プロパティ(決定3)。
+    pub overflow_wrap: OverflowWrap,
+    /// `hyphens`。継承プロパティ(決定2)。
+    pub hyphens: Hyphens,
+    /// `text-emphasis-style`。継承プロパティ(決定6)。
+    pub text_emphasis_style: EmphasisStyle,
+    /// `text-emphasis-color`。継承プロパティ、初期値は`currentcolor`。
+    pub text_emphasis_color: RgbaColor,
+    /// `text-emphasis-position`。継承プロパティ、初期値`over`。
+    pub text_emphasis_position: EmphasisPosition,
     /// `border-collapse`。継承プロパティ。見た目の枠線描画のみ統合する
     /// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定1)。
     pub border_collapse: BorderCollapse,
@@ -284,6 +303,16 @@ pub struct ComputedBoxShadow {
     pub color: RgbaColor,
     /// `inset`キーワード。パースはするが描画は非対応(決定1、既知の簡略化)。
     pub inset: bool,
+}
+
+/// `text-shadow`1つ分の計算値。長さはpx解決済み、`color`は`currentcolor`を
+/// 解決済み([0053](../../../docs/decisions/0053-text-details-design.md)決定5)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ComputedTextShadow {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur_radius: f32,
+    pub color: RgbaColor,
 }
 
 /// `::first-letter`用の限定的な上書きスタイル。実装コストと需要のバランスを
@@ -409,6 +438,19 @@ impl Default for ComputedStyle {
             letter_spacing: 0.0,
             word_spacing: 0.0,
             text_transform: TextTransform::None,
+            text_shadow: Vec::new(),
+            text_overflow: TextOverflow::Clip,
+            word_break: WordBreak::Normal,
+            overflow_wrap: OverflowWrap::Normal,
+            hyphens: Hyphens::Manual,
+            text_emphasis_style: EmphasisStyle::None,
+            text_emphasis_color: RgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 1.0,
+            },
+            text_emphasis_position: EmphasisPosition::Over,
             border_collapse: BorderCollapse::Separate,
             border_spacing_horizontal: Length(0.0),
             border_spacing_vertical: Length(0.0),
@@ -766,6 +808,14 @@ fn compute_element_style(
     let mut letter_spacing = None;
     let mut word_spacing = None;
     let mut text_transform = None;
+    let mut text_shadow = None;
+    let mut text_overflow = None;
+    let mut word_break = None;
+    let mut overflow_wrap = None;
+    let mut hyphens = None;
+    let mut text_emphasis_style = None;
+    let mut text_emphasis_color = None;
+    let mut text_emphasis_position = None;
     let mut border_collapse = None;
     let mut border_spacing = None;
     let mut caption_side = None;
@@ -888,6 +938,14 @@ fn compute_element_style(
             PropertyDeclaration::LetterSpacing(v) => letter_spacing = Some(*v),
             PropertyDeclaration::WordSpacing(v) => word_spacing = Some(*v),
             PropertyDeclaration::TextTransform(v) => text_transform = Some(*v),
+            PropertyDeclaration::TextShadow(v) => text_shadow = Some(v.clone()),
+            PropertyDeclaration::TextOverflow(v) => text_overflow = Some(*v),
+            PropertyDeclaration::WordBreak(v) => word_break = Some(*v),
+            PropertyDeclaration::OverflowWrap(v) => overflow_wrap = Some(*v),
+            PropertyDeclaration::Hyphens(v) => hyphens = Some(*v),
+            PropertyDeclaration::TextEmphasisStyle(v) => text_emphasis_style = Some(v.clone()),
+            PropertyDeclaration::TextEmphasisColor(v) => text_emphasis_color = Some(*v),
+            PropertyDeclaration::TextEmphasisPosition(v) => text_emphasis_position = Some(*v),
             PropertyDeclaration::BorderCollapse(v) => border_collapse = Some(*v),
             PropertyDeclaration::BorderSpacing(h, v) => border_spacing = Some((*h, *v)),
             PropertyDeclaration::CaptionSide(v) => caption_side = Some(*v),
@@ -943,6 +1001,14 @@ fn compute_element_style(
     let inherited_letter_spacing = parent.map_or(initial.letter_spacing, |p| p.letter_spacing);
     let inherited_word_spacing = parent.map_or(initial.word_spacing, |p| p.word_spacing);
     let inherited_text_transform = parent.map_or(initial.text_transform, |p| p.text_transform);
+    let inherited_word_break = parent.map_or(initial.word_break, |p| p.word_break);
+    let inherited_overflow_wrap = parent.map_or(initial.overflow_wrap, |p| p.overflow_wrap);
+    let inherited_hyphens = parent.map_or(initial.hyphens, |p| p.hyphens);
+    let inherited_emphasis_position =
+        parent.map_or(initial.text_emphasis_position, |p| p.text_emphasis_position);
+    let inherited_emphasis_style = parent
+        .map(|p| p.text_emphasis_style.clone())
+        .unwrap_or_else(|| initial.text_emphasis_style.clone());
     let inherited_border_collapse = parent.map_or(initial.border_collapse, |p| p.border_collapse);
     let inherited_border_spacing_horizontal = parent
         .map_or(initial.border_spacing_horizontal, |p| {
@@ -1053,6 +1119,32 @@ fn compute_element_style(
     let resolved_object_position = object_position
         .map(|specified| specified.resolve(own_font_size, root_font_size))
         .unwrap_or(initial.object_position);
+    // `text-shadow`は継承プロパティなので、宣言が無ければ親の**解決済み**の値を
+    // そのまま引き継ぐ(色は親の`color`で解決済みのまま。CSS仕様でも
+    // `currentcolor`は継承時点の値で固定される)。
+    let resolved_text_shadow: Vec<ComputedTextShadow> = match text_shadow {
+        Some(shadows) => shadows
+            .into_iter()
+            .map(|specified| {
+                let resolved = specified.resolve(own_font_size, root_font_size);
+                ComputedTextShadow {
+                    offset_x: resolved.offset_x,
+                    offset_y: resolved.offset_y,
+                    blur_radius: resolved.blur_radius.max(0.0),
+                    color: resolve_color(resolved.color, resolved_color),
+                }
+            })
+            .collect(),
+        None => parent.map(|p| p.text_shadow.clone()).unwrap_or_default(),
+    };
+
+    // `text-emphasis-color`も継承プロパティ。初期値は`currentcolor`
+    // (=この要素自身の`color`)。
+    let resolved_text_emphasis_color = match text_emphasis_color {
+        Some(color) => resolve_color(Some(color), resolved_color),
+        None => parent.map_or(resolved_color, |p| p.text_emphasis_color),
+    };
+
     // `box-shadow`のカンマ区切り各要素のem/rem解決と`currentcolor`解決
     // ([0032](../../../docs/decisions/0032-box-shadow-design.md)決定1)。
     // `blur-radius`は仕様上負値は無効だが、パース時点では拒否せず
@@ -1250,6 +1342,14 @@ fn compute_element_style(
         letter_spacing: resolved_letter_spacing,
         word_spacing: resolved_word_spacing,
         text_transform: text_transform.unwrap_or(inherited_text_transform),
+        text_shadow: resolved_text_shadow,
+        text_overflow: text_overflow.unwrap_or_default(),
+        word_break: word_break.unwrap_or(inherited_word_break),
+        overflow_wrap: overflow_wrap.unwrap_or(inherited_overflow_wrap),
+        hyphens: hyphens.unwrap_or(inherited_hyphens),
+        text_emphasis_style: text_emphasis_style.unwrap_or(inherited_emphasis_style),
+        text_emphasis_color: resolved_text_emphasis_color,
+        text_emphasis_position: text_emphasis_position.unwrap_or(inherited_emphasis_position),
         border_collapse: border_collapse.unwrap_or(inherited_border_collapse),
         border_spacing_horizontal: resolved_border_spacing_horizontal,
         border_spacing_vertical: resolved_border_spacing_vertical,
@@ -4221,6 +4321,97 @@ mod tests {
                 "an invalid ratio must not swallow the other declarations"
             );
         }
+    }
+
+    /// [0053](../../../docs/decisions/0053-text-details-design.md)決定1。
+    #[test]
+    fn text_detail_properties_parse_and_inherit() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert!(defaults[&div].text_shadow.is_empty());
+        assert_eq!(defaults[&div].text_overflow, TextOverflow::Clip);
+        assert_eq!(defaults[&div].word_break, WordBreak::Normal);
+        assert_eq!(defaults[&div].overflow_wrap, OverflowWrap::Normal);
+        assert_eq!(defaults[&div].hyphens, Hyphens::Manual);
+        assert_eq!(defaults[&div].text_emphasis_style, EmphasisStyle::None);
+        assert_eq!(
+            defaults[&div].text_emphasis_position,
+            EmphasisPosition::Over
+        );
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { text-shadow: 1px 2px 3px rgb(1, 2, 3); word-break: break-all; \
+                 overflow-wrap: break-word; hyphens: none; text-overflow: ellipsis; \
+                 text-emphasis: open sesame rgb(4, 5, 6); text-emphasis-position: under; }",
+            ),
+        );
+        assert_eq!(styles[&div].text_shadow.len(), 1);
+        assert_eq!(styles[&div].text_shadow[0].offset_x, 1.0);
+        assert_eq!(styles[&div].text_shadow[0].offset_y, 2.0);
+        assert_eq!(styles[&div].text_shadow[0].blur_radius, 3.0);
+        assert_eq!(styles[&div].text_shadow[0].color.red, 1);
+        assert_eq!(styles[&div].word_break, WordBreak::BreakAll);
+        assert_eq!(styles[&div].overflow_wrap, OverflowWrap::BreakWord);
+        assert_eq!(styles[&div].hyphens, Hyphens::None);
+        assert_eq!(styles[&div].text_overflow, TextOverflow::Ellipsis);
+        assert_eq!(
+            styles[&div].text_emphasis_style,
+            EmphasisStyle::Shape {
+                shape: crate::style::EmphasisShape::Sesame,
+                filled: false,
+            }
+        );
+        assert_eq!(styles[&div].text_emphasis_color.red, 4);
+        assert_eq!(styles[&div].text_emphasis_position, EmphasisPosition::Under);
+
+        // 継承する/しないの区別(`text-overflow`だけ非継承)。
+        assert_eq!(styles[&p].text_shadow.len(), 1);
+        assert_eq!(styles[&p].word_break, WordBreak::BreakAll);
+        assert_eq!(styles[&p].overflow_wrap, OverflowWrap::BreakWord);
+        assert_eq!(styles[&p].hyphens, Hyphens::None);
+        assert_eq!(styles[&p].text_emphasis_position, EmphasisPosition::Under);
+        assert_eq!(styles[&p].text_emphasis_color.red, 4);
+        assert_eq!(
+            styles[&p].text_overflow,
+            TextOverflow::Clip,
+            "text-overflow must not be inherited"
+        );
+    }
+
+    /// `word-wrap`は`overflow-wrap`のレガシー別名、`hyphens: auto`は
+    /// `manual`と同じ挙動([0053]決定1・決定2)。
+    #[test]
+    fn text_detail_property_aliases() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { word-wrap: anywhere; hyphens: auto; }"),
+        );
+        assert_eq!(styles[&div].overflow_wrap, OverflowWrap::BreakWord);
+        assert_eq!(styles[&div].hyphens, Hyphens::Manual);
+    }
+
+    /// `text-emphasis-style: <string>`は先頭1文字だけを使う(決定1)。
+    #[test]
+    fn text_emphasis_style_accepts_a_string() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(r#"div { text-emphasis-style: "×か"; }"#),
+        );
+        assert_eq!(styles[&div].text_emphasis_style, EmphasisStyle::String('×'));
     }
 
     #[test]

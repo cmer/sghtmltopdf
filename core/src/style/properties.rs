@@ -6,13 +6,15 @@ use palette::{FromColor, Lab, Lch, Oklab, Oklch, Srgb};
 use super::values::{
     AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment, BackgroundRepeat,
     BorderCollapse, BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color,
-    ContentPart, Display, EmptyCells, FlexDirection, FlexWrap, Float, FontStyle, FontWeight,
-    JustifyContent, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
+    ContentPart, Display, EmphasisPosition, EmphasisShape, EmphasisStyle, EmptyCells,
+    FlexDirection, FlexWrap, Float, FontStyle, FontWeight, Hyphens, JustifyContent,
+    ListStylePosition, ListStyleType, ObjectFit, Overflow, OverflowWrap, Position, QuotePair,
     SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow, SpecifiedCalc,
     SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
     SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedMaxSize, SpecifiedSpacing,
-    SpecifiedTransformFunction, SpecifiedVerticalAlign, TableLayout, TextAlign, TextDecorationLine,
-    TextTransform, Visibility, WhiteSpace, ZIndex,
+    SpecifiedTextShadow, SpecifiedTransformFunction, SpecifiedVerticalAlign, TableLayout,
+    TextAlign, TextDecorationLine, TextOverflow, TextTransform, Visibility, WhiteSpace, WordBreak,
+    ZIndex,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -165,6 +167,21 @@ pub enum PropertyDeclaration {
     TransformOrigin(SpecifiedBackgroundPosition),
     /// `opacity`。0〜1にクランプ済み(決定2)。
     Opacity(f32),
+    /// `text-shadow`。空のVecは`none`([0053](
+    /// ../../../docs/decisions/0053-text-details-design.md)決定1)。
+    TextShadow(Vec<SpecifiedTextShadow>),
+    /// `text-overflow`。`<string>`指定は非対応(決定4)。
+    TextOverflow(TextOverflow),
+    /// `word-break`(決定3)。
+    WordBreak(WordBreak),
+    /// `overflow-wrap`(別名`word-wrap`)。`anywhere`は`break-word`と同一視(決定3)。
+    OverflowWrap(OverflowWrap),
+    /// `hyphens`。`auto`は`manual`と同じ挙動(決定2)。
+    Hyphens(Hyphens),
+    /// `text-emphasis-style`(決定6)。
+    TextEmphasisStyle(EmphasisStyle),
+    TextEmphasisColor(Color),
+    TextEmphasisPosition(EmphasisPosition),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -317,6 +334,22 @@ pub fn parse_declaration<'i>(
         "transform" => Ok(vec![D::Transform(parse_transform(input)?)]),
         "transform-origin" => Ok(vec![D::TransformOrigin(parse_background_position(input)?)]),
         "opacity" => Ok(vec![D::Opacity(parse_opacity(input)?)]),
+        "text-shadow" => Ok(vec![D::TextShadow(parse_text_shadow(input)?)]),
+        "text-overflow" => Ok(vec![D::TextOverflow(parse_text_overflow(input)?)]),
+        "word-break" => Ok(vec![D::WordBreak(parse_word_break(input)?)]),
+        // `word-wrap`は`overflow-wrap`のレガシー名(`page-break-*`と同じ扱い)。
+        "overflow-wrap" | "word-wrap" => {
+            Ok(vec![D::OverflowWrap(parse_overflow_wrap(input)?)])
+        },
+        "hyphens" => Ok(vec![D::Hyphens(parse_hyphens(input)?)]),
+        "text-emphasis-style" => {
+            Ok(vec![D::TextEmphasisStyle(parse_text_emphasis_style(input)?)])
+        },
+        "text-emphasis-color" => Ok(vec![D::TextEmphasisColor(parse_color(input)?)]),
+        "text-emphasis-position" => {
+            Ok(vec![D::TextEmphasisPosition(parse_text_emphasis_position(input)?)])
+        },
+        "text-emphasis" => parse_text_emphasis_shorthand(input),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -2197,6 +2230,230 @@ fn parse_angle_radians<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError
         }
         _ => Err(input.new_custom_error(())),
     }
+}
+
+/// `text-shadow: none | <shadow>#`([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定1)。`box-shadow`と
+/// 違いspread・insetを持たない。
+fn parse_text_shadow<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<SpecifiedTextShadow>, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(Vec::new());
+    }
+    input.parse_comma_separated(parse_single_text_shadow)
+}
+
+/// `<shadow>`1つ分。`<color>`は長さの前後どちらにも書ける(CSS仕様)。
+fn parse_single_text_shadow<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedTextShadow, ParseError<'i, ()>> {
+    let mut color = None;
+    let mut lengths = None;
+
+    loop {
+        if color.is_none() {
+            if let Ok(c) = input.try_parse(parse_color) {
+                color = Some(c);
+                continue;
+            }
+        }
+        if lengths.is_none() {
+            if let Ok(l) = input.try_parse(parse_text_shadow_lengths) {
+                lengths = Some(l);
+                continue;
+            }
+        }
+        break;
+    }
+
+    let Some((offset_x, offset_y, blur_radius)) = lengths else {
+        return Err(input.new_custom_error(()));
+    };
+    Ok(SpecifiedTextShadow {
+        offset_x,
+        offset_y,
+        blur_radius,
+        color,
+    })
+}
+
+/// `<length>{2,3}`(offset-x offset-y [blur-radius])。blur省略時は`0`。
+fn parse_text_shadow_lengths<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(SpecifiedLength, SpecifiedLength, SpecifiedLength), ParseError<'i, ()>> {
+    let offset_x = parse_length(input)?;
+    let offset_y = parse_length(input)?;
+    let blur_radius = input
+        .try_parse(parse_length)
+        .unwrap_or(SpecifiedLength::Px(0.0));
+    Ok((offset_x, offset_y, blur_radius))
+}
+
+/// `text-overflow: clip | ellipsis`([0053]決定4)。
+fn parse_text_overflow<'i>(input: &mut Parser<'i, '_>) -> Result<TextOverflow, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "clip" => TextOverflow::Clip,
+        "ellipsis" => TextOverflow::Ellipsis,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `word-break: normal | break-all | keep-all`([0053]決定3)。
+/// `break-word`(非推奨値)は`overflow-wrap: break-word`相当だが、
+/// プロパティをまたぐ変換になるため受け付けない(既知の簡略化)。
+fn parse_word_break<'i>(input: &mut Parser<'i, '_>) -> Result<WordBreak, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "normal" => WordBreak::Normal,
+        "break-all" => WordBreak::BreakAll,
+        "keep-all" => WordBreak::KeepAll,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `overflow-wrap: normal | break-word | anywhere`([0053]決定3)。
+fn parse_overflow_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<OverflowWrap, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "normal" => OverflowWrap::Normal,
+        // `anywhere`との差はmin-content幅への影響のみのため同一視する。
+        "break-word" | "anywhere" => OverflowWrap::BreakWord,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `hyphens: none | manual | auto`([0053]決定2)。`auto`は辞書を持たないため
+/// `manual`と同じ挙動になる。
+fn parse_hyphens<'i>(input: &mut Parser<'i, '_>) -> Result<Hyphens, ParseError<'i, ()>> {
+    let ident = input.expect_ident()?.clone();
+    Ok(match_ignore_ascii_case! { &ident,
+        "none" => Hyphens::None,
+        "manual" | "auto" => Hyphens::Manual,
+        _ => return Err(input.new_custom_error(())),
+    })
+}
+
+/// `text-emphasis-style`([0053]決定6)。
+/// `none | [ filled | open ] || [ dot | circle | double-circle | triangle |
+/// sesame ] | <string>`。
+fn parse_text_emphasis_style<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<EmphasisStyle, ParseError<'i, ()>> {
+    if let Ok(s) = input.try_parse(|input| input.expect_string_cloned()) {
+        // `<string>`は先頭1文字だけを使う(仕様通り)。空文字列は無効。
+        let Some(ch) = s.chars().next() else {
+            return Err(input.new_custom_error(()));
+        };
+        return Ok(EmphasisStyle::String(ch));
+    }
+
+    /// このプロパティが解釈できたキーワード。
+    enum Keyword {
+        None,
+        Filled(bool),
+        Shape(EmphasisShape),
+    }
+
+    let mut filled = None;
+    let mut shape = None;
+    loop {
+        // 解釈できないキーワード(`text-emphasis`ショートハンドの`<color>`など)は
+        // `try_parse`ごと巻き戻してループを抜ける。ここで`Err`を返してしまうと
+        // `text-emphasis: filled dot red`のような正当な指定でスタイル側が
+        // 丸ごと落ちる。
+        let Ok(keyword) = input.try_parse(|input| -> Result<Keyword, ParseError<'i, ()>> {
+            let ident = input.expect_ident()?.clone();
+            Ok(match_ignore_ascii_case! { &ident,
+                "none" => Keyword::None,
+                "filled" => Keyword::Filled(true),
+                "open" => Keyword::Filled(false),
+                "dot" => Keyword::Shape(EmphasisShape::Dot),
+                "circle" => Keyword::Shape(EmphasisShape::Circle),
+                "double-circle" => Keyword::Shape(EmphasisShape::DoubleCircle),
+                "triangle" => Keyword::Shape(EmphasisShape::Triangle),
+                "sesame" => Keyword::Shape(EmphasisShape::Sesame),
+                _ => return Err(input.new_custom_error(())),
+            })
+        }) else {
+            break;
+        };
+        match keyword {
+            Keyword::None => return Ok(EmphasisStyle::None),
+            // 同じ種類のキーワードを2回書くのは不正(`filled open`等)。
+            Keyword::Filled(_) if filled.is_some() => return Err(input.new_custom_error(())),
+            Keyword::Shape(_) if shape.is_some() => return Err(input.new_custom_error(())),
+            Keyword::Filled(v) => filled = Some(v),
+            Keyword::Shape(v) => shape = Some(v),
+        }
+    }
+
+    if filled.is_none() && shape.is_none() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(EmphasisStyle::Shape {
+        // 形状省略時の初期値は`dot`、塗り指定省略時は`filled`(仕様通り)。
+        shape: shape.unwrap_or(EmphasisShape::Dot),
+        filled: filled.unwrap_or(true),
+    })
+}
+
+/// `text-emphasis-position`。横書きでは`over`/`under`のみが意味を持つため、
+/// `right`/`left`は受理した上で読み飛ばす([0053]決定1)。
+fn parse_text_emphasis_position<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<EmphasisPosition, ParseError<'i, ()>> {
+    let mut position = None;
+    loop {
+        let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) else {
+            break;
+        };
+        match_ignore_ascii_case! { &ident,
+            "over" if position.is_none() => position = Some(EmphasisPosition::Over),
+            "under" if position.is_none() => position = Some(EmphasisPosition::Under),
+            "right" | "left" => {},
+            _ => return Err(input.new_custom_error(())),
+        }
+    }
+    position.ok_or_else(|| input.new_custom_error(()))
+}
+
+/// `text-emphasis`ショートハンド(`<style> || <color>`)。指定されなかった側は
+/// 初期値へリセットする(`background`ショートハンドと同じ方針)。
+fn parse_text_emphasis_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let mut style = None;
+    let mut color = None;
+
+    loop {
+        if style.is_none() {
+            if let Ok(s) = input.try_parse(parse_text_emphasis_style) {
+                style = Some(s);
+                continue;
+            }
+        }
+        if color.is_none() {
+            if let Ok(c) = input.try_parse(parse_color) {
+                color = Some(c);
+                continue;
+            }
+        }
+        break;
+    }
+
+    if style.is_none() && color.is_none() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(vec![
+        D::TextEmphasisStyle(style.unwrap_or_default()),
+        D::TextEmphasisColor(color.unwrap_or(Color::CurrentColor)),
+    ])
 }
 
 /// `opacity: <number> | <percentage>`。0〜1にクランプする(決定2)。

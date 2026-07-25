@@ -14,14 +14,15 @@
 //!   「CJK文字が隣接する境界は改行可、それ以外はスタイル変更のみでは改行不可」
 //!   という単純化した判定にとどめる
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use crate::fonts::{measure_text, shape_text, FontCollection, ShapedGlyph};
 use crate::html::NodeId;
 use crate::style::{
-    BoxSizing, ComputedStyle, FontStyle, FontWeight, LengthPercentage, LengthPercentageOrAuto,
-    LineHeight, RgbaColor, TextAlign, TextTransform, VerticalAlign, WhiteSpace,
+    BoxSizing, ComputedStyle, ComputedTextShadow, EmphasisPosition, EmphasisStyle, FontStyle,
+    FontWeight, Hyphens, LengthPercentage, LengthPercentageOrAuto, LineHeight, OverflowWrap,
+    RgbaColor, TextAlign, TextOverflow, TextTransform, VerticalAlign, WhiteSpace, WordBreak,
 };
 
 use super::block::LaidOutBox;
@@ -32,6 +33,33 @@ use super::geometry::Rect;
 /// `display: inline-block`のプレースホルダ文字(U+FFFC OBJECT REPLACEMENT
 /// CHARACTER)。実際には描画されず、行組みが箱の位置を保つためだけに使う。
 const ATOMIC_PLACEHOLDER: char = '\u{FFFC}';
+
+/// `text-emphasis`のマーク1つ分の描画情報([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定6)。
+/// マークのサイズは`font-size`の半分(仕様の推奨値)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmphasisMark {
+    pub style: EmphasisStyle,
+    pub color: RgbaColor,
+    pub position: EmphasisPosition,
+    /// マークの外接サイズ(px)。`font_size * 0.5`。
+    pub size: f32,
+}
+
+/// `text-emphasis`のマークが行に要求する高さの、font-sizeに対する比率
+/// ([0053]決定6、仕様の推奨値`0.5em`)。
+const EMPHASIS_SIZE_RATIO: f32 = 0.5;
+
+/// soft hyphen(U+00AD)。描画はせず、改行機会としてのみ扱う([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定2)。
+const SOFT_HYPHEN: char = '\u{00AD}';
+
+/// 行末に表示するハイフン(soft hyphenで分割したとき、決定2)。
+const HYPHEN: &str = "-";
+
+/// `text-overflow: ellipsis`の省略記号(U+2026)。グリフを持たないフォントでは
+/// ハイフンにフォールバックする(決定4)。
+const ELLIPSIS: &str = "…";
 
 /// 同一スタイル・同一フォントで連続する区間(1単語の一部、または1単語全体)。
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +108,20 @@ pub struct TextRun {
     /// `vertical-align`によるベースラインからのずれ(px、**正=上方向**)。
     /// 描画層は`line.baseline`にこの値を加減して各ランのベースラインを求める。
     pub baseline_shift: f32,
+    /// `text-shadow`(継承済み・色解決済み)。描画層がテキスト本体の前に
+    /// 重ね描きする([0053](../../../docs/decisions/0053-text-details-design.md)
+    /// 決定5)。レイアウトには影響しない。空なら影なし。
+    pub text_shadow: Rc<[ComputedTextShadow]>,
+    /// `text-emphasis`のマーク(決定6)。`None`ならマークなし。
+    /// マーク分の高さは`ascent`/`descent`に加算済み。
+    pub emphasis: Option<EmphasisMark>,
+    /// このランのスタイルの、IFC内での位置(`span_styles`のインデックス)。
+    /// 行組み中にハイフンや省略記号を同じスタイルで生成し直すために持つ
+    /// ([0053](../../../docs/decisions/0053-text-details-design.md)決定2・決定4)。
+    pub(super) style_index: usize,
+    /// このランの直前がsoft hyphen由来の改行機会かどうか(決定2)。
+    /// ここで行が分かれたら、前の行の末尾にハイフンを表示する。
+    pub(super) hyphen_before: bool,
     /// このランに適用された`vertical-align`の計算値(行の高さ確定後に
     /// `top`/`bottom`を後追いで解決するため、レイアウト中だけ使う)。
     pub(super) vertical_align: VerticalAlign,
@@ -131,6 +173,11 @@ struct StyledChar {
     /// `ch`は`'\n'`。`white-space: pre`の経路はこのフラグを見ずに`'\n'`だけで
     /// 行を分割するため、`<pre>`内の`<br>`も自然に改行になる。
     is_forced_break: bool,
+    /// この文字の**直前**にsoft hyphen(U+00AD)があったか([0053](
+    /// ../../../docs/decisions/0053-text-details-design.md)決定2)。soft hyphen
+    /// 自身は描画されないため文字列からは取り除き、改行機会としてこのフラグに
+    /// 変換する。ここで行が分かれた場合は行末にハイフンを表示する。
+    hyphen_before: bool,
 }
 
 /// 通常フロー(`white-space: normal`/`nowrap`)の行組みの入力単位
@@ -193,6 +240,10 @@ pub(crate) fn layout_inline_content(
         .and_then(|i| span_styles.get(i));
     let white_space = representative.map(|s| s.white_space).unwrap_or_default();
     let text_align = representative.map(|s| s.text_align).unwrap_or_default();
+    // `word-break`/`overflow-wrap`も`white-space`と同じくIFCの代表値で扱う
+    // ([0053](../../../docs/decisions/0053-text-details-design.md)決定3)。
+    let word_break = representative.map(|s| s.word_break).unwrap_or_default();
+    let overflow_wrap = representative.map(|s| s.overflow_wrap).unwrap_or_default();
     // パーセンテージはこのIFCのcontaining width(`available_width`)基準で解決する
     // (`width`/`margin`と同じ「使用値は使う側で解決」パターン)。
     let text_indent = representative
@@ -390,14 +441,25 @@ pub(crate) fn layout_inline_content(
                 continue;
             }
         };
-        let word_runs = split_word_into_runs(word, &span_styles, &span_links, fonts);
+        let word_runs = split_word_into_runs(word, &span_styles, &span_links, fonts, word_break);
 
         // 単語内であっても、CJK文字が絡む改行可能な境界ごとに「まとめて
         // 1行に収まるか判定する最小単位」(chunk)へグループ化する。空白による
         // 単語区切りは常に改行可能(次段の`is_first_chunk_of_word`で扱う)。
-        for (chunk_index, chunk) in group_into_chunks(word_runs).into_iter().enumerate() {
+        // 要素は`(chunk, 単語の先頭chunkか, overflow-wrapの文字分割を試みてよいか)`。
+        // 3つ目は「1文字も入らないので分割を諦めた」chunkを再投入したときに
+        // 無限ループへ入らないためのフラグ([0053]決定3)。
+        let mut chunk_queue: VecDeque<(Vec<TextRun>, bool, bool)> =
+            group_into_chunks(word_runs, word_break)
+                .into_iter()
+                .enumerate()
+                .map(|(chunk_index, chunk)| (chunk, chunk_index == 0, true))
+                .collect();
+
+        while let Some((chunk, is_first_chunk_of_word, allow_break_fallback)) =
+            chunk_queue.pop_front()
+        {
             let chunk_width: f32 = chunk.iter().map(|r| r.width).sum();
-            let is_first_chunk_of_word = chunk_index == 0;
             let starting_new_line = current_runs.is_empty() && current_atomics.is_empty();
 
             if starting_new_line {
@@ -429,10 +491,39 @@ pub(crate) fn layout_inline_content(
                 0.0
             };
 
+            // `overflow-wrap: break-word`: 行頭に置いてもなお収まらないchunkは、
+            // 収まるところまで文字単位で切って改行する([0053]決定3)。
+            // 1文字も入らない場合(極端に狭い帯)は無限ループを避けるため
+            // そのまま置いてはみ出させる。
+            if starting_new_line
+                && allow_break_fallback
+                && overflow_wrap == OverflowWrap::BreakWord
+                && white_space != WhiteSpace::Nowrap
+                && chunk_width > line_available_width
+            {
+                let (head, rest) = split_chunk_to_fit(chunk, line_available_width);
+                if !head.is_empty() && !rest.is_empty() {
+                    // 前半を「これ以上分割しない」chunkとして先に処理し、
+                    // 残りは次の行で改めて分割判定にかける。
+                    chunk_queue.push_front((rest, false, true));
+                    chunk_queue.push_front((head, is_first_chunk_of_word, false));
+                } else {
+                    // 1文字も入らない(極端に狭い帯)。分割を諦めてそのまま置く。
+                    let restored: Vec<TextRun> = head.into_iter().chain(rest).collect();
+                    chunk_queue.push_front((restored, is_first_chunk_of_word, false));
+                }
+                continue;
+            }
+
             if !starting_new_line
                 && white_space != WhiteSpace::Nowrap
                 && current_width + gap_width + chunk_width > line_available_width
             {
+                // soft hyphenの位置で改行する場合、確定する行の末尾にハイフンを
+                // 表示する([0053]決定2)。
+                if chunk.first().is_some_and(|run| run.hyphen_before) {
+                    push_hyphen(&mut current_runs, &mut current_width, &span_styles, fonts);
+                }
                 let line_height = line_height_for(&current_runs);
                 lines.push(finish_line(
                     std::mem::take(&mut current_runs),
@@ -459,6 +550,12 @@ pub(crate) fn layout_inline_content(
                 let hint = line_height_hint_for_chunk(&chunk);
                 (line_left, line_available_width) =
                     line_band(float_ctx, cursor_y, hint, origin_x, available_width);
+
+                // 改行したので、このchunkを「行頭に置く」ケースとして評価し直す。
+                // こうしないと`overflow-wrap: break-word`の文字分割が2行目以降で
+                // 効かない(行頭判定を通らないまま置かれてしまう、[0053]決定3)。
+                chunk_queue.push_front((chunk, is_first_chunk_of_word, allow_break_fallback));
+                continue;
             } else if !starting_new_line {
                 if is_first_chunk_of_word {
                     word_boundaries.push(current_runs.len());
@@ -615,12 +712,23 @@ fn flatten_spans(
                 style_index,
                 atomic_span: Some(style_index),
                 is_forced_break: false,
+                hyphen_before: false,
             });
             prev_is_boundary = false;
             continue;
         }
 
+        let hyphens = span_styles[style_index].hyphens;
+        // 直前にsoft hyphenがあったか([0053](
+        // ../../../docs/decisions/0053-text-details-design.md)決定2)。
+        let mut hyphen_pending = false;
         for ch in span.text.chars() {
+            // soft hyphen(U+00AD)自身は描画しない。`hyphens: manual`(初期値)
+            // なら改行機会として次の文字へ引き継ぎ、`none`なら単に捨てる。
+            if ch == SOFT_HYPHEN {
+                hyphen_pending = hyphens == Hyphens::Manual;
+                continue;
+            }
             let is_word_start = prev_is_boundary;
             let transformed = apply_text_transform(ch, transform, is_word_start);
             chars.push(StyledChar {
@@ -628,7 +736,9 @@ fn flatten_spans(
                 style_index,
                 atomic_span: None,
                 is_forced_break: span.is_forced_break,
+                hyphen_before: hyphen_pending,
             });
+            hyphen_pending = false;
             prev_is_boundary = ch.is_whitespace();
         }
     }
@@ -746,11 +856,27 @@ fn split_word_into_runs(
     span_styles: &[ComputedStyle],
     span_links: &[Option<Rc<str>>],
     fonts: &FontCollection,
+    word_break: WordBreak,
 ) -> Vec<TextRun> {
     let mut runs = Vec::new();
     let mut current: Option<(usize, usize)> = None;
     let mut current_text = String::new();
     let mut last_char: Option<char> = None;
+    // 現在組み立て中のランの直前がsoft hyphen由来の改行機会かどうか。
+    let mut current_hyphen_before = false;
+
+    let flush = |runs: &mut Vec<TextRun>,
+                 current: Option<(usize, usize)>,
+                 text: &str,
+                 hyphen_before: bool| {
+        if let Some((style_index, fi)) = current {
+            let mut run = shape_run(text, fi, fonts, &span_styles[style_index]);
+            run.link = span_links.get(style_index).cloned().flatten();
+            run.style_index = style_index;
+            run.hyphen_before = hyphen_before;
+            runs.push(run);
+        }
+    };
 
     for sc in word {
         let style = &span_styles[sc.style_index];
@@ -767,7 +893,8 @@ fn split_word_into_runs(
             (Some((style_index, fi)), Some(prev_ch)) => {
                 style_index == sc.style_index
                     && fi == font_index
-                    && !is_break_boundary(prev_ch, sc.ch)
+                    && !sc.hyphen_before
+                    && !is_break_boundary(prev_ch, sc.ch, word_break)
             }
             _ => false,
         };
@@ -775,21 +902,14 @@ fn split_word_into_runs(
         if continues_current {
             current_text.push(sc.ch);
         } else {
-            if let Some((style_index, fi)) = current {
-                let mut run = shape_run(&current_text, fi, fonts, &span_styles[style_index]);
-                run.link = span_links.get(style_index).cloned().flatten();
-                runs.push(run);
-            }
+            flush(&mut runs, current, &current_text, current_hyphen_before);
             current_text = sc.ch.to_string();
             current = Some((sc.style_index, font_index));
+            current_hyphen_before = sc.hyphen_before;
         }
         last_char = Some(sc.ch);
     }
-    if let Some((style_index, fi)) = current {
-        let mut run = shape_run(&current_text, fi, fonts, &span_styles[style_index]);
-        run.link = span_links.get(style_index).cloned().flatten();
-        runs.push(run);
-    }
+    flush(&mut runs, current, &current_text, current_hyphen_before);
 
     runs
 }
@@ -798,14 +918,17 @@ fn split_word_into_runs(
 /// [`is_break_boundary`])ごとに分割不可能な塊(chunk)へグループ化する。
 /// 各chunkの内部境界はすべて改行不可(スタイル/フォント変更のみ)なので、
 /// 呼び出し側はchunk単位で「まとめて1行に収まるか」を判定できる。
-fn group_into_chunks(runs: Vec<TextRun>) -> Vec<Vec<TextRun>> {
+fn group_into_chunks(runs: Vec<TextRun>, word_break: WordBreak) -> Vec<Vec<TextRun>> {
     let mut chunks: Vec<Vec<TextRun>> = Vec::new();
     for run in runs {
         let starts_new_chunk = match chunks.last().and_then(|chunk| chunk.last()) {
             None => true,
+            // soft hyphenも改行機会([0053]決定2)。
+            Some(_) if run.hyphen_before => true,
             Some(prev) => is_break_boundary(
                 prev.text.chars().last().unwrap_or(' '),
                 run.text.chars().next().unwrap_or(' '),
+                word_break,
             ),
         };
         if starts_new_chunk {
@@ -817,11 +940,211 @@ fn group_into_chunks(runs: Vec<TextRun>) -> Vec<Vec<TextRun>> {
     chunks
 }
 
+/// `text-overflow: ellipsis`([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定4)。
+/// 行組みが終わった後に、`content_width`からはみ出した行を省略記号で切り詰める。
+/// `overflow`が`visible`、または`text-overflow`が`clip`なら何もしない
+/// (`clip`は既存の`overflow`クリップに委ねる)。
+///
+/// **既知の簡略化**: 幅方向にはみ出した行のみを対象にする(ブロック全体の
+/// オーバーフローは扱わない)。省略記号のグリフを持たないフォントでは
+/// ハイフンにフォールバックする。
+pub(super) fn apply_text_overflow(
+    lines: &mut [LineBox],
+    style: &ComputedStyle,
+    content_width: f32,
+    fonts: &FontCollection,
+) {
+    if !style.overflow.clips() || style.text_overflow != TextOverflow::Ellipsis {
+        return;
+    }
+
+    for line in lines.iter_mut() {
+        let line_width = line
+            .runs
+            .last()
+            .map(|run| run.x_offset + run.width)
+            .unwrap_or(0.0);
+        if line_width <= content_width {
+            continue;
+        }
+        let Some(last) = line.runs.last() else {
+            continue;
+        };
+        let Some(mut ellipsis) = shape_ellipsis(last.font_index, last.style_index, style, fonts)
+        else {
+            continue;
+        };
+
+        // 省略記号の幅を確保した上で、収まるところまでランを残す。
+        // 各ランの`x_offset`は行内の確定位置(単語間スペースを含む)なので
+        // **書き換えない**。累積幅で置き直すとスペース分ずれる。
+        let budget = (content_width - ellipsis.width).max(0.0);
+        let mut kept: Vec<TextRun> = Vec::with_capacity(line.runs.len());
+        let mut end_x = 0.0f32;
+        for run in std::mem::take(&mut line.runs) {
+            if run.x_offset + run.width <= budget {
+                end_x = run.x_offset + run.width;
+                kept.push(run);
+                continue;
+            }
+            if let (Some(fitting), _) = split_run_at_width(&run, budget - run.x_offset) {
+                end_x = run.x_offset + fitting.width;
+                kept.push(fitting);
+            }
+            break;
+        }
+
+        ellipsis.x_offset = end_x;
+        // 切り詰めた行の高さ・ベースラインは変えない(省略記号は同じスタイルで
+        // シェイプしているため、行の`ascent`/`descent`に影響しない)。
+        kept.push(ellipsis);
+        line.runs = kept;
+    }
+}
+
+/// 省略記号(`…`)のランを作る。フォントがそのグリフを持たない(`.notdef`)場合は
+/// ハイフンへフォールバックし、それも無ければ`None`。
+fn shape_ellipsis(
+    font_index: usize,
+    style_index: usize,
+    style: &ComputedStyle,
+    fonts: &FontCollection,
+) -> Option<TextRun> {
+    for text in [ELLIPSIS, HYPHEN] {
+        let mut run = shape_run(text, font_index, fonts, style);
+        if run.glyphs.is_empty() || run.glyphs.iter().any(|g| g.glyph_id == 0) {
+            continue;
+        }
+        run.style_index = style_index;
+        return Some(run);
+    }
+    None
+}
+
+/// 行末にハイフンを追加する(soft hyphenで分割したとき、[0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定2)。直前のランと
+/// 同じスタイル・フォントでシェイプする。
+///
+/// **既知の簡略化**: ハイフン分の幅は「収まるかどうか」の判定には含めない
+/// (判定後に足すため、行がハイフン1文字分だけはみ出しうる)。
+fn push_hyphen(
+    current_runs: &mut Vec<TextRun>,
+    current_width: &mut f32,
+    span_styles: &[ComputedStyle],
+    fonts: &FontCollection,
+) {
+    let Some(last) = current_runs.last() else {
+        return;
+    };
+    let (font_index, style_index) = (last.font_index, last.style_index);
+    let Some(style) = span_styles.get(style_index) else {
+        return;
+    };
+    let mut hyphen = shape_run(HYPHEN, font_index, fonts, style);
+    if hyphen.glyphs.is_empty() {
+        return;
+    }
+    hyphen.style_index = style_index;
+    hyphen.x_offset = *current_width;
+    *current_width += hyphen.width;
+    current_runs.push(hyphen);
+}
+
+/// chunkを`max_width`に収まる前半と残りに分割する([0053]決定3、
+/// `overflow-wrap: break-word`のフォールバック用)。
+///
+/// グリフ単位で切るため再シェイプは不要(`ShapedGlyph::cluster`が元テキストの
+/// バイトオフセットを持つ)。合字・結合文字の途中で切れる可能性はあるが、
+/// この経路に来るのは「1単語が行幅を超える」場合に限られる(既知の簡略化)。
+fn split_chunk_to_fit(chunk: Vec<TextRun>, max_width: f32) -> (Vec<TextRun>, Vec<TextRun>) {
+    let mut head = Vec::new();
+    let mut rest = Vec::new();
+    let mut used = 0.0f32;
+
+    for run in chunk {
+        if !rest.is_empty() {
+            rest.push(run);
+            continue;
+        }
+        if used + run.width <= max_width {
+            used += run.width;
+            head.push(run);
+            continue;
+        }
+        let (fitting, remainder) = split_run_at_width(&run, max_width - used);
+        if let Some(fitting) = fitting {
+            used += fitting.width;
+            head.push(fitting);
+        }
+        // `None`は全グリフが収まった場合(`run.width`との誤差)。通常来ない。
+        if let Some(remainder) = remainder {
+            rest.push(remainder);
+        }
+    }
+
+    (head, rest)
+}
+
+/// 1つのランを、グリフ単位で`max_width`に収まる部分と残りに分割する。
+/// どちらの側も空になり得る(`None`で表す)。
+fn split_run_at_width(run: &TextRun, max_width: f32) -> (Option<TextRun>, Option<TextRun>) {
+    let mut used = 0.0f32;
+    let mut glyph_count = 0usize;
+    for glyph in &run.glyphs {
+        let advance = glyph.x_advance + run.letter_spacing;
+        if used + advance > max_width {
+            break;
+        }
+        used += advance;
+        glyph_count += 1;
+    }
+
+    if glyph_count == 0 {
+        return (None, Some(run.clone()));
+    }
+    if glyph_count == run.glyphs.len() {
+        return (Some(run.clone()), None);
+    }
+
+    // 分割位置の後半先頭グリフが指す元テキストのバイト位置で文字列も切る。
+    let split_byte = (run.glyphs[glyph_count].cluster as usize).min(run.text.len());
+    let mut head = run.clone();
+    head.glyphs = run.glyphs[..glyph_count].to_vec();
+    head.text = run.text[..split_byte].to_string();
+    head.width = used;
+
+    let mut tail = run.clone();
+    // `cluster`は「そのランの`text`内のバイトオフセット」なので、後半では
+    // 切った分だけ詰め直す。これを忘れると`text[cluster..]`で文字を逆引きする
+    // 箇所(`/ToUnicode`生成・圏点描画)が範囲外アクセスでpanicする。
+    tail.glyphs = run.glyphs[glyph_count..]
+        .iter()
+        .map(|glyph| ShapedGlyph {
+            cluster: glyph.cluster.saturating_sub(split_byte as u32),
+            ..*glyph
+        })
+        .collect();
+    tail.text = run.text[split_byte..].to_string();
+    tail.width = (run.width - used).max(0.0);
+    tail.x_offset = 0.0;
+    // 後半は「単語の途中で切られた」だけなので、ハイフンは表示しない。
+    tail.hyphen_before = false;
+
+    (Some(head), Some(tail))
+}
+
 /// `prev`と`next`の間で(空白が無くても)改行してよいかどうか。
-/// どちらか一方がCJK文字([`is_cjk`])であれば改行可能とみなす簡略判定
-/// (UAX#14の全面実装ではない)。
-fn is_break_boundary(prev: char, next: char) -> bool {
-    is_cjk(prev) || is_cjk(next)
+/// `word-break: normal`ではどちらか一方がCJK文字([`is_cjk`])であれば改行可能と
+/// みなす簡略判定(UAX#14の全面実装ではない)。`break-all`はすべての文字境界、
+/// `keep-all`はCJK境界でも改行しない([0053](
+/// ../../../docs/decisions/0053-text-details-design.md)決定3)。
+fn is_break_boundary(prev: char, next: char, word_break: WordBreak) -> bool {
+    match word_break {
+        WordBreak::BreakAll => true,
+        WordBreak::KeepAll => false,
+        WordBreak::Normal => is_cjk(prev) || is_cjk(next),
+    }
 }
 
 /// ひらがな・カタカナ・漢字(CJK統合漢字・拡張A・互換漢字)・ハングルなど、
@@ -917,7 +1240,9 @@ fn layout_pre_content(
             continue;
         }
 
-        let runs = split_word_into_runs(segment, span_styles, span_links, fonts);
+        // `white-space: pre`は折り返さないので、改行機会の判定(`word-break`)は
+        // 結果に影響しない(常に`Normal`で呼ぶ)。
+        let runs = split_word_into_runs(segment, span_styles, span_links, fonts, WordBreak::Normal);
         let mut current_width = 0.0;
         let mut placed_runs = Vec::with_capacity(runs.len());
         for mut run in runs {
@@ -960,14 +1285,36 @@ pub(super) fn shape_run(
     let needs_synthetic_bold = style.font_weight == FontWeight::Bold && !fonts.is_bold(font_index);
     let needs_synthetic_italic =
         style.font_style == FontStyle::Italic && !fonts.is_italic(font_index);
-    let line_height = resolve_line_height(style);
+    let mut line_height = resolve_line_height(style);
     // `letter-spacing`はグリフ数分だけ幅に加算する(行末にも均等加算する簡略化、
     // [0020]既知の簡略化2)。PDF描画層は`run.letter_spacing`を`Tc`として使う
     // ため、ここでの幅計算とレンダリング結果が一致する。
     let width = shaped.width + style.letter_spacing * shaped.glyphs.len() as f32;
     let units_per_em = font.units_per_em() as f32;
-    let ascent = font.ascender() as f32 / units_per_em * font_size;
-    let descent = -(font.descender() as f32) / units_per_em * font_size;
+    let mut ascent = font.ascender() as f32 / units_per_em * font_size;
+    let mut descent = -(font.descender() as f32) / units_per_em * font_size;
+
+    // `text-emphasis`のマークは行ボックスの高さを増やす([0053](
+    // ../../../docs/decisions/0053-text-details-design.md)決定6)。`over`なら
+    // ascent側、`under`ならdescent側に`0.5em`を足す。
+    let emphasis = (style.text_emphasis_style != EmphasisStyle::None).then(|| {
+        let size = font_size * EMPHASIS_SIZE_RATIO;
+        match style.text_emphasis_position {
+            EmphasisPosition::Over => ascent += size,
+            EmphasisPosition::Under => descent += size,
+        }
+        // 行ボックスの高さは`line-height`由来の値が下限になる
+        // (`line_height_for`→`finish_line`)ため、マーク分はそちらにも足す。
+        // こうしないと上下の行とマークが重なる([0053]決定6)。
+        line_height += size;
+        EmphasisMark {
+            style: style.text_emphasis_style.clone(),
+            color: style.text_emphasis_color,
+            position: style.text_emphasis_position,
+            size,
+        }
+    });
+
     TextRun {
         font_index,
         font_size,
@@ -990,6 +1337,12 @@ pub(super) fn shape_run(
         // `baseline_shift`は行が確定した時点で`resolve_baseline_shifts`が埋める。
         baseline_shift: 0.0,
         vertical_align: style.vertical_align,
+        text_shadow: Rc::from(style.text_shadow.as_slice()),
+        emphasis,
+        // `style_index`/`hyphen_before`は呼び出し側(`split_word_into_runs`)が
+        // 設定する。単体で使う経路(`shape_standalone_line`等)では既定値でよい。
+        style_index: 0,
+        hyphen_before: false,
     }
 }
 

@@ -91,6 +91,34 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 `<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
 フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
 
+### テキスト詳細(`text-shadow`/`text-overflow`/`word-break`/`overflow-wrap`/`hyphens`/`text-emphasis`)
+
+長い文字列の折り返し制御と、見出し・強調表現のためのテキスト詳細プロパティに
+対応した。設計は[0053](docs/decisions/0053-text-details-design.md)。
+
+```css
+.title  { text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+.cell   { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.code   { word-break: break-all; }      /* すべての文字境界で折り返す */
+.url    { overflow-wrap: break-word; }  /* はみ出す時だけ単語を割る */
+.jp     { word-break: keep-all; }       /* CJKの文字間で折り返さない */
+.strong { text-emphasis: filled sesame red; }  /* 圏点(傍点) */
+```
+
+* **`word-break`**: `normal`(CJK境界のみ改行可)/`break-all`/`keep-all`
+* **`overflow-wrap`**(別名`word-wrap`): 改行機会は増やさず、**行頭に置いても
+  収まらない語だけ**を文字単位で割る。`anywhere`は`break-word`と同一視
+* **`hyphens`**: soft hyphen(`&shy;`)を改行機会として扱い、そこで分割した行の
+  末尾にハイフンを表示する。`auto`は辞書を持たないため`manual`と同じ挙動
+* **`text-overflow: ellipsis`**: `overflow`が`visible`以外のときに、幅から
+  はみ出した行を`…`で切り詰める
+* **`text-shadow`**: PDFにぼかしフィルタが無いため、アルファを下げた多重描画で
+  近似する。レイアウトには影響しない
+* **`text-emphasis`**: `dot`/`circle`/`double-circle`/`triangle`/`sesame`は
+  **PDFのパスで描く**ためフォントの字形に依存しない(`<string>`指定のみグリフ
+  描画)。マークの分だけ行の高さが広がる。`text-emphasis-position`は
+  `over`(初期値)/`under`
+
 ### `aspect-ratio`
 
 画像やバナーの縦横比を保つために`aspect-ratio`に対応した。設計は
