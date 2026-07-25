@@ -18,7 +18,7 @@ required-features = ["cli"]
 # (docs/decisions/0055-cli-design.md 決定1)。
 [features]
 default = ["cli"]
-cli = ["dep:clap"]
+cli = ["dep:clap", "dep:tiny_http"]
 
 [dependencies]
 base64 = "0.22.1"
@@ -50,6 +50,9 @@ rustybuzz = "0.20.1"
 selectors = "0.39.0"
 subsetter = "0.2.6"
 taffy = "0.12.2"
+# HTTPサーバモード(M12 Phase 7)。同期・軽量でボディを`Read`として扱える
+# (docs/decisions/0056-cli-and-server-crates.md 決定2)。
+tiny_http = { version = "0.12", optional = true }
 ttf-parser = "0.25.1"
 ureq = "3.3.0"
 
@@ -57,3 +60,6 @@ ureq = "3.3.0"
 # 採用はpdf-writerに決定したため本実装では使わない(docs/decisions/0001-pdf-writer-crate.md参照)
 [dev-dependencies]
 krilla = "0.8.2"
+# HTTPサーバモードのE2Eテスト(core/tests/server.rs)でクライアントとして使う。
+# 本体の依存にも同じものが入っているためビルドコストの増加はない。
+ureq = "3.3.0"

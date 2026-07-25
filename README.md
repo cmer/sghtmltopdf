@@ -18,6 +18,86 @@ CPU負荷・webfont待機・メモリ使用量・サーバレス環境での制�
     └── ruby/       # Ruby向けFFI層(magnus + rb-sys)
 ```
 
+## 使い方
+
+### CLI
+
+```sh
+# もっとも単純な使い方(フォントはシステムのものが使われる)
+sghtmltopdf invoice.html -o invoice.pdf
+
+# 用紙とマージンを指定する(単位はmm/cm/in/pt/px、省略時はmm)
+sghtmltopdf invoice.html -s A4 --margin-top 20mm --margin-bottom 20mm
+
+# 標準入力から読んで標準出力へ書く
+cat invoice.html | sghtmltopdf - -o - > invoice.pdf
+
+# ヘッダー・フッター(`[page]`等のプレースホルダが使える)
+sghtmltopdf report.html \
+  --header-center "四半期レポート" \
+  --footer-right "[page] / [topage]" \
+  --header-line
+
+# 表紙と目次を付ける(書き出し順は 表紙 → 目次 → 本文)
+sghtmltopdf report.html --cover cover.html --toc
+
+# 日本語フォントを明示する(出力を環境に依存させたくない場合)
+sghtmltopdf invoice.html --font NotoSansJP-Regular.ttf --gothic-font NotoSansJP-Regular.ttf
+```
+
+`--font`は**任意**で、省略するとシステムフォントが使われます。ただしその場合
+出力は実行環境のフォントに依存するため、サーバ運用やCIでは明示を推奨します。
+
+### HTTPサーバモード
+
+CLIと同じオプションを、**`--`を取った名前のクエリパラメータ**として渡せます
+(同じパーサへ通しているため解釈も同一です)。
+
+```sh
+sghtmltopdf server --listen 127.0.0.1:8080 --font NotoSansJP-Regular.ttf
+# → 標準出力に `listening on 127.0.0.1:8080` が出る
+
+curl --data-binary @invoice.html \
+     'http://127.0.0.1:8080/pdf?page-size=A4&margin-top=20mm&toc' \
+     -o invoice.pdf
+```
+
+`GET /healthz`と`GET /version`も応答します。サーバモードでは**ローカル
+ファイル参照とリモート取得が既定で禁止**され、フォントや表紙などローカルパスを
+取るオプションはリクエストからは指定できません(起動時にのみ設定できます)。
+
+### wkhtmltopdfからの移行で注意する点
+
+| | wkhtmltopdf | sghtmltopdf |
+|---|---|---|
+| CLIオプションとCSSの`@page` | CLIが勝つ | **`@page`が勝つ**(CLIは初期値) |
+| マージンの既定値 | 左右10mm | **四辺1in(96px)** |
+| 表紙・目次 | 位置引数(`cover a.html toc`) | **`--cover <PATH>` / `--toc`** |
+| 複数HTMLの結合 | できる | できない(入力は1つ) |
+| ヘッダー/フッターのページ変数 | JavaScriptで差し込み | **プレースホルダ置換**(JSは実行しない) |
+
+JavaScript関連・PDFアウトライン・XSLT・プロキシ/認証などのオプションは
+非対応で、指定すると理由を示して終了します(黙って無視はしません)。
+
+### ストリーミングモード(`--streaming`)
+
+数万要素規模のHTMLを低メモリで処理できます(実測: 60,000要素で 516MB → 40MB)。
+その代わり、文書全体を見ないと決まらないものが使えません。
+
+* **エラーになる**: `counter(pages)`/`[topage]`・`--toc`・`<html>`/`<body>`自身の
+  背景色や枠線・`<body>`より後の`<style>`
+* **警告のうえ続行する**: `font-family`名からのシステムフォント解決
+  (既定フォントで描画。`--font`等で明示すれば解決可能)、
+  `:last-child`等の後方参照セレクタ(常に非マッチ)
+
+`--cover`・ヘッダー/フッター(`[page]`まで)・ページ設定・メタデータ・
+コンテンツ挙動のオプションはストリーミングでも使えます。
+
+**全オプションのリファレンスとHTTP APIの詳細は[docs/cli.md](docs/cli.md)、
+wkhtmltopdfの全オプションとの対応は
+[docs/wkhtmltopdf_option_mapping.md](docs/wkhtmltopdf_option_mapping.md)を
+参照してください。**
+
 ## CSSプロパティ対応を追加する際の開発手順
 
 M8(CSS2.1対応)の各カテゴリ(Positioning & Float、Typography詳細、Table
@@ -90,6 +170,20 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 `vertical-align`)とPhase 3(カテゴリG: `vertical-align`、カテゴリH:
 `<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
 フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
+マイルストーン11(積み残し解消)を経て、**マイルストーン12(CLI提供とHTTPサーバ
+モード)が完了**(上の[使い方](#使い方)と[docs/cli.md](docs/cli.md)を参照)。
+
+### PDFの用紙サイズがptで正しく書かれるようになった(M12 Phase 3)
+
+**M12以前は、レイアウト内部単位のCSS pxがPDFのptとしてそのまま書かれていた**
+ため、A4指定でも実寸280×396mm(実際のA4の1.33倍)の紙になっていた。
+`--dpi`/`--zoom`の実装に合わせて`scale = 72 / dpi * zoom`で換算するようにし、
+既定のA4は`/MediaBox [0 0 595.275 841.875]`(=210×297mm)になった。
+
+換算はページのcontent stream先頭に積むCTMで行い、ページ座標系で直接書かれる値
+(`/MediaBox`・注釈の`/Rect`・`/Dests`の座標)だけを係数倍している。
+**M12以前と同じ紙サイズに戻したい場合は`--dpi 72`**を指定する。
+詳細は[0057](docs/decisions/0057-pdf-output-options-design.md)。
 
 ### CSS Grid(`display: grid`)
 

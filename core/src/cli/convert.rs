@@ -12,7 +12,7 @@ use crate::engine::{
 use crate::sink::{FileSink, Sink, StdoutSink};
 
 use super::header_footer::PlaceholderValues;
-use super::options::ConvertArgs;
+use super::options::{ConvertArgs, FontArg};
 use super::toc::{build_toc_html, TocEntry};
 use super::CliError;
 
@@ -45,11 +45,62 @@ impl Sink for OutputSink {
 pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     let fonts = args.font_specs(matches).map_err(CliError::Usage)?;
     let output_path = args.output_path().map_err(CliError::Usage)?;
-
     let html_bytes = read_input(args)?;
+
+    let sink = match output_path.as_ref() {
+        Some(path) => OutputSink::File(FileSink::create(path).map_err(|e| {
+            CliError::Input(format!("{}の作成に失敗しました: {e}", path.display()))
+        })?),
+        None => OutputSink::Stdout(StdoutSink::new()),
+    };
+
+    render(args, &fonts, &html_bytes, sink)?;
+
+    if !args.is_quiet() {
+        match output_path.as_ref() {
+            Some(path) => eprintln!("PDFを書き出しました: {}", path.display()),
+            None => eprintln!("PDFを標準出力へ書き出しました"),
+        }
+    }
+    Ok(())
+}
+
+/// [`render`]のメモリ返却版(HTTPサーバ用)。`MemorySink`のように
+/// `Output = Vec<u8>`のSinkを受け取り、PDFバイト列を返す。
+pub fn render_to_memory<S: Sink<Output = Vec<u8>, Error = io::Error>>(
+    args: &ConvertArgs,
+    fonts: &[FontArg],
+    html_bytes: &[u8],
+    sink: S,
+) -> Result<Vec<u8>, CliError> {
+    render_with_sink(args, fonts, html_bytes, sink)
+}
+
+/// HTMLバイト列を変換して`sink`へ書き出す。
+///
+/// CLI(`run`)とHTTPサーバ([`super::server`])の**共通の実行経路**
+/// ([0060](../../../docs/decisions/0060-http-server-mode.md))。
+/// フォントは呼び出し側が解決して渡す(CLIは`--font`の出現順、サーバは
+/// 起動時オプションから作る)。
+pub fn render<S: Sink<Output = (), Error = io::Error>>(
+    args: &ConvertArgs,
+    fonts: &[FontArg],
+    html_bytes: &[u8],
+    sink: S,
+) -> Result<(), CliError> {
+    render_with_sink(args, fonts, html_bytes, sink)
+}
+
+/// [`render`]/[`render_to_memory`]の実体。
+fn render_with_sink<S: Sink<Error = io::Error>>(
+    args: &ConvertArgs,
+    fonts: &[FontArg],
+    html_bytes: &[u8],
+    sink: S,
+) -> Result<S::Output, CliError> {
     // 入力をUTF-8へ揃える(BOM > --encoding > <meta charset> > UTF-8)。
     let html =
-        crate::html::decode_html(&html_bytes, args.encoding.as_deref()).map_err(CliError::Usage)?;
+        crate::html::decode_html(html_bytes, args.encoding.as_deref()).map_err(CliError::Usage)?;
     let (base_dir, base_href) = resolve_base(args)?;
 
     // CLIのページ設定は「初期値」であり、著者CSSの`@page`宣言があれば
@@ -145,24 +196,9 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
         page_offset: args.page_offset,
     };
 
-    let sink = match output_path.as_ref() {
-        Some(path) => OutputSink::File(FileSink::create(path).map_err(|e| {
-            CliError::Input(format!("{}の作成に失敗しました: {e}", path.display()))
-        })?),
-        None => OutputSink::Stdout(StdoutSink::new()),
-    };
-
     let mut engine = Engine::new(engine_options, sink);
     engine.feed(html.as_bytes()).map_err(engine_error)?;
-    engine.finish().map_err(engine_error)?;
-
-    if !args.is_quiet() {
-        match output_path.as_ref() {
-            Some(path) => eprintln!("PDFを書き出しました: {}", path.display()),
-            None => eprintln!("PDFを標準出力へ書き出しました"),
-        }
-    }
-    Ok(())
+    engine.finish().map_err(engine_error)
 }
 
 /// `EngineError`をexit code([0055]決定4)へ対応付ける。

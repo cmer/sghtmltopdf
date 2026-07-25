@@ -142,24 +142,28 @@ fn font_face_src_url_is_resolved_relative_to_the_html_file_and_embedded() {
 }
 
 #[test]
-fn fails_with_nonzero_exit_when_font_is_missing() {
-    let output = temp_output_path("missing-font");
+fn works_without_font_by_falling_back_to_a_system_font() {
+    // `--font`は任意。省略した場合はシステムの`sans-serif`候補を既定
+    // フォントとして使う(見つからなければエラー)。
+    let output = temp_output_path("no-font");
 
     let status = Command::new(BIN)
         .arg(SAMPLE_HTML)
         .arg("-o")
         .arg(&output)
+        .arg("--quiet")
         .status()
         .expect("failed to run sghtmltopdf binary");
+    assert!(status.success(), "CLI should fall back to a system font");
 
+    let bytes = std::fs::read(&output).expect("output PDF should exist");
+    assert!(bytes.starts_with(b"%PDF-"));
     assert!(
-        !status.success(),
-        "CLI should fail when --font is not provided"
+        count_occurrences(&bytes, b"/Subtype /CIDFontType2") > 0,
+        "a font must still be embedded"
     );
-    assert!(
-        !output.exists(),
-        "no output file should be created on failure"
-    );
+
+    std::fs::remove_file(&output).ok();
 }
 
 #[test]
@@ -252,15 +256,14 @@ fn stdin_input_without_an_explicit_output_is_a_usage_error() {
 
 #[test]
 fn exit_codes_follow_the_documented_mapping() {
-    // 1 = 使用法エラー(必須の--fontが無い)
+    // 1 = 使用法エラー(必須の位置引数が無い)
     let usage = Command::new(BIN)
-        .arg(SAMPLE_HTML)
         .output()
         .expect("failed to run sghtmltopdf binary");
     assert_eq!(
         usage.status.code(),
         Some(1),
-        "missing --font is a usage error"
+        "missing input is a usage error"
     );
 
     // 1 = 使用法エラー(未知のオプション)
@@ -420,13 +423,16 @@ fn a_bad_base_url_is_reported_as_an_input_error() {
 }
 
 #[test]
-fn the_server_subcommand_reports_that_it_is_not_implemented_yet() {
+fn the_server_subcommand_reports_a_bad_listen_address() {
+    // サーバ本体のE2Eは`core/tests/server.rs`が担当する。ここでは
+    // 「起動に失敗したらexit 2で終わる」ことだけを見る(待ち受けに成功すると
+    // 戻ってこないので、必ず失敗するアドレスを渡す)。
     let out = Command::new(BIN)
-        .arg("server")
+        .args(["server", "--listen", "256.256.256.256:1"])
         .output()
         .expect("failed to run sghtmltopdf binary");
-    assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("server"));
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("待ち受け"));
 }
 
 // ---------------------------------------------------------------------------
@@ -1314,4 +1320,117 @@ fn toc_appearance_options_are_accepted() {
     );
     assert_eq!(count_occurrences(&bytes, b"/MediaBox"), 3);
     assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn unsupported_wkhtmltopdf_options_explain_why() {
+    // [0055]決定5: 黙って無視せず、理由と代替手段を示してexit 1。
+    for (option, expected) in [
+        ("--enable-javascript", "JavaScript"),
+        ("--outline", "--toc"),
+        ("--xsl-style-sheet", "--user-style-sheet"),
+        ("--image-quality", "画像"),
+        ("--proxy", "プロキシ"),
+        ("--enable-forms", "フォーム"),
+    ] {
+        let out = Command::new(BIN)
+            .arg(SAMPLE_HTML)
+            .arg(option)
+            .arg("dummy")
+            .output()
+            .expect("failed to run sghtmltopdf binary");
+
+        assert_eq!(out.status.code(), Some(1), "{option} should exit with 1");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(option) && stderr.contains("対応していません"),
+            "{option}: message should name the option, got: {stderr}"
+        );
+        assert!(
+            stderr.contains(expected),
+            "{option}: message should explain the alternative/cause, got: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn a_supported_option_is_not_mistaken_for_an_unsupported_one() {
+    // `--toc`は対応済み。非対応リストの誤爆がないことを確認する。
+    let bytes = run_cli_with(PLAIN_HTML, &["--toc"], "not-unsupported");
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+// ---------------------------------------------------------------------------
+// ストリーミングモードで「黙って結果が変わる」箇所の警告([0006]の積み残し)
+// ---------------------------------------------------------------------------
+
+/// 警告を確認するため、stderrを取れる形でCLIを走らせる。
+fn run_capturing_stderr(html: &str, extra_args: &[&str], name: &str) -> String {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    std::fs::write(&input, html).unwrap();
+
+    let out = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("-o")
+        .arg(dir.join("out.pdf"))
+        .args(extra_args)
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(
+        out.status.success(),
+        "CLI should still succeed for case {name}"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    std::fs::remove_dir_all(&dir).ok();
+    stderr
+}
+
+#[test]
+fn streaming_warns_when_a_font_family_cannot_be_resolved() {
+    // ストリーミングではフォントを処理開始時に固定するため、`font-family`名
+    // からのシステムフォント探索ができない。黙って既定フォントで描かれるので
+    // 警告を出す。
+    let html = r#"<html><body><p style="font-family: monospace">mono</p></body></html>"#;
+
+    let streaming = run_capturing_stderr(html, &["--streaming"], "warn-font-streaming");
+    assert!(
+        streaming.contains("警告") && streaming.contains("monospace"),
+        "streaming should warn about the unresolved family, got: {streaming}"
+    );
+
+    // バッチモードは実際に解決できるので警告しない。
+    let batch = run_capturing_stderr(html, &[], "warn-font-batch");
+    assert!(
+        !batch.contains("警告"),
+        "batch mode resolves it and must stay quiet, got: {batch}"
+    );
+}
+
+#[test]
+fn streaming_warns_about_backward_looking_selectors() {
+    // [0006]分類3のセレクタはストリーミングでは常に非マッチになる。
+    let html = r#"<html><head><style>
+            li:last-child { color: red }
+            p:nth-last-child(2) { color: blue }
+        </style></head><body><p>x</p></body></html>"#;
+
+    let streaming = run_capturing_stderr(html, &["--streaming"], "warn-selector-streaming");
+    assert!(streaming.contains("警告"), "got: {streaming}");
+    assert!(streaming.contains(":last-child"), "got: {streaming}");
+    assert!(streaming.contains(":nth-last-child"), "got: {streaming}");
+
+    let batch = run_capturing_stderr(html, &[], "warn-selector-batch");
+    assert!(!batch.contains("警告"), "got: {batch}");
+}
+
+#[test]
+fn streaming_stays_quiet_when_everything_is_resolvable() {
+    let html = r#"<html><body><p>plain</p></body></html>"#;
+    let stderr = run_capturing_stderr(html, &["--streaming", "--quiet"], "warn-none");
+    assert!(stderr.is_empty(), "no warning expected, got: {stderr}");
 }

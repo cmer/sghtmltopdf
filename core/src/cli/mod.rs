@@ -10,6 +10,7 @@ pub mod options;
 pub mod server;
 pub mod toc;
 pub mod units;
+pub mod unsupported;
 
 use std::process::ExitCode;
 
@@ -54,6 +55,14 @@ impl std::error::Error for CliError {}
 
 /// CLIのエントリポイント。
 pub fn run() -> ExitCode {
+    // wkhtmltopdfにあって対応していないオプションは、clapの「unknown
+    // argument」ではなく**理由と代替手段を示して**終了する([0055]決定5)。
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(message) = unsupported::check_arguments(&args) {
+        eprintln!("エラー: {message}");
+        return ExitCode::from(1);
+    }
+
     // clapは既定で引数エラーにexit code 2を使うが、[0055]決定4では
     // 使用法エラーを1に割り当てているため、自前でExitCodeへ変換する。
     let matches = match Cli::command().try_get_matches() {

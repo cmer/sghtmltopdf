@@ -63,10 +63,12 @@ use crate::pdf::{
 };
 use crate::sink::Sink;
 use crate::style::{
-    compute_single_element_style, compute_styles, compute_styles_with_parent,
-    extract_author_stylesheet, resolve_page_rules, rules_use_page_count, user_agent_stylesheet,
-    ComputedStyle, LengthPercentageOrAuto, PageRule, RgbaColor, Stylesheet,
+    backward_looking_selectors, compute_single_element_style, compute_styles,
+    compute_styles_with_parent, extract_author_stylesheet, resolve_page_rules,
+    rules_use_page_count, user_agent_stylesheet, ComputedStyle, LengthPercentageOrAuto, PageRule,
+    RgbaColor, Stylesheet,
 };
+use crate::style::{FontStyle, FontWeight};
 
 /// 一括処理かストリーミング処理かを選択する。
 ///
@@ -625,6 +627,77 @@ fn build_toc_pages(
     result
 }
 
+/// `--font`で明示されたフォントを読む。
+fn load_explicit_fonts<E>(specs: &[FontSpec]) -> Result<Vec<Font>, EngineError<E>> {
+    let mut loaded = Vec::with_capacity(specs.len());
+    for spec in specs {
+        let font = Font::load_indexed(&spec.path, spec.index)
+            .map_err(|e| EngineError::Font(format!("フォントの読み込みに失敗しました: {e}")))?;
+        loaded.push(font);
+    }
+    Ok(loaded)
+}
+
+/// `--font`・`@font-face`・システムフォント探索をすべて終えてもフォントが
+/// 1つも無い場合に、システムの`sans-serif`候補を**既定フォント**として補う。
+///
+/// フォントが1つも無いと、`font-family`未指定のテキスト(既定`font-family`は
+/// 空、[0036](../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
+/// 決定3-1改訂)の描画先が無くなる。`--font`を必須にせず**システムフォントで
+/// 埋める**ことで、wkhtmltopdfと同じ使い心地にしている(その代わり、
+/// 何も指定しなかった場合の出力は実行環境に依存する)。
+///
+/// `@font-face`でフォントが供給されている場合は**何もしない**。ここで
+/// 足してしまうとフェイスの並び順が変わってしまうため。
+fn ensure_default_font<E>(
+    fonts: &mut FontCollection,
+    system: &SystemFonts,
+) -> Result<(), EngineError<E>> {
+    if !fonts.is_empty() {
+        return Ok(());
+    }
+    match system.load_generic("sans-serif", FontWeight::Normal, FontStyle::Normal) {
+        Some(font) => {
+            fonts.push_font_face("sans-serif".to_string(), None, None, Vec::new(), font);
+            Ok(())
+        }
+        None => Err(EngineError::Font(
+            "使用できるフォントがありません(システムフォントが見つかりませんでした)。\n  \
+             --fontでフォントファイルを指定してください"
+                .to_string(),
+        )),
+    }
+}
+
+/// `Mode::Streaming`で`font-family`が解決できなかった場合に警告する。
+///
+/// ストリーミング処理では[`crate::pdf::StreamingPdfWriter`]が`new`の時点で
+/// フォント数を固定するため、後から`font-family`名でシステムフォントを
+/// 探して足すことができない(`load_missing_system_fonts`を呼べない)。
+/// 該当する指定は**黙って既定フォントで描画される**ので、一度だけ警告する。
+fn warn_unresolved_font_families(
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    warned: &mut Vec<String>,
+) {
+    for style in styles.values() {
+        for family in &style.font_family {
+            if fonts.has_matching_face(family, style.font_weight, style.font_style) {
+                continue;
+            }
+            if warned.iter().any(|f| f == family) {
+                continue;
+            }
+            warned.push(family.clone());
+            eprintln!(
+                "警告: font-family \"{family}\" はストリーミングモードでは解決できません\n  \
+                 (フォントは処理開始時に確定させる必要があるため)。既定のフォントで描画します。\n  \
+                 --font/--gothic-font/--serif-font/--mono-font か @font-face で明示してください"
+            );
+        }
+    }
+}
+
 /// CLI由来の`@page`ルールを著者ルールの前に並べたものを返す([0058]決定1)。
 fn page_rules_with_cli(extra: &[PageRule], author: &[PageRule]) -> Vec<PageRule> {
     let mut rules = extra.to_vec();
@@ -728,6 +801,9 @@ struct StreamingState<S: Sink> {
     /// ページ番号に依存しないヘッダー/フッターHTMLのレイアウト結果
     /// ([0058]決定5)。
     overlay_cache: Option<Vec<PageOverlay>>,
+    /// 解決できない`font-family`について警告済みの名前(同じ警告を
+    /// 何度も出さないため)。
+    warned_font_families: Vec<String>,
     paginator: StreamingPaginator,
     writer: StreamingPdfWriter<S>,
     /// `<img>`のフェッチ・デコード結果を文書内でメモ化するキャッシュ。
@@ -886,16 +962,21 @@ impl<S: Sink> Engine<S> {
                 "--toc is not supported in streaming mode",
             ));
         }
-
-        let mut loaded_fonts = Vec::with_capacity(self.options.fonts.len());
-        for spec in &self.options.fonts {
-            let font = Font::load_indexed(&spec.path, spec.index)
-                .map_err(|e| EngineError::Font(format!("フォントの読み込みに失敗しました: {e}")))?;
-            loaded_fonts.push(font);
+        // 後方参照セレクタ([0006]分類3)は常に非マッチになる。エラーには
+        // しないが、黙って結果が変わるのは避けたいので警告する。
+        let backward = backward_looking_selectors(&author);
+        if !backward.is_empty() {
+            eprintln!(
+                "警告: {} はストリーミングモードでは常に非マッチになります\n  \
+                 (対象要素の親の子リストが完結するまで判定できないため)。\n  \
+                 これらを使う場合は --streaming を外してください",
+                backward.join(", ")
+            );
         }
-        let mut fonts = FontCollection::new(loaded_fonts);
 
         let system_fonts = SystemFonts::scan();
+        let mut fonts = FontCollection::new(load_explicit_fonts(&self.options.fonts)?);
+
         register_generic_fonts(&mut fonts, &self.options.generic_fonts)?;
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
@@ -909,6 +990,7 @@ impl<S: Sink> Engine<S> {
         // `load_missing_system_fonts`は文書全体のスタイルを必要とするが、
         // 真のストリーミング処理では文書全体のスタイルを一度に持たない
         // ため、ここでは呼ばない(モジュールdocの既知の限界を参照)。
+        ensure_default_font(&mut fonts, &system_fonts)?;
 
         // CSSカウンタ・quote深度はドキュメント順に依存する状態([0024]決定2・3)
         // なので、<html>から<body>直下の各トップレベル要素まで一貫して
@@ -1023,6 +1105,7 @@ impl<S: Sink> Engine<S> {
             cursor_y: start_y,
             page_settings,
             overlay_cache: None,
+            warned_font_families: Vec::new(),
             paginator: StreamingPaginator::new(page_settings.content_height()),
             writer,
             image_cache,
@@ -1057,6 +1140,11 @@ impl<S: Sink> Engine<S> {
             );
             let mut sub_styles = sub_styles;
             apply_content_options(&mut sub_styles, options_content);
+            warn_unresolved_font_families(
+                &sub_styles,
+                &state.fonts,
+                &mut state.warned_font_families,
+            );
             let mut item_box = build_box_for_element(&dom, &sub_styles, node);
             if let (Some(item_box), true) = (&mut item_box, options_content.load_images) {
                 resolve_images(item_box, &dom, &state.image_cache);
@@ -1232,13 +1320,8 @@ impl<S: Sink> Engine<S> {
         let mut dom = parser.finish();
         let sink = sink.expect("Mode::Batchではsinkがfinishまでそのまま保持される");
 
-        let mut loaded_fonts = Vec::with_capacity(options.fonts.len());
-        for spec in &options.fonts {
-            let font = Font::load_indexed(&spec.path, spec.index)
-                .map_err(|e| EngineError::Font(format!("フォントの読み込みに失敗しました: {e}")))?;
-            loaded_fonts.push(font);
-        }
-        let mut fonts = FontCollection::new(loaded_fonts);
+        let system_fonts = SystemFonts::scan();
+        let mut fonts = FontCollection::new(load_explicit_fonts(&options.fonts)?);
 
         let mut ua = user_agent_stylesheet();
         append_user_stylesheets(&mut ua, &options.content.user_stylesheets);
@@ -1265,7 +1348,6 @@ impl<S: Sink> Engine<S> {
         let page_rules = page_rules_with_cli(&options.extra_page_rules, &author.page_rules);
         let page_settings = apply_page_rule_settings_override(options.settings, &page_rules);
 
-        let system_fonts = SystemFonts::scan();
         register_generic_fonts(&mut fonts, &options.generic_fonts)?;
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
@@ -1277,6 +1359,7 @@ impl<S: Sink> Engine<S> {
             );
         }
         load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
+        ensure_default_font(&mut fonts, &system_fonts)?;
 
         let mut output = options.output.clone();
         output

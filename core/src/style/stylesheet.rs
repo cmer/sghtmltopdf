@@ -282,8 +282,64 @@ impl<'i> RuleBodyItemParser<'i, Vec<PropertyDeclaration>, ()> for DeclarationBlo
     }
 }
 
+/// `Mode::Streaming`では評価できない「後方参照セレクタ」
+/// ([0006](../../../docs/decisions/0006-css-non-locality-scope.md)分類3)が
+/// 使われていれば、その名前を返す。
+///
+/// これらは対象要素の親の子リストが完結するまで原理的に判定できないため、
+/// ストリーミング処理では**常に非マッチ**になる。黙って結果が変わるのを
+/// 避けるため、呼び出し側が警告を出すのに使う([0006]の積み残しへの対応)。
+pub fn backward_looking_selectors(sheet: &Stylesheet) -> Vec<String> {
+    use cssparser::ToCss as _;
+
+    const NAMES: &[&str] = &[
+        ":nth-last-child",
+        ":nth-last-of-type",
+        ":last-child",
+        ":last-of-type",
+        ":only-child",
+        ":only-of-type",
+        ":empty",
+    ];
+
+    let mut found: Vec<String> = Vec::new();
+    for rule in &sheet.rules {
+        for selector in rule.selectors.slice() {
+            let text = selector.to_css_string();
+            for name in NAMES {
+                if text.contains(name) && !found.iter().any(|f| f == name) {
+                    found.push((*name).to_string());
+                }
+            }
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn backward_looking_selectors_are_detected() {
+        let sheet = parse_stylesheet(
+            "li:last-child { color: red } p:nth-last-child(2) { color: blue } div:empty { color: green }",
+        );
+        let found = backward_looking_selectors(&sheet);
+        assert!(found.contains(&":last-child".to_string()), "got: {found:?}");
+        assert!(
+            found.contains(&":nth-last-child".to_string()),
+            "got: {found:?}"
+        );
+        assert!(found.contains(&":empty".to_string()), "got: {found:?}");
+    }
+
+    #[test]
+    fn ordinary_selectors_are_not_reported_as_backward_looking() {
+        let sheet = parse_stylesheet(
+            "li:first-child { color: red } p + p { color: blue } a:hover { color: green }",
+        );
+        assert!(backward_looking_selectors(&sheet).is_empty());
+    }
     use super::*;
 
     #[test]

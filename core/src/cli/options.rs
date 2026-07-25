@@ -42,15 +42,95 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// HTTPサーバとして待ち受ける(M12 Phase 7で実装)
+    /// HTTPサーバとして待ち受け、POST /pdf でHTMLをPDFへ変換する
     Server(ServerArgs),
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Clone, Args)]
 pub struct ServerArgs {
-    /// 待ち受けアドレス
+    /// 待ち受けアドレス(既定はループバック。外部公開はリバースプロキシ経由で)
     #[arg(long, default_value = "127.0.0.1:8080")]
     pub listen: String,
+
+    /// 同時に変換するワーカースレッド数(既定=CPUコア数)
+    #[arg(long, value_name = "N")]
+    pub workers: Option<usize>,
+
+    /// 受理待ちキューの上限(既定=ワーカー数×4)。超えると503を返す
+    #[arg(long, value_name = "N")]
+    pub max_queue: Option<usize>,
+
+    /// リクエストボディの上限バイト数
+    #[arg(long, value_name = "BYTES", default_value_t = 10 * 1024 * 1024)]
+    pub max_body_size: usize,
+
+    /// キュー待ちの上限秒数(超えると504)
+    #[arg(long, value_name = "SECS", default_value_t = 30)]
+    pub timeout: u64,
+
+    /// 使用するフォントファイル(複数指定可。リクエストからは変更できない)。
+    /// 省略時はシステムフォントを使うが、出力を安定させるため明示を推奨する
+    #[arg(long, value_name = "PATH")]
+    pub font: Vec<PathBuf>,
+
+    /// `font-family: sans-serif`の実体
+    #[arg(long, value_name = "PATH")]
+    pub gothic_font: Option<PathBuf>,
+
+    /// `font-family: serif`の実体
+    #[arg(long, value_name = "PATH")]
+    pub serif_font: Option<PathBuf>,
+
+    /// `font-family: monospace`の実体
+    #[arg(long, value_name = "PATH")]
+    pub mono_font: Option<PathBuf>,
+
+    /// ローカルファイルの参照を許可する(サーバモードの既定は禁止)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub enable_local_file_access: bool,
+
+    /// ローカル参照を許可するディレクトリ(複数指定可)
+    #[arg(long, value_name = "PATH")]
+    pub allow: Vec<PathBuf>,
+
+    /// http(s)のリモート取得を許可する(既定は禁止)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub allow_remote_assets: bool,
+}
+
+impl ServerArgs {
+    /// サーバ起動時に固定するフォント指定。
+    pub fn font_specs(&self) -> Vec<FontArg> {
+        self.font
+            .iter()
+            .map(|path| FontArg {
+                path: path.clone(),
+                index: 0,
+            })
+            .collect()
+    }
+
+    /// 汎用family名へ割り当てるフォント。
+    pub fn generic_font_args(&self) -> Vec<(GenericFamily, FontArg)> {
+        [
+            (GenericFamily::SansSerif, self.gothic_font.as_ref()),
+            (GenericFamily::Serif, self.serif_font.as_ref()),
+            (GenericFamily::Monospace, self.mono_font.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(family, path)| {
+            path.map(|path| {
+                (
+                    family,
+                    FontArg {
+                        path: path.clone(),
+                        index: 0,
+                    },
+                )
+            })
+        })
+        .collect()
+    }
 }
 
 /// HTML→PDF変換のオプション。
@@ -96,8 +176,8 @@ pub struct ConvertArgs {
     #[arg(short = 'R', long, value_name = "LENGTH")]
     pub margin_right: Option<String>,
 
-    /// 使用するフォントファイル(複数指定可)
-    #[arg(long, value_name = "PATH", required = true)]
+    /// 使用するフォントファイル(複数指定可。省略時はシステムフォントを使う)
+    #[arg(long, value_name = "PATH")]
     pub font: Vec<PathBuf>,
 
     /// 直前の--fontに対する、TrueType Collection内のフェイス番号
@@ -808,7 +888,15 @@ mod tests {
 
     #[test]
     fn server_subcommand_does_not_require_convert_args() {
-        let (cli, _) = parse(&["sghtmltopdf", "server", "--listen", "0.0.0.0:9000"]);
+        // `server`は`--font`が必須(リクエストからは変えられないため)。
+        let (cli, _) = parse(&[
+            "sghtmltopdf",
+            "server",
+            "--listen",
+            "0.0.0.0:9000",
+            "--font",
+            "a.ttf",
+        ]);
         match cli.command {
             Some(Command::Server(ref args)) => assert_eq!(args.listen, "0.0.0.0:9000"),
             _ => panic!("server subcommand should be parsed"),
