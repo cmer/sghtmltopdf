@@ -46,18 +46,20 @@ use std::rc::Rc;
 
 use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
 use crate::html::{
-    collect_anchor_targets, find_base_href, find_document_title, Dom, NodeId, StreamingParser,
+    collect_anchor_targets, find_base_href, find_document_title, Dom, NodeData, NodeId,
+    StreamingParser,
 };
 use crate::img::{DocumentImageCache, ImageFetcher};
 use crate::layout::{
     build_box_for_element, collect_completed_subtree_roots, has_visible_decoration,
     layout_document_from, paginate_document, paginate_document_with_absolutes,
     resolve_background_images, resolve_border, resolve_images, resolve_lpa_or_zero,
-    resolve_padding, resolve_width_and_horizontal_margins, PageSettings, StreamingPaginator,
+    resolve_padding, resolve_width_and_horizontal_margins, EdgeSizes, LaidOutBox, LaidOutContent,
+    PageSettings, Rect, StreamingPaginator,
 };
 use crate::pdf::{
-    anchor_destination_name, ImageAssetCache, LinkSettings, PdfOutputOptions, PreparedImage,
-    StreamingPdfWriter,
+    anchor_destination_name, ImageAssetCache, LinkSettings, PageOverlay, PdfOutputOptions,
+    PreparedImage, StreamingPdfWriter,
 };
 use crate::sink::Sink;
 use crate::style::{
@@ -188,6 +190,20 @@ pub struct EngineOptions {
     /// (`--enable/disable-local-file-access`・`--allow`)。
     /// 既定はCLIの従来挙動どおり「許可・ディレクトリ制限なし」。
     pub local_access: LocalAccess,
+    /// `--header-html`/`--footer-html`のテンプレート([0058](
+    /// ../docs/decisions/0058-header-footer-design.md)決定3)。
+    pub header_footer_html: HeaderFooterHtml,
+    /// `--cover`のHTML(プレースホルダ展開済み)。
+    pub cover_html: Option<String>,
+    /// 目次の設定([0059](../docs/decisions/0059-cover-and-toc-design.md))。
+    pub toc: TocSettings,
+    /// `--page-offset`。TOC・本文のページ番号の起点をずらす(決定1)。
+    pub page_offset: usize,
+    /// CLIのヘッダー/フッター簡易オプションから合成した`@page`ルール
+    /// ([0058](../docs/decisions/0058-header-footer-design.md)決定1)。
+    /// **著者CSSのページルールより前**に置かれるため、同じmargin boxを
+    /// 著者が宣言していればそちらが勝つ。
+    pub extra_page_rules: Vec<PageRule>,
 }
 
 /// ローカルファイル参照の許可設定。
@@ -205,6 +221,415 @@ impl Default for LocalAccess {
             allowed_dirs: Vec::new(),
         }
     }
+}
+
+/// `--header-html`/`--footer-html`のテンプレート([0058]決定3)。
+///
+/// 中身は**プレースホルダ展開前**のHTMLテキスト。ページ番号を含む場合は
+/// ページごとに展開してレイアウトし直す(決定5)。
+#[derive(Debug, Clone, Default)]
+pub struct HeaderFooterHtml {
+    pub header: Option<String>,
+    pub footer: Option<String>,
+    /// ページごとに値が変わるプレースホルダ(`[page]`/`[topage]`)の展開値を
+    /// 埋めるための、文書単位で決まる値。
+    pub placeholders: HeaderFooterPlaceholders,
+}
+
+/// プレースホルダの展開値(CLI層の`PlaceholderValues`から詰め替えたもの)。
+/// コアがCLI層に依存しないよう、必要な値だけを持つ素朴な型にしている。
+#[derive(Debug, Clone, Default)]
+pub struct HeaderFooterPlaceholders {
+    /// `[page]`/`[topage]`以外を展開済みにしたテキストを作る関数の代わりに、
+    /// 展開済みのテンプレートをそのまま受け取る運用にする。
+    /// ここにはページ番号だけを差し込むための素材を持つ。
+    pub page_token: String,
+    pub total_pages_token: String,
+}
+
+impl HeaderFooterHtml {
+    pub fn is_empty(&self) -> bool {
+        self.header.is_none() && self.footer.is_none()
+    }
+
+    /// ページ番号のプレースホルダを含むか(含まなければレイアウト結果を
+    /// ページ間で使い回せる、[0058]決定5)。
+    pub fn depends_on_page(&self) -> bool {
+        [self.header.as_deref(), self.footer.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|html| {
+                html.contains(&self.placeholders.page_token)
+                    || html.contains(&self.placeholders.total_pages_token)
+            })
+    }
+
+    /// `[topage]`(総ページ数)を使っているか。`Mode::Streaming`では
+    /// 値が定まらないためエラーにする([0058]決定7)。
+    pub fn uses_total_pages(&self) -> bool {
+        [self.header.as_deref(), self.footer.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|html| html.contains(&self.placeholders.total_pages_token))
+    }
+
+    fn expand(&self, template: &str, page: usize, total_pages: Option<usize>) -> String {
+        let total = total_pages.map(|t| t.to_string()).unwrap_or_default();
+        template
+            .replace(&self.placeholders.page_token, &page.to_string())
+            .replace(&self.placeholders.total_pages_token, &total)
+    }
+}
+
+/// ヘッダー(`top = true`)またはフッター用に、余白領域を基準とした
+/// `PageSettings`とクリップ矩形を作る([0058]決定3)。
+fn overlay_area(settings: &PageSettings, top: bool) -> (PageSettings, Rect) {
+    let size = settings.size;
+    let (margin, clip) = if top {
+        (
+            EdgeSizes {
+                top: 0.0,
+                right: settings.margin.right,
+                bottom: size.height - settings.margin.top,
+                left: settings.margin.left,
+            },
+            Rect {
+                x: settings.margin.left,
+                y: 0.0,
+                width: settings.content_width(),
+                height: settings.margin.top,
+            },
+        )
+    } else {
+        (
+            EdgeSizes {
+                top: size.height - settings.margin.bottom,
+                right: settings.margin.right,
+                bottom: 0.0,
+                left: settings.margin.left,
+            },
+            Rect {
+                x: settings.margin.left,
+                y: size.height - settings.margin.bottom,
+                width: settings.content_width(),
+                height: settings.margin.bottom,
+            },
+        )
+    };
+    (PageSettings { size, margin }, clip)
+}
+
+/// ヘッダー/フッターHTMLを1つ、余白領域向けにレイアウトして
+/// [`PageOverlay`]にする。
+///
+/// 画像は非対応(既知の限界。`ImageAssetCache`を渡していないため
+/// `<img>`は空のボックスになる)。テキスト・枠線・背景色は本文と同じ
+/// パイプラインで描かれる。
+fn layout_overlay(
+    html: &str,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    top: bool,
+    fetcher: &ImageFetcher,
+    cache: &DocumentImageCache,
+) -> Option<PageOverlay> {
+    let (area_settings, clip) = overlay_area(settings, top);
+    if area_settings.content_height() <= 0.0 || area_settings.content_width() <= 0.0 {
+        return None;
+    }
+
+    let dom = crate::html::parse(html.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = extract_author_stylesheet(&dom, fetcher, cache);
+    let styles = compute_styles(&dom, &ua, &author);
+    let pages = paginate_document(&dom, &styles, fonts, &area_settings);
+    let boxes = pages.into_iter().next().map(|page| page.boxes)?;
+    if boxes.is_empty() {
+        return None;
+    }
+
+    Some(PageOverlay {
+        boxes,
+        styles,
+        settings: area_settings,
+        clip,
+    })
+}
+
+/// ヘッダー/フッターHTML用のフェッチャ。**外部リソースは取得しない**
+/// (インラインの`<style>`とテキストだけを対象にする。既知の限界)。
+fn overlay_fetcher() -> ImageFetcher {
+    ImageFetcher::new(PathBuf::from("."), false).with_local_access(false, Vec::new())
+}
+
+/// このページに重ねるヘッダー/フッターのオーバーレイを作る。
+#[allow(clippy::too_many_arguments)]
+fn build_page_overlays(
+    html: &HeaderFooterHtml,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+    page_number: usize,
+    total_pages: Option<usize>,
+    fetcher: &ImageFetcher,
+    cache: &DocumentImageCache,
+    cached: &mut Option<Vec<PageOverlay>>,
+) -> Vec<PageOverlay> {
+    // ページ番号を含まないなら初回のレイアウトを使い回す([0058]決定5)。
+    if !html.depends_on_page() {
+        if let Some(overlays) = cached.as_ref() {
+            return overlays.clone();
+        }
+    }
+
+    let mut overlays = Vec::new();
+    for (template, top) in [(&html.header, true), (&html.footer, false)] {
+        let Some(template) = template else { continue };
+        let text = html.expand(template, page_number, total_pages);
+        if let Some(overlay) = layout_overlay(&text, fonts, settings, top, fetcher, cache) {
+            overlays.push(overlay);
+        }
+    }
+    if !html.depends_on_page() {
+        *cached = Some(overlays.clone());
+    }
+    overlays
+}
+
+/// 見出しの一覧から目次のHTMLを組み立てる関数([0059]決定2の構造を
+/// CLI層(`cli::toc`)が実装して渡す)。
+pub type TocHtmlBuilder = Rc<dyn Fn(&[TocHeading]) -> String>;
+
+/// 目次(`--toc`)の設定([0059](../docs/decisions/0059-cover-and-toc-design.md))。
+///
+/// 見た目に関わる値はCLI層(`cli::toc::TocOptions`)が組み立てたCSS/HTMLへ
+/// 反映されるため、コア側は「有効かどうか」と「HTML組み立て関数」だけを持つ。
+#[derive(Clone)]
+pub struct TocSettings {
+    pub enabled: bool,
+    /// 見出しの一覧からTOCのHTMLを組み立てる関数。
+    /// CLI層が[0059]決定2の構造で実装したものを渡す。
+    pub build_html: TocHtmlBuilder,
+    /// 見出しから目次へ戻るリンクを張るか(`--enable-toc-back-links`)。
+    pub back_links: bool,
+}
+
+impl Default for TocSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            build_html: Rc::new(|_| String::new()),
+            back_links: false,
+        }
+    }
+}
+
+impl std::fmt::Debug for TocSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TocSettings")
+            .field("enabled", &self.enabled)
+            .field("back_links", &self.back_links)
+            .finish_non_exhaustive()
+    }
+}
+
+/// 目次に載せる見出し1件([0059]決定5)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct TocHeading {
+    /// `h1`=1 … `h6`=6。
+    pub level: u8,
+    pub title: String,
+    /// 本文内での0始まりのページ番号。表示番号は
+    /// `body_page + 1 + TOCページ数 + page_offset`。
+    pub body_page: usize,
+    /// リンク先の名前付き宛先([0042])。
+    pub anchor: String,
+}
+
+/// 本文のページ列から`h1`〜`h6`を拾い、そのページ番号とアンカー名を集める。
+///
+/// `id`を持たない見出しには`__sgtoc_<連番>`を自動で振り、`anchor_names`へ
+/// 追加する(決定5)。
+fn collect_headings(
+    dom: &Dom,
+    pages: &[crate::layout::Page],
+    anchor_names: &mut HashMap<NodeId, String>,
+) -> Vec<TocHeading> {
+    fn heading_level(dom: &Dom, node: NodeId) -> Option<u8> {
+        let NodeData::Element { name, .. } = &dom.node(node).data else {
+            return None;
+        };
+        match &*name.local {
+            "h1" => Some(1),
+            "h2" => Some(2),
+            "h3" => Some(3),
+            "h4" => Some(4),
+            "h5" => Some(5),
+            "h6" => Some(6),
+            _ => None,
+        }
+    }
+
+    fn text_of(dom: &Dom, node: NodeId, out: &mut String) {
+        match &dom.node(node).data {
+            NodeData::Text { contents } => out.push_str(contents),
+            NodeData::Element { .. } => {
+                for child in dom.children(node) {
+                    text_of(dom, child, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn walk(
+        dom: &Dom,
+        b: &LaidOutBox,
+        page_index: usize,
+        seen: &mut Vec<NodeId>,
+        out: &mut Vec<(NodeId, u8, usize)>,
+    ) {
+        if let Some(node) = b.node {
+            if let Some(level) = heading_level(dom, node) {
+                if !seen.contains(&node) {
+                    seen.push(node);
+                    out.push((node, level, page_index));
+                }
+            }
+        }
+        // 子の辿り方は`pdf::document::collect_link_areas`と同じ構造。
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                for child in children {
+                    walk(dom, child, page_index, seen, out);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for child in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(dom, child, page_index, seen, out);
+                }
+            }
+            LaidOutContent::Table(table) => {
+                if let Some(caption) = &table.caption {
+                    walk(dom, caption, page_index, seen, out);
+                }
+                for row in &table.rows {
+                    for cell in &row.cells {
+                        walk(dom, cell, page_index, seen, out);
+                    }
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    for atomic in &line.atomics {
+                        walk(dom, &atomic.content, page_index, seen, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut found: Vec<(NodeId, u8, usize)> = Vec::new();
+    let mut seen: Vec<NodeId> = Vec::new();
+    for (index, page) in pages.iter().enumerate() {
+        for b in &page.boxes {
+            walk(dom, b, index, &mut seen, &mut found);
+        }
+    }
+
+    found
+        .into_iter()
+        .enumerate()
+        .map(|(i, (node, level, body_page))| {
+            let anchor = match anchor_names.get(&node) {
+                Some(existing) => existing.clone(),
+                None => {
+                    // `id`が無い見出しには自動で宛先名を振る(決定5)。
+                    let name = anchor_destination_name(&format!("__sgtoc_{i}"));
+                    anchor_names.insert(node, name.clone());
+                    name
+                }
+            };
+            let mut title = String::new();
+            text_of(dom, node, &mut title);
+            TocHeading {
+                level,
+                title: title.split_whitespace().collect::<Vec<_>>().join(" "),
+                body_page,
+                anchor,
+            }
+        })
+        .collect()
+}
+
+/// 独立したHTMLドキュメント(cover/TOC)をレイアウトしてページ列にする
+/// ([0059]決定3)。外部リソースは取得しない([0058]決定3-1と同じ制約)。
+fn render_standalone_document(
+    html: &str,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+) -> Vec<crate::layout::Page> {
+    let dom = crate::html::parse(html.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = extract_author_stylesheet(&dom, &overlay_fetcher(), &DocumentImageCache::new());
+    let styles = compute_styles(&dom, &ua, &author);
+    paginate_document(&dom, &styles, fonts, settings)
+}
+
+/// 目次のページ列を、ページ数が収束するまで組み立て直す([0059]決定4)。
+///
+/// 戻り値は(TOCのページ列, TOCドキュメントのスタイル)。TOCは独立ドキュメント
+/// なので、描画にはそのスタイルマップが要る。
+fn build_toc_pages(
+    headings: &[TocHeading],
+    toc: &TocSettings,
+    page_offset: usize,
+    fonts: &FontCollection,
+    settings: &PageSettings,
+) -> (Vec<crate::layout::Page>, HashMap<NodeId, ComputedStyle>) {
+    const MAX_ROUNDS: usize = 3;
+
+    let mut toc_page_count = 1;
+    let mut result = (Vec::new(), HashMap::new());
+
+    for round in 0..MAX_ROUNDS {
+        let numbered: Vec<TocHeading> = headings
+            .iter()
+            .map(|h| TocHeading {
+                body_page: h.body_page + 1 + toc_page_count + page_offset,
+                ..h.clone()
+            })
+            .collect();
+        let html = (toc.build_html)(&numbered);
+
+        let dom = crate::html::parse(html.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author =
+            extract_author_stylesheet(&dom, &overlay_fetcher(), &DocumentImageCache::new());
+        let styles = compute_styles(&dom, &ua, &author);
+        let pages = paginate_document(&dom, &styles, fonts, settings);
+
+        let converged = pages.len() == toc_page_count;
+        toc_page_count = pages.len().max(1);
+        result = (pages, styles);
+        if converged {
+            return result;
+        }
+        if round + 1 == MAX_ROUNDS {
+            eprintln!(
+                "警告: 目次のページ数が収束しませんでした(最後の結果を使います)。\n  \
+                 目次のページ番号が1ページ分ずれる可能性があります"
+            );
+        }
+    }
+    result
+}
+
+/// CLI由来の`@page`ルールを著者ルールの前に並べたものを返す([0058]決定1)。
+fn page_rules_with_cli(extra: &[PageRule], author: &[PageRule]) -> Vec<PageRule> {
+    let mut rules = extra.to_vec();
+    rules.extend_from_slice(author);
+    rules
 }
 
 /// ユーザーオリジンのCSSをUAスタイルシートの後ろへ連結する。
@@ -298,6 +723,11 @@ struct StreamingState<S: Sink> {
     start_x: f32,
     /// 次に配置するトップレベル要素の開始Y座標(前の要素までの累積高さ)。
     cursor_y: f32,
+    /// ページのジオメトリ(オーバーレイの領域計算に使う)。
+    page_settings: PageSettings,
+    /// ページ番号に依存しないヘッダー/フッターHTMLのレイアウト結果
+    /// ([0058]決定5)。
+    overlay_cache: Option<Vec<PageOverlay>>,
     paginator: StreamingPaginator,
     writer: StreamingPdfWriter<S>,
     /// `<img>`のフェッチ・デコード結果を文書内でメモ化するキャッシュ。
@@ -433,14 +863,27 @@ impl<S: Sink> Engine<S> {
             let dom = self.parser.dom();
             extract_author_stylesheet(&dom, &css_fetcher, &css_cache)
         };
-        let page_settings =
-            apply_page_rule_settings_override(self.options.settings, &author.page_rules);
+        let page_rules = page_rules_with_cli(&self.options.extra_page_rules, &author.page_rules);
+        let page_settings = apply_page_rule_settings_override(self.options.settings, &page_rules);
         // `counter(pages)`は文書全体のページ分割完了まで値が定まらないため、
         // 真のストリーミング処理とは原理的に相容れない([0028](
         // ../docs/decisions/0028-paged-media-design.md)決定6、ユーザー確認済み)。
-        if rules_use_page_count(&author.page_rules) {
+        if rules_use_page_count(&page_rules) {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "counter(pages) in @page margin boxes is not supported in streaming mode",
+            ));
+        }
+        // `--header-html`/`--footer-html`の`[topage]`も同じ理由で使えない
+        // ([0058]決定7)。
+        if self.options.header_footer_html.uses_total_pages() {
+            return Err(EngineError::UnsupportedInStreamingMode(
+                "[topage] in --header-html/--footer-html is not supported in streaming mode",
+            ));
+        }
+        // 目次は本文全体のページ分割が終わらないと作れない([0059]決定6)。
+        if self.options.toc.enabled {
+            return Err(EngineError::UnsupportedInStreamingMode(
+                "--toc is not supported in streaming mode",
             ));
         }
 
@@ -545,7 +988,7 @@ impl<S: Sink> Engine<S> {
             &fonts,
             page_settings,
             sink,
-            author.page_rules.clone(),
+            page_rules.clone(),
             LinkSettings {
                 anchor_names: anchor_names.clone(),
                 base_href: base_href.clone(),
@@ -578,6 +1021,8 @@ impl<S: Sink> Engine<S> {
             content_width: body_content_width,
             start_x,
             cursor_y: start_y,
+            page_settings,
+            overlay_cache: None,
             paginator: StreamingPaginator::new(page_settings.content_height()),
             writer,
             image_cache,
@@ -662,6 +1107,22 @@ impl<S: Sink> Engine<S> {
 
         let pages = state.paginator.push_item(&laid_out);
         for page in &pages {
+            if !options.header_footer_html.is_empty() {
+                let page_number = state.writer.page_count() + 1;
+                // `Mode::Streaming`では総ページ数が不明なので`[topage]`は空になる
+                // ([0058]決定7)。
+                let overlays = build_page_overlays(
+                    &options.header_footer_html,
+                    &state.fonts,
+                    &state.page_settings,
+                    page_number,
+                    None,
+                    &overlay_fetcher(),
+                    &DocumentImageCache::new(),
+                    &mut state.overlay_cache,
+                );
+                state.writer.set_page_overlays(overlays);
+            }
             state
                 .writer
                 // `Mode::Streaming`は総ページ数を原理的に知りえないため常に`None`
@@ -718,6 +1179,8 @@ impl<S: Sink> Engine<S> {
                     mut writer,
                     paginator,
                     image_cache,
+                    page_settings,
+                    mut overlay_cache,
                     ..
                 } = state;
                 if self.options.content.abort_on_media_error {
@@ -726,6 +1189,20 @@ impl<S: Sink> Engine<S> {
                     }
                 }
                 for page in paginator.finish() {
+                    if !self.options.header_footer_html.is_empty() {
+                        let page_number = writer.page_count() + 1;
+                        let overlays = build_page_overlays(
+                            &self.options.header_footer_html,
+                            &fonts,
+                            &page_settings,
+                            page_number,
+                            None,
+                            &overlay_fetcher(),
+                            &DocumentImageCache::new(),
+                            &mut overlay_cache,
+                        );
+                        writer.set_page_overlays(overlays);
+                    }
                     writer
                         .write_page(&page, &styles, &background_images, &fonts, None)
                         .map_err(EngineError::Io)?;
@@ -781,11 +1258,12 @@ impl<S: Sink> Engine<S> {
         let mut styles = compute_styles(&dom, &ua, &author);
         apply_content_options(&mut styles, &options.content);
         // `<a href="#id">`の宛先候補([0042]決定4)。
-        let anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&dom)
+        let mut anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&dom)
             .into_iter()
             .map(|(node, id)| (node, anchor_destination_name(&id)))
             .collect();
-        let page_settings = apply_page_rule_settings_override(options.settings, &author.page_rules);
+        let page_rules = page_rules_with_cli(&options.extra_page_rules, &author.page_rules);
+        let page_settings = apply_page_rule_settings_override(options.settings, &page_rules);
 
         let system_fonts = SystemFonts::scan();
         register_generic_fonts(&mut fonts, &options.generic_fonts)?;
@@ -800,42 +1278,14 @@ impl<S: Sink> Engine<S> {
         }
         load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
 
-        // `counter(pages)`が使われている場合のみ、総ページ数を確定させる
-        // ための事前カウント用パスを走らせる(レイアウト・ページ分割の
-        // 計算コストが余分にかかるが、この機能を使わない文書には一切
-        // 影響しない、[0028](../docs/decisions/0028-paged-media-design.md)
-        // 決定6)。`Mode::Batch`はこの時点で`dom`全体が確定済みなので
-        // 事前カウントが可能(`Mode::Streaming`では原理的に不可能、
-        // `init_streaming_state`で別途エラーにしている)。
-        let total_pages = if rules_use_page_count(&author.page_rules) {
-            Some(paginate_document(&dom, &styles, &fonts, &page_settings).len())
-        } else {
-            None
-        };
-
         let mut output = options.output.clone();
         output
             .metadata
             .fill_title_from_document(find_document_title(&dom));
 
-        let mut writer = StreamingPdfWriter::with_options(
-            &fonts,
-            page_settings,
-            sink,
-            author.page_rules.clone(),
-            LinkSettings {
-                anchor_names: anchor_names.clone(),
-                base_href: base_href.clone(),
-                external: options.content.external_links,
-                internal: options.content.internal_links,
-                keep_relative: options.content.keep_relative_links,
-            },
-            output,
-        )
-        .map_err(EngineError::Io)?;
         let image_cache = ImageAssetCache::with_fetcher(
             ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets)
-                .with_base_href(base_href)
+                .with_base_href(base_href.clone())
                 .with_local_access(
                     options.local_access.allow,
                     options.local_access.allowed_dirs.clone(),
@@ -855,6 +1305,10 @@ impl<S: Sink> Engine<S> {
         // オーバーレイし、順に書き出す。`fixed`の全ページ複製・`absolute`の
         // 祖先ページ解決が全ページ確定後でないとできないため、
         // `paginate_document_streaming`(逐次解放)ではなくこちらを使う。
+        //
+        // cover/TOC([0059](../docs/decisions/0059-cover-and-toc-design.md))の
+        // ために、**writerを作る前に**本文のページを確定させる。見出しへ
+        // 自動で振るアンカー名を`LinkSettings`へ載せる必要があるため。
         let pages = paginate_document_with_absolutes(
             &mut dom,
             &styles,
@@ -862,10 +1316,102 @@ impl<S: Sink> Engine<S> {
             &page_settings,
             &image_cache,
         );
-        for page in &pages {
+
+        // 目次用の見出し収集([0059]決定5)。`id`が無い見出しには自動で
+        // 宛先名を振り、`anchor_names`へ足す。
+        let headings = if options.toc.enabled {
+            collect_headings(&dom, &pages, &mut anchor_names)
+        } else {
+            Vec::new()
+        };
+
+        // 表紙は独立したドキュメントとして先に組み立てる(決定3)。
+        let cover_pages = match &options.cover_html {
+            Some(html) => render_standalone_document(html, &fonts, &page_settings),
+            None => Vec::new(),
+        };
+
+        // 目次は「自身のページ数が本文のページ番号をずらす」ため、
+        // ページ数が収束するまで最大3回組み立て直す(決定4)。
+        let (toc_pages, toc_styles) = if options.toc.enabled {
+            build_toc_pages(
+                &headings,
+                &options.toc,
+                options.page_offset,
+                &fonts,
+                &page_settings,
+            )
+        } else {
+            (Vec::new(), HashMap::new())
+        };
+
+        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」
+        // ([0059]決定1)。本文のページ分割はすでに済んでいるので、
+        // [0028]決定6の事前カウント用パスはもう要らない。
+        let total_pages = if rules_use_page_count(&page_rules) {
+            Some(toc_pages.len() + pages.len())
+        } else {
+            None
+        };
+
+        let mut writer = StreamingPdfWriter::with_options(
+            &fonts,
+            page_settings,
+            sink,
+            page_rules.clone(),
+            LinkSettings {
+                anchor_names: anchor_names.clone(),
+                base_href: base_href.clone(),
+                external: options.content.external_links,
+                internal: options.content.internal_links,
+                keep_relative: options.content.keep_relative_links,
+            },
+            output,
+        )
+        .map_err(EngineError::Io)?;
+
+        // 書き出し順は cover → TOC → 本文(決定3)。ページ番号はcoverを
+        // 数えず、TOCから`1 + --page-offset`で始める(決定1)。
+        let empty_styles: HashMap<NodeId, ComputedStyle> = HashMap::new();
+        let empty_images: HashMap<NodeId, Rc<PreparedImage>> = HashMap::new();
+
+        for page in &cover_pages {
+            // 番号を持たないページ: margin box・ヘッダー/フッターを出さない。
+            writer.set_next_page_number(None);
+            writer
+                .write_page(page, &empty_styles, &empty_images, &fonts, total_pages)
+                .map_err(EngineError::Io)?;
+        }
+
+        let mut page_number = 1 + options.page_offset;
+        for page in &toc_pages {
+            writer.set_next_page_number(Some(page_number));
+            writer
+                .write_page(page, &toc_styles, &empty_images, &fonts, total_pages)
+                .map_err(EngineError::Io)?;
+            page_number += 1;
+        }
+
+        let mut overlay_cache: Option<Vec<PageOverlay>> = None;
+        for page in pages.iter() {
+            if !options.header_footer_html.is_empty() {
+                let overlays = build_page_overlays(
+                    &options.header_footer_html,
+                    &fonts,
+                    &page_settings,
+                    page_number,
+                    total_pages,
+                    &overlay_fetcher(),
+                    &DocumentImageCache::new(),
+                    &mut overlay_cache,
+                );
+                writer.set_page_overlays(overlays);
+            }
+            writer.set_next_page_number(Some(page_number));
             writer
                 .write_page(page, &styles, &background_images, &fonts, total_pages)
                 .map_err(EngineError::Io)?;
+            page_number += 1;
         }
 
         if options.content.abort_on_media_error {

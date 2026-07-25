@@ -38,6 +38,11 @@ pub struct PdfOutputOptions {
     pub scale: f32,
     /// 塗り・線の色をグレースケール化する([0057]決定4)。
     pub grayscale: bool,
+    /// ヘッダーの下に罫線を引く(`--header-line`、[0058](
+    /// ../../../docs/decisions/0058-header-footer-design.md)決定6)。
+    pub header_line: bool,
+    /// フッターの上に罫線を引く(`--footer-line`)。
+    pub footer_line: bool,
 }
 
 impl Default for PdfOutputOptions {
@@ -47,6 +52,8 @@ impl Default for PdfOutputOptions {
             compress: true,
             scale: DEFAULT_SCALE,
             grayscale: false,
+            header_line: false,
+            footer_line: false,
         }
     }
 }

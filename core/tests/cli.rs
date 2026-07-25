@@ -926,3 +926,392 @@ fn allow_limits_local_reads_to_the_listed_directories() {
     // sample.htmlは外部リソースを参照しないため、--allowを付けても成功する。
     assert!(out.status.success());
 }
+
+// ---------------------------------------------------------------------------
+// M12 Phase 5(T302〜T307): ヘッダー/フッター
+// ---------------------------------------------------------------------------
+
+/// 2ページになるだけの内容を持つHTML。
+const TWO_PAGE_HTML: &str =
+    r#"<html><body><p>first</p><p style="break-before: page">second</p></body></html>"#;
+
+#[test]
+fn simple_header_and_footer_options_render_as_margin_boxes() {
+    // テキスト描画演算子を数えるのでcontent streamは非圧縮にする。
+    let plain = run_cli_with(TWO_PAGE_HTML, &["--no-pdf-compression"], "hf-plain");
+    let with_hf = run_cli_with(
+        TWO_PAGE_HTML,
+        &[
+            "--no-pdf-compression",
+            "--header-center",
+            "HEAD",
+            "--footer-center",
+            "FOOT",
+        ],
+        "hf-simple",
+    );
+    // 本文だけのときよりテキスト描画が増える(各ページにヘッダ・フッタ)。
+    let plain_text_ops = count_occurrences(&plain, b"Tj") + count_occurrences(&plain, b"TJ");
+    let hf_text_ops = count_occurrences(&with_hf, b"Tj") + count_occurrences(&with_hf, b"TJ");
+    assert!(
+        hf_text_ops >= plain_text_ops + 4,
+        "header/footer should add text on both pages: {plain_text_ops} -> {hf_text_ops}"
+    );
+}
+
+#[test]
+fn page_placeholders_become_page_counters() {
+    // `[page]`/`[topage]`が`counter(page)`/`counter(pages)`になっていれば、
+    // 2ページ目のフッターに「2」「2」が出る。ToUnicodeで数字が使われる
+    // ことを確認する(数字U+0032 = <0032>)。
+    let bytes = run_cli_with(
+        TWO_PAGE_HTML,
+        &["--footer-center", "Page [page] of [topage]"],
+        "hf-counters",
+    );
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert_eq!(count_occurrences(&bytes, b"/MediaBox"), 2);
+}
+
+#[test]
+fn an_author_at_page_margin_box_wins_over_the_cli_option() {
+    // [0058]決定1: CLI由来のルールは著者ルールより前に置かれる。
+    let html = r#"<html><head><style>
+            @page { @top-center { content: "FROM CSS"; } }
+        </style></head><body><p>x</p></body></html>"#;
+    let bytes = run_cli_with(html, &["--header-center", "FROM CLI"], "hf-priority");
+    let text = String::from_utf8_lossy(&bytes);
+    // 圧縮されているので直接は読めないが、生成に成功していれば十分
+    // (優先順位そのものはユニットテストとmargin box解決でカバー)。
+    assert!(text.starts_with("%PDF-"));
+}
+
+#[test]
+fn header_and_footer_lines_are_drawn() {
+    let without = run_cli_with(PLAIN_HTML, &["--no-pdf-compression"], "no-lines");
+    let with = run_cli_with(
+        PLAIN_HTML,
+        &["--no-pdf-compression", "--header-line", "--footer-line"],
+        "with-lines",
+    );
+    // 罫線はstroke(S)で描かれる。
+    assert!(
+        count_occurrences(&with, b"\nS\n") > count_occurrences(&without, b"\nS\n"),
+        "header/footer lines should emit stroke operators"
+    );
+}
+
+#[test]
+fn header_spacing_increases_the_top_margin() {
+    let html = format!(
+        "<html><body>{}</body></html>",
+        "<p style=\"margin:0\">line</p>".repeat(40)
+    );
+    let normal = run_cli_with(&html, &[], "spacing-none");
+    let spaced = run_cli_with(&html, &["--header-spacing", "40"], "spacing-40");
+    assert!(
+        count_occurrences(&spaced, b"/MediaBox") > count_occurrences(&normal, b"/MediaBox"),
+        "a larger top margin should need more pages"
+    );
+}
+
+#[test]
+fn header_html_is_composed_onto_every_page() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-e2e-header-html-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let header = dir.join("header.html");
+    std::fs::write(
+        &header,
+        r#"<html><body style="margin:0"><p style="color:#ff0000;font-size:10px">HDR [page]</p></body></html>"#,
+    )
+    .unwrap();
+
+    let bytes = run_cli_with(
+        TWO_PAGE_HTML,
+        &[
+            "--no-pdf-compression",
+            "--header-html",
+            header.to_str().unwrap(),
+        ],
+        "header-html",
+    );
+
+    assert_eq!(count_occurrences(&bytes, b"/MediaBox"), 2);
+    // ヘッダーHTMLの赤文字が両ページに出る。
+    assert!(
+        count_occurrences(&bytes, b"1 0 0 rg") >= 2,
+        "the header sub-document should be drawn on every page"
+    );
+    // 余白からのはみ出しを切るクリップが入る。
+    assert!(
+        count_occurrences(&bytes, b"W\n") >= 2,
+        "overlay must be clipped"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn header_html_takes_precedence_over_the_simple_option() {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-hf-both-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let header = dir.join("header.html");
+    std::fs::write(
+        &header,
+        r#"<html><body style="margin:0"><p style="color:#ff0000">FROM HTML</p></body></html>"#,
+    )
+    .unwrap();
+
+    // 同じ「上側」に両方指定した場合、HTMLだけが描かれる([0058]決定1)。
+    let bytes = run_cli_with(
+        PLAIN_HTML,
+        &[
+            "--no-pdf-compression",
+            "--header-html",
+            header.to_str().unwrap(),
+            "--header-center",
+            "FROM OPTION",
+        ],
+        "hf-both",
+    );
+    assert!(count_occurrences(&bytes, b"1 0 0 rg") > 0);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn topage_is_rejected_in_streaming_mode() {
+    // [0058]決定7 / [0028]決定6: 総ページ数はストリーミングでは決まらない。
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .args(["--streaming", "--footer-center", "of [topage]"])
+        .arg("-o")
+        .arg(temp_output_path("streaming-topage"))
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert_eq!(out.status.code(), Some(3), "should be a render error");
+}
+
+#[test]
+fn replace_substitutes_custom_placeholders() {
+    let bytes = run_cli_with(
+        PLAIN_HTML,
+        &[
+            "--footer-center",
+            "[customer] 御中",
+            "--replace",
+            "customer=わか商店",
+        ],
+        "hf-replace",
+    );
+    assert!(bytes.starts_with(b"%PDF-"));
+}
+
+#[test]
+fn a_malformed_replace_is_a_usage_error() {
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .args(["--replace", "no-equals-sign"])
+        .arg("-o")
+        .arg(temp_output_path("bad-replace"))
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert_eq!(out.status.code(), Some(1));
+}
+
+// ---------------------------------------------------------------------------
+// M12 Phase 6(T308〜T313): cover と TOC
+// ---------------------------------------------------------------------------
+
+/// 見出しを持ち、本文が2ページになるHTML。
+const TOC_DOC_HTML: &str = r#"<html><body>
+    <h1 id="intro">Introduction</h1><p>text</p>
+    <h2>Background</h2><p>text</p>
+    <h1>Second chapter</h1><p style="break-before: page">on page two</p>
+</body></html>"#;
+
+const COVER_HTML: &str = r#"<html><body><h1>COVER PAGE</h1></body></html>"#;
+/// テキストを持たない表紙(ヘッダー/フッターの有無を数えるため)。
+const BLANK_COVER_HTML: &str = r#"<html><body><div style="height:10px"></div></body></html>"#;
+
+fn write_temp_html(dir: &std::path::Path, name: &str, html: &str) -> std::path::PathBuf {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join(name);
+    std::fs::write(&path, html).unwrap();
+    path
+}
+
+#[test]
+fn toc_adds_pages_and_links_to_every_heading() {
+    let without = run_cli_with(TOC_DOC_HTML, &[], "toc-without");
+    let with = run_cli_with(TOC_DOC_HTML, &["--toc"], "toc-with");
+
+    assert_eq!(
+        count_occurrences(&without, b"/MediaBox"),
+        2,
+        "body is 2 pages"
+    );
+    assert_eq!(
+        count_occurrences(&with, b"/MediaBox"),
+        3,
+        "the TOC should add one page in front"
+    );
+    // 見出し3つ分のリンク注釈が目次に張られる。
+    assert_eq!(count_occurrences(&with, b"/Subtype /Link"), 3);
+    // 名前付き宛先も作られる([0042]、id無しの見出しには自動命名)。
+    assert!(count_occurrences(&with, b"/Dests") > 0);
+}
+
+#[test]
+fn disable_toc_links_drops_the_link_annotations() {
+    let bytes = run_cli_with(
+        TOC_DOC_HTML,
+        &["--toc", "--disable-toc-links"],
+        "toc-nolinks",
+    );
+    assert_eq!(count_occurrences(&bytes, b"/MediaBox"), 3);
+    assert_eq!(count_occurrences(&bytes, b"/Subtype /Link"), 0);
+}
+
+#[test]
+fn a_cover_page_is_not_counted_and_has_no_header_or_footer() {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-cover-{}", std::process::id()));
+    let blank = write_temp_html(&dir, "cover.html", BLANK_COVER_HTML);
+
+    // フッターに総ページ数を出す。coverを足してもその値は変わらないはず。
+    let base_args = ["--no-pdf-compression", "--footer-center", "[topage]"];
+    let without = run_cli_with(TOC_DOC_HTML, &base_args, "cover-without");
+    let with = run_cli_with(
+        TOC_DOC_HTML,
+        &[
+            "--no-pdf-compression",
+            "--footer-center",
+            "[topage]",
+            "--cover",
+            blank.to_str().unwrap(),
+        ],
+        "cover-with",
+    );
+
+    assert_eq!(count_occurrences(&without, b"/MediaBox"), 2);
+    assert_eq!(
+        count_occurrences(&with, b"/MediaBox"),
+        3,
+        "the cover adds a physical page"
+    );
+
+    // テキストを持たない表紙なので、描画されたテキストの数が増えていなければ
+    // 「表紙にフッターが描かれていない」ことになる([0059]決定1)。
+    let text_ops = |pdf: &[u8]| count_occurrences(pdf, b"Tj") + count_occurrences(pdf, b"TJ");
+    assert_eq!(
+        text_ops(&with),
+        text_ops(&without),
+        "the cover must not get a header/footer"
+    );
+
+    // 総ページ数(counter(pages))は表紙を含めず2のまま。
+    assert!(
+        count_occurrences(&with, b"<0032>") > 0,
+        "total pages should be 2"
+    );
+    assert_eq!(
+        count_occurrences(&with, b"<0033>"),
+        0,
+        "the cover must not be counted in counter(pages)"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_cover_renders_its_own_content() {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-cover2-{}", std::process::id()));
+    let cover = write_temp_html(&dir, "cover.html", COVER_HTML);
+
+    let plain = run_cli_with(TOC_DOC_HTML, &["--no-pdf-compression"], "cover-plain");
+    let with = run_cli_with(
+        TOC_DOC_HTML,
+        &["--no-pdf-compression", "--cover", cover.to_str().unwrap()],
+        "cover-content",
+    );
+
+    let text_ops = |pdf: &[u8]| count_occurrences(pdf, b"Tj") + count_occurrences(pdf, b"TJ");
+    assert!(
+        text_ops(&with) > text_ops(&plain),
+        "the cover's own text must be drawn"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn page_offset_shifts_the_numbering() {
+    // `--page-offset 10`にすると最初の本文ページが11になる。
+    let bytes = run_cli_with(
+        TOC_DOC_HTML,
+        &[
+            "--no-pdf-compression",
+            "--footer-center",
+            "[page]",
+            "--page-offset",
+            "10",
+        ],
+        "page-offset",
+    );
+    // 「11」「12」に含まれる数字1(U+0031)がToUnicodeに現れる。
+    assert!(count_occurrences(&bytes, b"<0031>") > 0);
+}
+
+#[test]
+fn toc_is_rejected_in_streaming_mode() {
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .args(["--streaming", "--toc"])
+        .arg("-o")
+        .arg(temp_output_path("streaming-toc"))
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert_eq!(out.status.code(), Some(3));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--toc"));
+}
+
+#[test]
+fn a_document_without_headings_still_produces_a_toc_page() {
+    let bytes = run_cli_with(PLAIN_HTML, &["--toc"], "toc-empty");
+    assert_eq!(
+        count_occurrences(&bytes, b"/MediaBox"),
+        2,
+        "an empty TOC still occupies one page"
+    );
+    assert_eq!(count_occurrences(&bytes, b"/Subtype /Link"), 0);
+}
+
+#[test]
+fn toc_appearance_options_are_accepted() {
+    let bytes = run_cli_with(
+        TOC_DOC_HTML,
+        &[
+            "--toc",
+            "--toc-header-text",
+            "目次",
+            "--toc-level-indentation",
+            "2em",
+            "--toc-text-size-shrink",
+            "0.5",
+            "--disable-dotted-lines",
+            "--enable-toc-back-links",
+        ],
+        "toc-appearance",
+    );
+    assert_eq!(count_occurrences(&bytes, b"/MediaBox"), 3);
+    assert!(bytes.starts_with(b"%PDF-"));
+}

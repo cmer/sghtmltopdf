@@ -5,8 +5,10 @@
 //! [`options`]の1箇所に集約する(決定6。HTTPサーバモードも同じ定義を使う)。
 
 pub mod convert;
+pub mod header_footer;
 pub mod options;
 pub mod server;
+pub mod toc;
 pub mod units;
 
 use std::process::ExitCode;

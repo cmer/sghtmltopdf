@@ -16,6 +16,8 @@ use crate::engine::{ContentOptions, GenericFamily, LocalAccess, Mode};
 use crate::layout::{PageSettings, PageSize};
 use crate::pdf::{DocumentMetadata, PdfOutputOptions};
 
+use super::header_footer::{MarginBoxText, SimpleHeaderFooter};
+use super::toc::TocOptions;
 use super::units::parse_length_px;
 
 /// 入力・出力に`-`を指定したときの意味(stdin/stdout)。
@@ -190,6 +192,114 @@ pub struct ConvertArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub keep_relative_links: bool,
 
+    /// ヘッダー左のテキスト([page]等のプレースホルダが使える)
+    #[arg(long, value_name = "TEXT")]
+    pub header_left: Option<String>,
+
+    /// ヘッダー中央のテキスト
+    #[arg(long, value_name = "TEXT")]
+    pub header_center: Option<String>,
+
+    /// ヘッダー右のテキスト
+    #[arg(long, value_name = "TEXT")]
+    pub header_right: Option<String>,
+
+    /// フッター左のテキスト
+    #[arg(long, value_name = "TEXT")]
+    pub footer_left: Option<String>,
+
+    /// フッター中央のテキスト
+    #[arg(long, value_name = "TEXT")]
+    pub footer_center: Option<String>,
+
+    /// フッター右のテキスト
+    #[arg(long, value_name = "TEXT")]
+    pub footer_right: Option<String>,
+
+    /// ヘッダーのフォント名
+    #[arg(long, value_name = "NAME")]
+    pub header_font_name: Option<String>,
+
+    /// ヘッダーのフォントサイズ(px)
+    #[arg(long, value_name = "SIZE")]
+    pub header_font_size: Option<f32>,
+
+    /// フッターのフォント名
+    #[arg(long, value_name = "NAME")]
+    pub footer_font_name: Option<String>,
+
+    /// フッターのフォントサイズ(px)
+    #[arg(long, value_name = "SIZE")]
+    pub footer_font_size: Option<f32>,
+
+    /// ヘッダーの下に罫線を引く
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub header_line: bool,
+
+    /// フッターの上に罫線を引く
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub footer_line: bool,
+
+    /// ヘッダーと本文の間隔(mm)。その分だけ上マージンが増える
+    #[arg(long, value_name = "MM")]
+    pub header_spacing: Option<f32>,
+
+    /// フッターと本文の間隔(mm)
+    #[arg(long, value_name = "MM")]
+    pub footer_spacing: Option<f32>,
+
+    /// タイトルとページ番号の既定ヘッダーを付ける
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub default_header: bool,
+
+    /// ヘッダー/フッター内の[name]を値へ置換する(name=value、複数指定可)
+    #[arg(long, value_name = "NAME=VALUE")]
+    pub replace: Vec<String>,
+
+    /// 表紙にするHTML(ページ番号に数えず、ヘッダー/フッターも出さない)
+    #[arg(long, value_name = "PATH")]
+    pub cover: Option<PathBuf>,
+
+    /// 目次を本文の前に挿入する
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub toc: bool,
+
+    /// 目次の見出し文字列
+    #[arg(long, value_name = "TEXT", default_value = "Table of Contents")]
+    pub toc_header_text: String,
+
+    /// 目次の階層1段ごとのインデント(CSSの長さ)
+    #[arg(long, value_name = "WIDTH", default_value = "1em")]
+    pub toc_level_indentation: String,
+
+    /// 目次の階層1段ごとの文字サイズ比
+    #[arg(long, value_name = "REAL", default_value_t = 0.8)]
+    pub toc_text_size_shrink: f32,
+
+    /// 目次の点線(破線の下線)を引かない
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub disable_dotted_lines: bool,
+
+    /// 目次から見出しへのリンクを張らない
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub disable_toc_links: bool,
+
+    /// 見出しから目次へ戻るリンクを張る
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub enable_toc_back_links: bool,
+
+    /// ページ番号の起点をずらす
+    #[arg(long, value_name = "OFFSET", default_value_t = 0)]
+    pub page_offset: usize,
+
+    /// 各ページ上部へ合成するHTML(プレースホルダ展開後にレンダリングする)
+    #[arg(long, value_name = "PATH")]
+    pub header_html: Option<PathBuf>,
+
+    /// 各ページ下部へ合成するHTML
+    #[arg(long, value_name = "PATH")]
+    pub footer_html: Option<PathBuf>,
+
     /// 入力の文字エンコーディング(未指定ならBOM/<meta charset>/UTF-8の順で判定)
     #[arg(long, value_name = "NAME")]
     pub encoding: Option<String>,
@@ -338,6 +448,16 @@ impl ConvertArgs {
             }
         }
 
+        // `--header-spacing`/`--footer-spacing`はヘッダー/フッターと本文の
+        // 間隔で、その分だけ上下マージンを増やす([0058]決定6)。
+        const MM_TO_PX: f32 = 96.0 / 25.4;
+        if let Some(mm) = self.header_spacing {
+            margin.top += mm * MM_TO_PX;
+        }
+        if let Some(mm) = self.footer_spacing {
+            margin.bottom += mm * MM_TO_PX;
+        }
+
         let settings = PageSettings { size, margin };
         if settings.content_width() <= 0.0 {
             return Err("左右マージンの合計が用紙の幅以上です".to_string());
@@ -363,6 +483,8 @@ impl ConvertArgs {
             compress: !self.no_pdf_compression,
             scale: PdfOutputOptions::scale_from_dpi_and_zoom(self.dpi, self.zoom),
             grayscale: self.grayscale,
+            header_line: self.header_line,
+            footer_line: self.footer_line,
         }
     }
 
@@ -386,6 +508,78 @@ impl ConvertArgs {
             keep_relative_links: self.keep_relative_links,
             abort_on_media_error: self.load_media_error_handling == LoadErrorHandling::Abort,
         })
+    }
+
+    /// `--replace name=value`をパースする。
+    pub fn replacements(&self) -> Result<Vec<(String, String)>, String> {
+        self.replace
+            .iter()
+            .map(|item| {
+                item.split_once('=')
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .ok_or_else(|| format!("--replaceはname=valueの形で指定してください: {item}"))
+            })
+            .collect()
+    }
+
+    /// ヘッダー/フッターの簡易オプションをまとめる([0058]決定1)。
+    pub fn simple_header_footer(&self) -> SimpleHeaderFooter {
+        let mut boxes = Vec::new();
+        if self.default_header {
+            // wkhtmltopdfの`--default-header`相当(タイトルとページ番号)。
+            boxes.push(MarginBoxText {
+                area: "top-left",
+                text: "[title]".to_string(),
+            });
+            boxes.push(MarginBoxText {
+                area: "top-right",
+                text: "[page]".to_string(),
+            });
+        }
+        for (area, text) in [
+            ("top-left", &self.header_left),
+            ("top-center", &self.header_center),
+            ("top-right", &self.header_right),
+            ("bottom-left", &self.footer_left),
+            ("bottom-center", &self.footer_center),
+            ("bottom-right", &self.footer_right),
+        ] {
+            if let Some(text) = text {
+                // 明示指定は`--default-header`より後に置いて上書きする。
+                boxes.retain(|b: &MarginBoxText| b.area != area);
+                boxes.push(MarginBoxText {
+                    area,
+                    text: text.clone(),
+                });
+            }
+        }
+
+        // 同じ側にHTMLが指定されていれば、そちらが優先(二重描画を避ける)。
+        if self.header_html.is_some() {
+            boxes.retain(|b| !b.area.starts_with("top"));
+        }
+        if self.footer_html.is_some() {
+            boxes.retain(|b| !b.area.starts_with("bottom"));
+        }
+
+        SimpleHeaderFooter {
+            boxes,
+            header_font_name: self.header_font_name.clone(),
+            header_font_size: self.header_font_size,
+            footer_font_name: self.footer_font_name.clone(),
+            footer_font_size: self.footer_font_size,
+        }
+    }
+
+    /// 目次の見た目のオプション([0059]決定2、wkhtmltopdf互換)。
+    pub fn toc_options(&self) -> TocOptions {
+        TocOptions {
+            header_text: self.toc_header_text.clone(),
+            level_indentation: self.toc_level_indentation.clone(),
+            text_size_shrink: self.toc_text_size_shrink,
+            dotted_lines: !self.disable_dotted_lines,
+            links: !self.disable_toc_links,
+        }
     }
 
     /// ローカルファイル参照の許可設定。

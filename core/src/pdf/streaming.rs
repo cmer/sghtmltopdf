@@ -29,9 +29,10 @@ use crate::style::{ComputedStyle, PageRule};
 
 use super::document::{
     alpha_gs_resource_name, collect_anchor_positions, collect_image_uses, collect_link_areas,
-    collect_margin_box_usage, collect_opacity_uses, collect_usage, render_box, render_margin_boxes,
-    write_document_info, write_link_annotation, write_resources, LinkSettings, RefAllocator,
-    RenderTarget, ALPHA_STEPS,
+    collect_margin_box_usage, collect_opacity_uses, collect_usage, render_box,
+    render_header_footer_rules, render_margin_boxes, render_page_overlay, write_document_info,
+    write_link_annotation, write_resources, LinkSettings, PageOverlay, RefAllocator, RenderTarget,
+    ALPHA_STEPS,
 };
 use super::font::{deflate, embed_font_streaming_chunks, FontIds, FontUsage};
 use super::img::{embed_image_streaming_chunks, ids_for_image, ImageIds, PreparedImage};
@@ -78,6 +79,19 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// メタデータ・圧縮・スケール・グレースケール([0057](
     /// ../../../docs/decisions/0057-pdf-output-options-design.md))。
     output: PdfOutputOptions,
+    /// 次に書くページへ重ねるサブドキュメント(`--header-html`/
+    /// `--footer-html`、[0058](
+    /// ../../../docs/decisions/0058-header-footer-design.md)決定3)。
+    /// `write_page`で消費される。
+    pending_overlays: Vec<PageOverlay>,
+    /// 次に書くページのページ番号([0059](
+    /// ../../../docs/decisions/0059-cover-and-toc-design.md)決定1)。
+    ///
+    /// * `Some(Some(n))`: 番号`n`のページとして扱う
+    /// * `Some(None)`: **番号を持たないページ**(cover)。margin boxも
+    ///   ヘッダー/フッターも描かない
+    /// * `None`: 明示指定なし(これまでに書いたページ数+1を使う)
+    pending_page_number: Option<Option<usize>>,
 }
 
 impl<S: Sink> StreamingPdfWriter<S> {
@@ -150,6 +164,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
             links,
             destinations: Vec::new(),
             output,
+            pending_overlays: Vec::new(),
+            pending_page_number: None,
         };
         for (step, id) in alpha_gs_ids.into_iter().enumerate() {
             let a = step as f32 / ALPHA_STEPS as f32;
@@ -161,6 +177,28 @@ impl<S: Sink> StreamingPdfWriter<S> {
             writer.write_chunk(id, &chunk)?;
         }
         Ok(writer)
+    }
+
+    /// 次に`write_page`で書くページへ重ねるサブドキュメントを設定する。
+    ///
+    /// `write_page`のシグネチャを変えずにヘッダー/フッターHTMLを合成する
+    /// ための入口([0058]決定3)。ページごとに内容が変わりうる(`[page]`)ため、
+    /// 呼び出し側がページ単位で設定する。
+    /// これまでに書き出したページ数(次のページ番号は`+1`)。
+    pub fn page_count(&self) -> usize {
+        self.page_ids.len()
+    }
+
+    pub fn set_page_overlays(&mut self, overlays: Vec<PageOverlay>) {
+        self.pending_overlays = overlays;
+    }
+
+    /// 次に書くページのページ番号を明示する([0059]決定1)。
+    ///
+    /// `Some(n)`でその番号として扱い、`None`を渡すと**番号を持たないページ**
+    /// (cover)としてmargin box・ヘッダー/フッターを描かない。
+    pub fn set_next_page_number(&mut self, number: Option<usize>) {
+        self.pending_page_number = Some(number);
     }
 
     /// 確定した1ページを即座にコンテンツストリームへエンコードし、`sink`へ
@@ -179,21 +217,39 @@ impl<S: Sink> StreamingPdfWriter<S> {
         fonts: &FontCollection,
         total_pages: Option<usize>,
     ) -> Result<(), S::Error> {
-        // ページ番号は「これまでに書いたページ数+1」(1始まり)。`push`する前に
-        // 求める。
-        let page_number = self.page_ids.len() + 1;
+        // ページ番号は既定では「これまでに書いたページ数+1」(1始まり)だが、
+        // cover/TOC([0059]決定1)のために明示指定できる。`None`は
+        // 「番号を持たないページ」で、margin box・ヘッダー/フッターを描かない。
+        let explicit = self.pending_page_number.take();
+        let numbered = explicit.map(|n| n.is_some()).unwrap_or(true);
+        let page_number = explicit
+            .flatten()
+            .unwrap_or_else(|| self.page_ids.len() + 1);
 
         for b in &page.boxes {
             collect_usage(b, fonts, &mut self.usages);
         }
-        collect_margin_box_usage(
-            &self.settings,
-            fonts,
-            &self.page_rules,
-            page_number,
-            total_pages,
-            &mut self.usages,
-        );
+        let overlays = if numbered {
+            std::mem::take(&mut self.pending_overlays)
+        } else {
+            self.pending_overlays.clear();
+            Vec::new()
+        };
+        for overlay in &overlays {
+            for b in &overlay.boxes {
+                collect_usage(b, fonts, &mut self.usages);
+            }
+        }
+        if numbered {
+            collect_margin_box_usage(
+                &self.settings,
+                fonts,
+                &self.page_rules,
+                page_number,
+                total_pages,
+                &mut self.usages,
+            );
+        }
 
         // 画像はフォントと違いページをまたいだ使用状況集計(サブセット化)が
         // 不要なため、このページで初出のものはこの時点で即座にXObjectとして
@@ -256,16 +312,33 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 &mut pending_forms,
             );
         }
-        render_margin_boxes(
-            &mut target,
-            &self.settings,
-            fonts,
-            &self.page_rules,
-            page_number,
-            total_pages,
-            None,
-            &self.font_resource_names,
-        );
+        for overlay in &overlays {
+            render_page_overlay(
+                &mut target,
+                overlay,
+                fonts,
+                &self.font_resource_names,
+                &self.alpha_gs_names,
+            );
+        }
+        if numbered {
+            render_header_footer_rules(
+                &mut target,
+                &self.settings,
+                self.output.header_line,
+                self.output.footer_line,
+            );
+            render_margin_boxes(
+                &mut target,
+                &self.settings,
+                fonts,
+                &self.page_rules,
+                page_number,
+                total_pages,
+                None,
+                &self.font_resource_names,
+            );
+        }
         let content_bytes = content.finish();
         let stream_bytes = if self.output.compress {
             deflate(&content_bytes)

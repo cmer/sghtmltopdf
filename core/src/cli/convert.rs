@@ -5,10 +5,15 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 
-use crate::engine::{Engine, EngineError, EngineOptions, FontSpec as EngineFontSpec};
+use crate::engine::{
+    Engine, EngineError, EngineOptions, FontSpec as EngineFontSpec, HeaderFooterHtml,
+    HeaderFooterPlaceholders, TocHeading, TocSettings,
+};
 use crate::sink::{FileSink, Sink, StdoutSink};
 
+use super::header_footer::PlaceholderValues;
 use super::options::ConvertArgs;
+use super::toc::{build_toc_html, TocEntry};
 use super::CliError;
 
 /// 出力先(ファイル/標準出力)を1つの型にまとめる。
@@ -54,6 +59,56 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     args.validate_scaling().map_err(CliError::Usage)?;
     let content_options = args.content_options().map_err(CliError::Input)?;
 
+    // ヘッダー/フッターの簡易オプションを`@page`ルールへ合成する([0058]決定1)。
+    // `[title]`の解決にはPDFタイトルが要るので、`--title`優先・未指定なら
+    // ここでは空(エンジンが`<title>`で埋めるのは`/Title`だけ)。
+    let replacements = args.replacements().map_err(CliError::Usage)?;
+    let placeholders =
+        crate::cli::header_footer::PlaceholderValues::new(args.title.clone(), replacements);
+    let extra_page_rules = match args.simple_header_footer().to_page_css(&placeholders) {
+        Some(css) => crate::style::parse_stylesheet(&css).page_rules,
+        None => Vec::new(),
+    };
+
+    // `--header-html`/`--footer-html`は読み込み時点でページ番号以外の
+    // プレースホルダを展開しておく([0058]決定2)。残った`[page]`/`[topage]`は
+    // エンジンがページごとに差し込む。
+    // 表紙([0059]決定3)。ページ番号以外のプレースホルダは展開しておく。
+    let cover_html = read_optional_html(args.cover.as_deref(), &placeholders)?
+        .map(|html| placeholders.expand_all(&html, 1, None));
+
+    // 目次([0059]決定2)。HTMLの組み立てはCLI層(`cli::toc`)が持ち、
+    // エンジンは「見出し一覧 → HTML」の関数として受け取る。
+    let toc_options = args.toc_options();
+    let back_links = args.enable_toc_back_links;
+    let toc_settings = TocSettings {
+        enabled: args.toc,
+        build_html: std::rc::Rc::new(move |headings: &[TocHeading]| {
+            let entries: Vec<TocEntry> = headings
+                .iter()
+                .enumerate()
+                .map(|(i, h)| TocEntry {
+                    level: h.level,
+                    title: h.title.clone(),
+                    page: h.body_page,
+                    anchor: h.anchor.clone(),
+                    back_anchor: back_links.then(|| format!("__sgtocback_{i}")),
+                })
+                .collect();
+            build_toc_html(&entries, &toc_options)
+        }),
+        back_links,
+    };
+
+    let header_footer_html = HeaderFooterHtml {
+        header: read_optional_html(args.header_html.as_deref(), &placeholders)?,
+        footer: read_optional_html(args.footer_html.as_deref(), &placeholders)?,
+        placeholders: HeaderFooterPlaceholders {
+            page_token: "[page]".to_string(),
+            total_pages_token: "[topage]".to_string(),
+        },
+    };
+
     let engine_options = EngineOptions {
         mode: args.mode(),
         settings,
@@ -83,6 +138,11 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
         output: args.pdf_output_options(),
         content: content_options,
         local_access: args.local_access(),
+        extra_page_rules,
+        header_footer_html,
+        cover_html,
+        toc: toc_settings,
+        page_offset: args.page_offset,
     };
 
     let sink = match output_path.as_ref() {
@@ -117,6 +177,22 @@ fn engine_error(e: EngineError<io::Error>) -> CliError {
             CliError::Input(format!("リソースの取得に失敗しました: {msg}"))
         }
     }
+}
+
+/// `--header-html`/`--footer-html`のファイルを読み、ページ番号以外の
+/// プレースホルダを展開する。
+fn read_optional_html(
+    path: Option<&std::path::Path>,
+    placeholders: &PlaceholderValues,
+) -> Result<Option<String>, CliError> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let bytes = std::fs::read(path)
+        .map_err(|e| CliError::Input(format!("{}の読み込みに失敗しました: {e}", path.display())))?;
+    let text = crate::html::decode_html(&bytes, None).map_err(CliError::Usage)?;
+    // `[page]`/`[topage]`は残し、それ以外を先に展開する。
+    Ok(Some(placeholders.expand_keeping_page_tokens(&text)))
 }
 
 fn read_input(args: &ConvertArgs) -> Result<Vec<u8>, CliError> {

@@ -3732,6 +3732,99 @@ struct ShapedMarginBox {
     line: LineBox,
 }
 
+/// ページの余白領域へ重ねて描くサブドキュメント(`--header-html`/
+/// `--footer-html`、[0058](../../../docs/decisions/0058-header-footer-design.md)
+/// 決定3)。
+///
+/// レイアウト済みのボックス列と、その描画基準となる`PageSettings`を持つ。
+/// 基準を余白領域に合わせた専用の`PageSettings`にすることで、既存の
+/// `render_box`(y座標を`settings`から換算する)をそのまま使える。
+#[derive(Clone)]
+pub struct PageOverlay {
+    pub boxes: Vec<LaidOutBox>,
+    pub styles: HashMap<NodeId, ComputedStyle>,
+    /// 余白領域を基準にした描画用の設定。
+    pub settings: PageSettings,
+    /// はみ出しを切るクリップ矩形(CSS px・ページ左上原点)。
+    pub clip: Rect,
+}
+
+/// [`PageOverlay`]をページのcontent streamへ描く。
+pub(super) fn render_page_overlay(
+    content: &mut RenderTarget<'_>,
+    overlay: &PageOverlay,
+    fonts: &FontCollection,
+    font_resource_names: &[String],
+    alpha_gs_names: &[String],
+) {
+    if overlay.boxes.is_empty() {
+        return;
+    }
+    let empty_images: HashMap<NodeId, Rc<PreparedImage>> = HashMap::new();
+    let empty_image_ids: HashMap<usize, ImageIds> = HashMap::new();
+    let empty_form_ids: HashMap<NodeId, Ref> = HashMap::new();
+    let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
+
+    content.save_state();
+    // 余白からはみ出した分は切る(マージンの自動拡張はしない、[0058]決定3)。
+    let y = overlay.settings.size.height - overlay.clip.y - overlay.clip.height;
+    content.rect(overlay.clip.x, y, overlay.clip.width, overlay.clip.height);
+    content.clip_nonzero();
+    content.end_path();
+
+    for b in &overlay.boxes {
+        render_box(
+            content,
+            b,
+            &overlay.styles,
+            fonts,
+            &overlay.settings,
+            None,
+            font_resource_names,
+            &empty_image_ids,
+            &empty_images,
+            alpha_gs_names,
+            &empty_form_ids,
+            &mut pending_forms,
+        );
+    }
+    content.restore_state();
+}
+
+/// `--header-line`/`--footer-line`の罫線を引く([0058]決定6)。
+///
+/// margin boxは装飾(枠線)非対応のため、ページ描画時に水平線として直接引く。
+/// 位置はコンテンツ領域の上端(ヘッダー)と下端(フッター)。
+pub(super) fn render_header_footer_rules(
+    content: &mut RenderTarget<'_>,
+    settings: &PageSettings,
+    header_line: bool,
+    footer_line: bool,
+) {
+    if !header_line && !footer_line {
+        return;
+    }
+    let x0 = settings.margin.left;
+    let x1 = settings.size.width - settings.margin.right;
+
+    content.save_state();
+    content.set_stroke_rgb(0.0, 0.0, 0.0);
+    content.set_line_width(1.0);
+    if header_line {
+        let y = to_pdf_y(settings, 0.0);
+        content.move_to(x0, y);
+        content.line_to(x1, y);
+        content.stroke();
+    }
+    if footer_line {
+        let y = to_pdf_y(settings, settings.content_height());
+        content.move_to(x0, y);
+        content.line_to(x1, y);
+        content.stroke();
+    }
+    content.restore_state();
+}
+
 /// このページで実際に描画すべきmargin boxを、`content`が空でないものだけ
 /// シェイピング済みの状態で返す。描画(`render_margin_boxes`)・使用グリフ
 /// 収集(`collect_margin_box_usage`)の両方から呼ばれる共通処理。
