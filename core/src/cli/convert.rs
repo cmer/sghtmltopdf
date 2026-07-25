@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 
-use crate::engine::{Engine, EngineError, EngineOptions, FontSpec as EngineFontSpec, Mode};
+use crate::engine::{Engine, EngineError, EngineOptions, FontSpec as EngineFontSpec};
 use crate::sink::{FileSink, Sink, StdoutSink};
 
 use super::options::ConvertArgs;
@@ -42,6 +42,9 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     let output_path = args.output_path().map_err(CliError::Usage)?;
 
     let html_bytes = read_input(args)?;
+    // 入力をUTF-8へ揃える(BOM > --encoding > <meta charset> > UTF-8)。
+    let html =
+        crate::html::decode_html(&html_bytes, args.encoding.as_deref()).map_err(CliError::Usage)?;
     let (base_dir, base_href) = resolve_base(args)?;
 
     // CLIのページ設定は「初期値」であり、著者CSSの`@page`宣言があれば
@@ -49,9 +52,10 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     // `engine::apply_page_rule_settings_override`が行う。
     let settings = args.page_settings().map_err(CliError::Usage)?;
     args.validate_scaling().map_err(CliError::Usage)?;
+    let content_options = args.content_options().map_err(CliError::Input)?;
 
     let engine_options = EngineOptions {
-        mode: Mode::Batch,
+        mode: args.mode(),
         settings,
         fonts: fonts
             .iter()
@@ -60,14 +64,25 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
                 index: spec.index,
             })
             .collect(),
-        gothic_font: args.gothic_font_spec().map(|spec| EngineFontSpec {
-            path: spec.path,
-            index: spec.index,
-        }),
+        generic_fonts: args
+            .generic_font_specs()
+            .into_iter()
+            .map(|(family, spec)| {
+                (
+                    family,
+                    EngineFontSpec {
+                        path: spec.path,
+                        index: spec.index,
+                    },
+                )
+            })
+            .collect(),
         base_dir,
         base_href,
         allow_remote_assets: args.allow_remote_assets,
         output: args.pdf_output_options(),
+        content: content_options,
+        local_access: args.local_access(),
     };
 
     let sink = match output_path.as_ref() {
@@ -78,7 +93,7 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     };
 
     let mut engine = Engine::new(engine_options, sink);
-    engine.feed(&html_bytes).map_err(engine_error)?;
+    engine.feed(html.as_bytes()).map_err(engine_error)?;
     engine.finish().map_err(engine_error)?;
 
     if !args.is_quiet() {
@@ -98,6 +113,9 @@ fn engine_error(e: EngineError<io::Error>) -> CliError {
         EngineError::Io(e) => CliError::Input(format!("PDFの書き込みに失敗しました: {e}")),
         EngineError::Font(msg) => CliError::Input(msg),
         EngineError::UnsupportedInStreamingMode(msg) => CliError::Render(msg.to_string()),
+        EngineError::MediaLoad(msg) => {
+            CliError::Input(format!("リソースの取得に失敗しました: {msg}"))
+        }
     }
 }
 

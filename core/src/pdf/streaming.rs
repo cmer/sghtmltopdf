@@ -295,6 +295,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 &mut page_anchors,
             );
         }
+        self.links.retain_enabled(&mut page_links);
         for (name, x, y) in page_anchors {
             if !self
                 .destinations
@@ -313,7 +314,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
             write_link_annotation(
                 chunk.annotation(id),
                 area,
-                self.links.base_href.as_deref(),
+                self.links.annotation_base_href(),
                 self.output.scale,
             );
             self.write_chunk(id, &chunk)?;

@@ -57,6 +57,12 @@ pub struct ImageFetcher {
     /// `@import`はいずれもこのフェッチャを共有するため、ここ1箇所で3種類
     /// すべてに効く。
     base_href: Option<String>,
+    /// ローカルファイル参照を許すか(`--disable-local-file-access`でfalse)。
+    /// HTTPサーバモード(Phase 7)では既定でfalseにする想定。
+    allow_local: bool,
+    /// 空でなければ、ローカル参照をこのディレクトリ配下に限定する
+    /// (`--allow`)。
+    allowed_dirs: Vec<PathBuf>,
 }
 
 impl ImageFetcher {
@@ -68,6 +74,18 @@ impl ImageFetcher {
     /// `<base href>`を設定した同じフェッチャを返す(ビルダー的に使う)。
     pub fn with_base_href(mut self, base_href: Option<String>) -> Self {
         self.base_href = base_href.filter(|href| !href.trim().is_empty());
+        self
+    }
+
+    /// ローカルファイルの読み込み可否と、許可ディレクトリ(`--allow`)を
+    /// 設定する(M12 Phase 4・T301)。
+    ///
+    /// `allow_local`が`false`のとき、ローカルパス参照はすべて拒否する
+    /// (HTTPサーバモードの既定を想定)。`allowed_dirs`が空でなければ、
+    /// 解決後のパスがそのいずれかの配下に無い参照を拒否する。
+    pub fn with_local_access(mut self, allow_local: bool, allowed_dirs: Vec<PathBuf>) -> Self {
+        self.allow_local = allow_local;
+        self.allowed_dirs = allowed_dirs;
         self
     }
 
@@ -97,6 +115,8 @@ impl ImageFetcher {
             max_bytes,
             agent,
             base_href: None,
+            allow_local: true,
+            allowed_dirs: Vec::new(),
         }
     }
 
@@ -119,7 +139,27 @@ impl ImageFetcher {
     /// と対称的な挙動に揃えている。より厳格にするならfont側と合わせて
     /// 別途検討する)。
     fn read_local(&self, path: &str) -> Result<Vec<u8>, FetchError> {
+        if !self.allow_local {
+            return Err(FetchError(format!(
+                "{path}: ローカルファイルの読み込みは許可されていません(--enable-local-file-access)"
+            )));
+        }
         let full_path = resolve_local_asset_path(&self.base_dir, path);
+        if !self.allowed_dirs.is_empty() {
+            let canonical = full_path
+                .canonicalize()
+                .unwrap_or_else(|_| full_path.clone());
+            let permitted = self.allowed_dirs.iter().any(|dir| {
+                let dir = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+                canonical.starts_with(&dir)
+            });
+            if !permitted {
+                return Err(FetchError(format!(
+                    "{}: --allowで許可されたディレクトリの外です",
+                    full_path.display()
+                )));
+            }
+        }
         let metadata = std::fs::metadata(&full_path)
             .map_err(|e| FetchError(format!("{}: {e}", full_path.display())))?;
         self.ensure_within_limit(metadata.len()).map_err(|_| {

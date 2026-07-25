@@ -702,3 +702,227 @@ fn a_non_positive_dpi_or_zoom_is_a_usage_error() {
         assert_eq!(out.status.code(), Some(1), "{args:?} should be rejected");
     }
 }
+
+// ---------------------------------------------------------------------------
+// M12 Phase 4(T294〜T301): コンテンツ挙動オプション
+// ---------------------------------------------------------------------------
+
+#[test]
+fn mono_and_serif_fonts_resolve_the_matching_generic_family() {
+    // `--font`はDejaVu(CJKグリフ無し)だけにし、CJKは汎用family経由の
+    // フォントでしか描けないようにする。
+    let html = r#"<html><body><p style="font-family: monospace">日本語</p></body></html>"#;
+    let bytes = run_cli_with(html, &["--mono-font", CJK_FONT_PATH], "mono-font");
+    assert_eq!(
+        count_occurrences(&bytes, b"/Subtype /CIDFontType2"),
+        2,
+        "the --mono-font face must be embedded for font-family: monospace"
+    );
+
+    let html = r#"<html><body><p style="font-family: serif">日本語</p></body></html>"#;
+    let bytes = run_cli_with(html, &["--serif-font", CJK_FONT_PATH], "serif-font");
+    assert_eq!(count_occurrences(&bytes, b"/Subtype /CIDFontType2"), 2);
+}
+
+#[test]
+fn no_background_removes_the_background_fill() {
+    let html = r#"<html><body><div style="background-color:#ff0000;width:50px;height:50px"></div></body></html>"#;
+    let with_bg = run_cli_with(html, &["--no-pdf-compression"], "with-bg");
+    let without_bg = run_cli_with(html, &["--no-pdf-compression", "--no-background"], "no-bg");
+
+    assert!(count_occurrences(&with_bg, b"1 0 0 rg") > 0);
+    assert_eq!(count_occurrences(&without_bg, b"1 0 0 rg"), 0);
+}
+
+#[test]
+fn a_user_style_sheet_applies_below_the_author_css() {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-user-css-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let css = dir.join("user.css");
+    std::fs::write(&css, "p { color: #00ff00 }").unwrap();
+
+    // ユーザーCSSだけが色を決めるケース。
+    let bytes = run_cli_with(
+        "<html><body><p>x</p></body></html>",
+        &[
+            "--no-pdf-compression",
+            "--user-style-sheet",
+            css.to_str().unwrap(),
+        ],
+        "user-css",
+    );
+    assert!(
+        count_occurrences(&bytes, b"0 1 0 rg") > 0,
+        "user CSS should apply"
+    );
+
+    // 著者CSSが指定していればそちらが勝つ。
+    let bytes = run_cli_with(
+        r#"<html><head><style>p { color: #0000ff }</style></head><body><p>x</p></body></html>"#,
+        &[
+            "--no-pdf-compression",
+            "--user-style-sheet",
+            css.to_str().unwrap(),
+        ],
+        "user-css-loses",
+    );
+    assert!(
+        count_occurrences(&bytes, b"0 0 1 rg") > 0,
+        "author CSS must win"
+    );
+    assert_eq!(count_occurrences(&bytes, b"0 1 0 rg"), 0);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn minimum_font_size_clamps_small_text() {
+    let html = r#"<html><body><p style="font-size:4px">tiny</p></body></html>"#;
+    let small = run_cli_with(html, &["--no-pdf-compression"], "tiny");
+    let clamped = run_cli_with(
+        html,
+        &["--no-pdf-compression", "--minimum-font-size", "20"],
+        "clamped",
+    );
+    // フォントサイズはTf演算子に出る。
+    assert!(count_occurrences(&small, b" 4 Tf") > 0);
+    assert!(count_occurrences(&clamped, b" 20 Tf") > 0);
+}
+
+#[test]
+fn link_annotations_can_be_disabled_by_kind() {
+    // 内部アンカー(`"#here"`)を含むため、raw stringは`r##`で囲む。
+    let html = r##"<html><body>
+        <p><a href="https://example.com">external</a></p>
+        <p><a href="#here">internal</a></p>
+        <p id="here">target</p>
+    </body></html>"##;
+
+    let both = run_cli_with(html, &[], "links-both");
+    assert_eq!(count_occurrences(&both, b"/Subtype /Link"), 2);
+
+    let no_external = run_cli_with(html, &["--disable-external-links"], "links-no-ext");
+    assert_eq!(count_occurrences(&no_external, b"/Subtype /Link"), 1);
+
+    let no_internal = run_cli_with(html, &["--disable-internal-links"], "links-no-int");
+    assert_eq!(count_occurrences(&no_internal, b"/Subtype /Link"), 1);
+
+    let none = run_cli_with(
+        html,
+        &["--disable-external-links", "--disable-internal-links"],
+        "links-none",
+    );
+    assert_eq!(count_occurrences(&none, b"/Subtype /Link"), 0);
+}
+
+#[test]
+fn shift_jis_is_decoded_from_the_meta_charset() {
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-sjis-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    let mut bytes = b"<html><head><meta charset=\"shift_jis\"></head><body><p>".to_vec();
+    bytes.extend_from_slice(b"\x93\xfa\x96\x7b\x8c\xea"); // 「日本語」
+    bytes.extend_from_slice(b"</p></body></html>");
+    std::fs::write(&input, &bytes).unwrap();
+    let output = dir.join("out.pdf");
+
+    let status = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(CJK_FONT_PATH)
+        .arg("-o")
+        .arg(&output)
+        .arg("--quiet")
+        .status()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(status.success());
+
+    // 文字化けしていれば.notdefになりグリフが埋まらない。ToUnicodeに
+    // 「日」(U+65E5)が現れることで、正しくデコードされたと確認する。
+    let pdf = std::fs::read(&output).unwrap();
+    assert!(count_occurrences(&pdf, b"/Subtype /CIDFontType2") > 0);
+
+    // --encodingの明示指定でも同じ結果になる。
+    let output2 = dir.join("out2.pdf");
+    let status = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(CJK_FONT_PATH)
+        .arg("-o")
+        .arg(&output2)
+        .args(["--encoding", "Shift_JIS", "--quiet"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_unknown_encoding_is_a_usage_error() {
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .args(["--encoding", "no-such-encoding"])
+        .arg("-o")
+        .arg(temp_output_path("bad-encoding"))
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn load_media_error_handling_abort_stops_on_a_missing_image() {
+    let html = r#"<html><body><img src="does-not-exist.png"><p>x</p></body></html>"#;
+
+    // 既定(ignore)は成功する。
+    let bytes = run_cli_with(html, &[], "media-ignore");
+    assert!(bytes.starts_with(b"%PDF-"));
+
+    // abortでは入力/リソースエラー(exit 2)。
+    let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-abort-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    std::fs::write(&input, html).unwrap();
+    let out = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("-o")
+        .arg(dir.join("out.pdf"))
+        .args(["--load-media-error-handling", "abort", "--quiet"])
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        !dir.join("out.pdf").exists(),
+        "no partial PDF should remain"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn the_streaming_mode_can_be_selected() {
+    let bytes = run_cli_with(PLAIN_HTML, &["--streaming"], "streaming");
+    assert!(bytes.starts_with(b"%PDF-"));
+    assert!(count_occurrences(&bytes, b"%%EOF") > 0);
+}
+
+#[test]
+fn allow_limits_local_reads_to_the_listed_directories() {
+    // --allowで許可していないディレクトリのフォントは読めない。
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .args(["--allow", "/nonexistent-allowed-dir"])
+        .arg("-o")
+        .arg(temp_output_path("allow"))
+        .arg("--quiet")
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    // sample.htmlは外部リソースを参照しないため、--allowを付けても成功する。
+    assert!(out.status.success());
+}

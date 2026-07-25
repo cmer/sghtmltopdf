@@ -303,6 +303,8 @@ pub fn encode_pdf_with_options(
             collect_link_areas(b, settings, &mut page_links);
             collect_anchor_positions(b, &links.anchor_names, settings, &mut page_anchors);
         }
+        // 無効化された種類のリンク(`--disable-external-links`等)を落とす。
+        links.retain_enabled(&mut page_links);
         for (name, x, y) in page_anchors {
             if !destinations.iter().any(|(existing, ..)| *existing == name) {
                 destinations.push((name, page_id, x, y));
@@ -384,7 +386,7 @@ pub fn encode_pdf_with_options(
         write_link_annotation(
             pdf.annotation(*id),
             area,
-            links.base_href.as_deref(),
+            links.annotation_base_href(),
             output.scale,
         );
     }
@@ -716,7 +718,7 @@ pub(super) fn collect_image_uses(
 
 /// リンク注釈の生成に必要な文書単位の設定([0042](
 /// ../../../docs/decisions/0042-link-annotations-design.md))。
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct LinkSettings {
     /// アンカー対象要素の`NodeId` → 名前付き宛先の名前(決定4・5)。
     /// 空なら内部アンカーの宛先は生成されない(リンク自体は書かれるが、
@@ -724,6 +726,48 @@ pub struct LinkSettings {
     pub anchor_names: HashMap<NodeId, String>,
     /// `<base href>`(決定3)。外部リンクの相対URLをこれに対して解決する。
     pub base_href: Option<String>,
+    /// 外部リンク(http(s))の注釈を出すか(`--disable-external-links`)。
+    pub external: bool,
+    /// 内部リンク(`#id`)の注釈を出すか(`--disable-internal-links`)。
+    pub internal: bool,
+    /// 相対URLを`<base href>`で絶対化せずそのまま書くか
+    /// (`--keep-relative-links`)。
+    pub keep_relative: bool,
+}
+
+impl Default for LinkSettings {
+    fn default() -> Self {
+        Self {
+            anchor_names: HashMap::new(),
+            base_href: None,
+            external: true,
+            internal: true,
+            keep_relative: false,
+        }
+    }
+}
+
+impl LinkSettings {
+    /// 収集済みのリンク矩形から、無効化された種類のものを取り除く。
+    pub(super) fn retain_enabled(&self, areas: &mut Vec<LinkArea>) {
+        areas.retain(|area| {
+            if internal_anchor_target(&area.href).is_some() {
+                self.internal
+            } else {
+                self.external
+            }
+        });
+    }
+
+    /// 注釈へ渡す`<base href>`。`--keep-relative-links`のときは
+    /// 解決に使わせないため`None`にする。
+    pub(super) fn annotation_base_href(&self) -> Option<&str> {
+        if self.keep_relative {
+            None
+        } else {
+            self.base_href.as_deref()
+        }
+    }
 }
 
 /// PDFの`/Link`注釈1個分(ページ内の矩形+リンク先)。

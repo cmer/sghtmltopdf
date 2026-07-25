@@ -63,7 +63,7 @@ use crate::sink::Sink;
 use crate::style::{
     compute_single_element_style, compute_styles, compute_styles_with_parent,
     extract_author_stylesheet, resolve_page_rules, rules_use_page_count, user_agent_stylesheet,
-    ComputedStyle, LengthPercentageOrAuto, PageRule, Stylesheet,
+    ComputedStyle, LengthPercentageOrAuto, PageRule, RgbaColor, Stylesheet,
 };
 
 /// 一括処理かストリーミング処理かを選択する。
@@ -80,11 +80,73 @@ pub enum Mode {
     Streaming,
 }
 
+/// CSSの汎用family名のうち、実体を明示指定できるもの。
+/// `cursive`/`fantasy`は対象外(M12決定6)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenericFamily {
+    SansSerif,
+    Serif,
+    Monospace,
+}
+
+impl GenericFamily {
+    /// CSSで書かれる名前。この名前でフォントコレクションへ登録する。
+    pub fn css_name(self) -> &'static str {
+        match self {
+            Self::SansSerif => "sans-serif",
+            Self::Serif => "serif",
+            Self::Monospace => "monospace",
+        }
+    }
+}
+
 /// `--font`相当の明示的なフォント指定。
 pub struct FontSpec {
     pub path: PathBuf,
     /// TrueType Collection(`.ttc`)等、複数フェイスを含むファイルのフェイス番号。
     pub index: u32,
+}
+
+/// レンダリング内容の挙動を変えるオプション(M12 Phase 4)。
+///
+/// PDFの書き出し方だけを変える[`crate::pdf::PdfOutputOptions`]と対になる、
+/// 「何を描くか」側の設定。
+#[derive(Debug, Clone)]
+pub struct ContentOptions {
+    /// `<img>`とCSS`background-image`を読み込むか(`--no-images`でfalse)。
+    pub load_images: bool,
+    /// 要素の背景(色・画像)を描くか(`--no-background`でfalse)。
+    pub draw_backgrounds: bool,
+    /// ユーザーオリジンのCSS(`--user-style-sheet`)。UAスタイルシートの
+    /// 後ろへ連結する(UAより強く、著者CSSより弱い位置)。
+    pub user_stylesheets: Vec<String>,
+    /// 算出`font-size`の下限(`--minimum-font-size`)。
+    pub minimum_font_size: Option<f32>,
+    /// 外部リンクの注釈を出すか(`--disable-external-links`でfalse)。
+    pub external_links: bool,
+    /// 内部リンク(`#id`)の注釈を出すか(`--disable-internal-links`でfalse)。
+    pub internal_links: bool,
+    /// 相対URLの外部リンクを`<base href>`で絶対化せずそのまま書くか
+    /// (`--keep-relative-links`でtrue)。
+    pub keep_relative_links: bool,
+    /// 画像・CSS・フォントの取得に失敗したら中断するか
+    /// (`--load-media-error-handling abort`)。
+    pub abort_on_media_error: bool,
+}
+
+impl Default for ContentOptions {
+    fn default() -> Self {
+        Self {
+            load_images: true,
+            draw_backgrounds: true,
+            user_stylesheets: Vec::new(),
+            minimum_font_size: None,
+            external_links: true,
+            internal_links: true,
+            keep_relative_links: false,
+            abort_on_media_error: false,
+        }
+    }
 }
 
 /// `Engine`の初期化オプション。
@@ -94,11 +156,12 @@ pub struct EngineOptions {
     pub settings: PageSettings,
     /// `--font`相当の明示的なフォント指定(複数指定可)。
     pub fonts: Vec<FontSpec>,
-    /// `--gothic-font`相当。指定すると`font-family: sans-serif`(明示)の
-    /// 実体として最優先で使われる。未指定なら`sans-serif`はシステムの
-    /// ゴシック候補([`crate::fonts`])で解決する。既定`font-family`(未指定)は
+    /// CSSの汎用family名(`sans-serif`/`serif`/`monospace`)の実体を明示指定する
+    /// (`--gothic-font`/`--serif-font`/`--mono-font`相当)。指定した汎用名は
+    /// そのフォントで最優先に解決され、未指定の汎用名はシステムフォントの
+    /// 候補リスト([`crate::fonts`])で解決する。既定`font-family`(未指定)は
     /// これに関わらず`--font`のフォントへフォールバックする。
-    pub gothic_font: Option<FontSpec>,
+    pub generic_fonts: Vec<(GenericFamily, FontSpec)>,
     /// `@font-face`の`src: url(...)`を相対解決する基準ディレクトリ。
     /// 入力がファイルに対応しない場合(Rackボディ等)は`None`でよく、
     /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
@@ -119,6 +182,57 @@ pub struct EngineOptions {
     /// PDF書き出しオプション(メタデータ・圧縮・スケール・グレースケール、
     /// [0057](../docs/decisions/0057-pdf-output-options-design.md))。
     pub output: PdfOutputOptions,
+    /// 描画内容の挙動([`ContentOptions`])。
+    pub content: ContentOptions,
+    /// ローカルファイル参照の可否と許可ディレクトリ
+    /// (`--enable/disable-local-file-access`・`--allow`)。
+    /// 既定はCLIの従来挙動どおり「許可・ディレクトリ制限なし」。
+    pub local_access: LocalAccess,
+}
+
+/// ローカルファイル参照の許可設定。
+#[derive(Debug, Clone)]
+pub struct LocalAccess {
+    pub allow: bool,
+    /// 空でなければ、この配下のファイルだけを読める。
+    pub allowed_dirs: Vec<PathBuf>,
+}
+
+impl Default for LocalAccess {
+    fn default() -> Self {
+        Self {
+            allow: true,
+            allowed_dirs: Vec::new(),
+        }
+    }
+}
+
+/// ユーザーオリジンのCSSをUAスタイルシートの後ろへ連結する。
+///
+/// CSSのカスケードではユーザーオリジンは「UAより強く著者CSSより弱い」。
+/// UAシートの末尾に置けば同オリジン内のソース順で後勝ちになり、著者CSSには
+/// 負けるため、この近似で意図した強さになる(`!important`は未対応のため
+/// 逆転の問題も起きない)。
+fn append_user_stylesheets(ua: &mut Stylesheet, user_css: &[String]) {
+    for css in user_css {
+        let sheet = crate::style::parse_stylesheet(css);
+        ua.rules.extend(sheet.rules);
+    }
+}
+
+/// スタイル計算後の一括後処理(`--no-background`・`--minimum-font-size`)。
+fn apply_content_options(styles: &mut HashMap<NodeId, ComputedStyle>, content: &ContentOptions) {
+    for style in styles.values_mut() {
+        if !content.draw_backgrounds {
+            style.background_color = RgbaColor::TRANSPARENT;
+            style.background_image = None;
+        }
+        if let Some(min) = content.minimum_font_size {
+            if style.font_size.0 < min {
+                style.font_size.0 = min;
+            }
+        }
+    }
 }
 
 /// `Engine`が返すエラー。`Sink`からのエラー(`Io`)、コア自身が判定する
@@ -129,6 +243,9 @@ pub enum EngineError<E> {
     Io(E),
     UnsupportedInStreamingMode(&'static str),
     Font(String),
+    /// `--load-media-error-handling abort`のときに、画像・外部CSS等の
+    /// 取得に失敗した(M12 T300)。
+    MediaLoad(String),
 }
 
 impl<E> From<E> for EngineError<E> {
@@ -143,6 +260,7 @@ impl<E: std::fmt::Display> std::fmt::Display for EngineError<E> {
             Self::Io(e) => write!(f, "{e}"),
             Self::UnsupportedInStreamingMode(msg) => write!(f, "{msg}"),
             Self::Font(msg) => write!(f, "{msg}"),
+            Self::MediaLoad(msg) => write!(f, "リソースの取得に失敗しました: {msg}"),
         }
     }
 }
@@ -193,15 +311,20 @@ struct StreamingState<S: Sink> {
 /// 追加するので、`select_for_char`の通常のfamily一致でそのまま拾える。
 /// `has_matching_face("sans-serif", ...)`が真になるため、後段の
 /// `load_missing_system_fonts`はシステムのゴシック探索をスキップする。
-fn register_gothic_font<E>(
+/// CSSの汎用family名として明示指定されたフォントを、その汎用名で
+/// 引けるように登録する。
+fn register_generic_fonts<E>(
     fonts: &mut FontCollection,
-    gothic: Option<&FontSpec>,
+    generic_fonts: &[(GenericFamily, FontSpec)],
 ) -> Result<(), EngineError<E>> {
-    if let Some(spec) = gothic {
+    for (family, spec) in generic_fonts {
         let font = Font::load_indexed(&spec.path, spec.index).map_err(|e| {
-            EngineError::Font(format!("ゴシックフォントの読み込みに失敗しました: {e}"))
+            EngineError::Font(format!(
+                "{}のフォントの読み込みに失敗しました: {e}",
+                family.css_name()
+            ))
         })?;
-        fonts.push_font_face("sans-serif".to_string(), None, None, Vec::new(), font);
+        fonts.push_font_face(family.css_name().to_string(), None, None, Vec::new(), font);
     }
     Ok(())
 }
@@ -282,7 +405,8 @@ impl<S: Sink> Engine<S> {
         body: NodeId,
         sink: S,
     ) -> Result<StreamingState<S>, EngineError<S::Error>> {
-        let ua = user_agent_stylesheet();
+        let mut ua = user_agent_stylesheet();
+        append_user_stylesheets(&mut ua, &self.options.content.user_stylesheets);
         let base_dir = self
             .options
             .base_dir
@@ -299,7 +423,11 @@ impl<S: Sink> Engine<S> {
             find_base_href(&self.parser.dom()).or_else(|| self.options.base_href.clone());
         let css_fetcher =
             ImageFetcher::new(base_dir.to_path_buf(), self.options.allow_remote_assets)
-                .with_base_href(base_href.clone());
+                .with_base_href(base_href.clone())
+                .with_local_access(
+                    self.options.local_access.allow,
+                    self.options.local_access.allowed_dirs.clone(),
+                );
         let css_cache = DocumentImageCache::new();
         let author = {
             let dom = self.parser.dom();
@@ -325,7 +453,7 @@ impl<S: Sink> Engine<S> {
         let mut fonts = FontCollection::new(loaded_fonts);
 
         let system_fonts = SystemFonts::scan();
-        register_gothic_font(&mut fonts, self.options.gothic_font.as_ref())?;
+        register_generic_fonts(&mut fonts, &self.options.generic_fonts)?;
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
@@ -421,14 +549,20 @@ impl<S: Sink> Engine<S> {
             LinkSettings {
                 anchor_names: anchor_names.clone(),
                 base_href: base_href.clone(),
+                external: self.options.content.external_links,
+                internal: self.options.content.internal_links,
+                keep_relative: self.options.content.keep_relative_links,
             },
             output,
         )
         .map_err(EngineError::Io)?;
-        let image_cache = ImageAssetCache::with_base_href(
-            base_dir.to_path_buf(),
-            self.options.allow_remote_assets,
-            base_href,
+        let image_cache = ImageAssetCache::with_fetcher(
+            ImageFetcher::new(base_dir.to_path_buf(), self.options.allow_remote_assets)
+                .with_base_href(base_href)
+                .with_local_access(
+                    self.options.local_access.allow,
+                    self.options.local_access.allowed_dirs.clone(),
+                ),
         );
 
         Ok(StreamingState {
@@ -454,8 +588,12 @@ impl<S: Sink> Engine<S> {
     /// レイアウト・ページ分割・PDF書き出し・DOM解放まで処理する。
     fn process_top_level_element(&mut self, node: NodeId) -> Result<(), EngineError<S::Error>> {
         let Engine {
-            parser, streaming, ..
+            parser,
+            streaming,
+            options,
+            ..
         } = self;
+        let options_content = &options.content;
         let state = streaming
             .as_mut()
             .expect("process_top_level_elementはstreaming state初期化後にのみ呼ばれる");
@@ -472,15 +610,19 @@ impl<S: Sink> Engine<S> {
                 &mut state.counters,
                 &mut state.quote_depth,
             );
+            let mut sub_styles = sub_styles;
+            apply_content_options(&mut sub_styles, options_content);
             let mut item_box = build_box_for_element(&dom, &sub_styles, node);
-            if let Some(item_box) = &mut item_box {
+            if let (Some(item_box), true) = (&mut item_box, options_content.load_images) {
                 resolve_images(item_box, &dom, &state.image_cache);
             }
             (sub_styles, item_box)
         };
-        state
-            .background_images
-            .extend(resolve_background_images(&sub_styles, &state.image_cache));
+        if options_content.load_images {
+            state
+                .background_images
+                .extend(resolve_background_images(&sub_styles, &state.image_cache));
+        }
         state.styles.extend(sub_styles);
 
         let Some(item_box) = item_box else {
@@ -575,8 +717,14 @@ impl<S: Sink> Engine<S> {
                     fonts,
                     mut writer,
                     paginator,
+                    image_cache,
                     ..
                 } = state;
+                if self.options.content.abort_on_media_error {
+                    if let Some(err) = image_cache.had_errors() {
+                        return Err(EngineError::MediaLoad(err));
+                    }
+                }
                 for page in paginator.finish() {
                     writer
                         .write_page(&page, &styles, &background_images, &fonts, None)
@@ -615,17 +763,23 @@ impl<S: Sink> Engine<S> {
         }
         let mut fonts = FontCollection::new(loaded_fonts);
 
-        let ua = user_agent_stylesheet();
+        let mut ua = user_agent_stylesheet();
+        append_user_stylesheets(&mut ua, &options.content.user_stylesheets);
         let base_dir = options
             .base_dir
             .as_deref()
             .unwrap_or_else(|| Path::new("."));
         let base_href = find_base_href(&dom).or_else(|| options.base_href.clone());
         let css_fetcher = ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets)
-            .with_base_href(base_href.clone());
+            .with_base_href(base_href.clone())
+            .with_local_access(
+                options.local_access.allow,
+                options.local_access.allowed_dirs.clone(),
+            );
         let css_cache = DocumentImageCache::new();
         let author = extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
-        let styles = compute_styles(&dom, &ua, &author);
+        let mut styles = compute_styles(&dom, &ua, &author);
+        apply_content_options(&mut styles, &options.content);
         // `<a href="#id">`の宛先候補([0042]決定4)。
         let anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&dom)
             .into_iter()
@@ -634,7 +788,7 @@ impl<S: Sink> Engine<S> {
         let page_settings = apply_page_rule_settings_override(options.settings, &author.page_rules);
 
         let system_fonts = SystemFonts::scan();
-        register_gothic_font(&mut fonts, options.gothic_font.as_ref())?;
+        register_generic_fonts(&mut fonts, &options.generic_fonts)?;
         for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
@@ -672,19 +826,29 @@ impl<S: Sink> Engine<S> {
             LinkSettings {
                 anchor_names: anchor_names.clone(),
                 base_href: base_href.clone(),
+                external: options.content.external_links,
+                internal: options.content.internal_links,
+                keep_relative: options.content.keep_relative_links,
             },
             output,
         )
         .map_err(EngineError::Io)?;
-        let image_cache = ImageAssetCache::with_base_href(
-            base_dir.to_path_buf(),
-            options.allow_remote_assets,
-            base_href,
+        let image_cache = ImageAssetCache::with_fetcher(
+            ImageFetcher::new(base_dir.to_path_buf(), options.allow_remote_assets)
+                .with_base_href(base_href)
+                .with_local_access(
+                    options.local_access.allow,
+                    options.local_access.allowed_dirs.clone(),
+                ),
         );
         // `background-image`はレイアウトのサイズ計算に影響しない描画専用の
         // 情報なので、`resolve_images`(box tree構築)とは独立に、文書全体の
         // `styles`から一度だけ構築できる([0017]決定2)。
-        let background_images = resolve_background_images(&styles, &image_cache);
+        let background_images = if options.content.load_images {
+            resolve_background_images(&styles, &image_cache)
+        } else {
+            HashMap::new()
+        };
 
         // `Mode::Batch`は全ページを確定させてから絶対配置([0049](
         // ../docs/decisions/0049-absolute-fixed-positioning-design.md))を
@@ -702,6 +866,12 @@ impl<S: Sink> Engine<S> {
             writer
                 .write_page(page, &styles, &background_images, &fonts, total_pages)
                 .map_err(EngineError::Io)?;
+        }
+
+        if options.content.abort_on_media_error {
+            if let Some(err) = image_cache.had_errors().or_else(|| css_cache.had_errors()) {
+                return Err(EngineError::MediaLoad(err));
+            }
         }
 
         writer.finish(&fonts).map_err(EngineError::Io)

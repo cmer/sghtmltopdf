@@ -38,6 +38,14 @@ impl DocumentImageCache {
         Self::default()
     }
 
+    /// 取得に失敗した参照が1つでもあるか(M12 T300)。
+    pub fn had_errors(&self) -> Option<String> {
+        self.entries
+            .borrow()
+            .iter()
+            .find_map(|(src, result)| result.as_ref().err().map(|e| format!("{src}: {e}")))
+    }
+
     /// `raw_src`(`<img src>`属性の生の値)に対応するバイト列を返す。
     ///
     /// 初回はURL/パス分類→`fetcher`による取得までを行い、結果(成功・

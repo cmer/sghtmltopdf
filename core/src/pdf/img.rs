@@ -315,11 +315,25 @@ impl ImageAssetCache {
         allow_remote: bool,
         base_href: Option<String>,
     ) -> Self {
+        Self::with_fetcher(ImageFetcher::new(base_dir, allow_remote).with_base_href(base_href))
+    }
+
+    /// 設定済みのフェッチャ(ローカルアクセス制御などを反映したもの)から作る。
+    pub fn with_fetcher(fetcher: ImageFetcher) -> Self {
         Self {
-            fetcher: ImageFetcher::new(base_dir, allow_remote).with_base_href(base_href),
+            fetcher,
             fetch_cache: DocumentImageCache::new(),
             decoded: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// 取得・デコードに失敗した参照が1つでもあるか
+    /// (`--load-media-error-handling abort`の判定用、M12 T300)。
+    pub fn had_errors(&self) -> Option<String> {
+        self.decoded
+            .borrow()
+            .iter()
+            .find_map(|(src, result)| result.as_ref().err().map(|e| format!("{src}: {e}")))
     }
 
     /// `raw_src`(`<img src>`属性の生の値)に対応するデコード済み画像を返す。

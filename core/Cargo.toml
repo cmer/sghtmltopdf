@@ -34,6 +34,9 @@ clap = { version = "4", default-features = false, features = [
     "suggestions",
 ], optional = true }
 cssparser = "0.37.0"
+# `--encoding`と`<meta charset>`のデコード用(M12 T299)。実測で依存2個・
+# ビルド+1.3s・サイズ+0.16MiBと軽量なため採用した。
+encoding_rs = "0.8"
 cssparser-color = "0.5.0"
 flate2 = "1.1.9"
 fontdb = "0.23.0"

@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, ArgMatches, Args, Parser, Subcommand, ValueEnum};
 
+use crate::engine::{ContentOptions, GenericFamily, LocalAccess, Mode};
 use crate::layout::{PageSettings, PageSize};
 use crate::pdf::{DocumentMetadata, PdfOutputOptions};
 
@@ -109,6 +110,22 @@ pub struct ConvertArgs {
     #[arg(long, value_name = "N", requires = "gothic_font")]
     pub gothic_font_index: Option<u32>,
 
+    /// `font-family: serif`の実体として使うフォント
+    #[arg(long, value_name = "PATH")]
+    pub serif_font: Option<PathBuf>,
+
+    /// --serif-fontのフェイス番号
+    #[arg(long, value_name = "N", requires = "serif_font")]
+    pub serif_font_index: Option<u32>,
+
+    /// `font-family: monospace`の実体として使うフォント
+    #[arg(long, value_name = "PATH")]
+    pub mono_font: Option<PathBuf>,
+
+    /// --mono-fontのフェイス番号
+    #[arg(long, value_name = "N", requires = "mono_font")]
+    pub mono_font_index: Option<u32>,
+
     /// PDFのタイトル(未指定ならHTMLの<title>を使う)
     #[arg(long, value_name = "TEXT")]
     pub title: Option<String>,
@@ -144,6 +161,62 @@ pub struct ConvertArgs {
     /// 相対参照の解決基準(ディレクトリかhttp(s)のURL。標準入力から読む場合に使う)
     #[arg(long, value_name = "URL|DIR")]
     pub base_url: Option<String>,
+
+    /// 画像(<img>とbackground-image)を読み込まない
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_images: bool,
+
+    /// 要素の背景(色・画像)を描かない
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_background: bool,
+
+    /// ユーザーオリジンのCSSファイル(複数指定可)
+    #[arg(long, value_name = "PATH")]
+    pub user_style_sheet: Vec<PathBuf>,
+
+    /// 算出font-sizeの下限(px)
+    #[arg(long, value_name = "PX")]
+    pub minimum_font_size: Option<f32>,
+
+    /// 外部リンク(http(s))のPDF注釈を作らない
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub disable_external_links: bool,
+
+    /// 内部リンク(#id)のPDF注釈を作らない
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub disable_internal_links: bool,
+
+    /// 相対URLの外部リンクを絶対URLへ解決せずそのまま書く
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub keep_relative_links: bool,
+
+    /// 入力の文字エンコーディング(未指定ならBOM/<meta charset>/UTF-8の順で判定)
+    #[arg(long, value_name = "NAME")]
+    pub encoding: Option<String>,
+
+    /// 画像・CSS・フォントの取得に失敗したときの挙動
+    #[arg(long, value_enum, default_value_t = LoadErrorHandling::Ignore, value_name = "MODE")]
+    pub load_media_error_handling: LoadErrorHandling,
+
+    /// 入力そのものの読み込みに失敗したときの挙動(常にabort相当)
+    #[arg(long, value_enum, default_value_t = LoadErrorHandling::Abort, value_name = "MODE")]
+    pub load_error_handling: LoadErrorHandling,
+
+    /// ローカルファイルの参照を禁止する(既定は許可)
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "enable_local_file_access")]
+    pub disable_local_file_access: bool,
+
+    /// ローカルファイルの参照を許可する(既定。サーバモードで明示するためのもの)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub enable_local_file_access: bool,
+
+    /// ローカル参照を許可するディレクトリ(複数指定可。指定するとその配下だけ読める)
+    #[arg(long, value_name = "PATH")]
+    pub allow: Vec<PathBuf>,
+
+    /// ストリーミングモードで処理する(制約は docs/decisions/0006 を参照)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub streaming: bool,
 
     /// <img src>/<link rel=stylesheet href>のhttp(s)フェッチを許可する
     #[arg(long, action = ArgAction::SetTrue)]
@@ -192,6 +265,15 @@ impl PageSizeName {
             Self::Legal => PageSize::LEGAL,
         }
     }
+}
+
+/// 取得失敗時の挙動(wkhtmltopdf互換。`skip`は入力が1つなので持たない)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum LoadErrorHandling {
+    /// 失敗を無視して続行する(既定)
+    Ignore,
+    /// 失敗したら中断する
+    Abort,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -284,6 +366,45 @@ impl ConvertArgs {
         }
     }
 
+    /// 描画内容のオプション([`ContentOptions`])へまとめる。
+    /// `--user-style-sheet`のファイル読み込みもここで行う。
+    pub fn content_options(&self) -> Result<ContentOptions, String> {
+        let mut user_stylesheets = Vec::with_capacity(self.user_style_sheet.len());
+        for path in &self.user_style_sheet {
+            let css = std::fs::read_to_string(path)
+                .map_err(|e| format!("{}の読み込みに失敗しました: {e}", path.display()))?;
+            user_stylesheets.push(css);
+        }
+
+        Ok(ContentOptions {
+            load_images: !self.no_images,
+            draw_backgrounds: !self.no_background,
+            user_stylesheets,
+            minimum_font_size: self.minimum_font_size,
+            external_links: !self.disable_external_links,
+            internal_links: !self.disable_internal_links,
+            keep_relative_links: self.keep_relative_links,
+            abort_on_media_error: self.load_media_error_handling == LoadErrorHandling::Abort,
+        })
+    }
+
+    /// ローカルファイル参照の許可設定。
+    pub fn local_access(&self) -> LocalAccess {
+        LocalAccess {
+            allow: !self.disable_local_file_access,
+            allowed_dirs: self.allow.clone(),
+        }
+    }
+
+    /// 処理モード(`--streaming`)。
+    pub fn mode(&self) -> Mode {
+        if self.streaming {
+            Mode::Streaming
+        } else {
+            Mode::Batch
+        }
+    }
+
     /// `--dpi`/`--zoom`の値の妥当性(正の有限値であること)。
     pub fn validate_scaling(&self) -> Result<(), String> {
         if !(self.dpi.is_finite() && self.dpi > 0.0) {
@@ -334,12 +455,39 @@ impl ConvertArgs {
         Ok(specs)
     }
 
-    /// `--gothic-font`とそのフェイス番号。
-    pub fn gothic_font_spec(&self) -> Option<FontArg> {
-        self.gothic_font.as_ref().map(|path| FontArg {
-            path: path.clone(),
-            index: self.gothic_font_index.unwrap_or(0),
+    /// 汎用family名(`sans-serif`/`serif`/`monospace`)へ明示指定された
+    /// フォントの組。指定が無い汎用名は含めない(システムフォントで解決する)。
+    pub fn generic_font_specs(&self) -> Vec<(GenericFamily, FontArg)> {
+        [
+            (
+                GenericFamily::SansSerif,
+                self.gothic_font.as_ref(),
+                self.gothic_font_index,
+            ),
+            (
+                GenericFamily::Serif,
+                self.serif_font.as_ref(),
+                self.serif_font_index,
+            ),
+            (
+                GenericFamily::Monospace,
+                self.mono_font.as_ref(),
+                self.mono_font_index,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(family, path, index)| {
+            path.map(|path| {
+                (
+                    family,
+                    FontArg {
+                        path: path.clone(),
+                        index: index.unwrap_or(0),
+                    },
+                )
+            })
         })
+        .collect()
     }
 
     /// 入力が標準入力か。
