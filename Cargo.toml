@@ -1,3 +1,8 @@
 [workspace]
 resolver = "2"
 members = ["core"]
+# Ruby拡張(bindings/ruby)はworkspaceに含めない。rb-sysのビルドがlibrubyを
+# 必要とするため、membersに入れるとRuby開発環境なしでリポジトリルートの
+# `cargo build`/`cargo test`が通らなくなる
+# (docs/decisions/0062-ruby-binding.md 決定5)。
+exclude = ["bindings/ruby/ext/sghtmltopdf"]

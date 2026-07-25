@@ -422,6 +422,9 @@ fn a_bad_base_url_is_reported_as_an_input_error() {
     assert_eq!(out.status.code(), Some(2));
 }
 
+// `server`サブコマンドは`server` feature(既定ON)でのみ存在する
+// ([0062](../../docs/decisions/0062-ruby-binding.md)決定4)。
+#[cfg(feature = "server")]
 #[test]
 fn the_server_subcommand_reports_a_bad_listen_address() {
     // サーバ本体のE2Eは`core/tests/server.rs`が担当する。ここでは

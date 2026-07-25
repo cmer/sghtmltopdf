@@ -13,12 +13,23 @@ name = "sghtmltopdf"
 path = "src/main.rs"
 required-features = ["cli"]
 
-# CLI(clap・将来のtiny_http)はfeatureで切り離す。ライブラリとして使う側
-# (Ruby binding等)は`--no-default-features`でこれらを引き込まずに済む
+# HTTPサーバモードのE2Eテストは`server` featureが要る
+# (`--no-default-features --features cli`でのテストから除外するため)。
+[[test]]
+name = "server"
+required-features = ["server"]
+
+# CLI(clap)とHTTPサーバ(tiny_http)はfeatureで切り離す。ライブラリとして
+# 使う側は`--no-default-features`でこれらを引き込まずに済む
 # (docs/decisions/0055-cli-design.md 決定1)。
+#
+# `cli`と`server`が分かれているのはRuby binding(M14)のため。gemは
+# オプション解釈のためにclap(=`cli`)を使うが、HTTPサーバは要らない
+# (docs/decisions/0062-ruby-binding.md 決定4)。
 [features]
-default = ["cli"]
-cli = ["dep:clap", "dep:tiny_http"]
+default = ["cli", "server"]
+cli = ["dep:clap"]
+server = ["cli", "dep:tiny_http"]
 
 [dependencies]
 base64 = "0.22.1"

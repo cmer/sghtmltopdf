@@ -10,7 +10,9 @@
 
 use std::path::PathBuf;
 
-use clap::{ArgAction, ArgMatches, Args, Parser, Subcommand, ValueEnum};
+#[cfg(feature = "server")]
+use clap::Subcommand;
+use clap::{ArgAction, ArgMatches, Args, Parser, ValueEnum};
 
 use crate::engine::{ContentOptions, GenericFamily, LocalAccess, Mode};
 use crate::layout::{PageSettings, PageSize};
@@ -33,6 +35,7 @@ pub const STD_STREAM: &str = "-";
     subcommand_negates_reqs = true
 )]
 pub struct Cli {
+    #[cfg(feature = "server")]
     #[command(subcommand)]
     pub command: Option<Command>,
 
@@ -40,12 +43,14 @@ pub struct Cli {
     pub convert: ConvertArgs,
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// HTTPサーバとして待ち受け、POST /pdf でHTMLをPDFへ変換する
     Server(ServerArgs),
 }
 
+#[cfg(feature = "server")]
 #[derive(Debug, Clone, Args)]
 pub struct ServerArgs {
     /// 待ち受けアドレス(既定はループバック。外部公開はリバースプロキシ経由で)
@@ -98,6 +103,7 @@ pub struct ServerArgs {
     pub allow_remote_assets: bool,
 }
 
+#[cfg(feature = "server")]
 impl ServerArgs {
     /// サーバ起動時に固定するフォント指定。
     pub fn font_specs(&self) -> Vec<FontArg> {
@@ -886,6 +892,7 @@ mod tests {
         assert!(!cli.convert.is_quiet());
     }
 
+    #[cfg(feature = "server")]
     #[test]
     fn server_subcommand_does_not_require_convert_args() {
         // `server`は`--font`が必須(リクエストからは変えられないため)。

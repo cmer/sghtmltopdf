@@ -7,6 +7,9 @@
 pub mod convert;
 pub mod header_footer;
 pub mod options;
+/// HTTPサーバモード。`server` feature(既定ON)でのみ有効
+/// ([0062](../../../docs/decisions/0062-ruby-binding.md)決定4)。
+#[cfg(feature = "server")]
 pub mod server;
 pub mod toc;
 pub mod units;
@@ -16,7 +19,9 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory, FromArgMatches};
 
-use options::{Cli, Command};
+use options::Cli;
+#[cfg(feature = "server")]
+use options::Command;
 
 /// CLIのエラー。バリアントがそのままexit code([0055]決定4)に対応する。
 #[derive(Debug)]
@@ -86,10 +91,13 @@ pub fn run() -> ExitCode {
         }
     };
 
+    #[cfg(feature = "server")]
     let result = match cli.command {
         Some(Command::Server(ref args)) => server::run(args),
         None => convert::run(&cli.convert, &matches),
     };
+    #[cfg(not(feature = "server"))]
+    let result = convert::run(&cli.convert, &matches);
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
