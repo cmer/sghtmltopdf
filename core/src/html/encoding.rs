@@ -5,10 +5,10 @@
 //! **BOM > `--encoding`の明示 > `<meta charset>` > UTF-8** とする。
 //! BOMを最優先にするのはHTML Standardのsniffing手順に合わせるため。
 //!
-//! ストリーミング入力ではチャンク境界がマルチバイト文字を割りうるため、
-//! ここでは**入力全体が揃っている前提**のAPIだけを提供する
-//! (CLIは一括読み込み。HTTPサーバモードでUTF-8以外を扱う場合は、
-//! ボディを読み切ってから通すこと)。
+//! 入力全体が揃っている場合は[`decode_html`]を、読みながら処理する場合は
+//! [`StreamingDecoder`]を使う。後者は`encoding_rs`のインクリメンタル
+//! デコーダを持ち、**チャンク境界がマルチバイト文字を割っても正しく
+//! 復元する**(HTTPサーバがボディを読みながら`Engine::feed`へ渡す経路で使う)。
 
 use encoding_rs::Encoding;
 
@@ -67,6 +67,99 @@ fn sniff_meta_charset(bytes: &[u8]) -> Option<&'static Encoding> {
     None
 }
 
+/// 読みながらUTF-8へ変換していくデコーダ。
+///
+/// エンコーディングの判定には先頭の一定バイト([`PRESCAN_LIMIT`])が要るため、
+/// **確定するまでは内部にバッファ**し、確定後は`encoding_rs`の
+/// インクリメンタルデコーダへ流す。チャンク境界がマルチバイト文字の途中でも、
+/// デコーダが持ち越すので壊れない。
+pub struct StreamingDecoder {
+    /// `--encoding`で明示された値(確定済み)。
+    declared: Option<&'static Encoding>,
+    state: State,
+}
+
+enum State {
+    /// エンコーディング確定待ち。溜めたバイト列を持つ。
+    Buffering(Vec<u8>),
+    Decoding(encoding_rs::Decoder),
+}
+
+impl StreamingDecoder {
+    /// `declared`は`--encoding`の値。未知のラベルはここでエラーにする。
+    pub fn new(declared: Option<&str>) -> Result<Self, String> {
+        let declared = match declared {
+            Some(label) => Some(
+                Encoding::for_label(label.as_bytes())
+                    .ok_or_else(|| format!("未知のエンコーディングです: {label}"))?,
+            ),
+            None => None,
+        };
+        Ok(Self {
+            declared,
+            state: State::Buffering(Vec::new()),
+        })
+    }
+
+    /// チャンクを与え、確定できた分のUTF-8文字列を返す。
+    pub fn push(&mut self, chunk: &[u8]) -> String {
+        match &mut self.state {
+            State::Buffering(buffer) => {
+                buffer.extend_from_slice(chunk);
+                if buffer.len() < PRESCAN_LIMIT {
+                    return String::new();
+                }
+                self.settle()
+            }
+            State::Decoding(decoder) => decode_chunk(decoder, chunk, false),
+        }
+    }
+
+    /// 入力の終わり。残りを吐き出す。
+    pub fn finish(&mut self) -> String {
+        // 入力が[`PRESCAN_LIMIT`]に満たなかった場合、ここで初めて確定する。
+        let mut out = if matches!(self.state, State::Buffering(_)) {
+            self.settle()
+        } else {
+            String::new()
+        };
+        if let State::Decoding(decoder) = &mut self.state {
+            out.push_str(&decode_chunk(decoder, &[], true));
+        }
+        out
+    }
+
+    /// 溜めたバッファからエンコーディングを決め、デコーダへ移行する。
+    fn settle(&mut self) -> String {
+        let State::Buffering(buffer) = &mut self.state else {
+            return String::new();
+        };
+        let buffer = std::mem::take(buffer);
+
+        // BOMがあればそれが最優先(`new_decoder`のBOM sniffingが処理する)。
+        // 次に`--encoding`、次に`<meta charset>`、最後にUTF-8。
+        let encoding = self
+            .declared
+            .or_else(|| sniff_meta_charset(&buffer))
+            .unwrap_or(encoding_rs::UTF_8);
+        let mut decoder = encoding.new_decoder();
+        let out = decode_chunk(&mut decoder, &buffer, false);
+        self.state = State::Decoding(decoder);
+        out
+    }
+}
+
+/// 1チャンク分をUTF-8へ変換する。出力バッファは`max_utf8_buffer_length`で
+/// 十分な容量を先に確保するため、`OutputFull`のループは要らない。
+fn decode_chunk(decoder: &mut encoding_rs::Decoder, input: &[u8], last: bool) -> String {
+    let capacity = decoder
+        .max_utf8_buffer_length(input.len())
+        .unwrap_or(input.len().saturating_mul(3) + 4);
+    let mut out = String::with_capacity(capacity);
+    let (_result, _read, _had_errors) = decoder.decode_to_string(input, &mut out, last);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,6 +213,65 @@ mod tests {
         bytes.extend_from_slice("日本語".as_bytes());
         // BOMがUTF-8を示すので、--encodingの指定より優先される。
         assert_eq!(decode_html(&bytes, Some("Shift_JIS")).unwrap(), "日本語");
+    }
+
+    /// チャンクに分けて食わせ、連結した結果を返す。
+    fn stream(chunks: &[&[u8]], declared: Option<&str>) -> String {
+        let mut decoder = StreamingDecoder::new(declared).unwrap();
+        let mut out = String::new();
+        for chunk in chunks {
+            out.push_str(&decoder.push(chunk));
+        }
+        out.push_str(&decoder.finish());
+        out
+    }
+
+    #[test]
+    fn streaming_decoder_handles_a_split_multibyte_character() {
+        // 「日本語」のUTF-8を文字の途中で割る。
+        let bytes = "日本語".as_bytes();
+        let out = stream(&[&bytes[..4], &bytes[4..]], None);
+        assert_eq!(out, "日本語");
+    }
+
+    #[test]
+    fn streaming_decoder_handles_a_split_shift_jis_character() {
+        // Shift_JISの「日本語」(2バイト×3)を1バイト目と2バイト目で割る。
+        let bytes: &[u8] = b"\x93\xfa\x96\x7b\x8c\xea";
+        let out = stream(&[&bytes[..1], &bytes[1..3], &bytes[3..]], Some("Shift_JIS"));
+        assert_eq!(out, "日本語");
+    }
+
+    #[test]
+    fn streaming_decoder_detects_meta_charset_after_buffering() {
+        // prescan分を超える長さにして、確定が走る経路を通す。
+        let mut html = b"<html><head><meta charset=\"shift_jis\"></head><body>".to_vec();
+        html.extend(std::iter::repeat_n(b'x', PRESCAN_LIMIT));
+        html.extend_from_slice(b"<p>\x93\xfa\x96\x7b\x8c\xea</p></body></html>");
+
+        let chunks: Vec<&[u8]> = html.chunks(97).collect();
+        let out = stream(&chunks, None);
+        assert!(out.contains("日本語"), "got: {out}");
+    }
+
+    #[test]
+    fn streaming_decoder_flushes_short_input_on_finish() {
+        // PRESCAN_LIMITに満たない入力は、finishで初めて確定して出てくる。
+        let mut decoder = StreamingDecoder::new(None).unwrap();
+        assert_eq!(decoder.push(b"<p>short</p>"), "");
+        assert_eq!(decoder.finish(), "<p>short</p>");
+    }
+
+    #[test]
+    fn streaming_decoder_lets_a_bom_win() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice("日本語".as_bytes());
+        assert_eq!(stream(&[&bytes], Some("Shift_JIS")), "日本語");
+    }
+
+    #[test]
+    fn streaming_decoder_rejects_an_unknown_label() {
+        assert!(StreamingDecoder::new(Some("no-such-encoding")).is_err());
     }
 
     #[test]

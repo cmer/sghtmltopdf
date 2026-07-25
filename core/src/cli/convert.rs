@@ -45,7 +45,6 @@ impl Sink for OutputSink {
 pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
     let fonts = args.font_specs(matches).map_err(CliError::Usage)?;
     let output_path = args.output_path().map_err(CliError::Usage)?;
-    let html_bytes = read_input(args)?;
 
     let sink = match output_path.as_ref() {
         Some(path) => OutputSink::File(FileSink::create(path).map_err(|e| {
@@ -54,7 +53,11 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
         None => OutputSink::Stdout(StdoutSink::new()),
     };
 
-    render(args, &fonts, &html_bytes, sink)?;
+    // 入力もReadのまま渡す(大きなHTMLを丸ごとメモリに載せない)。
+    match open_input(args)? {
+        InputSource::Stdin => render(args, &fonts, io::stdin().lock(), sink)?,
+        InputSource::File(file) => render(args, &fonts, file, sink)?,
+    }
 
     if !args.is_quiet() {
         match output_path.as_ref() {
@@ -70,10 +73,10 @@ pub fn run(args: &ConvertArgs, matches: &ArgMatches) -> Result<(), CliError> {
 pub fn render_to_memory<S: Sink<Output = Vec<u8>, Error = io::Error>>(
     args: &ConvertArgs,
     fonts: &[FontArg],
-    html_bytes: &[u8],
+    reader: impl Read,
     sink: S,
 ) -> Result<Vec<u8>, CliError> {
-    render_with_sink(args, fonts, html_bytes, sink)
+    render_from_reader(args, fonts, reader, sink)
 }
 
 /// HTMLバイト列を変換して`sink`へ書き出す。
@@ -85,22 +88,26 @@ pub fn render_to_memory<S: Sink<Output = Vec<u8>, Error = io::Error>>(
 pub fn render<S: Sink<Output = (), Error = io::Error>>(
     args: &ConvertArgs,
     fonts: &[FontArg],
-    html_bytes: &[u8],
+    reader: impl Read,
     sink: S,
 ) -> Result<(), CliError> {
-    render_with_sink(args, fonts, html_bytes, sink)
+    render_from_reader(args, fonts, reader, sink)
 }
 
+/// 1回の`read`で`Engine::feed`へ渡す量。
+const FEED_CHUNK: usize = 64 * 1024;
+
 /// [`render`]/[`render_to_memory`]の実体。
-fn render_with_sink<S: Sink<Error = io::Error>>(
+///
+/// **入力を読み切らずにチャンク単位で`Engine::feed`へ渡す**。
+/// エンコーディングの判定に必要な先頭だけは
+/// [`crate::html::StreamingDecoder`]が内部でバッファする。
+fn render_from_reader<S: Sink<Error = io::Error>>(
     args: &ConvertArgs,
     fonts: &[FontArg],
-    html_bytes: &[u8],
+    mut reader: impl Read,
     sink: S,
 ) -> Result<S::Output, CliError> {
-    // 入力をUTF-8へ揃える(BOM > --encoding > <meta charset> > UTF-8)。
-    let html =
-        crate::html::decode_html(html_bytes, args.encoding.as_deref()).map_err(CliError::Usage)?;
     let (base_dir, base_href) = resolve_base(args)?;
 
     // CLIのページ設定は「初期値」であり、著者CSSの`@page`宣言があれば
@@ -197,7 +204,29 @@ fn render_with_sink<S: Sink<Error = io::Error>>(
     };
 
     let mut engine = Engine::new(engine_options, sink);
-    engine.feed(html.as_bytes()).map_err(engine_error)?;
+
+    // 入力をUTF-8へ揃えながら(BOM > --encoding > <meta charset> > UTF-8)、
+    // 読んだそばから`feed`する。
+    let mut decoder =
+        crate::html::StreamingDecoder::new(args.encoding.as_deref()).map_err(CliError::Usage)?;
+    let mut buffer = vec![0u8; FEED_CHUNK];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|e| CliError::Input(format!("入力の読み込みに失敗しました: {e}")))?;
+        if read == 0 {
+            break;
+        }
+        let text = decoder.push(&buffer[..read]);
+        if !text.is_empty() {
+            engine.feed(text.as_bytes()).map_err(engine_error)?;
+        }
+    }
+    let tail = decoder.finish();
+    if !tail.is_empty() {
+        engine.feed(tail.as_bytes()).map_err(engine_error)?;
+    }
+
     engine.finish().map_err(engine_error)
 }
 
@@ -231,18 +260,20 @@ fn read_optional_html(
     Ok(Some(placeholders.expand_keeping_page_tokens(&text)))
 }
 
-fn read_input(args: &ConvertArgs) -> Result<Vec<u8>, CliError> {
-    if args.reads_stdin() {
-        let mut buf = Vec::new();
-        io::stdin()
-            .read_to_end(&mut buf)
-            .map_err(|e| CliError::Input(format!("標準入力の読み込みに失敗しました: {e}")))?;
-        return Ok(buf);
-    }
+/// 入力の取得元。`Read`のまま扱うため、標準入力とファイルを分けて持つ。
+enum InputSource {
+    Stdin,
+    File(std::fs::File),
+}
 
+fn open_input(args: &ConvertArgs) -> Result<InputSource, CliError> {
+    if args.reads_stdin() {
+        return Ok(InputSource::Stdin);
+    }
     let path = PathBuf::from(args.input.as_deref().unwrap_or_default());
-    std::fs::read(&path)
-        .map_err(|e| CliError::Input(format!("{}の読み込みに失敗しました: {e}", path.display())))
+    let file = std::fs::File::open(&path)
+        .map_err(|e| CliError::Input(format!("{}の読み込みに失敗しました: {e}", path.display())))?;
+    Ok(InputSource::File(file))
 }
 
 /// 相対参照の解決基準を決める。

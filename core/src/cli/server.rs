@@ -8,7 +8,7 @@
 //!   CLIとサーバでオプションの解釈がずれない
 //! * ローカル/リモートの参照は既定で禁止し、リクエストからは緩められない(決定3)
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use clap::{CommandFactory, FromArgMatches};
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 
-use crate::sink::MemorySink;
+use crate::sink::{MemorySink, Sink};
 
 use super::options::{Cli, ConvertArgs, ServerArgs};
 use super::CliError;
@@ -138,6 +138,13 @@ fn handle_request(mut request: Request, ctx: &ServerContext) {
                 &format!("sghtmltopdf {}", env!("CARGO_PKG_VERSION")),
             );
         }
+        ("POST", "/pdf") if wants_chunked(&query) => {
+            if let Err((status, message)) = respond_chunked(request, &query, ctx) {
+                // respondより前に失敗した場合のみここへ来る(requestは消費済み
+                // ではない)。ここでの`request`は使えないのでログだけ残す。
+                eprintln!("エラー: {status} {message}");
+            }
+        }
         ("POST", "/pdf") => match render_request(&mut request, &query, ctx) {
             Ok(pdf) => {
                 let header = Header::from_bytes(&b"Content-Type"[..], &b"application/pdf"[..])
@@ -158,49 +165,217 @@ fn handle_request(mut request: Request, ctx: &ServerContext) {
     }
 }
 
+/// `?stream=1`(chunkedでのストリーミング返却)が要求されているか。
+fn wants_chunked(query: &str) -> bool {
+    parse_query(query)
+        .map(|pairs| {
+            pairs.iter().any(|(key, value)| {
+                key == "stream" && value.as_deref().map(is_true).unwrap_or(true)
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// `std::io::PipeWriter`へ書き出すSink。レンダリング側(push)と
+/// HTTPレスポンス側(pull)をつなぐ([0060]決定2)。
+struct PipeSink(std::io::PipeWriter);
+
+impl Sink for PipeSink {
+    type Output = ();
+    type Error = std::io::Error;
+
+    fn write(&mut self, bytes: &[u8]) -> Result<(), Self::Error> {
+        self.0.write_all(bytes)
+    }
+
+    fn finish(mut self) -> Result<Self::Output, Self::Error> {
+        self.0.flush()
+    }
+}
+
+/// `?stream=1`のときの応答。**ページが確定したそばからchunkedで流す**。
+///
+/// `tiny_http`の`Request`はボディ読み取り(`as_reader`が`&mut self`)と
+/// 応答(`respond`が`self`)が排他なので、**入力は先に読み切ってから**
+/// 出力を流す(入力ストリーミングとは同時に使えない、[0060]決定7)。
+///
+/// 既にヘッダを送ってしまうため、途中で失敗してもステータスは変えられない。
+/// その場合はパイプを閉じるだけになり、クライアントには不完全なPDFが届く。
+fn respond_chunked(
+    mut request: Request,
+    query: &str,
+    ctx: &ServerContext,
+) -> Result<(), (u16, String)> {
+    let too_large = || {
+        (
+            413,
+            format!("ボディが上限({}バイト)を超えています", ctx.max_body_size),
+        )
+    };
+    if let Some(len) = request.body_length() {
+        if len > ctx.max_body_size {
+            let _ = respond_text(request, 413, &too_large().1);
+            return Ok(());
+        }
+    }
+
+    let stripped = strip_stream_key(query);
+    let args = match build_convert_args(&stripped, &ctx.args) {
+        Ok(args) => args,
+        Err(message) => {
+            let _ = respond_text(request, 400, &message);
+            return Ok(());
+        }
+    };
+    let fonts = ctx.args.font_specs();
+
+    let mut html = Vec::new();
+    let read = request
+        .as_reader()
+        .take(ctx.max_body_size as u64 + 1)
+        .read_to_end(&mut html);
+    match read {
+        Ok(_) if html.len() > ctx.max_body_size => {
+            let _ = respond_text(request, 413, &too_large().1);
+            return Ok(());
+        }
+        Ok(_) if html.is_empty() => {
+            let _ = respond_text(request, 400, "ボディにHTMLを入れてください");
+            return Ok(());
+        }
+        Ok(_) => {}
+        Err(e) => {
+            let _ = respond_text(
+                request,
+                400,
+                &format!("ボディの読み込みに失敗しました: {e}"),
+            );
+            return Ok(());
+        }
+    }
+
+    let (pipe_reader, pipe_writer) = match std::io::pipe() {
+        Ok(pair) => pair,
+        Err(e) => {
+            let _ = respond_text(request, 500, &format!("パイプを作れませんでした: {e}"));
+            return Ok(());
+        }
+    };
+
+    // レンダリングは別スレッドで走らせ、書き出したそばからパイプへ流す。
+    // このスレッドはパイプの読み出し側をレスポンスとして返す。
+    std::thread::spawn(move || {
+        if let Err(e) = super::convert::render(
+            &args,
+            &fonts,
+            std::io::Cursor::new(html),
+            PipeSink(pipe_writer),
+        ) {
+            // ヘッダは送信済みなので、ここではログに残すことしかできない。
+            eprintln!("エラー: ストリーミング返却の途中で失敗しました: {e}");
+        }
+    });
+
+    let header = Header::from_bytes(&b"Content-Type"[..], &b"application/pdf"[..])
+        .expect("固定のヘッダー値なので必ず作れる");
+    // `data_length`を`None`にするとchunked transfer encodingになる。
+    let response = Response::new(StatusCode(200), vec![header], pipe_reader, None, None);
+    let _ = request.respond(response);
+    Ok(())
+}
+
+/// `stream`キーだけを取り除いたクエリ文字列(オプション解釈へは渡さない)。
+fn strip_stream_key(query: &str) -> String {
+    query
+        .split('&')
+        .filter(|pair| {
+            let key = pair.split('=').next().unwrap_or(pair);
+            key != "stream"
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+/// ボディを読みながらサイズ上限を数える`Read`ラッパー。
+///
+/// 上限を超えた時点でエラーを返し、`exceeded`を立てる。呼び出し側は
+/// この印を見て413を返す(エンジンから返るエラーの文言に依存しない)。
+struct LimitedReader<R> {
+    inner: R,
+    remaining: usize,
+    read_any: bool,
+    exceeded: bool,
+}
+
+impl<R: Read> Read for LimitedReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.remaining == 0 {
+            // 1バイトでも余分に読めたら超過。
+            let mut probe = [0u8; 1];
+            if self.inner.read(&mut probe)? > 0 {
+                self.exceeded = true;
+                return Err(std::io::Error::other("body too large"));
+            }
+            return Ok(0);
+        }
+        let limit = buf.len().min(self.remaining);
+        let read = self.inner.read(&mut buf[..limit])?;
+        self.remaining -= read;
+        if read > 0 {
+            self.read_any = true;
+        }
+        Ok(read)
+    }
+}
+
 /// 1リクエスト分の変換。エラーは(ステータス, メッセージ)で返す([0060]決定6)。
+///
+/// **ボディは読み切らずに`Engine::feed`へ流す**([0060]決定7)。
 fn render_request(
     request: &mut Request,
     query: &str,
     ctx: &ServerContext,
 ) -> Result<Vec<u8>, (u16, String)> {
+    let too_large = || {
+        (
+            413,
+            format!("ボディが上限({}バイト)を超えています", ctx.max_body_size),
+        )
+    };
+
     // ボディ長が分かる場合は読む前に弾く。
     if let Some(len) = request.body_length() {
         if len > ctx.max_body_size {
-            return Err((
-                413,
-                format!("ボディが上限({}バイト)を超えています", ctx.max_body_size),
-            ));
+            return Err(too_large());
         }
     }
 
-    let mut html = Vec::new();
-    request
-        .as_reader()
-        .take(ctx.max_body_size as u64 + 1)
-        .read_to_end(&mut html)
-        .map_err(|e| (400, format!("ボディの読み込みに失敗しました: {e}")))?;
-    if html.len() > ctx.max_body_size {
-        return Err((
-            413,
-            format!("ボディが上限({}バイト)を超えています", ctx.max_body_size),
-        ));
-    }
-    if html.is_empty() {
-        return Err((400, "ボディにHTMLを入れてください".to_string()));
-    }
-
+    // クエリのパースはボディを読む前に済ませる(不正なら読まずに400)。
     let args = build_convert_args(query, &ctx.args).map_err(|e| (400, e))?;
     let fonts = ctx.args.font_specs();
 
+    let mut reader = LimitedReader {
+        inner: request.as_reader(),
+        remaining: ctx.max_body_size,
+        read_any: false,
+        exceeded: false,
+    };
+
     let sink = MemorySink::new();
-    let pdf =
-        super::convert::render_to_memory(&args, &fonts, &html, sink).map_err(|e| match e {
-            CliError::Usage(msg) => (400, msg),
-            CliError::Input(msg) => (400, msg),
-            CliError::Render(msg) => (500, msg),
-        })?;
-    Ok(pdf)
+    let result = super::convert::render_to_memory(&args, &fonts, &mut reader, sink);
+
+    if reader.exceeded {
+        return Err(too_large());
+    }
+    if !reader.read_any {
+        return Err((400, "ボディにHTMLを入れてください".to_string()));
+    }
+
+    result.map_err(|e| match e {
+        CliError::Usage(msg) => (400, msg),
+        CliError::Input(msg) => (400, msg),
+        CliError::Render(msg) => (500, msg),
+    })
 }
 
 /// クエリ文字列をCLIの引数列へ変換し、同じclapパーサへ通す([0055]決定6)。

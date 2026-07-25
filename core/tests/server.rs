@@ -206,3 +206,70 @@ fn a_render_error_is_reported_as_a_server_error() {
     let status = status_of(ureq::post(server.url("/pdf?streaming")).send(html));
     assert_eq!(status, 500);
 }
+
+#[test]
+fn stream_query_switches_to_chunked_transfer_encoding() {
+    let server = TestServer::start(&[]);
+
+    // 既定はバッファ返却(Content-Lengthが付く)。
+    let buffered = ureq::post(server.url("/pdf")).send(HTML).unwrap();
+    assert!(
+        buffered.headers().get("content-length").is_some(),
+        "the default response should be buffered"
+    );
+
+    // `?stream=1`でchunkedになる([0060]決定2)。
+    let mut streamed = ureq::post(server.url("/pdf?stream=1")).send(HTML).unwrap();
+    assert_eq!(streamed.status().as_u16(), 200);
+    assert_eq!(
+        streamed
+            .headers()
+            .get("content-type")
+            .map(|v| v.to_str().unwrap()),
+        Some("application/pdf")
+    );
+
+    let pdf = streamed.body_mut().read_to_vec().unwrap();
+    assert!(pdf.starts_with(b"%PDF-"));
+    assert!(count_occurrences(&pdf, b"%%EOF") > 0);
+}
+
+#[test]
+fn other_query_options_still_apply_in_stream_mode() {
+    let server = TestServer::start(&[]);
+
+    let mut response = ureq::post(server.url("/pdf?stream=1&page-size=A5"))
+        .send(HTML)
+        .unwrap();
+    let pdf = response.body_mut().read_to_vec().unwrap();
+    assert!(
+        count_occurrences(&pdf, media_box(559.4, 793.7).as_bytes()) > 0,
+        "page-size must still be honored when streaming"
+    );
+}
+
+#[test]
+fn stream_mode_reports_errors_before_the_body_starts() {
+    let server = TestServer::start(&[]);
+
+    // クエリの不正・空ボディ・サイズ超過は、ヘッダを送る前に検出できるので
+    // 通常どおりのステータスで返る。
+    assert_eq!(
+        status_of(ureq::post(server.url("/pdf?stream=1&font=/etc/passwd")).send(HTML)),
+        400
+    );
+    assert_eq!(
+        status_of(ureq::post(server.url("/pdf?stream=1")).send("")),
+        400
+    );
+}
+
+#[test]
+fn a_too_large_body_is_rejected_in_stream_mode_too() {
+    let server = TestServer::start(&["--max-body-size", "128"]);
+    let big = "x".repeat(1024);
+    assert_eq!(
+        status_of(ureq::post(server.url("/pdf?stream=1")).send(big)),
+        413
+    );
+}

@@ -66,6 +66,13 @@ curl --data-binary @invoice.html \
 ファイル参照とリモート取得が既定で禁止**され、フォントや表紙などローカルパスを
 取るオプションはリクエストからは指定できません(起動時にのみ設定できます)。
 
+リクエストボディは読み切らずにエンジンへ流します。レスポンスも`?stream=1`を
+付けると**chunked transfer encoding**で、ページが確定したそばから返します。
+
+```sh
+curl --data-binary @big.html 'http://127.0.0.1:8080/pdf?stream=1&streaming' -o out.pdf
+```
+
 ### wkhtmltopdfからの移行で注意する点
 
 | | wkhtmltopdf | sghtmltopdf |
