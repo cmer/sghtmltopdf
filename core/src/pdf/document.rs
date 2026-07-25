@@ -434,6 +434,11 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
                 collect_usage(child, fonts, usages);
             }
         }
+        LaidOutContent::Grid(grid) => {
+            for child in grid.rows.iter().flat_map(|row| &row.items) {
+                collect_usage(child, fonts, usages);
+            }
+        }
         LaidOutContent::Inline(lines) => {
             for line in lines {
                 collect_line_usage(line, fonts, usages);
@@ -506,6 +511,11 @@ pub(super) fn collect_image_uses(
                 collect_image_uses(child, background_images, out);
             }
         }
+        LaidOutContent::Grid(grid) => {
+            for child in grid.rows.iter().flat_map(|row| &row.items) {
+                collect_image_uses(child, background_images, out);
+            }
+        }
         LaidOutContent::Table(table) => {
             if let Some(caption) = &table.caption {
                 collect_image_uses(caption, background_images, out);
@@ -561,6 +571,11 @@ pub(super) fn collect_link_areas(b: &LaidOutBox, settings: &PageSettings, out: &
     match &b.content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children {
+                collect_link_areas(child, settings, out);
+            }
+        }
+        LaidOutContent::Grid(grid) => {
+            for child in grid.rows.iter().flat_map(|row| &row.items) {
                 collect_link_areas(child, settings, out);
             }
         }
@@ -655,6 +670,11 @@ pub(super) fn collect_anchor_positions(
                 collect_anchor_positions(child, anchor_names, settings, out);
             }
         }
+        LaidOutContent::Grid(grid) => {
+            for child in grid.rows.iter().flat_map(|row| &row.items) {
+                collect_anchor_positions(child, anchor_names, settings, out);
+            }
+        }
         LaidOutContent::Table(table) => {
             if let Some(caption) = &table.caption {
                 collect_anchor_positions(caption, anchor_names, settings, out);
@@ -699,6 +719,11 @@ pub(super) fn collect_opacity_uses(
     match &b.content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children {
+                collect_opacity_uses(child, styles, out);
+            }
+        }
+        LaidOutContent::Grid(grid) => {
+            for child in grid.rows.iter().flat_map(|row| &row.items) {
                 collect_opacity_uses(child, styles, out);
             }
         }
@@ -1013,6 +1038,24 @@ fn render_box_with_style_inner(
                     );
                 }
             }
+            LaidOutContent::Grid(grid) => {
+                for child in grid.rows.iter().flat_map(|row| &row.items) {
+                    render_box(
+                        content,
+                        child,
+                        styles,
+                        fonts,
+                        settings,
+                        remaps,
+                        font_resource_names,
+                        image_ids,
+                        background_images,
+                        alpha_gs_names,
+                        opacity_form_ids,
+                        pending_forms,
+                    );
+                }
+            }
             LaidOutContent::Table(table) => {
                 if let Some(caption) = &table.caption {
                     render_box(
@@ -1110,6 +1153,24 @@ fn render_box_with_style_inner(
     match &b.content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in paint_order(children, styles) {
+                render_box(
+                    content,
+                    child,
+                    styles,
+                    fonts,
+                    settings,
+                    remaps,
+                    font_resource_names,
+                    image_ids,
+                    background_images,
+                    alpha_gs_names,
+                    opacity_form_ids,
+                    pending_forms,
+                );
+            }
+        }
+        LaidOutContent::Grid(grid) => {
+            for child in grid.rows.iter().flat_map(|row| &row.items) {
                 render_box(
                     content,
                     child,
@@ -1305,6 +1366,11 @@ fn laid_content_is_empty(content: &LaidOutContent) -> bool {
         LaidOutContent::Blocks(children) => {
             children.is_empty() || children.iter().all(|c| laid_content_is_empty(&c.content))
         }
+        LaidOutContent::Grid(grid) => grid
+            .rows
+            .iter()
+            .flat_map(|row| &row.items)
+            .all(|item| laid_content_is_empty(&item.content)),
         LaidOutContent::Table(_) | LaidOutContent::Flex(_) | LaidOutContent::Image(_) => false,
     }
 }

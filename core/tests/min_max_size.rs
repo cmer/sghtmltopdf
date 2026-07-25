@@ -48,6 +48,11 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             children.iter().find_map(|c| find_laid_out(c, target))
         }
+        LaidOutContent::Grid(grid) => grid
+            .rows
+            .iter()
+            .flat_map(|row| &row.items)
+            .find_map(|item| find_laid_out(item, target)),
         LaidOutContent::Inline(lines) => lines
             .iter()
             .flat_map(|line| line.atomics.iter())

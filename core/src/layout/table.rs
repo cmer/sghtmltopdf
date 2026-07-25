@@ -375,9 +375,12 @@ fn first_baseline_absolute_y(b: &LaidOutBox, fonts: &FontCollection) -> Option<f
         LaidOutContent::Blocks(children) => children
             .iter()
             .find_map(|child| first_baseline_absolute_y(child, fonts)),
-        // ネストしたテーブル・flex・置換要素はベースラインを提供しない
+        // ネストしたテーブル・flex・grid・置換要素はベースラインを提供しない
         // (既知の簡略化)。
-        LaidOutContent::Table(_) | LaidOutContent::Flex(_) | LaidOutContent::Image(_) => None,
+        LaidOutContent::Table(_)
+        | LaidOutContent::Flex(_)
+        | LaidOutContent::Grid(_)
+        | LaidOutContent::Image(_) => None,
     }
 }
 
@@ -665,9 +668,9 @@ pub(super) fn measure_natural_content_width(
                     + border.right
             })
             .fold(0.0f32, f32::max),
-        // ネストしたテーブル・flexの自然幅測定は非対応(既知の簡略化、
+        // ネストしたテーブル・flex・gridの自然幅測定は非対応(既知の簡略化、
         // [0034]決定2と同じ考え方)。
-        BoxContent::Table(_) | BoxContent::Flex(_) => 0.0,
+        BoxContent::Table(_) | BoxContent::Flex(_) | BoxContent::Grid(_) => 0.0,
         BoxContent::Image(image_content) => image_content
             .attr_width
             .map(|w| w as f32)
@@ -711,6 +714,11 @@ mod tests {
             super::super::block::LaidOutContent::Blocks(children) => children
                 .iter()
                 .find_map(|child| find_laid_out(child, target)),
+            super::super::block::LaidOutContent::Grid(grid) => grid
+                .rows
+                .iter()
+                .flat_map(|row| &row.items)
+                .find_map(|item| find_laid_out(item, target)),
             super::super::block::LaidOutContent::Table(table) => table
                 .caption
                 .as_deref()
@@ -799,6 +807,11 @@ mod tests {
             | super::super::block::LaidOutContent::Flex(children) => {
                 children.iter().find_map(find_nested_table)
             }
+            super::super::block::LaidOutContent::Grid(grid) => grid
+                .rows
+                .iter()
+                .flat_map(|row| &row.items)
+                .find_map(find_nested_table),
             super::super::block::LaidOutContent::Inline(_)
             | super::super::block::LaidOutContent::Image(_) => None,
         }

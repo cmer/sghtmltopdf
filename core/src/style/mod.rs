@@ -37,8 +37,9 @@ pub use values::{
     BackgroundPosition, BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, BoxSizing,
     BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display,
     EmphasisPosition, EmphasisShape, EmphasisStyle, EmptyCells, FlexBasis, FlexDirection, FlexWrap,
-    Float, FontStyle, FontWeight, Hyphens, JustifyContent, Length, LengthPercentage,
-    LengthPercentageOrAuto, ListStylePosition, ListStyleType, MaxSize, ObjectFit, Overflow,
-    OverflowWrap, Position, QuotePair, TableLayout, TextAlign, TextOverflow, TextTransform,
+    Float, FontStyle, FontWeight, GridArea, GridAutoFlow, GridLine, Hyphens, JustifyContent,
+    Length, LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, MaxSize,
+    ObjectFit, Overflow, OverflowWrap, Position, QuotePair, RepeatCount, TableLayout, TextAlign,
+    TextOverflow, TextTransform, TrackBreadth, TrackComponent, TrackList, TrackSize,
     TransformFunction, VerticalAlign, Visibility, WhiteSpace, WordBreak, ZIndex,
 };

@@ -38,6 +38,11 @@ fn pages_of(html_src: &str) -> Vec<Vec<String>> {
                     out.push(t);
                 }
             }
+            LaidOutContent::Grid(grid) => {
+                for c in grid.rows.iter().flat_map(|row| &row.items) {
+                    texts(c, out);
+                }
+            }
             LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
                 for c in children {
                     texts(c, out);

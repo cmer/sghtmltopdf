@@ -239,6 +239,11 @@ fn first_cell_texts_per_page(html_src: &str) -> Vec<Vec<String>> {
                     rows_of(c, out);
                 }
             }
+            LaidOutContent::Grid(grid) => {
+                for c in grid.rows.iter().flat_map(|row| &row.items) {
+                    rows_of(c, out);
+                }
+            }
             _ => {}
         }
     }

@@ -55,6 +55,9 @@ fn first_line(laid: &LaidOutBox) -> LineBox {
             LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
                 children.iter().find_map(walk)
             }
+            LaidOutContent::Grid(grid) => {
+                grid.rows.iter().flat_map(|row| &row.items).find_map(walk)
+            }
             _ => None,
         }
     }

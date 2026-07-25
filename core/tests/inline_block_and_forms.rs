@@ -48,6 +48,11 @@ fn all_lines(b: &LaidOutBox) -> Vec<LineBox> {
                     walk(c, out);
                 }
             }
+            LaidOutContent::Grid(grid) => {
+                for c in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(c, out);
+                }
+            }
             LaidOutContent::Table(table) => {
                 for row in &table.rows {
                     for cell in &row.cells {
@@ -80,6 +85,11 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             children.iter().find_map(|c| find_laid_out(c, target))
         }
+        LaidOutContent::Grid(grid) => grid
+            .rows
+            .iter()
+            .flat_map(|row| &row.items)
+            .find_map(|item| find_laid_out(item, target)),
         _ => None,
     }
 }

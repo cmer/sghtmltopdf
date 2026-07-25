@@ -51,6 +51,7 @@ pub enum BoxContent {
     Table(TableBox),
     /// `display: flex`要素の内容(flexアイテムの並び)。
     Flex(FlexBox),
+    Grid(GridBox),
     /// `<img>`要素(置換要素として扱う、[`resolve_images`]参照)。
     Image(ImageBoxContent),
 }
@@ -61,6 +62,13 @@ pub enum BoxContent {
 /// 無名ボックス生成規則は適用しない)。
 #[derive(Debug, Clone)]
 pub struct FlexBox {
+    pub items: Vec<LayoutBox>,
+}
+
+/// `display: grid`のコンテナ([0054](../../../docs/decisions/0054-grid-design.md)決定1)。
+/// 構造は[`FlexBox`]と同じで、レイアウト時に渡すtaffyの`Style`だけが異なる。
+#[derive(Debug, Clone)]
+pub struct GridBox {
     pub items: Vec<LayoutBox>,
 }
 
@@ -287,6 +295,15 @@ pub(crate) fn build_box_for_element(
             marker: None,
         });
     }
+    if style.display == Display::Grid {
+        return Some(LayoutBox {
+            node: Some(node),
+            content: BoxContent::Grid(GridBox {
+                items: build_flex_box(dom, styles, node).items,
+            }),
+            marker: None,
+        });
+    }
 
     let child_ids: Vec<NodeId> = dom.children(node).collect();
     let has_block_child = child_ids
@@ -358,6 +375,11 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
         }
         BoxContent::Flex(flex) => {
             for item in &mut flex.items {
+                resolve_images(item, dom, image_cache);
+            }
+        }
+        BoxContent::Grid(grid) => {
+            for item in &mut grid.items {
                 resolve_images(item, dom, image_cache);
             }
         }
@@ -977,7 +999,8 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
                 Some(Display::Block)
                 | Some(Display::Table)
                 | Some(Display::ListItem)
-                | Some(Display::Flex) => ChildKind::Block,
+                | Some(Display::Flex)
+                | Some(Display::Grid) => ChildKind::Block,
                 Some(Display::Inline) => ChildKind::Inline,
                 // table-row/table-cell/table-captionは`build_table_box`が専用に
                 // 探索するため、通常のブロック/インライン走査では(不正な
@@ -1156,6 +1179,7 @@ mod tests {
                         .find_map(|cell| find_inline_spans(&cell.content))
                 }),
             BoxContent::Flex(flex) => flex.items.iter().find_map(find_inline_spans),
+            BoxContent::Grid(grid) => grid.items.iter().find_map(find_inline_spans),
         }
     }
 

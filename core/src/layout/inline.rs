@@ -1690,6 +1690,7 @@ mod tests {
         match &b.content {
             BoxContent::Inline(spans) => Some(spans),
             BoxContent::Blocks(children) => children.iter().find_map(find_inline_spans),
+            BoxContent::Grid(grid) => grid.items.iter().find_map(find_inline_spans),
             BoxContent::Table(table) => table
                 .caption
                 .as_deref()

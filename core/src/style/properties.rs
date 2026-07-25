@@ -7,14 +7,15 @@ use super::values::{
     AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment, BackgroundRepeat,
     BorderCollapse, BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color,
     ContentPart, Display, EmphasisPosition, EmphasisShape, EmphasisStyle, EmptyCells,
-    FlexDirection, FlexWrap, Float, FontStyle, FontWeight, Hyphens, JustifyContent,
-    ListStylePosition, ListStyleType, ObjectFit, Overflow, OverflowWrap, Position, QuotePair,
-    SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow, SpecifiedCalc,
-    SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedMaxSize, SpecifiedSpacing,
-    SpecifiedTextShadow, SpecifiedTransformFunction, SpecifiedVerticalAlign, TableLayout,
-    TextAlign, TextDecorationLine, TextOverflow, TextTransform, Visibility, WhiteSpace, WordBreak,
-    ZIndex,
+    FlexDirection, FlexWrap, Float, FontStyle, FontWeight, GridArea, GridAutoFlow, GridLine,
+    Hyphens, JustifyContent, ListStylePosition, ListStyleType, ObjectFit, Overflow, OverflowWrap,
+    Position, QuotePair, RepeatCount, SpecifiedBackgroundPosition, SpecifiedBackgroundSize,
+    SpecifiedBoxShadow, SpecifiedCalc, SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight,
+    SpecifiedMaxSize, SpecifiedSpacing, SpecifiedTextShadow, SpecifiedTrackBreadth,
+    SpecifiedTrackComponent, SpecifiedTrackList, SpecifiedTrackSize, SpecifiedTransformFunction,
+    SpecifiedVerticalAlign, TableLayout, TextAlign, TextDecorationLine, TextOverflow,
+    TextTransform, Visibility, WhiteSpace, WordBreak, ZIndex,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -182,6 +183,25 @@ pub enum PropertyDeclaration {
     TextEmphasisStyle(EmphasisStyle),
     TextEmphasisColor(Color),
     TextEmphasisPosition(EmphasisPosition),
+    /// `grid-template-columns`/`grid-template-rows`([0054](
+    /// ../../../docs/decisions/0054-grid-design.md)決定3)。空の`TrackList`は`none`。
+    GridTemplateColumns(SpecifiedTrackList),
+    GridTemplateRows(SpecifiedTrackList),
+    /// `grid-auto-columns`/`grid-auto-rows`。空のVecは初期値`auto`。
+    GridAutoColumns(Vec<SpecifiedTrackSize>),
+    GridAutoRows(Vec<SpecifiedTrackSize>),
+    GridAutoFlow(GridAutoFlow),
+    /// `grid-template-areas`(決定4)。空のVecは`none`。
+    GridTemplateAreas(Vec<GridArea>),
+    /// `grid-row-start`等の配置(決定5)。
+    GridRowStart(GridLine),
+    GridRowEnd(GridLine),
+    GridColumnStart(GridLine),
+    GridColumnEnd(GridLine),
+    /// `justify-items`/`justify-self`(Grid専用、決定7)。値の集合は
+    /// `align-items`/`align-self`と共有する。
+    JustifyItems(AlignItems),
+    JustifySelf(AlignSelf),
 }
 
 /// プロパティ名から値をパースする。ショートハンド(`margin`/`padding`/`border`)は
@@ -350,6 +370,25 @@ pub fn parse_declaration<'i>(
             Ok(vec![D::TextEmphasisPosition(parse_text_emphasis_position(input)?)])
         },
         "text-emphasis" => parse_text_emphasis_shorthand(input),
+        "grid-template-columns" => {
+            Ok(vec![D::GridTemplateColumns(parse_track_list(input)?)])
+        },
+        "grid-template-rows" => Ok(vec![D::GridTemplateRows(parse_track_list(input)?)]),
+        "grid-auto-columns" => Ok(vec![D::GridAutoColumns(parse_auto_track_list(input)?)]),
+        "grid-auto-rows" => Ok(vec![D::GridAutoRows(parse_auto_track_list(input)?)]),
+        "grid-auto-flow" => Ok(vec![D::GridAutoFlow(parse_grid_auto_flow(input)?)]),
+        "grid-template-areas" => {
+            Ok(vec![D::GridTemplateAreas(parse_grid_template_areas(input)?)])
+        },
+        "grid-row-start" => Ok(vec![D::GridRowStart(parse_grid_line(input)?)]),
+        "grid-row-end" => Ok(vec![D::GridRowEnd(parse_grid_line(input)?)]),
+        "grid-column-start" => Ok(vec![D::GridColumnStart(parse_grid_line(input)?)]),
+        "grid-column-end" => Ok(vec![D::GridColumnEnd(parse_grid_line(input)?)]),
+        "grid-row" => parse_grid_row_shorthand(input),
+        "grid-column" => parse_grid_column_shorthand(input),
+        "grid-area" => parse_grid_area_shorthand(input),
+        "justify-items" => Ok(vec![D::JustifyItems(parse_align_items(input)?)]),
+        "justify-self" => Ok(vec![D::JustifySelf(parse_align_self(input)?)]),
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -859,6 +898,8 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "table-caption" => Display::TableCaption,
         "list-item" => Display::ListItem,
         "flex" => Display::Flex,
+        // `inline-grid`は非対応(`inline-flex`と同じ既知の簡略化、[0054]決定2)。
+        "grid" => Display::Grid,
         "none" => Display::None,
         _ => return Err(input.new_custom_error(())),
     })
@@ -2230,6 +2271,397 @@ fn parse_angle_radians<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError
         }
         _ => Err(input.new_custom_error(())),
     }
+}
+
+/// `grid-template-columns`/`grid-template-rows`([0054](
+/// ../../../docs/decisions/0054-grid-design.md)決定3)。
+/// `none | [ <line-names>? <track-size> | <repeat> ]+ <line-names>?`
+fn parse_track_list<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedTrackList, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(SpecifiedTrackList::default());
+    }
+
+    let mut components = Vec::new();
+    // ライン名はトラックの前後に置ける。`components.len() + 1`要素を保つ。
+    let mut line_names: Vec<Vec<String>> = vec![parse_line_names(input)];
+
+    loop {
+        if let Ok(repeat) = input.try_parse(parse_track_repeat) {
+            components.push(repeat);
+        } else if let Ok(size) = input.try_parse(parse_track_size) {
+            components.push(SpecifiedTrackComponent::Single(size));
+        } else {
+            break;
+        }
+        line_names.push(parse_line_names(input));
+    }
+
+    if components.is_empty() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(SpecifiedTrackList {
+        components,
+        line_names,
+    })
+}
+
+/// `[a b]`形式のライン名。無ければ空の`Vec`(トラック境界ごとに必ず1要素持つ)。
+fn parse_line_names(input: &mut Parser<'_, '_>) -> Vec<String> {
+    input
+        .try_parse(|input| {
+            input.expect_square_bracket_block()?;
+            input.parse_nested_block(|input| -> Result<Vec<String>, ParseError<'_, ()>> {
+                let mut names = Vec::new();
+                while let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+                    names.push(ident.as_ref().to_string());
+                }
+                Ok(names)
+            })
+        })
+        .unwrap_or_default()
+}
+
+/// `repeat( [ <integer> | auto-fill | auto-fit ] , <track-list> )`(決定3)。
+fn parse_track_repeat<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedTrackComponent, ParseError<'i, ()>> {
+    input.expect_function_matching("repeat")?;
+    input.parse_nested_block(|input| {
+        let count = if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+            match_ignore_ascii_case! { &ident,
+                "auto-fill" => RepeatCount::AutoFill,
+                "auto-fit" => RepeatCount::AutoFit,
+                _ => return Err(input.new_custom_error(())),
+            }
+        } else {
+            let count = input.expect_integer()?;
+            if count < 1 {
+                return Err(input.new_custom_error(()));
+            }
+            RepeatCount::Count(count as u16)
+        };
+        input.expect_comma()?;
+
+        let mut tracks = Vec::new();
+        let mut line_names: Vec<Vec<String>> = vec![parse_line_names(input)];
+        while let Ok(size) = input.try_parse(parse_track_size) {
+            tracks.push(size);
+            line_names.push(parse_line_names(input));
+        }
+        if tracks.is_empty() {
+            return Err(input.new_custom_error(()));
+        }
+        Ok(SpecifiedTrackComponent::Repeat {
+            count,
+            tracks,
+            line_names,
+        })
+    })
+}
+
+/// `<track-size> = <track-breadth> | minmax(<inflexible>, <track-breadth>) |
+/// fit-content(<length-percentage>)`(決定3)。
+fn parse_track_size<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedTrackSize, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_function_matching("minmax"))
+        .is_ok()
+    {
+        return input.parse_nested_block(|input| {
+            let min = parse_track_breadth(input)?;
+            // CSS仕様: minmax()の第1引数に`fr`は書けない。
+            if matches!(min, SpecifiedTrackBreadth::Fr(_)) {
+                return Err(input.new_custom_error(()));
+            }
+            input.expect_comma()?;
+            let max = parse_track_breadth(input)?;
+            Ok(SpecifiedTrackSize::MinMax(min, max))
+        });
+    }
+    if input
+        .try_parse(|input| input.expect_function_matching("fit-content"))
+        .is_ok()
+    {
+        return input.parse_nested_block(|input| {
+            Ok(SpecifiedTrackSize::FitContent(parse_length_percentage(
+                input,
+            )?))
+        });
+    }
+    Ok(SpecifiedTrackSize::Breadth(parse_track_breadth(input)?))
+}
+
+/// `<track-breadth> = <length-percentage> | <flex> | auto | min-content | max-content`。
+fn parse_track_breadth<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedTrackBreadth, ParseError<'i, ()>> {
+    if let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) {
+        return match_ignore_ascii_case! { &ident,
+            "auto" => Ok(SpecifiedTrackBreadth::Auto),
+            "min-content" => Ok(SpecifiedTrackBreadth::MinContent),
+            "max-content" => Ok(SpecifiedTrackBreadth::MaxContent),
+            _ => Err(input.new_custom_error(())),
+        };
+    }
+    // `<flex>`(`1fr`)。cssparserは`fr`付き数値をDimensionトークンとして返す。
+    if let Ok(fr) = input.try_parse(|input| -> Result<f32, ParseError<'i, ()>> {
+        let token = input.next()?.clone();
+        match token {
+            Token::Dimension {
+                value, ref unit, ..
+            } if unit.eq_ignore_ascii_case("fr") => {
+                if value < 0.0 {
+                    return Err(input.new_custom_error(()));
+                }
+                Ok(value)
+            }
+            _ => Err(input.new_custom_error(())),
+        }
+    }) {
+        return Ok(SpecifiedTrackBreadth::Fr(fr));
+    }
+
+    match parse_length_percentage(input)? {
+        SpecifiedLengthPercentage::Length(length) => Ok(SpecifiedTrackBreadth::Length(length)),
+        SpecifiedLengthPercentage::Percentage(v) => Ok(SpecifiedTrackBreadth::Percentage(v)),
+        // `calc()`のトラックサイズは非対応(taffyへ渡す型が複合値を持たない、
+        // 既知の簡略化)。
+        SpecifiedLengthPercentage::Calc(_) => Err(input.new_custom_error(())),
+    }
+}
+
+/// `grid-auto-columns`/`grid-auto-rows`。`<track-size>+`。
+fn parse_auto_track_list<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<SpecifiedTrackSize>, ParseError<'i, ()>> {
+    let mut sizes = Vec::new();
+    while let Ok(size) = input.try_parse(parse_track_size) {
+        sizes.push(size);
+    }
+    if sizes.is_empty() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(sizes)
+}
+
+/// `grid-auto-flow: [ row | column ] || dense`。
+fn parse_grid_auto_flow<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<GridAutoFlow, ParseError<'i, ()>> {
+    let mut column = None;
+    let mut dense = false;
+    loop {
+        let Ok(ident) = input.try_parse(|input| input.expect_ident_cloned()) else {
+            break;
+        };
+        match_ignore_ascii_case! { &ident,
+            "row" if column.is_none() => column = Some(false),
+            "column" if column.is_none() => column = Some(true),
+            "dense" if !dense => dense = true,
+            _ => return Err(input.new_custom_error(())),
+        }
+    }
+    if column.is_none() && !dense {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(match (column.unwrap_or(false), dense) {
+        (false, false) => GridAutoFlow::Row,
+        (false, true) => GridAutoFlow::RowDense,
+        (true, false) => GridAutoFlow::Column,
+        (true, true) => GridAutoFlow::ColumnDense,
+    })
+}
+
+/// `grid-row-start`等([0054]決定5)。
+/// `auto | <integer> | span <integer> | <custom-ident> | span <custom-ident>`
+fn parse_grid_line<'i>(input: &mut Parser<'i, '_>) -> Result<GridLine, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("auto"))
+        .is_ok()
+    {
+        return Ok(GridLine::Auto);
+    }
+    if input
+        .try_parse(|input| input.expect_ident_matching("span"))
+        .is_ok()
+    {
+        // `span <integer>`と`span <custom-ident> <integer>?`のどちらも受け付ける。
+        if let Ok(count) = input.try_parse(|input| input.expect_integer()) {
+            if count < 1 {
+                return Err(input.new_custom_error(()));
+            }
+            return Ok(GridLine::Span(count as u16));
+        }
+        let name = input.expect_ident()?.as_ref().to_string();
+        let count = input.try_parse(|input| input.expect_integer()).unwrap_or(1);
+        if count < 1 {
+            return Err(input.new_custom_error(()));
+        }
+        return Ok(GridLine::NamedSpan(name, count as u16));
+    }
+    if let Ok(line) = input.try_parse(|input| input.expect_integer()) {
+        // `0`は無効(CSS仕様、ライン番号は1始まりで負値は末尾から)。
+        if line == 0 {
+            return Err(input.new_custom_error(()));
+        }
+        return Ok(GridLine::Line(line as i16));
+    }
+    Ok(GridLine::Named(input.expect_ident()?.as_ref().to_string()))
+}
+
+/// `grid-row: <start> [/ <end>]?`。省略時の終端は`auto`(仕様通り)。
+fn parse_grid_row_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (start, end) = parse_grid_line_pair(input)?;
+    Ok(vec![D::GridRowStart(start), D::GridRowEnd(end)])
+}
+
+fn parse_grid_column_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (start, end) = parse_grid_line_pair(input)?;
+    Ok(vec![D::GridColumnStart(start), D::GridColumnEnd(end)])
+}
+
+fn parse_grid_line_pair<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<(GridLine, GridLine), ParseError<'i, ()>> {
+    let start = parse_grid_line(input)?;
+    let end = if input.try_parse(|input| input.expect_delim('/')).is_ok() {
+        parse_grid_line(input)?
+    } else {
+        // `grid-row: foo`のように名前付きラインを1つだけ書いた場合、終端も同じ
+        // 名前になる(CSS仕様)。それ以外は`auto`。
+        match &start {
+            GridLine::Named(name) => GridLine::Named(name.clone()),
+            _ => GridLine::Auto,
+        }
+    };
+    Ok((start, end))
+}
+
+/// `grid-area: <row-start> [/ <col-start> [/ <row-end> [/ <col-end>]]]`。
+fn parse_grid_area_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let row_start = parse_grid_line(input)?;
+
+    let mut slots = Vec::new();
+    while input.try_parse(|input| input.expect_delim('/')).is_ok() {
+        slots.push(parse_grid_line(input)?);
+    }
+
+    // 省略されたスロットは、対応する開始側が名前付きラインならその名前、
+    // それ以外は`auto`になる(CSS仕様)。
+    let fallback = |line: &GridLine| match line {
+        GridLine::Named(name) => GridLine::Named(name.clone()),
+        _ => GridLine::Auto,
+    };
+    let column_start = slots
+        .first()
+        .cloned()
+        .unwrap_or_else(|| fallback(&row_start));
+    let row_end = slots
+        .get(1)
+        .cloned()
+        .unwrap_or_else(|| fallback(&row_start));
+    let column_end = slots
+        .get(2)
+        .cloned()
+        .unwrap_or_else(|| fallback(&column_start));
+
+    Ok(vec![
+        D::GridRowStart(row_start),
+        D::GridColumnStart(column_start),
+        D::GridRowEnd(row_end),
+        D::GridColumnEnd(column_end),
+    ])
+}
+
+/// `grid-template-areas: none | <string>+`([0054]決定4)。
+/// 各行の列数が揃っていること・同じ名前のセルが矩形を成すことを検証し、
+/// 違反したら宣言ごと無視する(`Err`)。
+fn parse_grid_template_areas<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<GridArea>, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(Vec::new());
+    }
+
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    while let Ok(s) = input.try_parse(|input| input.expect_string_cloned()) {
+        rows.push(s.split_whitespace().map(|cell| cell.to_string()).collect());
+    }
+    if rows.is_empty() {
+        return Err(input.new_custom_error(()));
+    }
+
+    let column_count = rows[0].len();
+    if column_count == 0 || rows.iter().any(|row| row.len() != column_count) {
+        return Err(input.new_custom_error(()));
+    }
+
+    // 名前ごとに出現範囲(最小/最大の行・列)を集め、その矩形が隙間なく
+    // 埋まっているかを検証する。
+    let mut bounds: Vec<(String, usize, usize, usize, usize)> = Vec::new();
+    for (r, row) in rows.iter().enumerate() {
+        for (c, cell) in row.iter().enumerate() {
+            // `.`(1個以上の連続)は名前なしセル。
+            if cell.chars().all(|ch| ch == '.') {
+                continue;
+            }
+            match bounds.iter_mut().find(|(name, ..)| name == cell) {
+                Some((_, row_start, row_end, column_start, column_end)) => {
+                    *row_start = (*row_start).min(r);
+                    *row_end = (*row_end).max(r);
+                    *column_start = (*column_start).min(c);
+                    *column_end = (*column_end).max(c);
+                }
+                None => bounds.push((cell.clone(), r, r, c, c)),
+            }
+        }
+    }
+
+    for (name, row_start, row_end, column_start, column_end) in &bounds {
+        for row in rows.iter().take(row_end + 1).skip(*row_start) {
+            for cell in row.iter().take(column_end + 1).skip(*column_start) {
+                if cell != name {
+                    // 飛び地・L字形(矩形でない)は無効。
+                    return Err(input.new_custom_error(()));
+                }
+            }
+        }
+    }
+
+    Ok(bounds
+        .into_iter()
+        .map(
+            |(name, row_start, row_end, column_start, column_end)| GridArea {
+                name,
+                // taffyの`GridTemplateArea`は**1-indexedのグリッドライン番号**で
+                // 持つ(エリアの`-start`/`-end`暗黙ライン名がこの番号で登録される)。
+                // 0-indexedのセル座標から、開始は+1、終端は+2(終端セルの次の
+                // ライン)へ変換する。
+                row_start: row_start as u16 + 1,
+                row_end: row_end as u16 + 2,
+                column_start: column_start as u16 + 1,
+                column_end: column_end as u16 + 2,
+            },
+        )
+        .collect())
 }
 
 /// `text-shadow: none | <shadow>#`([0053](

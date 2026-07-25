@@ -5,6 +5,7 @@ mod box_tree;
 mod flex;
 mod float_ctx;
 mod geometry;
+mod grid;
 mod inline;
 mod page;
 mod paginate;

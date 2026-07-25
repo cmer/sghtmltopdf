@@ -45,6 +45,7 @@ use super::block::{
 use super::box_tree::TableSection;
 use super::box_tree::{build_box_tree, resolve_images};
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
+use super::grid::{LaidOutGrid, LaidOutGridRow};
 use super::inline::LineBox;
 use super::page::PageSettings;
 use crate::style::CaptionSide;
@@ -358,6 +359,11 @@ fn find_node_padding_origin(b: &LaidOutBox, node: NodeId) -> Option<(f32, f32)> 
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => children
             .iter()
             .find_map(|c| find_node_padding_origin(c, node)),
+        LaidOutContent::Grid(grid) => grid
+            .rows
+            .iter()
+            .flat_map(|row| &row.items)
+            .find_map(|item| find_node_padding_origin(item, node)),
         LaidOutContent::Table(table) => table
             .caption
             .as_deref()
@@ -481,9 +487,14 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
         }
         // flexコンテナはページ分割に対してアトミック(`display: table`と同じ
         // 扱い、[0034](../../../docs/decisions/0034-flexbox-design.md)決定3)。
+        // グリッドは行単位で分割する([0054](
+        // ../../../docs/decisions/0054-grid-design.md)決定6)が、断片ごとの
+        // 完了判定は`place_grid`が`FragmentPosition`で表現するため、ここでは
+        // テーブルと同じく再帰しない。
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
+        | LaidOutContent::Grid(_)
         | LaidOutContent::Image(_) => {}
     }
 }
@@ -541,6 +552,12 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
         // これが無いと、ページに収まらない行が描画されずに失われる。
         LaidOutContent::Table(table) if !table.rows.is_empty() => {
             place_table(b, table, page_height, state, cursor);
+            return;
+        }
+        // グリッドは行帯単位で分割する([0054](
+        // ../../../docs/decisions/0054-grid-design.md)決定6)。
+        LaidOutContent::Grid(grid) if grid.rows.len() > 1 => {
+            place_grid(b, grid, page_height, state, cursor);
             return;
         }
         LaidOutContent::Inline(lines) if lines.len() > 1 => {
@@ -610,10 +627,12 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        // flexコンテナはアトミック([0034]決定3)。
+        // flexコンテナはアトミック([0034]決定3)。グリッドの行分割は
+        // `place_grid`が担うため、ここでは再帰しない([0054]決定6)。
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
+        | LaidOutContent::Grid(_)
         | LaidOutContent::Image(_) => false,
     }
 }
@@ -1024,6 +1043,130 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
 /// `LaidOutBox`)にまとめる(決定1)。断片はテーブル自身のノードとジオメトリを
 /// 引き継ぎ、`content.y`/`content.height`と`FragmentPosition`だけを差し替える
 /// (決定2)。
+/// グリッドコンテナを行帯単位でページへ配置する([0054](
+/// ../../../docs/decisions/0054-grid-design.md)決定6)。`place_table`と同じ
+/// 「断片を組み立てて確定する」構造で、単位が行帯になる。
+///
+/// 行帯の下端をまたぐアイテム(複数行にまたがるグリッドアイテム)がある境界では
+/// 分割しない(テーブルの`rowspan`と同じ扱い)。
+fn place_grid(
+    b: &LaidOutBox,
+    grid: &LaidOutGrid,
+    page_height: f32,
+    state: &mut PaginationState<'_>,
+    cursor: &mut f32,
+) {
+    let top_extra = container_top_extra(b);
+    let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
+
+    let mut pending: Vec<LaidOutGridRow> = Vec::new();
+    let mut shift = 0.0f32;
+    let mut fragment_top = 0.0f32;
+    let mut is_first_fragment = true;
+
+    // 最初の断片の前に、コンテナ自身の上マージン/枠線/パディング分を確保する
+    // (`place_split`/`place_table`と同じ扱い)。
+    *cursor += top_extra;
+
+    for (index, row) in grid.rows.iter().enumerate() {
+        if pending.is_empty() {
+            fragment_top = *cursor;
+            shift = row.top - *cursor;
+        }
+
+        // 直前の行帯からまたいでいるアイテムがあると、その境界では切れない。
+        let can_break_before = index > 0 && !grid.rows[index - 1].spans_bottom;
+        let row_bottom_on_page = row.bottom - shift;
+        if row_bottom_on_page > page_height && !pending.is_empty() && can_break_before {
+            flush_grid_fragment(
+                b,
+                &mut pending,
+                fragment_top,
+                *cursor,
+                is_first_fragment,
+                false,
+                state,
+            );
+            is_first_fragment = false;
+            new_page(state, cursor);
+            fragment_top = *cursor;
+            shift = row.top - *cursor;
+        }
+
+        pending.push(shift_grid_row_y(row, shift));
+        *cursor = row.bottom - shift;
+    }
+
+    flush_grid_fragment(
+        b,
+        &mut pending,
+        fragment_top,
+        *cursor,
+        is_first_fragment,
+        true,
+        state,
+    );
+    *cursor += bottom_extra;
+}
+
+/// 行帯とその中のアイテムをまとめてY方向へ平行移動する。
+fn shift_grid_row_y(row: &LaidOutGridRow, delta: f32) -> LaidOutGridRow {
+    LaidOutGridRow {
+        items: row
+            .items
+            .iter()
+            .map(|item| shift_box_y(item, -delta))
+            .collect(),
+        top: row.top - delta,
+        bottom: row.bottom - delta,
+        spans_bottom: row.spans_bottom,
+    }
+}
+
+/// [`place_grid`]が組み立てた行帯群を1つの断片としてページへ積む。
+fn flush_grid_fragment(
+    b: &LaidOutBox,
+    rows: &mut Vec<LaidOutGridRow>,
+    fragment_top: f32,
+    fragment_bottom: f32,
+    is_first: bool,
+    is_last: bool,
+    state: &mut PaginationState<'_>,
+) {
+    if rows.is_empty() {
+        return;
+    }
+
+    let mut layout = b.layout;
+    layout.content.y =
+        fragment_top + b.layout.margin.top + b.layout.border.top + b.layout.padding.top;
+    layout.content.height = (fragment_bottom
+        - fragment_top
+        - b.layout.margin.top
+        - b.layout.border.top
+        - b.layout.padding.top)
+        .max(0.0);
+    layout.fragment = match (is_first, is_last) {
+        (true, true) => FragmentPosition::Whole,
+        (true, false) => FragmentPosition::First,
+        (false, true) => FragmentPosition::Last,
+        (false, false) => FragmentPosition::Middle,
+    };
+
+    let fragment = LaidOutBox {
+        node: b.node,
+        layout,
+        fragmentation: FragmentationHints::default(),
+        is_float: b.is_float,
+        marker: None,
+        has_visible_decoration: b.has_visible_decoration,
+        content: LaidOutContent::Grid(LaidOutGrid {
+            rows: std::mem::take(rows),
+        }),
+    };
+    state.last_mut().boxes.push(fragment);
+}
+
 fn place_table(
     b: &LaidOutBox,
     table: &LaidOutTable,
@@ -1885,7 +2028,10 @@ mod tests {
         match &b.content {
             LaidOutContent::Inline(lines) => lines.len(),
             LaidOutContent::Blocks(children) => children.iter().map(count_inline_lines).sum(),
-            LaidOutContent::Table(_) | LaidOutContent::Flex(_) | LaidOutContent::Image(_) => 0,
+            LaidOutContent::Table(_)
+            | LaidOutContent::Flex(_)
+            | LaidOutContent::Grid(_)
+            | LaidOutContent::Image(_) => 0,
         }
     }
 

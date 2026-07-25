@@ -26,6 +26,7 @@ use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox, TableSection};
 use super::flex::layout_flex;
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
+use super::grid::{layout_grid, LaidOutGrid};
 use super::inline::{apply_text_overflow, finish_line, layout_inline_content, shape_run, LineBox};
 use super::table::layout_table;
 
@@ -104,6 +105,9 @@ pub enum LaidOutContent {
     /// 既にレイアウト済みの`LaidOutBox`の並び)で十分なため、`Table`のような
     /// 専用構造体は作らない([0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
     Flex(Vec<LaidOutBox>),
+    /// `display: grid`。ページ分割の単位である行帯を持つ([0054](
+    /// ../../../docs/decisions/0054-grid-design.md)決定6)。
+    Grid(LaidOutGrid),
     /// `<img>`。フェッチ・デコードに失敗していれば`None`
     /// (空の置換要素として扱い、何も描画しない)。
     Image(Option<Rc<PreparedImage>>),
@@ -858,6 +862,22 @@ fn layout_box_impl(
                 resolve_used_height(&style, &padding, &border, content_width, table_height);
             (LaidOutContent::Table(laid_table), height)
         }
+        BoxContent::Grid(grid) => {
+            // グリッドコンテナもflex/tableと同様に新しいフォーマッティング
+            // コンテキストを確立する([0054](
+            // ../../../docs/decisions/0054-grid-design.md)決定1)。
+            let (laid_grid, grid_height) = layout_grid(
+                grid,
+                styles,
+                fonts,
+                &style,
+                content_width,
+                content_x,
+                content_y,
+            );
+            let height = resolve_used_height(&style, &padding, &border, content_width, grid_height);
+            (LaidOutContent::Grid(laid_grid), height)
+        }
         BoxContent::Flex(flex) => {
             // `display: table`と同様、flexコンテナは新しいフォーマッティング
             // コンテキストを確立する(`float`はflexアイテムに効果を持たない、
@@ -1410,6 +1430,7 @@ fn apply_margin_collapse(
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => children.is_empty(),
         // 子を持たない`<div></div>`は`Inline`(空)になる。
         LaidOutContent::Inline(lines) => lines.is_empty(),
+        LaidOutContent::Grid(grid) => grid.rows.iter().all(|row| row.items.is_empty()),
         LaidOutContent::Table(_) | LaidOutContent::Image(_) => false,
     };
     let is_empty_block = *content_height == 0.0
@@ -1621,6 +1642,13 @@ pub(super) fn shift_box_x(b: &LaidOutBox, delta: f32) -> LaidOutBox {
                 *child = shift_box_x(child, delta);
             }
         }
+        LaidOutContent::Grid(grid) => {
+            for row in grid.rows.iter_mut() {
+                for item in row.items.iter_mut() {
+                    *item = shift_box_x(item, delta);
+                }
+            }
+        }
         LaidOutContent::Inline(lines) => {
             for line in lines.iter_mut() {
                 line.rect.x += delta;
@@ -1655,6 +1683,15 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children.iter_mut() {
                 *child = shift_box_y(child, delta);
+            }
+        }
+        LaidOutContent::Grid(grid) => {
+            for row in grid.rows.iter_mut() {
+                row.top += delta;
+                row.bottom += delta;
+                for item in row.items.iter_mut() {
+                    *item = shift_box_y(item, delta);
+                }
             }
         }
         LaidOutContent::Inline(lines) => {
@@ -1701,6 +1738,15 @@ pub(super) fn shift_content_vertical(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children.iter_mut() {
                 *child = shift_box_y(child, delta);
+            }
+        }
+        LaidOutContent::Grid(grid) => {
+            for row in grid.rows.iter_mut() {
+                row.top += delta;
+                row.bottom += delta;
+                for item in row.items.iter_mut() {
+                    *item = shift_box_y(item, delta);
+                }
             }
         }
         LaidOutContent::Inline(lines) => {
@@ -1829,6 +1875,7 @@ mod tests {
             BoxContent::Blocks(_)
             | BoxContent::Table(_)
             | BoxContent::Flex(_)
+            | BoxContent::Grid(_)
             | BoxContent::Image(_) => {
                 panic!("expected inline content")
             }

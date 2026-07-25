@@ -21,12 +21,13 @@ use super::values::{
     BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
     BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display, EmphasisPosition,
     EmphasisStyle, EmptyCells, FlexBasis, FlexDirection, FlexWrap, Float, FontStyle, FontWeight,
-    Hyphens, JustifyContent, Length, LengthPercentage, LengthPercentageOrAuto, ListStylePosition,
-    ListStyleType, MaxSize, ObjectFit, Overflow, OverflowWrap, Position, QuotePair,
-    SpecifiedCornerRadius, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedMaxSize, TableLayout, TextAlign,
-    TextDecorationLine, TextOverflow, TextTransform, TransformFunction, VerticalAlign, Visibility,
-    WhiteSpace, WordBreak, ZIndex,
+    GridArea, GridAutoFlow, GridLine, Hyphens, JustifyContent, Length, LengthPercentage,
+    LengthPercentageOrAuto, ListStylePosition, ListStyleType, MaxSize, ObjectFit, Overflow,
+    OverflowWrap, Position, QuotePair, SpecifiedCornerRadius, SpecifiedLength,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight,
+    SpecifiedMaxSize, SpecifiedTrackSize, TableLayout, TextAlign, TextDecorationLine, TextOverflow,
+    TextTransform, TrackList, TrackSize, TransformFunction, VerticalAlign, Visibility, WhiteSpace,
+    WordBreak, ZIndex,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -196,6 +197,26 @@ pub struct ComputedStyle {
     pub text_emphasis_color: RgbaColor,
     /// `text-emphasis-position`。継承プロパティ、初期値`over`。
     pub text_emphasis_position: EmphasisPosition,
+    /// `grid-template-columns`/`grid-template-rows`。非継承プロパティ、
+    /// 空なら`none`([0054](../../../docs/decisions/0054-grid-design.md)決定3)。
+    pub grid_template_columns: TrackList,
+    pub grid_template_rows: TrackList,
+    /// `grid-auto-columns`/`grid-auto-rows`。非継承、空なら初期値`auto`。
+    pub grid_auto_columns: Vec<TrackSize>,
+    pub grid_auto_rows: Vec<TrackSize>,
+    /// `grid-auto-flow`。非継承、初期値`row`。
+    pub grid_auto_flow: GridAutoFlow,
+    /// `grid-template-areas`。非継承、空なら`none`(決定4)。
+    pub grid_template_areas: Vec<GridArea>,
+    /// `grid-row-start`等。非継承、初期値`auto`(決定5)。
+    pub grid_row_start: GridLine,
+    pub grid_row_end: GridLine,
+    pub grid_column_start: GridLine,
+    pub grid_column_end: GridLine,
+    /// `justify-items`/`justify-self`。非継承。**Gridでのみ意味を持つ**
+    /// (flexアイテムには適用されない、決定7)。
+    pub justify_items: AlignItems,
+    pub justify_self: AlignSelf,
     /// `border-collapse`。継承プロパティ。見た目の枠線描画のみ統合する
     /// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定1)。
     pub border_collapse: BorderCollapse,
@@ -303,6 +324,18 @@ pub struct ComputedBoxShadow {
     pub color: RgbaColor,
     /// `inset`キーワード。パースはするが描画は非対応(決定1、既知の簡略化)。
     pub inset: bool,
+}
+
+/// `grid-auto-columns`/`grid-auto-rows`の`em`/`rem`解決。
+fn resolve_track_sizes(
+    sizes: &[SpecifiedTrackSize],
+    font_size: f32,
+    root_font_size: f32,
+) -> Vec<TrackSize> {
+    sizes
+        .iter()
+        .map(|size| size.resolve(font_size, root_font_size))
+        .collect()
 }
 
 /// `text-shadow`1つ分の計算値。長さはpx解決済み、`color`は`currentcolor`を
@@ -451,6 +484,20 @@ impl Default for ComputedStyle {
                 alpha: 1.0,
             },
             text_emphasis_position: EmphasisPosition::Over,
+            grid_template_columns: TrackList::default(),
+            grid_template_rows: TrackList::default(),
+            grid_auto_columns: Vec::new(),
+            grid_auto_rows: Vec::new(),
+            grid_auto_flow: GridAutoFlow::Row,
+            grid_template_areas: Vec::new(),
+            grid_row_start: GridLine::Auto,
+            grid_row_end: GridLine::Auto,
+            grid_column_start: GridLine::Auto,
+            grid_column_end: GridLine::Auto,
+            // `justify-items`の初期値は`legacy`(実質`stretch`)、
+            // `justify-self`は`auto`(親の`justify-items`に従う)。
+            justify_items: AlignItems::Stretch,
+            justify_self: AlignSelf::Auto,
             border_collapse: BorderCollapse::Separate,
             border_spacing_horizontal: Length(0.0),
             border_spacing_vertical: Length(0.0),
@@ -816,6 +863,18 @@ fn compute_element_style(
     let mut text_emphasis_style = None;
     let mut text_emphasis_color = None;
     let mut text_emphasis_position = None;
+    let mut grid_template_columns = None;
+    let mut grid_template_rows = None;
+    let mut grid_auto_columns = None;
+    let mut grid_auto_rows = None;
+    let mut grid_auto_flow = None;
+    let mut grid_template_areas = None;
+    let mut grid_row_start = None;
+    let mut grid_row_end = None;
+    let mut grid_column_start = None;
+    let mut grid_column_end = None;
+    let mut justify_items = None;
+    let mut justify_self = None;
     let mut border_collapse = None;
     let mut border_spacing = None;
     let mut caption_side = None;
@@ -946,6 +1005,18 @@ fn compute_element_style(
             PropertyDeclaration::TextEmphasisStyle(v) => text_emphasis_style = Some(v.clone()),
             PropertyDeclaration::TextEmphasisColor(v) => text_emphasis_color = Some(*v),
             PropertyDeclaration::TextEmphasisPosition(v) => text_emphasis_position = Some(*v),
+            PropertyDeclaration::GridTemplateColumns(v) => grid_template_columns = Some(v.clone()),
+            PropertyDeclaration::GridTemplateRows(v) => grid_template_rows = Some(v.clone()),
+            PropertyDeclaration::GridAutoColumns(v) => grid_auto_columns = Some(v.clone()),
+            PropertyDeclaration::GridAutoRows(v) => grid_auto_rows = Some(v.clone()),
+            PropertyDeclaration::GridAutoFlow(v) => grid_auto_flow = Some(*v),
+            PropertyDeclaration::GridTemplateAreas(v) => grid_template_areas = Some(v.clone()),
+            PropertyDeclaration::GridRowStart(v) => grid_row_start = Some(v.clone()),
+            PropertyDeclaration::GridRowEnd(v) => grid_row_end = Some(v.clone()),
+            PropertyDeclaration::GridColumnStart(v) => grid_column_start = Some(v.clone()),
+            PropertyDeclaration::GridColumnEnd(v) => grid_column_end = Some(v.clone()),
+            PropertyDeclaration::JustifyItems(v) => justify_items = Some(*v),
+            PropertyDeclaration::JustifySelf(v) => justify_self = Some(*v),
             PropertyDeclaration::BorderCollapse(v) => border_collapse = Some(*v),
             PropertyDeclaration::BorderSpacing(h, v) => border_spacing = Some((*h, *v)),
             PropertyDeclaration::CaptionSide(v) => caption_side = Some(*v),
@@ -1350,6 +1421,26 @@ fn compute_element_style(
         text_emphasis_style: text_emphasis_style.unwrap_or(inherited_emphasis_style),
         text_emphasis_color: resolved_text_emphasis_color,
         text_emphasis_position: text_emphasis_position.unwrap_or(inherited_emphasis_position),
+        grid_template_columns: grid_template_columns
+            .map(|list| list.resolve(own_font_size, root_font_size))
+            .unwrap_or_default(),
+        grid_template_rows: grid_template_rows
+            .map(|list| list.resolve(own_font_size, root_font_size))
+            .unwrap_or_default(),
+        grid_auto_columns: grid_auto_columns
+            .map(|sizes| resolve_track_sizes(&sizes, own_font_size, root_font_size))
+            .unwrap_or_default(),
+        grid_auto_rows: grid_auto_rows
+            .map(|sizes| resolve_track_sizes(&sizes, own_font_size, root_font_size))
+            .unwrap_or_default(),
+        grid_auto_flow: grid_auto_flow.unwrap_or(initial.grid_auto_flow),
+        grid_template_areas: grid_template_areas.unwrap_or_default(),
+        grid_row_start: grid_row_start.unwrap_or(GridLine::Auto),
+        grid_row_end: grid_row_end.unwrap_or(GridLine::Auto),
+        grid_column_start: grid_column_start.unwrap_or(GridLine::Auto),
+        grid_column_end: grid_column_end.unwrap_or(GridLine::Auto),
+        justify_items: justify_items.unwrap_or(initial.justify_items),
+        justify_self: justify_self.unwrap_or(initial.justify_self),
         border_collapse: border_collapse.unwrap_or(inherited_border_collapse),
         border_spacing_horizontal: resolved_border_spacing_horizontal,
         border_spacing_vertical: resolved_border_spacing_vertical,

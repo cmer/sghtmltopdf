@@ -34,6 +34,9 @@ pub enum Display {
     /// [0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
     /// `inline-flex`は非対応(決定4、既知の簡略化)。
     Flex,
+    /// `display: grid`([0054](../../../docs/decisions/0054-grid-design.md))。
+    /// `inline-grid`は非対応(`inline-flex`と同じ理由)。
+    Grid,
     None,
 }
 
@@ -159,6 +162,95 @@ pub enum WhiteSpace {
     Normal,
     Nowrap,
     Pre,
+}
+
+/// `<track-breadth>`の計算値([0054](../../../docs/decisions/0054-grid-design.md)決定3)。
+/// 長さはpx解決済み。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrackBreadth {
+    Length(f32),
+    /// パーセンテージ(50% = 0.5)。
+    Percentage(f32),
+    /// `<flex>`(`1fr`)。トラックの伸長係数。
+    Fr(f32),
+    Auto,
+    MinContent,
+    MaxContent,
+}
+
+/// `<track-size>`の計算値。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrackSize {
+    Breadth(TrackBreadth),
+    /// `minmax(min, max)`。CSS仕様上、min側に`fr`は書けない(パースで拒否する)。
+    MinMax(TrackBreadth, TrackBreadth),
+    /// `fit-content(<length-percentage>)`。
+    FitContent(LengthPercentage),
+}
+
+/// `repeat()`の繰り返し回数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepeatCount {
+    Count(u16),
+    AutoFill,
+    AutoFit,
+}
+
+/// `<track-list>`の1要素(単一トラック、または`repeat()`)。
+#[derive(Debug, Clone, PartialEq)]
+pub enum TrackComponent {
+    Single(TrackSize),
+    Repeat {
+        count: RepeatCount,
+        tracks: Vec<TrackSize>,
+        /// 繰り返しトラック間のライン名(`tracks.len() + 1`要素)。
+        line_names: Vec<Vec<String>>,
+    },
+}
+
+/// `grid-template-columns`/`grid-template-rows`の計算値。空なら`none`。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TrackList {
+    pub components: Vec<TrackComponent>,
+    /// トラックの前後に置かれたライン名(`[name]`)。`components.len() + 1`要素。
+    pub line_names: Vec<Vec<String>>,
+}
+
+/// `grid-row-start`等の配置指定([0054]決定5)。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum GridLine {
+    #[default]
+    Auto,
+    /// 1-indexedのライン番号(負値は末尾からの数え)。
+    Line(i16),
+    /// `span <integer>`。
+    Span(u16),
+    /// 名前付きライン(`grid-template-areas`が暗黙に作る`foo-start`等も含む)。
+    Named(String),
+    /// `span <custom-ident>`。
+    NamedSpan(String, u16),
+}
+
+/// `grid-auto-flow`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GridAutoFlow {
+    #[default]
+    Row,
+    Column,
+    RowDense,
+    ColumnDense,
+}
+
+/// `grid-template-areas`が定義する名前付きエリア1つ分([0054]決定4)。
+/// 行・列は**1-indexedのグリッドライン番号**(taffyの`GridTemplateArea`と
+/// 同じ規約で、`row_end`/`column_end`は終端セルの**次のライン**を指す)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct GridArea {
+    pub name: String,
+    pub row_start: u16,
+    pub row_end: u16,
+    pub column_start: u16,
+    pub column_end: u16,
 }
 
 /// `word-break`([0053](../../../docs/decisions/0053-text-details-design.md)決定3)。
@@ -653,6 +745,101 @@ pub enum MaxSize {
     #[default]
     None,
     LengthPercentage(LengthPercentage),
+}
+
+/// パース直後の`<track-breadth>`([0054](
+/// ../../../docs/decisions/0054-grid-design.md)決定3)。長さは`em`/`rem`未解決。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedTrackBreadth {
+    Length(SpecifiedLength),
+    Percentage(f32),
+    Fr(f32),
+    Auto,
+    MinContent,
+    MaxContent,
+}
+
+impl SpecifiedTrackBreadth {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> TrackBreadth {
+        match self {
+            Self::Length(length) => {
+                TrackBreadth::Length(length.resolve(font_size, root_font_size).0)
+            }
+            Self::Percentage(v) => TrackBreadth::Percentage(v),
+            Self::Fr(v) => TrackBreadth::Fr(v),
+            Self::Auto => TrackBreadth::Auto,
+            Self::MinContent => TrackBreadth::MinContent,
+            Self::MaxContent => TrackBreadth::MaxContent,
+        }
+    }
+}
+
+/// パース直後の`<track-size>`。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedTrackSize {
+    Breadth(SpecifiedTrackBreadth),
+    MinMax(SpecifiedTrackBreadth, SpecifiedTrackBreadth),
+    FitContent(SpecifiedLengthPercentage),
+}
+
+impl SpecifiedTrackSize {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> TrackSize {
+        match self {
+            Self::Breadth(b) => TrackSize::Breadth(b.resolve(font_size, root_font_size)),
+            Self::MinMax(min, max) => TrackSize::MinMax(
+                min.resolve(font_size, root_font_size),
+                max.resolve(font_size, root_font_size),
+            ),
+            Self::FitContent(lp) => TrackSize::FitContent(lp.resolve(font_size, root_font_size)),
+        }
+    }
+}
+
+/// パース直後の`<track-list>`の1要素。
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpecifiedTrackComponent {
+    Single(SpecifiedTrackSize),
+    Repeat {
+        count: RepeatCount,
+        tracks: Vec<SpecifiedTrackSize>,
+        line_names: Vec<Vec<String>>,
+    },
+}
+
+/// パース直後の`grid-template-columns`/`-rows`。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SpecifiedTrackList {
+    pub components: Vec<SpecifiedTrackComponent>,
+    pub line_names: Vec<Vec<String>>,
+}
+
+impl SpecifiedTrackList {
+    pub fn resolve(&self, font_size: f32, root_font_size: f32) -> TrackList {
+        TrackList {
+            components: self
+                .components
+                .iter()
+                .map(|component| match component {
+                    SpecifiedTrackComponent::Single(size) => {
+                        TrackComponent::Single(size.resolve(font_size, root_font_size))
+                    }
+                    SpecifiedTrackComponent::Repeat {
+                        count,
+                        tracks,
+                        line_names,
+                    } => TrackComponent::Repeat {
+                        count: *count,
+                        tracks: tracks
+                            .iter()
+                            .map(|size| size.resolve(font_size, root_font_size))
+                            .collect(),
+                        line_names: line_names.clone(),
+                    },
+                })
+                .collect(),
+            line_names: self.line_names.clone(),
+        }
+    }
 }
 
 /// `aspect-ratio: auto || <ratio>`([0052](

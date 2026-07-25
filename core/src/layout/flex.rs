@@ -28,7 +28,7 @@ use super::block::{
     box_style, layout_box_with_forced_size_ignoring_positioned,
     layout_box_with_forced_width_ignoring_positioned, resolve_border, resolve_padding, LaidOutBox,
 };
-use super::box_tree::FlexBox;
+use super::box_tree::{FlexBox, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::table::measure_natural_content_width;
 
@@ -45,24 +45,85 @@ pub(super) fn layout_flex(
     content_x: f32,
     content_y: f32,
 ) -> (Vec<LaidOutBox>, f32) {
-    if flex.items.is_empty() {
-        return (Vec::new(), 0.0);
+    let result = layout_taffy_subtree(
+        &flex.items,
+        styles,
+        fonts,
+        container_style,
+        content_width,
+        content_x,
+        content_y,
+        TaffyMode::Flex,
+    );
+    (result.items, result.container_height)
+}
+
+/// taffyへ委譲するレイアウトの種類([0054](
+/// ../../../docs/decisions/0054-grid-design.md)決定1)。コンテナ/アイテムへ渡す
+/// `Style`だけが変わり、採寸ブリッジと座標変換は共通。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TaffyMode {
+    Flex,
+    Grid,
+}
+
+/// [`layout_taffy_subtree`]の結果。
+pub(super) struct TaffySubtreeLayout {
+    pub items: Vec<LaidOutBox>,
+    /// コンテナの自然な(内容に基づく)content-box高さ。
+    pub container_height: f32,
+    /// Gridのときのみ、行トラックの使用サイズとガター(ページ分割用、決定6)。
+    pub row_tracks: Option<GridRowTracks>,
+}
+
+/// グリッドの行トラック情報(taffyの`DetailedGridInfo`由来)。
+/// `gutters`はトラックの前後に1つずつ入るため`sizes.len() + 1`要素。
+pub(super) struct GridRowTracks {
+    pub sizes: Vec<f32>,
+    pub gutters: Vec<f32>,
+}
+
+/// flex/gridのアイテム群をtaffyでレイアウトし、既存の`LaidOutBox`へ変換する
+/// ([0034](../../../docs/decisions/0034-flexbox-design.md)決定2の2パス方式)。
+#[allow(clippy::too_many_arguments)]
+pub(super) fn layout_taffy_subtree(
+    flex_items: &[LayoutBox],
+    styles: &HashMap<NodeId, ComputedStyle>,
+    fonts: &FontCollection,
+    container_style: &ComputedStyle,
+    content_width: f32,
+    content_x: f32,
+    content_y: f32,
+    mode: TaffyMode,
+) -> TaffySubtreeLayout {
+    if flex_items.is_empty() {
+        return TaffySubtreeLayout {
+            items: Vec::new(),
+            container_height: 0.0,
+            row_tracks: None,
+        };
     }
 
     let mut tree: tf::TaffyTree<usize> = tf::TaffyTree::new();
 
-    let leaves: Vec<tf::NodeId> = flex
-        .items
+    let leaves: Vec<tf::NodeId> = flex_items
         .iter()
         .enumerate()
         .map(|(index, item)| {
             let item_style = box_style(item, styles);
-            tree.new_leaf_with_context(item_taffy_style(&item_style), index)
+            let leaf_style = match mode {
+                TaffyMode::Flex => item_taffy_style(&item_style),
+                TaffyMode::Grid => super::grid::item_taffy_style(&item_style),
+            };
+            tree.new_leaf_with_context(leaf_style, index)
                 .expect("taffyへのリーフノード追加は失敗しない")
         })
         .collect();
 
-    let root_style = container_taffy_style(container_style, content_width);
+    let root_style = match mode {
+        TaffyMode::Flex => container_taffy_style(container_style, content_width),
+        TaffyMode::Grid => super::grid::container_taffy_style(container_style, content_width),
+    };
     let root = tree
         .new_with_children(root_style, &leaves)
         .expect("taffyへのルートノード追加は失敗しない");
@@ -77,14 +138,21 @@ pub(super) fn layout_flex(
             let Some(&mut index) = node_context else {
                 return tf::Size::ZERO;
             };
-            let item = &flex.items[index];
+            let item = &flex_items[index];
             let item_style = box_style(item, styles);
 
             // measureが返すのはcontent-box基準のサイズ(taffy自身がpadding/borderを
             // 加算する、`compute::leaf::compute_leaf_layout`で実測済みの規約)。
             let width = known_dimensions.width.unwrap_or_else(|| {
                 match available_space.width {
-                    tf::AvailableSpace::Definite(w) => w,
+                    // 「使える幅」が確定していても、内容がそれより狭ければ
+                    // 内容幅を返す。ここで常に`w`を返すと、内容幅に縮むべき
+                    // ケース(Gridの`justify-items: start`等)で常に
+                    // トラック幅いっぱいになってしまう([0054](
+                    // ../../../docs/decisions/0054-grid-design.md)決定1)。
+                    tf::AvailableSpace::Definite(w) => {
+                        measure_natural_content_width(&item.content, styles, fonts).min(w)
+                    }
                     // min-contentとmax-contentは区別しない(決定2、既知の簡略化)。
                     tf::AvailableSpace::MinContent | tf::AvailableSpace::MaxContent => {
                         measure_natural_content_width(&item.content, styles, fonts)
@@ -118,8 +186,8 @@ pub(super) fn layout_flex(
     )
     .expect("compute_layout_with_measureは失敗しない");
 
-    let mut result = Vec::with_capacity(flex.items.len());
-    for (index, item) in flex.items.iter().enumerate() {
+    let mut result = Vec::with_capacity(flex_items.len());
+    for (index, item) in flex_items.iter().enumerate() {
         let leaf = leaves[index];
         let item_layout = tree
             .layout(leaf)
@@ -173,7 +241,21 @@ pub(super) fn layout_flex(
     let root_layout = tree
         .layout(root)
         .expect("直前にcompute_layout_with_measureで計算済み");
-    (result, root_layout.size.height)
+
+    // Gridのページ分割(決定6)に使う行トラック情報を取り出す。
+    let row_tracks = match (mode, tree.detailed_layout_info(root)) {
+        (TaffyMode::Grid, tf::DetailedLayoutInfo::Grid(info)) => Some(GridRowTracks {
+            sizes: info.rows.sizes.clone(),
+            gutters: info.rows.gutters.clone(),
+        }),
+        _ => None,
+    };
+
+    TaffySubtreeLayout {
+        items: result,
+        container_height: root_layout.size.height,
+        row_tracks,
+    }
 }
 
 fn container_taffy_style(style: &ComputedStyle, content_width: f32) -> tf::Style {
@@ -216,7 +298,7 @@ fn container_taffy_style(style: &ComputedStyle, content_width: f32) -> tf::Style
     }
 }
 
-fn item_taffy_style(style: &ComputedStyle) -> tf::Style {
+pub(super) fn item_taffy_style(style: &ComputedStyle) -> tf::Style {
     let border = resolve_border(style);
     tf::Style {
         size: tf::Size {
@@ -276,7 +358,7 @@ fn map_flex_wrap(v: FlexWrap) -> tf::FlexWrap {
     }
 }
 
-fn map_justify_content(v: JustifyContent) -> tf::JustifyContent {
+pub(super) fn map_justify_content(v: JustifyContent) -> tf::JustifyContent {
     match v {
         JustifyContent::FlexStart => tf::JustifyContent::FLEX_START,
         JustifyContent::FlexEnd => tf::JustifyContent::FLEX_END,
@@ -287,7 +369,7 @@ fn map_justify_content(v: JustifyContent) -> tf::JustifyContent {
     }
 }
 
-fn map_align_items(v: AlignItems) -> tf::AlignItems {
+pub(super) fn map_align_items(v: AlignItems) -> tf::AlignItems {
     match v {
         AlignItems::FlexStart => tf::AlignItems::FLEX_START,
         AlignItems::FlexEnd => tf::AlignItems::FLEX_END,
@@ -297,7 +379,7 @@ fn map_align_items(v: AlignItems) -> tf::AlignItems {
     }
 }
 
-fn map_align_content(v: AlignContent) -> tf::AlignContent {
+pub(super) fn map_align_content(v: AlignContent) -> tf::AlignContent {
     match v {
         AlignContent::FlexStart => tf::AlignContent::FLEX_START,
         AlignContent::FlexEnd => tf::AlignContent::FLEX_END,
@@ -310,7 +392,7 @@ fn map_align_content(v: AlignContent) -> tf::AlignContent {
 }
 
 /// `align-self: auto`(初期値)は`None`にする(taffyが親の`align-items`を使う)。
-fn map_align_self(v: AlignSelf) -> Option<tf::AlignSelf> {
+pub(super) fn map_align_self(v: AlignSelf) -> Option<tf::AlignSelf> {
     match v {
         AlignSelf::Auto => None,
         AlignSelf::FlexStart => Some(tf::AlignSelf::FLEX_START),
@@ -328,7 +410,7 @@ fn map_box_sizing(v: BoxSizing) -> tf::BoxSizing {
     }
 }
 
-fn map_length_percentage(v: LengthPercentage) -> tf::LengthPercentage {
+pub(super) fn map_length_percentage(v: LengthPercentage) -> tf::LengthPercentage {
     match v {
         LengthPercentage::Length(px) => tf::LengthPercentage::length(px),
         LengthPercentage::Percentage(p) => tf::LengthPercentage::percent(p),
@@ -338,7 +420,7 @@ fn map_length_percentage(v: LengthPercentage) -> tf::LengthPercentage {
     }
 }
 
-fn map_dimension(v: LengthPercentageOrAuto) -> tf::Dimension {
+pub(super) fn map_dimension(v: LengthPercentageOrAuto) -> tf::Dimension {
     match v {
         LengthPercentageOrAuto::Auto => tf::Dimension::auto(),
         LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(px)) => {
@@ -354,7 +436,7 @@ fn map_dimension(v: LengthPercentageOrAuto) -> tf::Dimension {
 }
 
 /// `min-width`/`min-height`(初期値`0`)をtaffyの`Dimension`へ([0051]決定7)。
-fn map_length_percentage_dimension(v: LengthPercentage) -> tf::Dimension {
+pub(super) fn map_length_percentage_dimension(v: LengthPercentage) -> tf::Dimension {
     match v {
         LengthPercentage::Length(px) => tf::Dimension::length(px),
         LengthPercentage::Percentage(p) => tf::Dimension::percent(p),
@@ -365,7 +447,7 @@ fn map_length_percentage_dimension(v: LengthPercentage) -> tf::Dimension {
 }
 
 /// `max-width`/`max-height`をtaffyの`Dimension`へ。`none`は`auto`(上限なし)。
-fn map_max_size(v: MaxSize) -> tf::Dimension {
+pub(super) fn map_max_size(v: MaxSize) -> tf::Dimension {
     match v {
         MaxSize::None => tf::Dimension::auto(),
         MaxSize::LengthPercentage(lp) => map_length_percentage_dimension(lp),

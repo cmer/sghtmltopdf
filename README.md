@@ -91,6 +91,35 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 `<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
 フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
 
+### CSS Grid(`display: grid`)
+
+帳票の全体レイアウト(ヘッダ/サイド/本文/フッタ)や、カード状の一覧に使える
+CSS Gridに対応した。設計は[0054](docs/decisions/0054-grid-design.md)。
+
+```css
+.layout {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  grid-template-areas: "header header"
+                       "side   main"
+                       "footer footer";
+  gap: 8px;
+}
+.header { grid-area: header; }
+.cards  { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+```
+
+* トラック定義は`<length>`/`<percentage>`/`fr`/`auto`/`min-content`/`max-content`/
+  `minmax()`/`fit-content()`/`repeat(<整数>|auto-fill|auto-fit)`/`[name]`に対応
+* `grid-template-areas`(名前付きエリア)、`grid-row`/`grid-column`/`grid-area`の
+  ライン番号・`span`・名前指定に対応
+* `justify-items`/`justify-self`は**Gridでのみ意味を持つ**(CSS Box Alignment上
+  flexアイテムには適用されない。flexで個別に寄せるには`margin: auto`を使う)
+* **1ページに収まらないグリッドは行単位でページ分割する**(テーブルと同じ方針。
+  複数行にまたがるアイテムがある境界では分割しない)
+* レイアウト計算はtaffyのGridアルゴリズムへ委譲する(Flexboxと同じブリッジ構造)。
+  `grid`/`grid-template`ショートハンドと`inline-grid`は非対応
+
 ### テキスト詳細(`text-shadow`/`text-overflow`/`word-break`/`overflow-wrap`/`hyphens`/`text-emphasis`)
 
 長い文字列の折り返し制御と、見出し・強調表現のためのテキスト詳細プロパティに

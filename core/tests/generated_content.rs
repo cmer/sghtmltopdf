@@ -60,6 +60,11 @@ fn extract_text(b: &LaidOutBox) -> String {
                     walk(child, out);
                 }
             }
+            LaidOutContent::Grid(grid) => {
+                for child in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(child, out);
+                }
+            }
             LaidOutContent::Inline(lines) => {
                 // 同じインラインボックス内で折り返された行同士は、元は空白1つで
                 // 繋がっていたテキストなので、行の間に空白を補う。一方、別々の

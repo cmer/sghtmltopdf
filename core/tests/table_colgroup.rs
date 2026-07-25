@@ -49,6 +49,11 @@ fn first_row_cell_widths(html_src: &str, css: &str) -> Vec<f32> {
             LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
                 children.iter().find_map(find_table)
             }
+            LaidOutContent::Grid(grid) => grid
+                .rows
+                .iter()
+                .flat_map(|row| &row.items)
+                .find_map(find_table),
             _ => None,
         }
     }

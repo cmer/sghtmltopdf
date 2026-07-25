@@ -40,6 +40,11 @@ fn extract_text(b: &LaidOutBox) -> String {
                     walk(child, out);
                 }
             }
+            LaidOutContent::Grid(grid) => {
+                for child in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(child, out);
+                }
+            }
             LaidOutContent::Inline(lines) => {
                 for (i, line) in lines.iter().enumerate() {
                     if i > 0 {
@@ -118,6 +123,11 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             children.iter().find_map(|c| find_laid_out(c, target))
         }
+        LaidOutContent::Grid(grid) => grid
+            .rows
+            .iter()
+            .flat_map(|row| &row.items)
+            .find_map(|item| find_laid_out(item, target)),
         _ => None,
     }
 }
