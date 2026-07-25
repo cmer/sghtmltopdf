@@ -539,6 +539,56 @@ impl SpecifiedLengthPercentageOrAuto {
     }
 }
 
+/// `max-width`/`max-height`の計算値。`none`(上限なし)を表現する必要があるため
+/// `LengthPercentage`とは別の型を持つ([0051](
+/// ../../../docs/decisions/0051-min-max-size-design.md)決定1)。`min-width`/
+/// `min-height`は初期値が`0`なので`LengthPercentage`をそのまま使う。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum MaxSize {
+    #[default]
+    None,
+    LengthPercentage(LengthPercentage),
+}
+
+/// `aspect-ratio: auto || <ratio>`([0052](
+/// ../../../docs/decisions/0052-aspect-ratio-design.md)決定1)。長さを含まないため
+/// 指定値と計算値を分ける必要がない。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AspectRatio {
+    /// `auto`キーワードの有無。置換要素(`<img>`)では内在比を優先する。
+    pub auto: bool,
+    /// 指定された比(`width / height`)。`None`は比の指定なし。
+    pub ratio: Option<f32>,
+}
+
+impl Default for AspectRatio {
+    /// 初期値`auto`。
+    fn default() -> Self {
+        Self {
+            auto: true,
+            ratio: None,
+        }
+    }
+}
+
+/// パース直後の`max-width`/`max-height`の指定値。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecifiedMaxSize {
+    None,
+    LengthPercentage(SpecifiedLengthPercentage),
+}
+
+impl SpecifiedMaxSize {
+    pub fn resolve(self, font_size: f32, root_font_size: f32) -> MaxSize {
+        match self {
+            Self::None => MaxSize::None,
+            Self::LengthPercentage(lp) => {
+                MaxSize::LengthPercentage(lp.resolve(font_size, root_font_size))
+            }
+        }
+    }
+}
+
 /// `background-position`の計算値(水平/垂直、border-box基準の長さまたは
 /// パーセンテージ)。キーワード(`left`/`center`/`right`/`top`/`bottom`)は
 /// パース時点で対応するパーセンテージへ解決済み([0025](

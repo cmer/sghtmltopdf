@@ -21,7 +21,7 @@ use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::style::{
     AlignContent, AlignItems, AlignSelf, BoxSizing, ComputedStyle, FlexBasis, FlexDirection,
-    FlexWrap, JustifyContent, LengthPercentage, LengthPercentageOrAuto,
+    FlexWrap, JustifyContent, LengthPercentage, LengthPercentageOrAuto, MaxSize,
 };
 
 use super::block::{
@@ -197,6 +197,21 @@ fn container_taffy_style(style: &ComputedStyle, content_width: f32) -> tf::Style
             width: tf::Dimension::length(content_width),
             height: map_dimension(style.height),
         },
+        // `min-*`/`max-*`はtaffyへそのまま委譲する([0051](
+        // ../../../docs/decisions/0051-min-max-size-design.md)決定7)。flex文脈では
+        // taffyがコンテナ基準でパーセンテージを解決できるため、ブロック側と違い
+        // 高さのパーセンテージも有効になる(既存の`height`と同じ非対称性)。
+        min_size: tf::Size {
+            width: map_length_percentage_dimension(style.min_width),
+            height: map_length_percentage_dimension(style.min_height),
+        },
+        max_size: tf::Size {
+            width: map_max_size(style.max_width),
+            height: map_max_size(style.max_height),
+        },
+        // `aspect-ratio`もtaffyへ委譲する([0052](
+        // ../../../docs/decisions/0052-aspect-ratio-design.md)決定6)。
+        aspect_ratio: style.aspect_ratio.ratio,
         ..Default::default()
     }
 }
@@ -226,6 +241,15 @@ fn item_taffy_style(style: &ComputedStyle) -> tf::Style {
             top: tf::LengthPercentage::length(border.top),
             bottom: tf::LengthPercentage::length(border.bottom),
         },
+        min_size: tf::Size {
+            width: map_length_percentage_dimension(style.min_width),
+            height: map_length_percentage_dimension(style.min_height),
+        },
+        max_size: tf::Size {
+            width: map_max_size(style.max_width),
+            height: map_max_size(style.max_height),
+        },
+        aspect_ratio: style.aspect_ratio.ratio,
         align_self: map_align_self(style.align_self),
         flex_grow: style.flex_grow,
         flex_shrink: style.flex_shrink,
@@ -326,6 +350,25 @@ fn map_dimension(v: LengthPercentageOrAuto) -> tf::Dimension {
         LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc { px, .. }) => {
             tf::Dimension::length(px)
         }
+    }
+}
+
+/// `min-width`/`min-height`(初期値`0`)をtaffyの`Dimension`へ([0051]決定7)。
+fn map_length_percentage_dimension(v: LengthPercentage) -> tf::Dimension {
+    match v {
+        LengthPercentage::Length(px) => tf::Dimension::length(px),
+        LengthPercentage::Percentage(p) => tf::Dimension::percent(p),
+        // taffyはpx+%の複合を表現できないためpx成分のみ渡す
+        // (`map_length_percentage`と同じ簡略化)。
+        LengthPercentage::Calc { px, .. } => tf::Dimension::length(px),
+    }
+}
+
+/// `max-width`/`max-height`をtaffyの`Dimension`へ。`none`は`auto`(上限なし)。
+fn map_max_size(v: MaxSize) -> tf::Dimension {
+    match v {
+        MaxSize::None => tf::Dimension::auto(),
+        MaxSize::LengthPercentage(lp) => map_length_percentage_dimension(lp),
     }
 }
 

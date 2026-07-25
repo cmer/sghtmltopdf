@@ -4,13 +4,13 @@ use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 use palette::{FromColor, Lab, Lch, Oklab, Oklch, Srgb};
 
 use super::values::{
-    AlignContent, AlignItems, AlignSelf, BackgroundAttachment, BackgroundRepeat, BorderCollapse,
-    BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color, ContentPart,
-    Display, EmptyCells, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent,
-    ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
+    AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment, BackgroundRepeat,
+    BorderCollapse, BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color,
+    ContentPart, Display, EmptyCells, FlexDirection, FlexWrap, Float, FontStyle, FontWeight,
+    JustifyContent, ListStylePosition, ListStyleType, ObjectFit, Overflow, Position, QuotePair,
     SpecifiedBackgroundPosition, SpecifiedBackgroundSize, SpecifiedBoxShadow, SpecifiedCalc,
     SpecifiedCornerRadius, SpecifiedFlexBasis, SpecifiedLength, SpecifiedLengthPercentage,
-    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedSpacing,
+    SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, SpecifiedMaxSize, SpecifiedSpacing,
     SpecifiedTransformFunction, SpecifiedVerticalAlign, TableLayout, TextAlign, TextDecorationLine,
     TextTransform, Visibility, WhiteSpace, ZIndex,
 };
@@ -20,6 +20,17 @@ pub enum PropertyDeclaration {
     Display(Display),
     Width(SpecifiedLengthPercentageOrAuto),
     Height(SpecifiedLengthPercentageOrAuto),
+    /// `min-width`/`min-height`。初期値`0`([0051](
+    /// ../../../docs/decisions/0051-min-max-size-design.md)決定1)。
+    /// `auto`/`min-content`/`max-content`/`fit-content`は非対応。
+    MinWidth(SpecifiedLengthPercentage),
+    MinHeight(SpecifiedLengthPercentage),
+    /// `max-width`/`max-height`。初期値`none`(上限なし)。
+    MaxWidth(SpecifiedMaxSize),
+    MaxHeight(SpecifiedMaxSize),
+    /// `aspect-ratio: auto || <ratio>`([0052](
+    /// ../../../docs/decisions/0052-aspect-ratio-design.md)決定1)。
+    AspectRatio(AspectRatio),
     MarginTop(SpecifiedLengthPercentageOrAuto),
     MarginRight(SpecifiedLengthPercentageOrAuto),
     MarginBottom(SpecifiedLengthPercentageOrAuto),
@@ -168,6 +179,11 @@ pub fn parse_declaration<'i>(
         "display" => Ok(vec![D::Display(parse_display(input)?)]),
         "width" => Ok(vec![D::Width(parse_length_percentage_or_auto(input)?)]),
         "height" => Ok(vec![D::Height(parse_length_percentage_or_auto(input)?)]),
+        "min-width" => Ok(vec![D::MinWidth(parse_length_percentage(input)?)]),
+        "min-height" => Ok(vec![D::MinHeight(parse_length_percentage(input)?)]),
+        "max-width" => Ok(vec![D::MaxWidth(parse_max_size(input)?)]),
+        "max-height" => Ok(vec![D::MaxHeight(parse_max_size(input)?)]),
+        "aspect-ratio" => Ok(vec![D::AspectRatio(parse_aspect_ratio(input)?)]),
         "margin" => parse_margin_shorthand(input),
         "margin-top" => Ok(vec![D::MarginTop(parse_length_percentage_or_auto(input)?)]),
         "margin-right" => Ok(vec![D::MarginRight(parse_length_percentage_or_auto(input)?)]),
@@ -1205,6 +1221,68 @@ fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseEr
         }
         _ => Err(input.new_custom_error(())),
     }
+}
+
+/// `aspect-ratio: auto || <ratio>`([0052](
+/// ../../../docs/decisions/0052-aspect-ratio-design.md)決定1)。`auto`と`<ratio>`は
+/// 順序を問わず併記できる。`<ratio>`は`<number> [ / <number> ]?`(分母省略時は1)で、
+/// 0や負の数を含む比(degenerate ratio)は無効=宣言ごと無視する(CSS仕様通り)。
+fn parse_aspect_ratio<'i>(input: &mut Parser<'i, '_>) -> Result<AspectRatio, ParseError<'i, ()>> {
+    let mut auto = false;
+    let mut ratio = None;
+
+    loop {
+        if !auto
+            && input
+                .try_parse(|input| input.expect_ident_matching("auto"))
+                .is_ok()
+        {
+            auto = true;
+            continue;
+        }
+        if ratio.is_none() {
+            if let Ok(r) = input.try_parse(parse_ratio) {
+                ratio = Some(r);
+                continue;
+            }
+        }
+        break;
+    }
+
+    if !auto && ratio.is_none() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(AspectRatio { auto, ratio })
+}
+
+/// `<ratio> = <number> [ / <number> ]?`。`width / height`の比を返す。
+fn parse_ratio<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
+    let width = input.expect_number()?;
+    let height = input
+        .try_parse(|input| {
+            input.expect_delim('/')?;
+            input.expect_number()
+        })
+        .unwrap_or(1.0);
+    if width <= 0.0 || height <= 0.0 {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(width / height)
+}
+
+/// `max-width`/`max-height`。`none | <length-percentage>`([0051](
+/// ../../../docs/decisions/0051-min-max-size-design.md)決定1)。
+/// `min-content`/`max-content`/`fit-content`は非対応。
+fn parse_max_size<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedMaxSize, ParseError<'i, ()>> {
+    if input
+        .try_parse(|input| input.expect_ident_matching("none"))
+        .is_ok()
+    {
+        return Ok(SpecifiedMaxSize::None);
+    }
+    Ok(SpecifiedMaxSize::LengthPercentage(parse_length_percentage(
+        input,
+    )?))
 }
 
 fn parse_length_percentage_or_auto<'i>(

@@ -25,9 +25,9 @@ use crate::style::{
 };
 
 use super::block::{
-    box_style, layout_box_ignoring_positioned, layout_box_with_forced_width_ignoring_positioned,
-    resolve_border, resolve_lp, resolve_padding, shift_box_y, shift_content_vertical, LaidOutBox,
-    LaidOutContent, LaidOutTable, LaidOutTableRow,
+    box_style, clamp_used_width, layout_box_ignoring_positioned,
+    layout_box_with_forced_width_ignoring_positioned, resolve_border, resolve_lp, resolve_padding,
+    shift_box_y, shift_content_vertical, LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow,
 };
 use super::box_tree::{BoxContent, TableBox, TableCell, TableRow};
 use super::float_ctx::FloatContext;
@@ -452,8 +452,7 @@ fn compute_fixed_column_widths(
         for gc in first_row {
             if gc.col_end > gc.col_start {
                 let cell_style = box_style(&gc.cell.content, styles);
-                if let LengthPercentageOrAuto::LengthPercentage(lp) = cell_style.width {
-                    let resolved = resolve_lp(lp, containing_width);
+                if let Some(resolved) = fixed_cell_width(&cell_style, containing_width) {
                     let share = resolved / (gc.col_end - gc.col_start) as f32;
                     for w in &mut widths[gc.col_start..gc.col_end] {
                         *w = Some(share);
@@ -548,6 +547,29 @@ fn compute_column_widths(
     }
 }
 
+/// `table-layout: fixed`で、1行目のセルが列幅として与える指定値
+/// ([0051](../../../docs/decisions/0051-min-max-size-design.md)決定6)。
+///
+/// * `width`指定あり → `min-width`/`max-width`でクランプした値
+/// * `width: auto`で`min-width`のみ指定 → `min-width`をその列の指定幅とする
+/// * どちらも無い(`max-width`だけの指定を含む) → `None`(残り幅の均等配分に委ねる)
+fn fixed_cell_width(cell_style: &ComputedStyle, containing_width: f32) -> Option<f32> {
+    match cell_style.width {
+        LengthPercentageOrAuto::LengthPercentage(lp) => Some(clamp_used_width(
+            cell_style,
+            containing_width,
+            0.0,
+            0.0,
+            resolve_lp(lp, containing_width),
+        )),
+        // `min-width`の初期値は`0`。0のときは「指定なし」として扱う。
+        LengthPercentageOrAuto::Auto => {
+            let min = resolve_lp(cell_style.min_width, containing_width);
+            (min > 0.0).then_some(min)
+        }
+    }
+}
+
 /// `<col>`のヒントがある列を確定させ、残りをヒントの無い列へ自然幅に比例して
 /// 配分する([0038]決定4)。ヒントの合計が`containing_width`を超える場合は
 /// ヒントのある列だけを比例縮小して収める(決定4-1)。
@@ -586,6 +608,11 @@ fn distribute_with_column_hints(
 }
 
 /// セル1つの「自然な幅」(内容を折り返し無しで並べた幅+パディング+ボーダー)。
+///
+/// セル自身の`min-width`/`max-width`はここでクランプする形で反映する
+/// ([0051](../../../docs/decisions/0051-min-max-size-design.md)決定6)。列の
+/// 自然幅はクランプ済みの値の最大値になるが、その後の比例縮尺(表を紙幅に
+/// 収める処理)は従来どおり行うため、**最終列幅は`min-width`を保証しない**。
 fn natural_cell_width(
     cell: &TableCell,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -596,11 +623,18 @@ fn natural_cell_width(
     // 幅が定まらないため0を基準に解決する(簡略化)。
     let padding = resolve_padding(&style, 0.0);
     let border = resolve_border(&style);
-    measure_natural_content_width(&cell.content.content, styles, fonts)
-        + padding.left
-        + padding.right
-        + border.left
-        + border.right
+    // クランプはcontent幅に対して行い(min/maxの指定値はcontent-box基準)、
+    // padding/borderはその後に足す。min/maxのパーセンテージ基準はこの時点では
+    // 未定のため0を基準に解決する(paddingと同じ簡略化)。
+    let content_natural = measure_natural_content_width(&cell.content.content, styles, fonts);
+    let clamped = clamp_used_width(
+        &style,
+        0.0,
+        padding.left + padding.right,
+        border.left + border.right,
+        content_natural,
+    );
+    clamped + padding.left + padding.right + border.left + border.right
 }
 
 /// ボックスの内容を折り返し無しでレイアウトした場合の自然な幅を測る。

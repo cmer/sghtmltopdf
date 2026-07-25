@@ -17,15 +17,15 @@ use super::properties::PropertyDeclaration;
 use super::selector_impl::PseudoElement;
 use super::stylesheet::{parse_inline_style, Stylesheet};
 use super::values::{
-    AlignContent, AlignItems, AlignSelf, BackgroundAttachment, BackgroundPosition,
+    AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment, BackgroundPosition,
     BackgroundRepeat, BackgroundSize, BorderCollapse, BorderStyle, BoxSizing, BreakBetween,
     BreakInside, CaptionSide, Clear, Color, ContentPart, CornerRadius, Display, EmptyCells,
     FlexBasis, FlexDirection, FlexWrap, Float, FontStyle, FontWeight, JustifyContent, Length,
-    LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, ObjectFit,
+    LengthPercentage, LengthPercentageOrAuto, ListStylePosition, ListStyleType, MaxSize, ObjectFit,
     Overflow, Position, QuotePair, SpecifiedCornerRadius, SpecifiedLength,
-    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight, TableLayout,
-    TextAlign, TextDecorationLine, TextTransform, TransformFunction, VerticalAlign, Visibility,
-    WhiteSpace, ZIndex,
+    SpecifiedLengthPercentage, SpecifiedLengthPercentageOrAuto, SpecifiedLineHeight,
+    SpecifiedMaxSize, TableLayout, TextAlign, TextDecorationLine, TextTransform, TransformFunction,
+    VerticalAlign, Visibility, WhiteSpace, ZIndex,
 };
 
 /// `color`/`background-color`の計算値。パース時と異なり`currentcolor`は解決済み。
@@ -67,6 +67,17 @@ pub struct ComputedStyle {
     pub display: Display,
     pub width: LengthPercentageOrAuto,
     pub height: LengthPercentageOrAuto,
+    /// `min-width`/`min-height`。非継承プロパティ、初期値`0`([0051](
+    /// ../../../docs/decisions/0051-min-max-size-design.md)決定1)。
+    pub min_width: LengthPercentage,
+    pub min_height: LengthPercentage,
+    /// `max-width`/`max-height`。非継承プロパティ、初期値`none`(上限なし)。
+    pub max_width: MaxSize,
+    pub max_height: MaxSize,
+    /// `aspect-ratio`。非継承プロパティ、初期値`auto`([0052](
+    /// ../../../docs/decisions/0052-aspect-ratio-design.md))。置換要素(`<img>`)では
+    /// 寸法解決の入口で内在比が`ratio`へ焼き込まれる(決定2)。
+    pub aspect_ratio: AspectRatio,
     pub margin_top: LengthPercentageOrAuto,
     pub margin_right: LengthPercentageOrAuto,
     pub margin_bottom: LengthPercentageOrAuto,
@@ -301,6 +312,11 @@ impl Default for ComputedStyle {
             display: Display::Inline,
             width: LengthPercentageOrAuto::Auto,
             height: LengthPercentageOrAuto::Auto,
+            min_width: zero_lp,
+            min_height: zero_lp,
+            max_width: MaxSize::None,
+            max_height: MaxSize::None,
+            aspect_ratio: AspectRatio::default(),
             margin_top: LengthPercentageOrAuto::LengthPercentage(zero_lp),
             margin_right: LengthPercentageOrAuto::LengthPercentage(zero_lp),
             margin_bottom: LengthPercentageOrAuto::LengthPercentage(zero_lp),
@@ -767,6 +783,11 @@ fn compute_element_style(
     let mut outline_style = None;
     let mut outline_color = None;
     let mut counter_reset = None;
+    let mut min_width = None;
+    let mut min_height = None;
+    let mut max_width = None;
+    let mut max_height = None;
+    let mut aspect_ratio = None;
     let mut counter_increment = None;
     let mut quotes = None;
     let mut object_fit = None;
@@ -802,6 +823,11 @@ fn compute_element_style(
             PropertyDeclaration::Display(v) => display = Some(*v),
             PropertyDeclaration::Width(v) => width = Some(*v),
             PropertyDeclaration::Height(v) => height = Some(*v),
+            PropertyDeclaration::MinWidth(v) => min_width = Some(*v),
+            PropertyDeclaration::MinHeight(v) => min_height = Some(*v),
+            PropertyDeclaration::MaxWidth(v) => max_width = Some(*v),
+            PropertyDeclaration::MaxHeight(v) => max_height = Some(*v),
+            PropertyDeclaration::AspectRatio(v) => aspect_ratio = Some(*v),
             PropertyDeclaration::MarginTop(v) => margin_top = Some(*v),
             PropertyDeclaration::MarginRight(v) => margin_right = Some(*v),
             PropertyDeclaration::MarginBottom(v) => margin_bottom = Some(*v),
@@ -952,6 +978,10 @@ fn compute_element_style(
     let resolve_lp = |v: Option<SpecifiedLengthPercentage>, initial: LengthPercentage| {
         v.map(|specified| specified.resolve(own_font_size, root_font_size))
             .unwrap_or(initial)
+    };
+    let resolve_max_size = |v: Option<SpecifiedMaxSize>| {
+        v.map(|specified| specified.resolve(own_font_size, root_font_size))
+            .unwrap_or(MaxSize::None)
     };
     let resolve_len = |v: Option<SpecifiedLength>, initial: Length| {
         v.map(|specified| specified.resolve(own_font_size, root_font_size))
@@ -1144,6 +1174,11 @@ fn compute_element_style(
         display: resolved_display,
         width: resolve_lp_or_auto(width, initial.width),
         height: resolve_lp_or_auto(height, initial.height),
+        min_width: resolve_lp(min_width, initial.min_width),
+        min_height: resolve_lp(min_height, initial.min_height),
+        max_width: resolve_max_size(max_width),
+        max_height: resolve_max_size(max_height),
+        aspect_ratio: aspect_ratio.unwrap_or_default(),
         margin_top: resolve_lp_or_auto(margin_top, initial.margin_top),
         margin_right: resolve_lp_or_auto(margin_right, initial.margin_right),
         margin_bottom: resolve_lp_or_auto(margin_bottom, initial.margin_bottom),
@@ -4047,5 +4082,160 @@ mod tests {
             ContentPart::CloseQuote,
         ];
         assert_eq!(resolve_margin_box_content(&parts, 1, None), "x");
+    }
+
+    /// [0051](../../../docs/decisions/0051-min-max-size-design.md)決定1。
+    #[test]
+    fn min_and_max_size_parse_lengths_percentages_and_none() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&div].min_width, LengthPercentage::Length(0.0));
+        assert_eq!(defaults[&div].min_height, LengthPercentage::Length(0.0));
+        assert_eq!(defaults[&div].max_width, MaxSize::None);
+        assert_eq!(defaults[&div].max_height, MaxSize::None);
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { min-width: 10px; min-height: 50%; max-width: 20em; max-height: none; }",
+            ),
+        );
+        assert_eq!(styles[&div].min_width, LengthPercentage::Length(10.0));
+        assert_eq!(styles[&div].min_height, LengthPercentage::Percentage(0.5));
+        // `em`はカスケード時に既定font-size(16px)基準でpxへ畳まれる。
+        assert_eq!(
+            styles[&div].max_width,
+            MaxSize::LengthPercentage(LengthPercentage::Length(320.0))
+        );
+        assert_eq!(styles[&div].max_height, MaxSize::None);
+    }
+
+    /// キーワード値(`auto`/`min-content`等)は非対応で、宣言ごと無視される
+    /// ([0051]決定1)。同じルール内の他の宣言には影響しない。
+    #[test]
+    fn min_and_max_size_reject_intrinsic_sizing_keywords() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                "div { min-width: auto; max-width: max-content; min-height: min-content; \
+                 max-height: fit-content; width: 30px; }",
+            ),
+        );
+        assert_eq!(styles[&div].min_width, LengthPercentage::Length(0.0));
+        assert_eq!(styles[&div].min_height, LengthPercentage::Length(0.0));
+        assert_eq!(styles[&div].max_width, MaxSize::None);
+        assert_eq!(styles[&div].max_height, MaxSize::None);
+        assert_eq!(
+            styles[&div].width,
+            LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(30.0)),
+            "unsupported keywords must not swallow the other declarations"
+        );
+    }
+
+    /// [0052](../../../docs/decisions/0052-aspect-ratio-design.md)決定1。
+    #[test]
+    fn aspect_ratio_parses_auto_ratios_and_their_combination() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let defaults = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+        assert_eq!(defaults[&div].aspect_ratio, AspectRatio::default());
+        assert!(defaults[&div].aspect_ratio.auto);
+        assert_eq!(defaults[&div].aspect_ratio.ratio, None);
+
+        for (value, expected) in [
+            (
+                "auto",
+                AspectRatio {
+                    auto: true,
+                    ratio: None,
+                },
+            ),
+            (
+                "16 / 9",
+                AspectRatio {
+                    auto: false,
+                    ratio: Some(16.0 / 9.0),
+                },
+            ),
+            // 分母省略は`/ 1`。
+            (
+                "2",
+                AspectRatio {
+                    auto: false,
+                    ratio: Some(2.0),
+                },
+            ),
+            (
+                "auto 16 / 9",
+                AspectRatio {
+                    auto: true,
+                    ratio: Some(16.0 / 9.0),
+                },
+            ),
+            // `auto`と`<ratio>`は順序を問わない。
+            (
+                "16 / 9 auto",
+                AspectRatio {
+                    auto: true,
+                    ratio: Some(16.0 / 9.0),
+                },
+            ),
+        ] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ aspect-ratio: {value}; }}")),
+            );
+            assert_eq!(styles[&div].aspect_ratio, expected, "aspect-ratio: {value}");
+        }
+    }
+
+    /// 0や負の数を含む比(degenerate ratio)は無効な宣言として無視する。
+    #[test]
+    fn aspect_ratio_rejects_degenerate_ratios() {
+        let dom = html::parse(br#"<div>a</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        for value in ["0 / 1", "1 / 0", "-16 / 9", "0"] {
+            let styles = compute_styles(
+                &dom,
+                &Stylesheet::default(),
+                &parse_stylesheet(&format!("div {{ aspect-ratio: {value}; width: 30px; }}")),
+            );
+            assert_eq!(
+                styles[&div].aspect_ratio,
+                AspectRatio::default(),
+                "aspect-ratio: {value} should be ignored"
+            );
+            assert_eq!(
+                styles[&div].width,
+                LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(30.0)),
+                "an invalid ratio must not swallow the other declarations"
+            );
+        }
+    }
+
+    #[test]
+    fn min_and_max_size_are_not_inherited() {
+        let dom = html::parse(br#"<div><p>a</p></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, div, "p").expect("p not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { min-width: 100px; max-height: 40px; }"),
+        );
+        assert_eq!(styles[&div].min_width, LengthPercentage::Length(100.0));
+        assert_eq!(styles[&p].min_width, LengthPercentage::Length(0.0));
+        assert_eq!(styles[&p].max_height, MaxSize::None);
     }
 }

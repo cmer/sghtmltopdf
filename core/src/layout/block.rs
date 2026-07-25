@@ -18,7 +18,8 @@ use crate::html::NodeId;
 use crate::pdf::PreparedImage;
 use crate::style::{
     BorderCollapse, BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear,
-    ComputedStyle, Display, Float, Length, LengthPercentage, LengthPercentageOrAuto, Position,
+    ComputedStyle, Display, Float, Length, LengthPercentage, LengthPercentageOrAuto, MaxSize,
+    Position,
 };
 
 use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox, TableSection};
@@ -505,7 +506,8 @@ fn layout_out_of_flow_child(
     let left = resolve_lpa_or_zero(child_style.left, cb_rect.width);
     let right = resolve_lpa_or_zero(child_style.right, cb_rect.width);
 
-    // content幅の解決(決定3)。
+    // content幅の解決([0049]決定3)。`min-width`/`max-width`は求めた使用幅を
+    // クランプする形で効かせる([0051]決定5)。
     let content_width = match child_style.width {
         LengthPercentageOrAuto::LengthPercentage(lp) => {
             let w = resolve_lp(lp, cb_rect.width);
@@ -520,9 +522,20 @@ fn layout_out_of_flow_child(
         }
         LengthPercentageOrAuto::Auto => {
             let avail = (cb_rect.width - non_content_width).max(0.0);
-            shrink_to_fit_content_width(child, styles, fonts, child_style, avail)
+            // 絶対配置の`width: auto`もshrink-to-fitなので、高さが確定していれば
+            // `aspect-ratio`から幅を導ける([0052]決定3)。
+            aspect_ratio_width(child_style, &padding, &border).unwrap_or_else(|| {
+                shrink_to_fit_content_width(child, styles, fonts, child_style, avail)
+            })
         }
     };
+    let content_width = clamp_used_width(
+        child_style,
+        cb_rect.width,
+        padding.left + padding.right,
+        border.left + border.right,
+        content_width,
+    );
 
     let margin_box_width = non_content_width + content_width;
     // マージンボックス左上のx(決定3)。
@@ -591,7 +604,7 @@ fn resolve_box_geometry(
 ) -> (ComputedStyle, EdgeSizes, EdgeSizes, EdgeSizes, f32) {
     let mut style = box_style(b, styles);
     if let BoxContent::Image(image_content) = &b.content {
-        apply_replaced_element_auto_size(&mut style, image_content);
+        apply_replaced_element_auto_size(&mut style, image_content, containing_width);
     }
 
     let padding = resolve_padding(&style, containing_width);
@@ -622,7 +635,13 @@ fn resolve_box_geometry(
                 width
             };
             (
-                width,
+                clamp_used_width(
+                    &style,
+                    containing_width,
+                    padding.left + padding.right,
+                    border.left + border.right,
+                    width,
+                ),
                 resolve_lpa_or_zero(style.margin_left, containing_width),
                 resolve_lpa_or_zero(style.margin_right, containing_width),
             )
@@ -640,8 +659,19 @@ fn resolve_box_geometry(
                 - border.left
                 - border.right)
                 .max(0.0);
+            // 高さが確定していれば`aspect-ratio`から幅を導ける([0052](
+            // ../../../docs/decisions/0052-aspect-ratio-design.md)決定3)。
+            let width = aspect_ratio_width(&style, &padding, &border).unwrap_or_else(|| {
+                shrink_to_fit_content_width(b, styles, fonts, &style, available)
+            });
             (
-                shrink_to_fit_content_width(b, styles, fonts, &style, available),
+                clamp_used_width(
+                    &style,
+                    containing_width,
+                    padding.left + padding.right,
+                    border.left + border.right,
+                    width,
+                ),
                 resolve_lpa_or_zero(style.margin_left, containing_width),
                 resolve_lpa_or_zero(style.margin_right, containing_width),
             )
@@ -775,12 +805,7 @@ fn layout_box_impl(
             // auto-heightを拡張する(CSS2.1 10.6.7の浅い実装、孫要素には
             // 伝播しない、既知の簡略化。[0019]参照)。
             let auto_height = cursor_y.max(max_float_bottom) - content_y;
-            let height = resolve_height(
-                &style,
-                padding.top + padding.bottom,
-                border.top + border.bottom,
-            )
-            .unwrap_or(auto_height);
+            let height = resolve_used_height(&style, &padding, &border, content_width, auto_height);
             (LaidOutContent::Blocks(laid_children), height)
         }
         BoxContent::Inline(spans) => {
@@ -798,12 +823,8 @@ fn layout_box_impl(
             // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
             place_atomic_inlines(&mut lines);
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
-            let height = resolve_height(
-                &style,
-                padding.top + padding.bottom,
-                border.top + border.bottom,
-            )
-            .unwrap_or(lines_height);
+            let height =
+                resolve_used_height(&style, &padding, &border, content_width, lines_height);
             (LaidOutContent::Inline(lines), height)
         }
         BoxContent::Table(table) => {
@@ -830,12 +851,8 @@ fn layout_box_impl(
                 content_x,
                 content_y,
             );
-            let height = resolve_height(
-                &style,
-                padding.top + padding.bottom,
-                border.top + border.bottom,
-            )
-            .unwrap_or(table_height);
+            let height =
+                resolve_used_height(&style, &padding, &border, content_width, table_height);
             (LaidOutContent::Table(laid_table), height)
         }
         BoxContent::Flex(flex) => {
@@ -852,12 +869,7 @@ fn layout_box_impl(
                 content_x,
                 content_y,
             );
-            let height = resolve_height(
-                &style,
-                padding.top + padding.bottom,
-                border.top + border.bottom,
-            )
-            .unwrap_or(flex_height);
+            let height = resolve_used_height(&style, &padding, &border, content_width, flex_height);
             (LaidOutContent::Flex(items), height)
         }
         BoxContent::Image(image_content) => {
@@ -865,12 +877,9 @@ fn layout_box_impl(
             // autoだったケースは既に具体的なLengthへ差し替え済みなので、
             // `resolve_height`は`Some`を返す(高さゼロは、内在サイズが
             // 得られない=フェッチ・デコード失敗時の妥当な既定)。
-            let height = resolve_height(
-                &style,
-                padding.top + padding.bottom,
-                border.top + border.bottom,
-            )
-            .unwrap_or(0.0);
+            // `min-height`/`max-height`のクランプは他の内容種別と同じく効くが、
+            // アスペクト比の維持は行わない([0051]決定5)。
+            let height = resolve_used_height(&style, &padding, &border, content_width, 0.0);
             (LaidOutContent::Image(image_content.image.clone()), height)
         }
     };
@@ -1101,6 +1110,79 @@ pub(crate) fn resolve_lpa_or_zero(lpa: LengthPercentageOrAuto, basis: f32) -> f3
     }
 }
 
+/// `min-width`/`max-width`による使用幅のクランプ([0051](
+/// ../../../docs/decisions/0051-min-max-size-design.md)決定2)。
+///
+/// `max`→`min`の順に適用するので、`min-width > max-width`のときは`min-width`が
+/// 勝つ(CSS2.1 §10.4の手順と同じ結果)。`box-sizing: border-box`の場合、
+/// `min-*`/`max-*`の指定値もborder-box基準なので、`width`と同じく
+/// padding+borderを引いてcontent-box相当へ変換してから比較する([0027]決定2)。
+pub(crate) fn clamp_used_width(
+    style: &ComputedStyle,
+    containing_width: f32,
+    padding_lr: f32,
+    border_lr: f32,
+    width: f32,
+) -> f32 {
+    let to_content_box = |v: f32| {
+        if style.box_sizing == BoxSizing::BorderBox {
+            (v - padding_lr - border_lr).max(0.0)
+        } else {
+            v
+        }
+    };
+
+    let mut used = width;
+    if let MaxSize::LengthPercentage(lp) = style.max_width {
+        used = used.min(to_content_box(resolve_lp(lp, containing_width)));
+    }
+    used.max(to_content_box(resolve_lp(
+        style.min_width,
+        containing_width,
+    )))
+    .max(0.0)
+}
+
+/// `min-height`/`max-height`による使用高さのクランプ([0051]決定2・決定4)。
+/// パーセンテージ指定はcontaining blockの高さが不定なため無視する
+/// (`height`のパーセンテージが無視されるのと同じ扱い)。
+pub(crate) fn clamp_used_height(
+    style: &ComputedStyle,
+    padding_tb: f32,
+    border_tb: f32,
+    height: f32,
+) -> f32 {
+    let to_content_box = |v: f32| {
+        if style.box_sizing == BoxSizing::BorderBox {
+            (v - padding_tb - border_tb).max(0.0)
+        } else {
+            v
+        }
+    };
+
+    let mut used = height;
+    if let MaxSize::LengthPercentage(lp) = style.max_height {
+        if let Some(px) = definite_height_px(lp) {
+            used = used.min(to_content_box(px));
+        }
+    }
+    if let Some(px) = definite_height_px(style.min_height) {
+        used = used.max(to_content_box(px));
+    }
+    used.max(0.0)
+}
+
+/// 高さ方向で使える絶対長(px)。パーセンテージ、およびパーセンテージ成分を持つ
+/// `calc()`は、containing blockの高さが不定なため`None`(=無視)を返す([0051]決定4)。
+fn definite_height_px(lp: LengthPercentage) -> Option<f32> {
+    match lp {
+        LengthPercentage::Length(px) => Some(px),
+        LengthPercentage::Percentage(_) => None,
+        LengthPercentage::Calc { px, percent: 0.0 } => Some(px),
+        LengthPercentage::Calc { .. } => None,
+    }
+}
+
 pub(crate) fn resolve_padding(style: &ComputedStyle, basis: f32) -> EdgeSizes {
     EdgeSizes {
         top: resolve_lp(style.padding_top, basis),
@@ -1128,22 +1210,84 @@ pub(crate) fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
     }
 }
 
+/// 使用高さ = 「明示`height` → `aspect-ratio`による導出 → `auto_height`(内容から
+/// 求めた高さ)」の優先順で決めた値を、`min-height`/`max-height`でクランプしたもの
+/// ([0051](../../../docs/decisions/0051-min-max-size-design.md)決定4、
+/// [0052](../../../docs/decisions/0052-aspect-ratio-design.md)決定3・決定5)。
+pub(crate) fn resolve_used_height(
+    style: &ComputedStyle,
+    padding: &EdgeSizes,
+    border: &EdgeSizes,
+    content_width: f32,
+    auto_height: f32,
+) -> f32 {
+    let padding_tb = padding.top + padding.bottom;
+    let border_tb = border.top + border.bottom;
+    let height = resolve_height(style, padding_tb, border_tb)
+        .or_else(|| aspect_ratio_height(style, padding, border, content_width))
+        .unwrap_or(auto_height);
+    clamp_used_height(style, padding_tb, border_tb, height)
+}
+
+/// `aspect-ratio`から導出したcontent高さ([0052]決定3)。比が無ければ`None`。
+/// 比が適用される箱は`box-sizing`に従う(決定4)。
+fn aspect_ratio_height(
+    style: &ComputedStyle,
+    padding: &EdgeSizes,
+    border: &EdgeSizes,
+    content_width: f32,
+) -> Option<f32> {
+    let ratio = style.aspect_ratio.ratio?;
+    if style.box_sizing == BoxSizing::BorderBox {
+        let border_box_width =
+            content_width + padding.left + padding.right + border.left + border.right;
+        Some(
+            (border_box_width / ratio - padding.top - padding.bottom - border.top - border.bottom)
+                .max(0.0),
+        )
+    } else {
+        Some(content_width / ratio)
+    }
+}
+
+/// `aspect-ratio`から導出したcontent幅([0052]決定3)。高さが確定していて
+/// `width: auto`のshrink-to-fit文脈(float / `inline-block` / 絶対配置 / `<img>`)で
+/// 使う。通常フローのブロックの`width: auto`はstretchが優先されるため呼ばない。
+pub(crate) fn aspect_ratio_width(
+    style: &ComputedStyle,
+    padding: &EdgeSizes,
+    border: &EdgeSizes,
+) -> Option<f32> {
+    let ratio = style.aspect_ratio.ratio?;
+    let padding_tb = padding.top + padding.bottom;
+    let border_tb = border.top + border.bottom;
+    let content_height = resolve_height(style, padding_tb, border_tb)?;
+    if style.box_sizing == BoxSizing::BorderBox {
+        let border_box_height = content_height + padding_tb + border_tb;
+        Some(
+            (border_box_height * ratio - padding.left - padding.right - border.left - border.right)
+                .max(0.0),
+        )
+    } else {
+        Some(content_height * ratio)
+    }
+}
+
 /// `height`が明示指定されていれば返す。`auto`および(containing blockの高さが
 /// 不定なため)パーセンテージ指定は`None`とし、呼び出し側でコンテンツ高さを使う。
 /// `box-sizing: border-box`の場合、指定値は border-box の高さを表すため
 /// `padding_tb`/`border_tb`を引いてcontent-box相当に変換する
 /// ([0027](../../../docs/decisions/0027-box-sizing-design.md)決定2)。
 fn resolve_height(style: &ComputedStyle, padding_tb: f32, border_tb: f32) -> Option<f32> {
-    match style.height {
-        LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(px)) => {
-            Some(if style.box_sizing == BoxSizing::BorderBox {
-                (px - padding_tb - border_tb).max(0.0)
-            } else {
-                px
-            })
-        }
-        LengthPercentageOrAuto::Auto | LengthPercentageOrAuto::LengthPercentage(_) => None,
-    }
+    let LengthPercentageOrAuto::LengthPercentage(lp) = style.height else {
+        return None;
+    };
+    let px = definite_height_px(lp)?;
+    Some(if style.box_sizing == BoxSizing::BorderBox {
+        (px - padding_tb - border_tb).max(0.0)
+    } else {
+        px
+    })
 }
 
 /// 置換要素(`<img>`)のwidth/heightが両方`auto`の場合に限り、CSS2.2
@@ -1151,17 +1295,45 @@ fn resolve_height(style: &ComputedStyle, padding_tb: f32, border_tb: f32) -> Opt
 /// HTML属性(`width`/`height`)→内在サイズ(デコード成功時)の優先順で決め、
 /// 一方だけ値が得られる場合はアスペクト比を保って他方を導出する。
 ///
-/// **既知の簡略化**: CSSで`width`/`height`のどちらか一方だけが明示指定
-/// されている場合(もう一方は`auto`)は、通常のブロック要素と同じ扱いに
-/// 委ねる(アスペクト比を保った導出は行わない)。実務上`<img>`にCSSで
-/// 幅と高さを片方だけ指定するケースは稀であり、優先度を割かなかった。
-pub(super) fn apply_replaced_element_auto_size(style: &mut ComputedStyle, image: &ImageBoxContent) {
+/// CSSで`width`/`height`のどちらか一方だけが明示指定されている場合は、使用比
+/// (`aspect-ratio`指定、無ければ内在比)からもう一方を導出する([0052](
+/// ../../../docs/decisions/0052-aspect-ratio-design.md)決定3)。
+/// 「幅が確定&`height: auto`」は下流の[`resolve_used_height`]が導出するため、
+/// ここでは何もしない。
+pub(super) fn apply_replaced_element_auto_size(
+    style: &mut ComputedStyle,
+    image: &ImageBoxContent,
+    containing_width: f32,
+) {
+    // 内在比を計算スタイルへ焼き込む([0052]決定2)。以降の一般ロジックは
+    // 「`style.aspect_ratio.ratio`があれば使う」だけでよくなる。
+    if style.aspect_ratio.auto {
+        if let Some(ratio) = intrinsic_ratio(image) {
+            style.aspect_ratio.ratio = Some(ratio);
+        }
+    }
+
     let width_is_auto = matches!(style.width, LengthPercentageOrAuto::Auto);
     let height_is_auto = matches!(style.height, LengthPercentageOrAuto::Auto);
-    if !(width_is_auto && height_is_auto) {
+
+    let padding = resolve_padding(style, containing_width);
+    let border = resolve_border(style);
+
+    if !width_is_auto {
+        return;
+    }
+    if !height_is_auto {
+        // 高さ確定&`width: auto`。置換要素の`width: auto`はshrink-to-fit
+        // (通常のブロックのstretchではない)ので、比から幅を導ける([0052]決定3)。
+        if let Some(width) = aspect_ratio_width(style, &padding, &border) {
+            style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
+        }
         return;
     }
 
+    // 両方`auto`: HTML属性(`width`/`height`)→内在サイズ(デコード成功時)の
+    // 優先順で決め、一方だけ値が得られる場合はアスペクト比を保って他方を導出する
+    // (CSS2.2 §10.3.2/§10.6.2の簡略版)。
     let attr_size = (
         image.attr_width.map(|w| w as f32),
         image.attr_height.map(|h| h as f32),
@@ -1182,7 +1354,22 @@ pub(super) fn apply_replaced_element_auto_size(style: &mut ComputedStyle, image:
     };
 
     style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
+
+    // `auto`なしの`aspect-ratio`指定(例: `aspect-ratio: 16 / 9`)は内在比より
+    // 優先する([0052]決定2・決定3)。幅は内在幅のまま、高さだけ比で決め直す。
+    let height = if style.aspect_ratio.auto {
+        height
+    } else {
+        aspect_ratio_height(style, &padding, &border, width).unwrap_or(height)
+    };
     style.height = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(height));
+}
+
+/// 画像の内在アスペクト比(`width / height`)。デコードできていない、または
+/// 高さが0の場合は`None`。
+fn intrinsic_ratio(image: &ImageBoxContent) -> Option<f32> {
+    let prepared = image.image.as_ref()?;
+    (prepared.height > 0).then(|| prepared.width as f32 / prepared.height as f32)
 }
 
 /// `known`(既知の1辺の長さ)から、`ratio_basis`(`(既知でない辺の内在長,
@@ -1295,26 +1482,65 @@ pub(crate) fn resolve_width_and_horizontal_margins(
     padding_lr: f32,
     border_lr: f32,
 ) -> (f32, f32, f32) {
+    let (width, margin_left, margin_right) =
+        solve_horizontal(style, containing_width, padding_lr, border_lr, None);
+
+    // `min-width`/`max-width`でクランプし、値が変わったら「その幅が明示指定
+    // されていた」ものとして水平方向の等式を解き直す(CSS2.1 §10.4、[0051](
+    // ../../../docs/decisions/0051-min-max-size-design.md)決定3)。こうしないと
+    // `width: auto; max-width: 600px; margin: 0 auto`のような指定で、auto幅の枝で
+    // 0に潰れたmargin autoがそのまま残り中央寄せされない。
+    let clamped = clamp_used_width(style, containing_width, padding_lr, border_lr, width);
+    if clamped == width {
+        return (width, margin_left, margin_right);
+    }
+    solve_horizontal(
+        style,
+        containing_width,
+        padding_lr,
+        border_lr,
+        Some(clamped),
+    )
+}
+
+/// CSS2.1 §10.3.3の水平方向の等式(margin-left + border + padding + width +
+/// margin-right = containing width)を解く。`used_width`に`Some`を渡すと、
+/// その値(content-box基準、変換済み)が明示指定された`width`として扱われる
+/// ([0051]決定3のクランプ後の解き直し用)。
+fn solve_horizontal(
+    style: &ComputedStyle,
+    containing_width: f32,
+    padding_lr: f32,
+    border_lr: f32,
+    used_width: Option<f32>,
+) -> (f32, f32, f32) {
     let margin_left_is_auto = matches!(style.margin_left, LengthPercentageOrAuto::Auto);
     let margin_right_is_auto = matches!(style.margin_right, LengthPercentageOrAuto::Auto);
 
-    if matches!(style.width, LengthPercentageOrAuto::Auto) {
+    let specified_width = match used_width {
+        Some(w) => Some(w),
+        None if matches!(style.width, LengthPercentageOrAuto::Auto) => None,
+        None => {
+            // `box-sizing: border-box`の場合、指定値はborder-boxの幅を表すため、
+            // padding+borderを引いてcontent-box相当に変換してから既存の等式へ渡す
+            // ([0027]決定2)。
+            let width = resolve_lpa_or_zero(style.width, containing_width);
+            Some(if style.box_sizing == BoxSizing::BorderBox {
+                (width - padding_lr - border_lr).max(0.0)
+            } else {
+                width
+            })
+        }
+    };
+
+    let Some(width) = specified_width else {
         let margin_left = resolve_lpa_or_zero(style.margin_left, containing_width);
         let margin_right = resolve_lpa_or_zero(style.margin_right, containing_width);
         let width =
             (containing_width - margin_left - border_lr - padding_lr - margin_right).max(0.0);
         return (width, margin_left, margin_right);
-    }
-
-    // `box-sizing: border-box`の場合、指定値はborder-boxの幅を表すため、
-    // padding+borderを引いてcontent-box相当に変換してから既存の等式へ渡す
-    // ([0027]決定2)。
-    let width = resolve_lpa_or_zero(style.width, containing_width);
-    let width = if style.box_sizing == BoxSizing::BorderBox {
-        (width - padding_lr - border_lr).max(0.0)
-    } else {
-        width
     };
+
     let remaining = (containing_width - border_lr - padding_lr - width).max(0.0);
 
     match (margin_left_is_auto, margin_right_is_auto) {

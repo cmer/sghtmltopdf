@@ -1196,7 +1196,7 @@ fn layout_atomic_inline(
     // ブロック配置時(`resolve_box_geometry`)と同じ処理をここでも通し、
     // 寸法決定ロジックを共有する。
     if let BoxContent::Image(image_content) = &b.content {
-        super::block::apply_replaced_element_auto_size(&mut style, image_content);
+        super::block::apply_replaced_element_auto_size(&mut style, image_content, available_width);
     }
     let padding = super::block::resolve_padding(&style, available_width);
     let border = super::block::resolve_border(&style);
@@ -1221,15 +1221,28 @@ fn layout_atomic_inline(
         // floatの`width: auto`([0047])と同じ`shrink_to_fit_content_width`を共有する。
         LengthPercentageOrAuto::Auto => {
             let outer = padding.left + padding.right + border.left + border.right;
-            super::block::shrink_to_fit_content_width(
-                b,
-                styles,
-                fonts,
-                &style,
-                (available_width - outer).max(0.0),
-            )
+            // 高さが確定していれば`aspect-ratio`から幅を導ける([0052](
+            // ../../../docs/decisions/0052-aspect-ratio-design.md)決定3)。
+            super::block::aspect_ratio_width(&style, &padding, &border).unwrap_or_else(|| {
+                super::block::shrink_to_fit_content_width(
+                    b,
+                    styles,
+                    fonts,
+                    &style,
+                    (available_width - outer).max(0.0),
+                )
+            })
         }
     };
+    // `min-width`/`max-width`([0051](
+    // ../../../docs/decisions/0051-min-max-size-design.md)決定5)。
+    let content_width = super::block::clamp_used_width(
+        &style,
+        available_width,
+        padding.left + padding.right,
+        border.left + border.right,
+        content_width,
+    );
 
     let mut float_ctx = FloatContext::new();
     super::block::layout_box_with_forced_width_ignoring_positioned(

@@ -91,6 +91,54 @@ UAスタイルシート拡充と非表示要素の徹底、カテゴリB: `<br>`
 `<a href>`のPDFリンク注釈)、Phase 4(カテゴリI: `display: inline-block`と
 フォーム要素の静的描画)が完了し、**マイルストーン10全体が完了**。
 
+### `aspect-ratio`
+
+画像やバナーの縦横比を保つために`aspect-ratio`に対応した。設計は
+[0052](docs/decisions/0052-aspect-ratio-design.md)。
+
+```css
+.banner { width: 300px; aspect-ratio: 3 / 1; }  /* 高さは100pxになる */
+img.hero { width: 100%; }                       /* 内在比(例: 4:3)を保って高さが追従 */
+img.icon { width: 64px; aspect-ratio: 1 / 1; }  /* 指定比が内在比より優先される */
+```
+
+* 値は`auto | <ratio> | auto <ratio>`。`<ratio>`は`<number> [ / <number> ]?`
+  (分母省略時は1)。0や負の数を含む比は無効な宣言として無視される
+* `<img>`の内在アスペクト比は寸法解決の入口で計算スタイルへ焼き込むため、
+  以降のレイアウトは置換要素かどうかを意識しない。`auto`(初期値)なら内在比を
+  優先し、`aspect-ratio: 16 / 9`のように`auto`なしで書けば指定比が勝つ
+* **`<img>`にCSSで`width`/`height`の片方だけ指定した場合も比を保つ**ように
+  なった(従来は導出せず、`width: 100%`の画像の高さが0になっていた)
+* 「幅が確定 → 高さを導出」が基本。float/`inline-block`/絶対配置/`<img>`の
+  shrink-to-fit文脈でのみ「高さが確定 → 幅を導出」も行う(通常フローのブロックの
+  `width: auto`はCSS仕様どおりstretchが優先)
+* 比が適用される箱は`box-sizing`に従う。`min-*`/`max-*`は「比から導出 → クランプ」の
+  順に適用する(クランプで比が崩れた場合の再計算は行わない)
+
+### `min-width`/`max-width`/`min-height`/`max-height`
+
+「最大幅を決めて中央寄せ」「表の列に最低幅を与える」といった帳票レイアウトの
+基本パターン向けに、サイズ制約プロパティに対応した。設計は
+[0051](docs/decisions/0051-min-max-size-design.md)。
+
+```css
+.card  { max-width: 300px; margin: 0 auto; }  /* クランプ後も中央寄せされる */
+.panel { min-height: 120px; }
+td.item { min-width: 200px; }
+```
+
+* 値は`<length>`/`<percentage>`/`calc()`と`max-*: none`。`min-content`/
+  `max-content`/`fit-content`/`min-width: auto`は非対応(宣言ごと無視)
+* クランプは`max`→`min`の順に適用するので、`min > max`のときは`min`が勝つ
+  (CSS2.1 §10.4と同じ結果)
+* 幅は「解決 → クランプ → 変化したら水平マージンの等式を解き直す」2段構え。
+  これにより`width: auto; max-width: 300px; margin: 0 auto`が中央寄せされる
+* **`min-height`/`max-height`のパーセンテージは無視**する(containing blockの
+  高さが不定なため。既存の`height: <percentage>`と同じ扱い)
+* 適用対象はブロック・float・`inline-block`・絶対配置・`<img>`・flex(taffyの
+  `min_size`/`max_size`へ委譲)・テーブルセル。テーブルは「表を紙幅に収める」
+  比例縮尺を優先するため、縮尺後の最終列幅は`min-width`を保証しない
+
 ### `calc()`
 
 `width`/`height`/`margin`/`padding`/`top`/`right`/`bottom`/`left`/`text-indent`
