@@ -39,8 +39,15 @@ module Sghtmltopdf
       # 配列は同じオプションの繰り返し。要素ごとに同じ規則を適用する。
       when Array then value.flat_map { |element| args_for(key, element) }
       when Hash
+        # wicked_pdfの`margin: {top: 10}`のような入れ子は受けない。
+        # 数値の単位の解釈が違う(wicked_pdfはmm・こちらはpx)ため、
+        # 機械的に平坦化すると黙って別の余白になる。移行時は
+        # docs/wicked_pdf_migration.mdの対応表を見て書き換えてもらう。
+        example = value.keys.first
         raise ArgumentError,
-          "#{key}にHashは渡せません(pathとindexを取るのは:fontだけです)"
+          "#{key}にHashは渡せません(pathとindexを取るのは:fontだけです)。" \
+          "入れ子のオプションは平坦なキーで指定してください" \
+          "#{": 例 #{key}_#{example}: \"…\"" if example}"
       else ["--#{name}", value.to_s]
       end
     end

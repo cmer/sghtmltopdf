@@ -3,6 +3,7 @@
 require_relative "sghtmltopdf/version"
 require_relative "sghtmltopdf/options"
 require_relative "sghtmltopdf/configuration"
+require_relative "sghtmltopdf/renderer"
 
 # precompiled gemはRubyのマイナーバージョンごとのディレクトリへ`.so`を置く
 # (rake-compilerのクロスビルドの慣習)。開発中の`rake compile`は
@@ -64,3 +65,9 @@ module Sghtmltopdf
     end
   end
 end
+
+# Rails統合(Railtie・`render pdf:`・ビューヘルパ)は、Railsが読み込まれて
+# いるときだけ有効にする(docs/decisions/0062-ruby-binding.md 決定1)。
+# 通常のRailsアプリでは`config/application.rb`の`rails/all`が先に走るため、
+# Bundler.requireでこのファイルが読まれた時点で定数が揃っている。
+require_relative "sghtmltopdf/railtie" if defined?(::Rails::Railtie)

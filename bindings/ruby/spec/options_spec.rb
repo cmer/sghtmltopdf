@@ -55,6 +55,11 @@ RSpec.describe Sghtmltopdf::Options do
     it "font以外にHashを渡すとエラーにする" do
       expect { argv(page_size: {a: 1}) }.to raise_error(ArgumentError, /Hashは渡せません/)
     end
+
+    it "wicked_pdf形式の入れ子は平坦なキーを案内する" do
+      expect { argv(margin: {top: 10}) }
+        .to raise_error(ArgumentError, /margin_top/)
+    end
   end
 
   describe "複数オプション" do

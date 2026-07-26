@@ -33,6 +33,13 @@ module Sghtmltopdf
       @options.dup
     end
 
+    # まだ設定されていないキーにだけ値を入れる。Railtieが
+    # Rails向けの既定値を流し込むのに使う(T344)。
+    def apply_defaults(defaults)
+      defaults.each { |key, value| self[key] = value unless @options.key?(key.to_sym) }
+      self
+    end
+
     # `c.page_size = "A4"`と`c.page_size`を受ける。
     def method_missing(name, *args)
       key = name.to_s
