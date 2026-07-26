@@ -23,3 +23,34 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --workspace
+
+  # Ruby gem(bindings/ruby)。T347。
+  # 対応Rubyは3.2以上(docs/decisions/0062-ruby-binding.md 決定8)。下限と
+  # 最新2系列を回す。
+  ruby:
+    name: ruby ${{ matrix.ruby }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.2", "3.4", "4.0"]
+    steps:
+      - uses: actions/checkout@v4
+      # rb-sysのビルドに要るRustとlibclangまで面倒を見てくれる。
+      - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+          # 既定(tarball)でビルド成果物をキャッシュする。
+          cargo-cache: default
+          working-directory: bindings/ruby
+      # CLIとgemの出力がバイト単位で一致することを見るspec
+      # (docs/decisions/0062-ruby-binding.md 決定2、T340)と、実サーバとの
+      # 結合specはrelease版のバイナリが要る。無ければskipされるので、
+      # 1つの組み合わせでだけビルドする。
+      - name: cargo build --release (CLI比較・実サーバ結合specのため)
+        if: matrix.ruby == '4.0'
+        run: cargo build --release --locked
+      - name: rake (compile → spec)
+        working-directory: bindings/ruby
+        run: bundle exec rake

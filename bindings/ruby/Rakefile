@@ -2,7 +2,6 @@
 
 require "bundler/gem_tasks"
 require "rb_sys/extensiontask"
-require "rspec/core/rake_task"
 
 GEMSPEC = Gem::Specification.load("sghtmltopdf.gemspec")
 
@@ -14,7 +13,13 @@ RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
   ext.cross_platform = %w[x86_64-linux aarch64-linux arm64-darwin]
 end
 
-RSpec::Core::RakeTask.new(:spec)
-
-task spec: :compile
-task default: %i[compile spec]
+# クロスビルド(rb-sys-dockのコンテナ内)ではテスト用のgemが入っていない
+# ことがある。`rake native:<platform> gem`だけは動くようにしておく。
+begin
+  require "rspec/core/rake_task"
+  RSpec::Core::RakeTask.new(:spec)
+  task spec: :compile
+  task default: %i[compile spec]
+rescue LoadError
+  task default: :compile
+end
