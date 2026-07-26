@@ -1,0 +1,31 @@
+[book]
+title = "sghtmltopdf"
+authors = ["waka"]
+# 原文の言語。英語版は `MDBOOK_BOOK__LANGUAGE=en mdbook build -d book/en` で
+# po/en.po を当てて出す(docs/decisions 0064 決定3)。
+language = "ja"
+src = "src"
+
+[build]
+# po を直すと `mdbook serve` が再ビルドするようにする。
+extra-watch-dirs = ["po"]
+
+[preprocessor.gettext]
+# links(={{#include}}等の展開)の後に翻訳を当てる。
+after = ["links"]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+git-repository-url = "https://github.com/waka/sghtmltopdf"
+edit-url-template = "https://github.com/waka/sghtmltopdf/edit/main/docs/{path}"
+additional-js = ["mermaid.min.js", "mermaid-init.js", "theme/lang-switch.js"]
+additional-css = ["theme/custom.css"]
+
+[output.html.search]
+enable = true
+
+[output.html.fold]
+enable = true
+level = 1

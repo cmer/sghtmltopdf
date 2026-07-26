@@ -1,0 +1,86 @@
+name: Docs
+
+# ドキュメントサイト(docs/, mdbook)をビルドし、mainならGitHub Pagesへ出す。
+# 日本語版が `/`、英語版が `/en/`(docs/decisions 0064 決定4)。
+#
+# 事前にリポジトリ設定で Settings > Pages > Source を "GitHub Actions" に
+# しておく必要がある。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# デプロイは同時に1つだけ。実行中のものは走り切らせる。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  MDBOOK_VERSION: 0.5.4
+  MDBOOK_MERMAID_VERSION: 0.17.0
+  MDBOOK_I18N_HELPERS_VERSION: 0.4.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ツールは3つともバージョン固定。キャッシュキーにバージョンを入れて
+      # あるので、上げたときだけ入れ直しになる。
+      - name: Cache mdbook toolchain
+        id: cache-tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: mdbook-${{ env.MDBOOK_VERSION }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}-i18n-${{ env.MDBOOK_I18N_HELPERS_VERSION }}
+
+      - uses: cargo-bins/cargo-binstall@main
+        if: steps.cache-tools.outputs.cache-hit != 'true'
+
+      - name: Install mdbook toolchain
+        if: steps.cache-tools.outputs.cache-hit != 'true'
+        run: |
+          cargo binstall -y --no-confirm \
+            mdbook@${MDBOOK_VERSION} \
+            mdbook-mermaid@${MDBOOK_MERMAID_VERSION} \
+            mdbook-i18n-helpers@${MDBOOK_I18N_HELPERS_VERSION}
+
+      # 日本語版(原文) → 英語版の順。book/en は book/ の下に置くので、
+      # 逆順だと日本語版のビルドが英語版を消す(0064 spike)。
+      - name: Build (ja)
+        working-directory: docs
+        run: mdbook build -d book
+
+      - name: Build (en)
+        working-directory: docs
+        run: MDBOOK_BOOK__LANGUAGE=en mdbook build -d book/en
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/book
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
