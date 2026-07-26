@@ -1,13 +1,21 @@
 name: gem
 
-# precompiled gemのクロスビルド(T348)と、実際に`gem install`して動くかの
-# 確認(T349)。対象プラットフォームは
-# docs/decisions/0061-distribution.md 決定3。
+# precompiled gemのクロスビルド(T348)・`gem install`しての動作確認(T349)・
+# rubygems.orgへのpublish(T361)。対象プラットフォームは
+# docs/decisions/0061-distribution.md 決定3、publishの方式は決定7。
 #
 # 毎PRで回すには重い(3プラットフォーム×複数Ruby ABI)ので、タグを打ったときと
 # 手動実行のときだけ動かす。日々の検証はci.ymlの`ruby`ジョブが担当する。
+#
+# **このファイル名(gem.yml)はrubygems.orgのtrusted publisher設定と
+# 結び付いている**ので、変えるときはrubygems.org側も直すこと。
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "publishせずにビルドと検証だけ行う"
+        type: boolean
+        default: true
   push:
     tags: ["v*"]
   pull_request:
@@ -114,3 +122,74 @@ jobs:
         run: |
           gem install --no-document ./pkg/*.gem
           ruby bindings/ruby/script/smoke.rb
+
+  # rubygems.orgへのpublish(T361、[0061]決定7)。
+  # **スモークが全部通ったものだけを出す**。認証はtrusted publishing(OIDC)で、
+  # APIキーはリポジトリに置かない。
+  publish:
+    needs: [cross-gem, smoke-linux, smoke-linux-arm64, smoke-macos-arm64]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # rubygems.orgのtrusted publisher設定でenvironmentを指定する場合はこの名前。
+    # GitHub側でreviewerを付ければ、publish前に承認を挟める。
+    environment: rubygems
+    permissions:
+      id-token: write # trusted publishing(OIDC)
+      contents: write # GitHub Releaseの作成
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # release-gemはgit操作に自前のtokenを使う。
+          persist-credentials: false
+      # Rakefileの読み込みに`cargo metadata`が要る(RbSys::ExtensionTask)ので、
+      # Rubyだけでなくcargoも要る。
+      - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          cargo-cache: "false"
+          working-directory: bindings/ruby
+      # クロスビルドした3プラットフォーム分を`pkg/`へ集める。
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gem-*
+          merge-multiple: true
+          path: bindings/ruby/pkg
+      - name: タグとgemのバージョンが一致することを確かめる
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(ruby -e 'require "./bindings/ruby/lib/sghtmltopdf/version"; print Sghtmltopdf::VERSION')
+          echo "tag=$tag version=$version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::タグ($tag)とSghtmltopdf::VERSION($version)が一致しません" >&2
+            exit 1
+          fi
+      # プラットフォームが合わない環境向けのフォールバック。ソースgemには
+      # Rustコアが入らずビルドできないが([0061]決定7)、publishしておくと
+      # 「解決できないgem」ではなく**extconf.rbの説明付きエラー**になる。
+      - name: ソースgemも作る
+        working-directory: bindings/ruby
+        run: bundle exec rake build
+      - name: publishするgemの一覧
+        run: |
+          {
+            echo "### publish対象"
+            echo '```'
+            ls -l bindings/ruby/pkg/*.gem
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # 公式のリリースアクション。trusted publishing(OIDC)の設定・
+      # sigstore attestations・rubygems.orgへの反映待ちをやってくれる。
+      # 実体は`bundle exec rake release`で、**その`release`タスクは
+      # Rakefileで差し替えてある**(bundler既定の「1つbuildしてgitタグを作って
+      # push」ではなく、`pkg/`配下のgemを全部pushする)。
+      # attestationsは`RUBYOPT`で挿し込まれるため、4つすべてに効く。
+      - uses: rubygems/release-gem@v1
+        if: github.event.inputs.dry_run != 'true'
+        with:
+          working-directory: bindings/ruby
+      - name: GitHub Releaseを作る
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" bindings/ruby/pkg/*.gem --generate-notes --verify-tag

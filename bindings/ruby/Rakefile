@@ -23,3 +23,29 @@ begin
 rescue LoadError
   task default: :compile
 end
+
+# `bundler/gem_tasks`の`release`は「ソースgemを1つbuild → gitタグを作る →
+# push」という**純Rubyのgem向け**の手順で、このgemには合わない。
+#
+# * 配布するのはprecompiled gem 3プラットフォーム + ソースgemの計4つ
+#   (docs/decisions/0061-distribution.md 決定3・決定7)。CIがクロスビルド
+#   したものを`pkg/`へ集めてから出す
+# * gitタグは人が打ち、**そのタグのpushがリリースのトリガ**なので、
+#   ここでタグを作ろうとすると「既にある」で失敗する
+#
+# `rubygems/release-gem`が実行するのはこの`rake release`なので、中身を
+# 差し替えることで、公式アクションの利点(trusted publishingの設定・
+# sigstore attestations・反映待ち)をそのまま使える。attestationsは
+# `RUBYOPT`で挿し込まれるため、ここで呼ぶ`gem push`すべてに効く。
+Rake::Task["release"].clear
+
+desc "pkg/配下のgemをすべてrubygems.orgへpushする(CIから使う)"
+task :release do
+  gems = Dir["pkg/*.gem"].sort
+  raise "pkg/にgemがありません。先にクロスビルドと`rake build`を済ませてください" if gems.empty?
+
+  gems.each do |path|
+    puts "pushing #{path}"
+    sh("gem", "push", path)
+  end
+end
