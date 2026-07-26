@@ -3,6 +3,7 @@ name = "sghtmltopdf-core"
 version = "0.1.0"
 edition = "2021"
 description = "PDF rendering engine that is not depend on Chromium/WebKit/Gecko"
+license = "MIT"
 
 [lib]
 name = "sghtmltopdf_core"

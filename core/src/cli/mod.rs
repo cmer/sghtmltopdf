@@ -58,6 +58,32 @@ impl std::fmt::Display for CliError {
 
 impl std::error::Error for CliError {}
 
+/// 引数列を解析して[`options::ConvertArgs`]とフォント指定を返す。
+///
+/// **CLI以外の入口（Ruby binding）が同じオプション解釈を使うための関数**
+/// ([0062](../../../docs/decisions/0062-ruby-binding.md)決定2)。呼び出し側は
+/// `argv[0]`にプログラム名を置くこと（clapの慣習に合わせる）。
+///
+/// `--font`と`--font-index`の対応付けには[`clap::ArgMatches`]の出現位置が
+/// 必要なため、ここで解決して[`options::FontArg`]の列にして返す
+/// （呼び出し側がclapに依存せずに済む）。
+pub fn parse_convert_argv(
+    argv: &[String],
+) -> Result<(options::ConvertArgs, Vec<options::FontArg>), CliError> {
+    // 非対応オプションは、clapの「unknown argument」ではなく理由を示す
+    // ([0055]決定5)。CLIの`run`と同じ扱いにする。
+    if let Some(message) = unsupported::check_arguments(&argv[1..]) {
+        return Err(CliError::Usage(message));
+    }
+
+    let matches = Cli::command()
+        .try_get_matches_from(argv)
+        .map_err(|e| CliError::Usage(e.to_string()))?;
+    let cli = Cli::from_arg_matches(&matches).map_err(|e| CliError::Usage(e.to_string()))?;
+    let fonts = cli.convert.font_specs(&matches).map_err(CliError::Usage)?;
+    Ok((cli.convert, fonts))
+}
+
 /// CLIのエントリポイント。
 pub fn run() -> ExitCode {
     // wkhtmltopdfにあって対応していないオプションは、clapの「unknown
@@ -105,5 +131,55 @@ pub fn run() -> ExitCode {
             eprintln!("エラー: {e}");
             ExitCode::from(e.exit_code())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        let mut argv = vec!["sghtmltopdf".to_string(), "-".to_string()];
+        argv.extend(["--output".to_string(), "-".to_string()]);
+        argv.extend(args.iter().map(|s| s.to_string()));
+        argv
+    }
+
+    #[test]
+    fn parse_convert_argv_binds_each_font_index_to_the_preceding_font() {
+        // Ruby bindingは`--font-index`を対応する`--font`の直後に置く
+        // ([0062]決定2)。その並びが期待どおり解決されること。
+        let (_, fonts) = parse_convert_argv(&argv(&[
+            "--font",
+            "a.ttf",
+            "--font",
+            "b.ttc",
+            "--font-index",
+            "2",
+        ]))
+        .expect("parse should succeed");
+
+        assert_eq!(fonts.len(), 2);
+        assert_eq!(fonts[0].index, 0);
+        assert_eq!(fonts[1].index, 2);
+    }
+
+    #[test]
+    fn parse_convert_argv_rejects_unsupported_options_with_a_reason() {
+        let error = parse_convert_argv(&argv(&["--enable-javascript"]))
+            .expect_err("unsupported option should be rejected");
+
+        match error {
+            CliError::Usage(message) => assert!(message.contains("対応していません")),
+            other => panic!("expected a usage error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_convert_argv_rejects_unknown_options() {
+        assert!(matches!(
+            parse_convert_argv(&argv(&["--no-such-option"])),
+            Err(CliError::Usage(_))
+        ));
     }
 }

@@ -1,0 +1,20 @@
+# frozen_string_literal: true
+
+require "bundler/gem_tasks"
+require "rb_sys/extensiontask"
+require "rspec/core/rake_task"
+
+GEMSPEC = Gem::Specification.load("sghtmltopdf.gemspec")
+
+RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
+  ext.lib_dir = "lib/sghtmltopdf"
+  # クロスビルドの対象は docs/decisions/0061-distribution.md 決定3。
+  # 実際のビルドはoxidize-rb/cross-gem-actionがCIで行う(T348)。
+  ext.cross_compile = true
+  ext.cross_platform = %w[x86_64-linux aarch64-linux arm64-darwin]
+end
+
+RSpec::Core::RakeTask.new(:spec)
+
+task spec: :compile
+task default: %i[compile spec]

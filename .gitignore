@@ -2,11 +2,3 @@
 /docs
 CLAUDE.md
 /.claude
-
-# Ruby binding(bindings/ruby)。extはworkspace外なので個別に無視する
-# (docs/decisions/0062-ruby-binding.md 決定5)
-/bindings/ruby/ext/sghtmltopdf/target
-/bindings/ruby/tmp
-/bindings/ruby/pkg
-/bindings/ruby/lib/sghtmltopdf/*.so
-/bindings/ruby/lib/sghtmltopdf/*.bundle

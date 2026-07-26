@@ -1104,3 +1104,7 @@ CSS2.1の`float`(left/right)・`clear`(left/right/both)、および
 CSSを書かずに使える糖衣属性として`data-page-break="before|after|avoid"`にも
 対応している(スタイルシートのルールで個別に上書き可能な、弱い優先度のヒントとして
 扱われる)。
+
+## ライセンス
+
+MIT License（[LICENSE](LICENSE)）。

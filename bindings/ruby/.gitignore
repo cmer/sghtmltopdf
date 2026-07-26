@@ -1,0 +1,7 @@
+# gemはGemfile.lockをコミットしない(利用側の依存解決を縛らないため)
+/Gemfile.lock
+/target
+/tmp
+/pkg
+/lib/sghtmltopdf/*.so
+/lib/sghtmltopdf/*.bundle
