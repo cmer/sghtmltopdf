@@ -5,15 +5,19 @@
 //! (決定2)、ここは受け取ったargvをCLI・HTTPサーバと同じパーサへ通して
 //! レンダリングするだけ。
 
+mod callback_sink;
 mod errors;
 mod gvl;
 
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use magnus::{function, prelude::*, Error, RString, Ruby};
+use magnus::rb_sys::AsRawValue;
+use magnus::{block::Proc, function, prelude::*, Error, RString, Ruby};
 use sghtmltopdf_core::cli::{self, convert};
 use sghtmltopdf_core::sink::{FileSink, MemorySink};
+
+use callback_sink::{BlockSlot, CallbackSink, PendingUnwind, ValueSlot};
 
 /// HTMLを変換してPDFのバイト列を返す。
 fn render(html: RString, argv: Vec<String>) -> Result<RString, Error> {
@@ -54,6 +58,50 @@ fn render_to_file(html: RString, argv: Vec<String>, path: String) -> Result<(), 
     Ok(())
 }
 
+/// HTMLを変換し、確定したPDFのバイト列を`chunk_size`ごとに`block`へ渡す。
+///
+/// レンダリングの間はGVLを解放し、ブロックを呼ぶ瞬間だけ取り戻す
+/// ([0063](../../../../../docs/decisions/0063-ffi-chunk-callback.md))。
+/// ブロックが例外を投げた場合は、その例外をそのまま呼び出し元へ伝える
+/// (エンジン側は通常のエラーパスで巻き戻る)。
+fn render_each(
+    html: RString,
+    argv: Vec<String>,
+    block: Proc,
+    chunk_size: usize,
+) -> Result<(), Error> {
+    let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
+    let html = unsafe { html.as_slice() }.to_vec();
+    let (args, fonts) = cli::parse_convert_argv(&argv).map_err(|e| errors::to_ruby(&ruby, e))?;
+
+    // ブロックはGVL解放区間をまたいで生きる必要があるため、GCへ登録する
+    // (解放後にスタックへ積んだ値は保守的GCの走査対象外。[0063])。
+    let block = ValueSlot::new(block.as_raw());
+    let mut pending = PendingUnwind::default();
+
+    let result = {
+        let slot = BlockSlot::new(&block);
+        let pending = &mut pending;
+        gvl::without_gvl(move || {
+            let sink = CallbackSink::new(slot, pending, chunk_size);
+            convert::render(&args, &fonts, Cursor::new(html), sink)
+        })
+    };
+    drop(block);
+
+    // ブロック由来の中断は、エンジンが返すエラーより優先して伝える
+    // (`Sink::Error`が`io::Error`固定のため、理由はこちらに載っている)。
+    // `break`等の脱出は`into_error`の中で`rb_jump_tag`し**戻らない**ので、
+    // Rust側の値はここで落としきってから呼ぶ。
+    if pending.is_pending() {
+        drop(result);
+        return Err(pending
+            .into_error()
+            .expect("is_pendingがtrueなら中断が入っている"));
+    }
+    result.map_err(|e| errors::to_ruby(&ruby, e))
+}
+
 /// coreへリンクできていることの確認用(Phase 0の疎通確認)。
 fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -79,6 +127,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     let native = module.define_module("Native")?;
     native.define_singleton_method("render", function!(render, 2))?;
     native.define_singleton_method("render_to_file", function!(render_to_file, 3))?;
+    native.define_singleton_method("render_each", function!(render_each, 4))?;
     native.define_singleton_method("core_version", function!(core_version, 0))?;
     native.define_singleton_method("default_page_size", function!(default_page_size, 0))?;
     native.define_singleton_method("sleep_without_gvl", function!(sleep_without_gvl, 1))?;

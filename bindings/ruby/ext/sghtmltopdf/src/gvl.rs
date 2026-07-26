@@ -70,3 +70,51 @@ where
         Err(panic) => resume_unwind(panic),
     }
 }
+
+/// GVLを取り戻して`func`を実行する。**[`without_gvl`]の内側からだけ**呼ぶ
+/// ([0063](../../../../../docs/decisions/0063-ffi-chunk-callback.md))。
+///
+/// `without_gvl`と違い`Send`境界は課さない。ここはGVLを保持している＝Rubyに
+/// 触ってよい区間だから。
+///
+/// # 呼び出し側が守ること(libruby側の制約)
+///
+/// * **`func`からRubyのオブジェクトを返さない**。返すとGVLを再び手放した
+///   あとGCのスコープから外れ、マークされない。値を持ち帰るときは
+///   `rb_gc_register_address`で登録したスロットへ入れること
+///   (`callback_sink::ValueSlot`)
+/// * **`func`から例外を投げさせない**。longjmpがこの関数を飛び越えると
+///   未定義動作になる。Rubyの呼び出しは必ず`rb_protect`相当で包む
+///   (magnusの`Proc::call`は内部で`protect`しているのでそのまま使える)
+pub fn with_gvl<F, R>(func: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    struct State<F, R> {
+        func: Option<F>,
+        result: Option<std::thread::Result<R>>,
+    }
+
+    unsafe extern "C" fn call<F, R>(arg: *mut c_void) -> *mut c_void
+    where
+        F: FnOnce() -> R,
+    {
+        let state = unsafe { &mut *(arg as *mut State<F, R>) };
+        let func = state.func.take().expect("コールバックが2度呼ばれました");
+        // パニックがlibrubyのフレームを越えるとプロセスがabortする。
+        state.result = Some(catch_unwind(AssertUnwindSafe(func)));
+        std::ptr::null_mut()
+    }
+
+    let mut state = State::<F, R> {
+        func: Some(func),
+        result: None,
+    };
+    unsafe {
+        rb_sys::rb_thread_call_with_gvl(Some(call::<F, R>), &mut state as *mut _ as *mut c_void);
+    }
+    match state.result.expect("コールバックが実行されませんでした") {
+        Ok(value) => value,
+        Err(panic) => resume_unwind(panic),
+    }
+}

@@ -38,6 +38,11 @@ require_relative "sghtmltopdf/server_client"
 # 3つ(ネイティブ拡張側で定義。docs/decisions/0062-ruby-binding.md 決定9)と、
 # サーバへ委譲したときだけ起きる`ServerError`(到達不能・過負荷)。
 module Sghtmltopdf
+  # ブロック付き`render`で1回に渡すバイト数の目安(ローカル変換のみ)。
+  # ページ確定ごとにブロックを呼ぶとGVLの取り直しが増えるため、ここまで
+  # 溜めてから渡す(docs/decisions/0063-ffi-chunk-callback.md)。
+  DEFAULT_CHUNK_SIZE = 64 * 1024
+
   class << self
     # HTMLを変換してPDFのバイト列(ASCII-8BITのString)を返す。
     #
@@ -48,17 +53,18 @@ module Sghtmltopdf
     #
     #   Sghtmltopdf.render(html) { |bytes| response.stream.write(bytes) }
     #
-    # **サーバへ委譲しているときだけ逐次**になる(`?stream=1`のchunked
-    # transfer encodingをそのまま渡す)。ローカルのネイティブ拡張では
-    # PDF全体を1回だけyieldする(FFIでの逐次出力はM14 Phase 6)。
+    # ローカル・サーバ委譲のどちらでも**逐次**になる。ローカルは確定した
+    # ページから順に(docs/decisions/0063-ffi-chunk-callback.md)、サーバは
+    # `?stream=1`のchunked transfer encodingをそのまま渡す。
+    #
+    # 1回に渡すバイト数の目安は`chunk_size:`で変えられる(既定64KiB。
+    # ローカル変換のみ。小さくするとGVLの取り直しが増える)。
     def render(html, **options, &block)
       client = server_client(options)
       return client.render(html.to_s, server_options(options), &block) if client
+      return Native.render(html.to_s, argv_for(options)) if block.nil?
 
-      pdf = Native.render(html.to_s, argv_for(options))
-      return pdf if block.nil?
-
-      block.call(pdf)
+      Native.render_each(html.to_s, argv_for(options), block, chunk_size(options))
       nil
     end
 
@@ -107,6 +113,12 @@ module Sghtmltopdf
         open_timeout: merged[:server_open_timeout],
         read_timeout: merged[:server_read_timeout]
       )
+    end
+
+    # ブロックへ1回に渡すバイト数の目安(ローカル変換のみ)。
+    def chunk_size(options)
+      value = config.to_h.merge(options)[:chunk_size]
+      value.nil? ? DEFAULT_CHUNK_SIZE : Integer(value)
     end
 
     # サーバへ渡すオプション。**流し込まれた既定値は外す**

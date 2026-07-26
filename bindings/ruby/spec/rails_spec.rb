@@ -107,6 +107,40 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
+  # T355: ブロック付きrenderをActionController::Liveと組み合わせて、
+  # 確定したページから順にRackのレスポンスへ流せること。
+  #
+  # **Rack::Testの`last_response.body`は使えない**。`MockResponse`は
+  # ストリーミングのボディを読み切らずに最初のチャンクで止まるため、
+  # Rackのボディを自分で`each`する。
+  describe "Rackへのストリーミング" do
+    def stream_response(path)
+      status, headers, body = app.call(Rack::MockRequest.env_for(path))
+      chunks = []
+      body.each { |part| chunks << part }
+      body.close if body.respond_to?(:close)
+      [status, headers, chunks]
+    end
+
+    it "response.streamへチャンクごとに書き出される" do
+      status, headers, chunks = stream_response("/streams/show")
+
+      expect(status).to eq(200)
+      expect(headers["content-type"]).to start_with("application/pdf")
+      # 一括で1回書き出しているのではないこと。
+      expect(chunks.size).to be > 1
+      expect(chunks.first).to start_with("%PDF-")
+      expect(chunks.last).to end_with("%%EOF")
+    end
+
+    it "一括変換と同じPDFになる" do
+      _status, _headers, chunks = stream_response("/streams/show")
+      html = StreamsController.render(template: "invoices/long", layout: false)
+
+      expect(normalize(chunks.join)).to eq(normalize(Sghtmltopdf.render(html)))
+    end
+  end
+
   describe "サーバモードへの委譲(決定10)" do
     it "コントローラからでもサーバへ委譲でき、Railsの既定値は送らない" do
       FakeServer.run do |server|

@@ -24,7 +24,7 @@ module Sghtmltopdf
 
     # Ruby側だけで解釈するキー。変換オプションではないので、argvにも
     # クエリにも出さない(docs/decisions/0062-ruby-binding.md 決定10)。
-    TRANSPORT_KEYS = %i[server_url server_open_timeout server_read_timeout].freeze
+    TRANSPORT_KEYS = %i[server_url server_open_timeout server_read_timeout chunk_size].freeze
 
     module_function
 

@@ -75,8 +75,17 @@ curl --data-binary @big.html 'http://127.0.0.1:8080/pdf?stream=1&streaming' -o o
 
 ### Ruby / Rails (gem `sghtmltopdf`)
 
-ネイティブ拡張(magnus + rb-sys)経由でエンジンを直接呼びます。オプション名は
-CLIと同じで、`_`が`-`に対応します(`page_size:` → `--page-size`)。
+```ruby
+# Gemfile
+gem "sghtmltopdf"
+```
+
+ビルド済み(precompiled)のgemを配布しているので**Rustのツールチェインは不要**
+です。対応は`x86_64-linux`/`aarch64-linux`/`arm64-darwin`(glibc)とRuby 3.2以上。
+外部プロセスの起動は無く、ネイティブ拡張(magnus + rb-sys)経由で**同じプロセス
+の中で**変換します(重い処理の間はGVLを解放するので、Pumaの他スレッドは
+止まりません)。オプション名はCLIと同じで、`_`が`-`に対応します
+(`page_size:` → `--page-size`)。
 
 ```ruby
 pdf = Sghtmltopdf.render("<h1>請求書</h1>", page_size: "A4", margin_top: "20mm")
@@ -105,14 +114,16 @@ Sghtmltopdf.configure do |c|
 end
 ```
 
-ブロックを渡すとチャンクごとに受け取れます(サーバ経由なら`?stream=1`が
-そのまま流れ、ローカル変換ではPDF全体を1回だけyieldします)。
+ブロックを渡すと、**確定したページから順に**チャンクを受け取れます。Rackへ
+直接流すのも、S3のマルチパートアップロードへ繋ぐのも、この口から書けます。
+ブロックの呼び出しごとに保留中の割り込みが処理されるため、
+**`Thread#kill`や`Timeout.timeout`がチャンク境界で効きます**。
 
 ```ruby
 Sghtmltopdf.render(html) { |bytes| response.stream.write(bytes) }
 ```
 
-**wicked_pdfからの移行は
+**使い方の詳細は[docs/ruby.md](docs/ruby.md)、wicked_pdfからの移行は
 [docs/wicked_pdf_migration.md](docs/wicked_pdf_migration.md)を参照してください。**
 
 ### wkhtmltopdfからの移行で注意する点

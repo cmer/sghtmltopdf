@@ -14,7 +14,10 @@ description = "Ruby binding for sghtmltopdf (see bindings/ruby)"
 crate-type = ["cdylib"]
 
 [dependencies]
-magnus = "0.8"
+# `rb-sys` featureで`AsRawValue`/`FromRawValue`が使えるようになる
+# (GVL解放区間をまたいでブロックを運ぶのに必要。
+# docs/decisions/0063-ffi-chunk-callback.md)。
+magnus = { version = "0.8", features = ["rb-sys"] }
 # GVL解放(`rb_thread_call_without_gvl`)はmagnusに無いので直接呼ぶ
 # (docs/decisions/0062-ruby-binding.md 決定6)。
 rb-sys = "0.9"

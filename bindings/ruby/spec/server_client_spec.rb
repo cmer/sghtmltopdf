@@ -160,13 +160,12 @@ RSpec.describe "server_url" do
       end
     end
 
-    it "ローカル変換ではPDF全体を1回だけyieldする" do
+    it "ローカル変換でも同じ形で受け取れる(詳細はchunk_spec.rb)" do
       chunks = []
       result = Sghtmltopdf.render(html) { |bytes| chunks << bytes }
 
       expect(result).to be_nil
-      expect(chunks.size).to eq(1)
-      expect(chunks.first).to start_with("%PDF-")
+      expect(chunks.join).to start_with("%PDF-")
     end
   end
 
