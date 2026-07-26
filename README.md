@@ -73,6 +73,48 @@ curl --data-binary @invoice.html \
 curl --data-binary @big.html 'http://127.0.0.1:8080/pdf?stream=1&streaming' -o out.pdf
 ```
 
+### Ruby / Rails (gem `sghtmltopdf`)
+
+ネイティブ拡張(magnus + rb-sys)経由でエンジンを直接呼びます。オプション名は
+CLIと同じで、`_`が`-`に対応します(`page_size:` → `--page-size`)。
+
+```ruby
+pdf = Sghtmltopdf.render("<h1>請求書</h1>", page_size: "A4", margin_top: "20mm")
+Sghtmltopdf.render_to_file(html, "invoice.pdf")
+
+# グローバルな既定値(呼び出し時の引数が勝つ)
+Sghtmltopdf.configure { |c| c.gothic_font = Rails.root.join("vendor/fonts/NotoSansJP-Regular.ttf") }
+```
+
+Railsではwicked_pdf互換のレンダラが使えます(Railtieは`Rails::Railtie`が
+定義されているときだけ読み込まれるので、素のRubyからの利用には影響しません)。
+
+```ruby
+render pdf: "invoice", template: "invoices/show", layout: "pdf", page_size: "A4"
+```
+
+`server_url`を指定すると、変換を**HTTPサーバモードで動く別プロセスへ委譲**
+します(負荷分散はLBを前段に置く前提でURLは1つ)。到達できないときは
+`Sghtmltopdf::ServerError`にし、**ローカル変換へフォールバックしません**
+(サーバ側にだけ入れたフォントが効かず出力が変わるため)。
+
+```ruby
+Sghtmltopdf.configure do |c|
+  c.server_url          = "http://pdf.internal:8080"
+  c.server_read_timeout = 120   # 既定。server_open_timeoutは5秒
+end
+```
+
+ブロックを渡すとチャンクごとに受け取れます(サーバ経由なら`?stream=1`が
+そのまま流れ、ローカル変換ではPDF全体を1回だけyieldします)。
+
+```ruby
+Sghtmltopdf.render(html) { |bytes| response.stream.write(bytes) }
+```
+
+**wicked_pdfからの移行は
+[docs/wicked_pdf_migration.md](docs/wicked_pdf_migration.md)を参照してください。**
+
 ### wkhtmltopdfからの移行で注意する点
 
 | | wkhtmltopdf | sghtmltopdf |

@@ -2,6 +2,8 @@
 
 require "sghtmltopdf"
 
+Dir[File.join(__dir__, "support", "**", "*.rb")].sort.each { |file| require file }
+
 # Ruby 4.0でbenchmarkが同梱されなくなったため、依存を増やさず自前で測る。
 def elapsed_seconds
   started = Process.clock_gettime(Process::CLOCK_MONOTONIC)

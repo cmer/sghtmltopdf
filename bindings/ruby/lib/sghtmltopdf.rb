@@ -15,6 +15,9 @@ rescue LoadError
   require "sghtmltopdf/sghtmltopdf"
 end
 
+# `Error`(ネイティブ拡張が定義)を継承するため、拡張の読み込みより後。
+require_relative "sghtmltopdf/server_client"
+
 # Chromium/WebKit/Geckoに依存しないHTML→PDFレンダラー。
 #
 #   pdf = Sghtmltopdf.render("<h1>請求書</h1>", page_size: "A4")
@@ -23,21 +26,50 @@ end
 # オプション名はCLI(`sghtmltopdf --help`)と同じで、`_`が`-`に対応する
 # (`page_size:` → `--page-size`)。詳細はdocs/cli.mdを参照。
 #
+# `server_url`を指定すると、変換をHTTPサーバモードで動く別プロセス
+# (`sghtmltopdf server`)へ委譲する(決定10)。負荷分散は前段のLBに任せる
+# 前提でURLは1つだけ受け、サーバへ到達できないときは
+# `ServerError`にする(ローカルへフォールバックしない)。
+#
+#   Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
+#
 # 例外は`Sghtmltopdf::Error`を基底に、`UsageError`(オプションの誤り)・
 # `InputError`(入力やファイルの読み書き)・`RenderError`(レンダリング失敗)の
-# 3つ(ネイティブ拡張側で定義。docs/decisions/0062-ruby-binding.md 決定9)。
+# 3つ(ネイティブ拡張側で定義。docs/decisions/0062-ruby-binding.md 決定9)と、
+# サーバへ委譲したときだけ起きる`ServerError`(到達不能・過負荷)。
 module Sghtmltopdf
   class << self
     # HTMLを変換してPDFのバイト列(ASCII-8BITのString)を返す。
-    def render(html, **options)
-      Native.render(html.to_s, argv_for(options))
+    #
+    # ブロックを渡すと、PDF全体を組み立ててから返す代わりに**チャンクごとに
+    # ブロックを呼ぶ**(返り値はnil)。Rackの`response.stream`へ流したり、
+    # S3のマルチパートアップロードへ繋いだりするための口
+    # (CLAUDE.mdの「エンジン側は出力先(sink)を意識しない設計」に対応する)。
+    #
+    #   Sghtmltopdf.render(html) { |bytes| response.stream.write(bytes) }
+    #
+    # **サーバへ委譲しているときだけ逐次**になる(`?stream=1`のchunked
+    # transfer encodingをそのまま渡す)。ローカルのネイティブ拡張では
+    # PDF全体を1回だけyieldする(FFIでの逐次出力はM14 Phase 6)。
+    def render(html, **options, &block)
+      client = server_client(options)
+      return client.render(html.to_s, server_options(options), &block) if client
+
+      pdf = Native.render(html.to_s, argv_for(options))
+      return pdf if block.nil?
+
+      block.call(pdf)
+      nil
     end
 
     # HTMLを変換して`path`へ書き出す。
     #
     # 一時ファイルへ書いて成功時だけrenameするため、途中で失敗しても
-    # 壊れたPDFが出力先に残らない。
+    # 壊れたPDFが出力先に残らない(サーバへ委譲する場合も同じ)。
     def render_to_file(html, path, **options)
+      client = server_client(options)
+      return client.render_to_file(html.to_s, server_options(options), path.to_s) if client
+
       Native.render_to_file(html.to_s, argv_for(options), path.to_s)
       nil
     end
@@ -62,6 +94,27 @@ module Sghtmltopdf
     # グローバル設定 → 呼び出し時オプションの順にマージしてargvにする。
     def argv_for(options)
       Options.to_argv(config.to_h.merge(options))
+    end
+
+    # `server_url`があればサーバへ委譲する。タイムアウトも同じ順でマージする。
+    def server_client(options)
+      merged = config.to_h.merge(options)
+      url = merged[:server_url]
+      return nil if url.nil? || url.to_s.empty?
+
+      ServerClient.new(
+        url,
+        open_timeout: merged[:server_open_timeout],
+        read_timeout: merged[:server_read_timeout]
+      )
+    end
+
+    # サーバへ渡すオプション。**流し込まれた既定値は外す**
+    # (Rails向けの`base_url`・`allow`はローカルのファイル解決のための
+    # 既定値で、サーバモードではリクエストから指定できず400になる。
+    # 明示的に設定した値はそのまま送り、可否はサーバに判断させる)。
+    def server_options(options)
+      config.to_h(with_defaults: false).merge(options)
     end
   end
 end

@@ -18,25 +18,35 @@ module Sghtmltopdf
   class Configuration
     def initialize(options = {})
       @options = {}
+      # 明示的に設定した値(@options)と、Railtieなどが流し込んだ既定値
+      # (@defaults)は分けて持つ。読み出しは常に@optionsが勝つので、
+      # イニシャライザの実行順に依存しない。
+      @defaults = {}
       options.each { |key, value| self[key] = value }
     end
 
     def [](key)
-      @options[key.to_sym]
+      key = key.to_sym
+      @options.key?(key) ? @options[key] : @defaults[key]
     end
 
     def []=(key, value)
       @options[key.to_sym] = value
     end
 
-    def to_h
-      @options.dup
+    # @param with_defaults [Boolean] 流し込まれた既定値を含めるか。
+    #   HTTPサーバへ委譲するときは`false`にする。Rails向けの既定値
+    #   (`base_url`・`allow`)はローカルのファイル解決のためのもので、
+    #   サーバモードでは**リクエストから指定できない**キーだから
+    #   (docs/decisions/0062-ruby-binding.md 決定10)
+    def to_h(with_defaults: true)
+      with_defaults ? @defaults.merge(@options) : @options.dup
     end
 
-    # まだ設定されていないキーにだけ値を入れる。Railtieが
-    # Rails向けの既定値を流し込むのに使う(T344)。
+    # 既定値を流し込む。Railtieが Rails向けの既定値を入れるのに使う(T344)。
+    # 明示的に設定された値より弱い(順序に関係なく`[]=`が勝つ)。
     def apply_defaults(defaults)
-      defaults.each { |key, value| self[key] = value unless @options.key?(key.to_sym) }
+      defaults.each { |key, value| @defaults[key.to_sym] = value }
       self
     end
 

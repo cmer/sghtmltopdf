@@ -107,6 +107,22 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
+  describe "サーバモードへの委譲(決定10)" do
+    it "コントローラからでもサーバへ委譲でき、Railsの既定値は送らない" do
+      FakeServer.run do |server|
+        Sghtmltopdf.configure { |c| c.server_url = server.url }
+        get "/invoices/show"
+
+        expect(last_response.status).to eq(200)
+        expect(last_response.body).to start_with("%PDF-")
+        # Railtieが入れる`base_url`/`allow`はサーバでは指定できないキーなので、
+        # 送ってしまうと400になる。
+        expect(server.last_request.query).to eq("")
+        expect(server.last_request.body).to include("<h1>Invoice #1234</h1>")
+      end
+    end
+  end
+
   describe "ビューヘルパ(T344)" do
     it "public/のCSSを<style>へ展開する" do
       get "/invoices/with_stylesheet"
