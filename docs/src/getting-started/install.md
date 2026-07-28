@@ -4,12 +4,28 @@
 
 | 使い方 | 入れるもの |
 |---|---|
-| コマンドラインで変換する / [HTTPサーバ](../server/index.md)を立てる | 実行ファイル`sghtmltopdf` |
+| [HTTPサーバ](../server/index.md)を常駐させる | Dockerイメージ`ghcr.io/waka/sghtmltopdf` |
 | Ruby・Railsから使う | gem `sghtmltopdf` |
+| 手元のコマンドラインで変換する | 実行ファイル`sghtmltopdf`(ソースからビルド) |
+
+素の実行ファイル(GitHub Releasesのtarballやhomebrew)は配布していません。
+サーバはイメージの中に、FFIから使う場合はgemの中にそれぞれ実行ファイル相当が
+入っているためです。CLIを手元で試したい場合は下のソースビルドを使ってください。
 
 > **Note**
-> 最初のリリース(v0.1.0)前のため、**rubygems.orgへのgem公開とDockerイメージの
-> 配布はまだ行われていません**。現時点ではソースからビルドしてください。
+> 最初のリリース(v0.1.0)前のため、**rubygems.orgへのgem公開と、
+> `latest`/`0.1.0`タグのイメージ配布はまだ行われていません**。
+> イメージは`main`の最新が`edge`タグで出ています。
+
+## Docker
+
+```sh
+docker pull ghcr.io/waka/sghtmltopdf:latest
+docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf
+```
+
+日本語フォント(BIZ UDPGothic / BIZ UDPMincho)を同梱しているので、フォントを
+用意しなくても日本語のPDFが出ます。詳しくは[Docker](docker.md)を参照してください。
 
 ## ソースからビルド
 
@@ -57,7 +73,7 @@ gem "sghtmltopdf"
 `--font`を指定しない場合、システムにインストールされたフォントが使われます。
 手元で試すぶんには問題ありませんが、**サーバやCIでは出力が実行環境の
 フォント構成に依存します**。日本語を含む文書では、フォントファイルを明示するか、
-コンテナに同梱することを推奨します。
+フォントを同梱した[Dockerイメージ](docker.md)を使うことを推奨します。
 
 ```sh
 sghtmltopdf invoice.html \

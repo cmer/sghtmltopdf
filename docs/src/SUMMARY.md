@@ -5,6 +5,7 @@
 # はじめに
 
 - [インストール](getting-started/install.md)
+- [Docker](getting-started/docker.md)
 - [はじめてのPDF](getting-started/first-pdf.md)
 
 # CLI

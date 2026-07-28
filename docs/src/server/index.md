@@ -14,6 +14,13 @@ curl --data-binary @invoice.html \
      -o invoice.pdf
 ```
 
+常駐させるなら、日本語フォントを同梱した[Dockerイメージ](../getting-started/docker.md)が
+手軽です(引数なしでこのサーバとして起動します)。
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf
+```
+
 ## 起動オプション
 
 | オプション | 既定 | 説明 |

@@ -28,3 +28,12 @@ CLI・Dockerイメージ・Ruby gemは**すべて同じバージョン**を使�
 - Ruby gem(`sghtmltopdf`)。`Sghtmltopdf.render`/`render_to_file`、
   Rails統合(`render pdf:`、ビューヘルパ)、`server_url`による
   HTTPサーバモードへの委譲
+- Dockerイメージ(`ghcr.io/waka/sghtmltopdf`、`linux/amd64`+`linux/arm64`)。
+  日本語フォント(BIZ UDPGothic / BIZ UDPMincho)を同梱し、引数なしで
+  サーバ・引数ありでCLIとして動く
+
+### Fixed
+
+- システムから補ったフォントの並び順が実行ごとに変わり、**同じHTMLから
+  異なるバイト列のPDFが出る**ことがあった(`load_missing_system_fonts`が
+  `HashMap`の反復順で走査していた)。文書順に固定した

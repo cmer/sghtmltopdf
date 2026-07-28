@@ -65,6 +65,10 @@ const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
             "Times New Roman",
             "Times",
             "Georgia",
+            // 公式Dockerイメージが同梱する明朝体([0061]決定4改訂)。ラテン系の
+            // 候補が全て外れる最小環境(=そのイメージの中)で拾わせるため末尾に置く。
+            "BIZ UDPMincho",
+            "BIZ UDMincho",
         ],
     ),
     (
@@ -80,6 +84,9 @@ const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
             "Ubuntu",
             "Verdana",
             "Tahoma",
+            // 公式Dockerイメージが同梱するゴシック体(上の`serif`と同じ理由)。
+            "BIZ UDPGothic",
+            "BIZ UDGothic",
         ],
     ),
 ];
@@ -109,6 +116,9 @@ const CJK_FAMILY_CANDIDATES: &[&str] = &[
     "IPAGothic",
     "TakaoPGothic",
     "VL PGothic",
+    // 公式Dockerイメージが同梱するゴシック体([0061]決定4改訂)。
+    "BIZ UDPGothic",
+    "BIZ UDGothic",
     // 韓国語
     "Noto Sans CJK KR",
     "Noto Sans KR",
@@ -371,13 +381,21 @@ fn to_fontdb_style(style: FontStyle) -> fontdb::Style {
 /// ([0036](../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
 /// 決定3)。こうすることで`font-family: monospace`の照合が
 /// [`FontCollection::select_for_char`]の通常のfamily一致でそのまま機能する。
+///
+/// 走査順は[`document_chars`]と同じく**文書順**([`NodeId`]順)に固定する。
+/// `styles`は`HashMap`なので反復順が実行ごとに変わり、そのまま回すと
+/// ここで追加されるフォントの順序=PDFのフォント番号がぶれて、同じHTMLから
+/// 別のバイト列が出てしまう。
 pub fn load_missing_system_fonts(
     fonts: &mut FontCollection,
     styles: &HashMap<NodeId, ComputedStyle>,
     system: &SystemFonts,
 ) {
+    let mut node_ids: Vec<NodeId> = styles.keys().copied().collect();
+    node_ids.sort_by_key(|id| id.0);
+
     let mut seen = HashSet::new();
-    for style in styles.values() {
+    for style in node_ids.iter().filter_map(|id| styles.get(id)) {
         for family in &style.font_family {
             let key = (family.clone(), style.font_weight, style.font_style);
             if !seen.insert(key) {
@@ -611,6 +629,41 @@ mod tests {
 
         assert_eq!(fonts.len(), 1);
         assert!(fonts.has_family("DejaVu Sans"));
+    }
+
+    #[test]
+    fn load_missing_system_fonts_adds_fonts_in_document_order() {
+        // `styles`は`HashMap`なので反復順が実行ごとに変わる。文書順に固定して
+        // いないと、追加されるフォントの順序=PDFのフォント番号がぶれて、
+        // **同じHTMLから別のバイト列**が出てしまう(0061 決定4が謳う
+        // 「同じHTMLなら同じ出力」が成り立たなくなる)。
+        //
+        // `HashMap`のハッシュキーはインスタンスごとに変わるため、順序が
+        // 崩れているかどうかは1回の実行では見えないことがある。毎回
+        // `styles`を作り直して繰り返す。
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+        let html = br#"<p style="font-family: 'DejaVu Sans Mono';">a</p>
+                       <p style="font-family: 'Noto Sans CJK JP';">b</p>
+                       <p style="font-family: 'DejaVu Sans';">c</p>"#;
+
+        for _ in 0..20 {
+            let dom = html::parse(html);
+            let styles = compute_styles(&dom, &Stylesheet::default(), &Stylesheet::default());
+
+            let mut fonts = FontCollection::new(vec![]);
+            load_missing_system_fonts(&mut fonts, &styles, &system);
+
+            let families: Vec<String> = fonts
+                .fonts()
+                .iter()
+                .map(|f| f.family_name().unwrap_or_default())
+                .collect();
+            assert_eq!(
+                families,
+                vec!["DejaVu Sans Mono", "Noto Sans CJK JP", "DejaVu Sans"],
+                "fonts should be added in document order, not in HashMap order"
+            );
+        }
     }
 
     #[test]

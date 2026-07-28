@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-07-26T22:51:07+09:00\n"
+"POT-Creation-Date: 2026-07-29T03:56:25+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -28,86 +28,91 @@ msgstr ""
 msgid "インストール"
 msgstr ""
 
-#: src/SUMMARY.md:8 src/getting-started/first-pdf.md:1
+#: src/SUMMARY.md:8 src/getting-started/install.md:20
+#: src/getting-started/docker.md:1
+msgid "Docker"
+msgstr ""
+
+#: src/SUMMARY.md:9 src/getting-started/first-pdf.md:1
 msgid "はじめてのPDF"
 msgstr ""
 
-#: src/SUMMARY.md:10
+#: src/SUMMARY.md:11
 msgid "CLI"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/cli/reference.md:1
+#: src/SUMMARY.md:13 src/cli/reference.md:1
 msgid "CLIリファレンス"
 msgstr ""
 
-#: src/SUMMARY.md:13 src/cli/streaming.md:1
+#: src/SUMMARY.md:14 src/cli/streaming.md:1
 msgid "ストリーミングモード"
 msgstr ""
 
-#: src/SUMMARY.md:15
+#: src/SUMMARY.md:16
 msgid "HTTPサーバ"
 msgstr ""
 
-#: src/SUMMARY.md:17
+#: src/SUMMARY.md:18
 msgid "サーバモード"
 msgstr ""
 
-#: src/SUMMARY.md:19 src/SUMMARY.md:21 src/getting-started/install.md:38
+#: src/SUMMARY.md:20 src/SUMMARY.md:22 src/getting-started/install.md:54
 #: src/ruby/index.md:1
 msgid "Ruby / Rails"
 msgstr ""
 
-#: src/SUMMARY.md:23
+#: src/SUMMARY.md:24
 msgid "HTML / CSS"
 msgstr ""
 
-#: src/SUMMARY.md:25 src/css/rules.md:1
+#: src/SUMMARY.md:26 src/css/rules.md:1
 msgid "先に読んでほしい規則"
 msgstr ""
 
-#: src/SUMMARY.md:26 src/css/pagination.md:1 src/css/pagination.md:106
+#: src/SUMMARY.md:27 src/css/pagination.md:1 src/css/pagination.md:106
 msgid "ページ分割"
 msgstr ""
 
-#: src/SUMMARY.md:27 src/cli/reference.md:61 src/ruby/index.md:106
+#: src/SUMMARY.md:28 src/cli/reference.md:61 src/ruby/index.md:106
 #: src/css/fonts.md:1 src/migration/wkhtmltopdf.md:19
 #: src/migration/wicked-pdf.md:142
 msgid "フォント"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/css/images.md:1
+#: src/SUMMARY.md:29 src/css/images.md:1
 msgid "画像"
 msgstr ""
 
-#: src/SUMMARY.md:29
+#: src/SUMMARY.md:30
 msgid "プロパティ対応表"
 msgstr ""
 
-#: src/SUMMARY.md:30
+#: src/SUMMARY.md:31
 msgid "セレクタ・値・at-rule"
 msgstr ""
 
-#: src/SUMMARY.md:32
+#: src/SUMMARY.md:33
 msgid "移行ガイド"
 msgstr ""
 
-#: src/SUMMARY.md:34 src/migration/wkhtmltopdf.md:1
+#: src/SUMMARY.md:35 src/migration/wkhtmltopdf.md:1
 msgid "wkhtmltopdfからの移行"
 msgstr ""
 
-#: src/SUMMARY.md:35
+#: src/SUMMARY.md:36
 msgid "オプション対応表"
 msgstr ""
 
-#: src/SUMMARY.md:36
+#: src/SUMMARY.md:37
 msgid "wicked_pdfからの移行"
 msgstr ""
 
-#: src/SUMMARY.md:38
+#: src/SUMMARY.md:39
 msgid "付録"
 msgstr ""
 
-#: src/SUMMARY.md:40 src/appendix/limitations.md:1
+#: src/SUMMARY.md:41 src/appendix/limitations.md:1
 msgid "対応していないこと"
 msgstr ""
 
@@ -260,11 +265,11 @@ msgid "入れるもの"
 msgstr ""
 
 #: src/getting-started/install.md:7
-msgid "コマンドラインで変換する / [HTTPサーバ](../server/index.md)を立てる"
+msgid "[HTTPサーバ](../server/index.md)を常駐させる"
 msgstr ""
 
 #: src/getting-started/install.md:7
-msgid "実行ファイル`sghtmltopdf`"
+msgid "Dockerイメージ`ghcr.io/waka/sghtmltopdf`"
 msgstr ""
 
 #: src/getting-started/install.md:8
@@ -275,70 +280,340 @@ msgstr ""
 msgid "gem `sghtmltopdf`"
 msgstr ""
 
-#: src/getting-started/install.md:10
-msgid ""
-"**Note** 最初のリリース(v0.1.0)前のため、**rubygems.orgへのgem公開とDockerイメージの "
-"配布はまだ行われていません**。現時点ではソースからビルドしてください。"
+#: src/getting-started/install.md:9
+msgid "手元のコマンドラインで変換する"
 msgstr ""
 
-#: src/getting-started/install.md:14
+#: src/getting-started/install.md:9
+msgid "実行ファイル`sghtmltopdf`(ソースからビルド)"
+msgstr ""
+
+#: src/getting-started/install.md:11
+msgid ""
+"素の実行ファイル(GitHub Releasesのtarballやhomebrew)は配布していません。 "
+"サーバはイメージの中に、FFIから使う場合はgemの中にそれぞれ実行ファイル相当が "
+"入っているためです。CLIを手元で試したい場合は下のソースビルドを使ってください。"
+msgstr ""
+
+#: src/getting-started/install.md:15
+msgid ""
+"**Note** 最初のリリース(v0.1.0)前のため、**rubygems.orgへのgem公開と、 "
+"`latest`/`0.1.0`タグのイメージ配布はまだ行われていません**。 イメージは`main`の最新が`edge`タグで出ています。"
+msgstr ""
+
+#: src/getting-started/install.md:27
+msgid ""
+"日本語フォント(BIZ UDPGothic / BIZ UDPMincho)を同梱しているので、フォントを "
+"用意しなくても日本語のPDFが出ます。詳しくは[Docker](docker.md)を参照してください。"
+msgstr ""
+
+#: src/getting-started/install.md:30
 msgid "ソースからビルド"
 msgstr ""
 
-#: src/getting-started/install.md:16
+#: src/getting-started/install.md:32
 msgid ""
 "必要なのは[Rustのstableツールチェイン](https://rustup.rs/)だけです。C言語の "
 "ライブラリやシステムパッケージへの依存はありません。"
 msgstr ""
 
-#: src/getting-started/install.md:25
+#: src/getting-started/install.md:41
 msgid "実行ファイルは`target/release/sghtmltopdf`にできます。パスの通った場所へ 置くか、そのまま呼び出してください。"
 msgstr ""
 
-#: src/getting-started/install.md:32
+#: src/getting-started/install.md:48
 msgid "HTTPサーバモードが要らない場合は、featureを削って小さくできます。"
 msgstr ""
 
-#: src/getting-started/install.md:41 src/ruby/index.md:17
+#: src/getting-started/install.md:57 src/ruby/index.md:17
 #: src/migration/wicked-pdf.md:14
 msgid "# Gemfile\n"
 msgstr ""
 
-#: src/getting-started/install.md:42 src/ruby/index.md:18
-#: src/migration/wicked-pdf.md:17
+#: src/getting-started/install.md:58 src/getting-started/docker.md:49
+#: src/ruby/index.md:18 src/migration/wicked-pdf.md:17
 msgid "\"sghtmltopdf\""
 msgstr ""
 
-#: src/getting-started/install.md:45
+#: src/getting-started/install.md:61
 msgid ""
 "ビルド済み(precompiled)のgemを配布する方針のため、**利用側にRustの "
 "ツールチェインは要りません**。対応は`x86_64-linux`・`aarch64-linux`・ "
 "`arm64-darwin`(glibc)と、Ruby 3.2以上です。"
 msgstr ""
 
-#: src/getting-started/install.md:49
+#: src/getting-started/install.md:65
 msgid ""
 "外部プロセスは起動せず、ネイティブ拡張(magnus + rb-sys)として**同じプロセスの "
 "中で**変換します。重い処理の間はGVLを解放するので、Pumaの他のスレッドは 止まりません。"
 msgstr ""
 
-#: src/getting-started/install.md:53
+#: src/getting-started/install.md:69
 msgid "使い方は[Ruby / Rails](../ruby/index.md)を参照してください。"
 msgstr ""
 
-#: src/getting-started/install.md:55
+#: src/getting-started/install.md:71
 msgid "フォントについて"
 msgstr ""
 
-#: src/getting-started/install.md:57
+#: src/getting-started/install.md:73
 msgid ""
 "`--font`を指定しない場合、システムにインストールされたフォントが使われます。 "
 "手元で試すぶんには問題ありませんが、**サーバやCIでは出力が実行環境の "
-"フォント構成に依存します**。日本語を含む文書では、フォントファイルを明示するか、 コンテナに同梱することを推奨します。"
+"フォント構成に依存します**。日本語を含む文書では、フォントファイルを明示するか、 "
+"フォントを同梱した[Dockerイメージ](docker.md)を使うことを推奨します。"
 msgstr ""
 
-#: src/getting-started/install.md:68
+#: src/getting-started/install.md:84
 msgid "詳しくは[フォント](../css/fonts.md)を参照してください。"
+msgstr ""
+
+#: src/getting-started/docker.md:3
+msgid "日本語フォントを同梱した公式イメージを`ghcr.io`で配布しています。 サーバモードを常駐させる場合はこれが一番手軽です。"
+msgstr ""
+
+#: src/getting-started/docker.md:10
+msgid ""
+"対応プラットフォームは`linux/amd64`と`linux/arm64`(どちらもglibc。Alpine等の "
+"muslは対象外)です。同じタグでどちらも引けます。"
+msgstr ""
+
+#: src/getting-started/docker.md:13
+msgid "サーバとして使う"
+msgstr ""
+
+#: src/getting-started/docker.md:15
+msgid "引数なしで起動すると[HTTPサーバ](../server/index.md)になります。"
+msgstr ""
+
+#: src/getting-started/docker.md:27
+msgid ""
+"コンテナの中では`--listen 0.0.0.0:8080`で待ち受けます。サーバモードの既定は "
+"`127.0.0.1`(何も設定しないまま外部公開されるのを防ぐため)ですが、それだと "
+"コンテナの外から届かないので、イメージ側の`CMD`で明示しています。"
+msgstr ""
+
+#: src/getting-started/docker.md:31
+msgid "起動オプションを変えたいときは、`server`から書き直します。"
+msgstr ""
+
+#: src/getting-started/docker.md:38 src/server/index.md:36
+msgid "**認証とTLSは持ちません。** 外部へ公開する場合はリバースプロキシを前段に 置いてください。"
+msgstr ""
+
+#: src/getting-started/docker.md:41
+msgid "docker compose"
+msgstr ""
+
+#: src/getting-started/docker.md:44
+msgid "services"
+msgstr ""
+
+#: src/getting-started/docker.md:45
+msgid "pdf"
+msgstr ""
+
+#: src/getting-started/docker.md:46
+msgid "image"
+msgstr ""
+
+#: src/getting-started/docker.md:46
+msgid "ghcr.io/waka/sghtmltopdf:0.1"
+msgstr ""
+
+#: src/getting-started/docker.md:47
+msgid "ports"
+msgstr ""
+
+#: src/getting-started/docker.md:47
+msgid "\"8080:8080\""
+msgstr ""
+
+#: src/getting-started/docker.md:48
+msgid "healthcheck"
+msgstr ""
+
+#: src/getting-started/docker.md:49
+msgid "test"
+msgstr ""
+
+#: src/getting-started/docker.md:49
+msgid "\"CMD\""
+msgstr ""
+
+#: src/getting-started/docker.md:49
+msgid "\"--version\""
+msgstr ""
+
+#: src/getting-started/docker.md:50
+msgid "interval"
+msgstr ""
+
+#: src/getting-started/docker.md:50
+msgid "30s"
+msgstr ""
+
+#: src/getting-started/docker.md:53
+msgid ""
+"`curl`はイメージに入っていないので、ヘルスチェックは`--version`で代用するか、 外側(ロードバランサ等)から`GET "
+"/healthz`を叩いてください。"
+msgstr ""
+
+#: src/getting-started/docker.md:56
+msgid "CLIとして使う"
+msgstr ""
+
+#: src/getting-started/docker.md:58
+msgid "`ENTRYPOINT`が実行ファイルそのものなので、引数を渡せばCLIとして動きます。"
+msgstr ""
+
+#: src/getting-started/docker.md:61 src/getting-started/docker.md:91
+msgid "\"$PWD:/work\""
+msgstr ""
+
+#: src/getting-started/docker.md:61 src/getting-started/docker.md:91
+msgid "\"$(id -u):$(id -g)\""
+msgstr ""
+
+#: src/getting-started/docker.md:65
+msgid ""
+"コンテナは**rootでは動きません**(UID 10001)。ホストのディレクトリへPDFを "
+"書き出すときは、上のように`--user`でホスト側の所有者に合わせてください。"
+msgstr ""
+
+#: src/getting-started/docker.md:68
+msgid "同梱しているフォント"
+msgstr ""
+
+#: src/getting-started/docker.md:70
+msgid ""
+"[BIZ UDPGothic](https://fonts.google.com/specimen/BIZ+UDPGothic)と [BIZ "
+"UDPMincho](https://fonts.google.com/specimen/BIZ+UDPMincho)の "
+"Regular・Bold(計4本、SIL Open Font License 1.1)が入っています。 "
+"ライセンス全文はイメージ内の`/usr/share/doc/sghtmltopdf/fonts/`にあります。"
+msgstr ""
+
+#: src/getting-started/docker.md:75
+msgid "CSSの指定"
+msgstr ""
+
+#: src/getting-started/docker.md:75
+msgid "使われるフォント"
+msgstr ""
+
+#: src/getting-started/docker.md:77
+msgid "`font-family`未指定"
+msgstr ""
+
+#: src/getting-started/docker.md:77
+msgid "BIZ UDPMincho(明朝)"
+msgstr ""
+
+#: src/getting-started/docker.md:78
+msgid "`font-family: sans-serif`"
+msgstr ""
+
+#: src/getting-started/docker.md:78
+msgid "BIZ UDPGothic(ゴシック)"
+msgstr ""
+
+#: src/getting-started/docker.md:79
+msgid "`font-family: serif`"
+msgstr ""
+
+#: src/getting-started/docker.md:79
+msgid "BIZ UDPMincho"
+msgstr ""
+
+#: src/getting-started/docker.md:80
+msgid "`font-family: monospace`"
+msgstr ""
+
+#: src/getting-started/docker.md:80
+msgid "等幅フォントは同梱していないため、BIZ UDPMinchoにフォールバック"
+msgstr ""
+
+#: src/getting-started/docker.md:81
+msgid "`font-weight: bold`"
+msgstr ""
+
+#: src/getting-started/docker.md:81
+msgid "各書体のBold(合成太字ではありません)"
+msgstr ""
+
+#: src/getting-started/docker.md:83
+msgid ""
+"**フォントが固定されているので、同じHTMLからは同じPDFが出ます**(PDF内の "
+"作成日時を除く)。ホストのフォント構成に出力が左右されないのがイメージを使う 利点のひとつです。"
+msgstr ""
+
+#: src/getting-started/docker.md:87
+msgid "別のフォントを使いたい場合は、マウントして[`--font`](../css/fonts.md)で 渡してください。同梱フォントより優先されます。"
+msgstr ""
+
+#: src/getting-started/docker.md:96 src/getting-started/docker.md:98
+msgid "タグ"
+msgstr ""
+
+#: src/getting-started/docker.md:98 src/migration/wkhtmltopdf-options.md:160
+msgid "内容"
+msgstr ""
+
+#: src/getting-started/docker.md:100
+msgid "`0.1.0`"
+msgstr ""
+
+#: src/getting-started/docker.md:100
+msgid "そのリリース。**本番ではこれを固定するのを推奨**"
+msgstr ""
+
+#: src/getting-started/docker.md:101
+msgid "`0.1`"
+msgstr ""
+
+#: src/getting-started/docker.md:101
+msgid "マイナーバージョンに追従する"
+msgstr ""
+
+#: src/getting-started/docker.md:102
+msgid "`latest`"
+msgstr ""
+
+#: src/getting-started/docker.md:102
+msgid "最新のリリース"
+msgstr ""
+
+#: src/getting-started/docker.md:103
+msgid "`edge`"
+msgstr ""
+
+#: src/getting-started/docker.md:103
+msgid "`main`ブランチの最新(リリース前の動作確認用)"
+msgstr ""
+
+#: src/getting-started/docker.md:104
+msgid "`sha-<短縮SHA>`"
+msgstr ""
+
+#: src/getting-started/docker.md:104
+msgid "そのコミット"
+msgstr ""
+
+#: src/getting-started/docker.md:106
+msgid ""
+"バージョン番号は[gem](../ruby/index.md)・CLI・イメージで共通です。 "
+"`ghcr.io/waka/sghtmltopdf:0.1.0`と`sghtmltopdf-0.1.0`のgemは同じエンジンです。"
+msgstr ""
+
+#: src/getting-started/docker.md:109
+msgid "イメージの中身"
+msgstr ""
+
+#: src/getting-started/docker.md:118
+msgid ""
+"ベースは`debian:bookworm-slim`で、追加のシステムパッケージはありません "
+"(TLSのルート証明書は実行ファイルに埋め込まれているため`ca-certificates`も "
+"不要です)。展開後のサイズはamd64で約110MB、うち約23MBがフォントです。"
 msgstr ""
 
 #: src/getting-started/first-pdf.md:3
@@ -469,7 +744,7 @@ msgstr ""
 
 #: src/cli/reference.md:29 src/cli/reference.md:42 src/cli/reference.md:63
 #: src/cli/reference.md:81 src/cli/reference.md:98 src/cli/reference.md:124
-#: src/cli/reference.md:162 src/cli/reference.md:183 src/server/index.md:19
+#: src/cli/reference.md:162 src/cli/reference.md:183 src/server/index.md:26
 #: src/ruby/index.md:54 src/migration/wkhtmltopdf-options.md:33
 #: src/migration/wkhtmltopdf-options.md:71
 #: src/migration/wkhtmltopdf-options.md:80
@@ -480,14 +755,14 @@ msgid "オプション"
 msgstr ""
 
 #: src/cli/reference.md:29 src/cli/reference.md:42 src/cli/reference.md:81
-#: src/cli/reference.md:162 src/server/index.md:19 src/ruby/index.md:83
+#: src/cli/reference.md:162 src/server/index.md:26 src/ruby/index.md:83
 #: src/ruby/index.md:171
 msgid "既定"
 msgstr ""
 
 #: src/cli/reference.md:29 src/cli/reference.md:42 src/cli/reference.md:63
 #: src/cli/reference.md:81 src/cli/reference.md:98 src/cli/reference.md:124
-#: src/cli/reference.md:162 src/server/index.md:19 src/server/index.md:34
+#: src/cli/reference.md:162 src/server/index.md:26 src/server/index.md:41
 #: src/ruby/index.md:83
 msgid "説明"
 msgstr ""
@@ -1231,7 +1506,7 @@ msgstr ""
 msgid "制約"
 msgstr ""
 
-#: src/cli/streaming.md:28 src/css/fonts.md:90
+#: src/cli/streaming.md:28 src/css/fonts.md:102
 msgid "挙動"
 msgstr ""
 
@@ -1245,77 +1520,86 @@ msgid ""
 msgstr ""
 
 #: src/cli/streaming.md:31
+msgid "文字を描画できるフォントのシステム探索"
+msgstr ""
+
+#: src/cli/streaming.md:31
+msgid ""
+"文書全体を先読みできないため行わない。フォントを1つも指定しなかった場合だけ、CJK用のフォントを1本先回りで読み込む([フォント](../css/fonts.md#ストリーミングモードでの注意))。描画できない文字が出たら文字ごとに警告する"
+msgstr ""
+
+#: src/cli/streaming.md:32
 msgid ""
 "`:last-child`・`:nth-last-child`・`:last-of-type`・`:nth-last-of-type`・`:only-child`・`:only-of-type`・`:empty`"
 msgstr ""
 
-#: src/cli/streaming.md:31
+#: src/cli/streaming.md:32
 msgid "常に非マッチになる(親の子リストが完結するまで判定できないため)"
 msgstr ""
 
-#: src/cli/streaming.md:33
+#: src/cli/streaming.md:34
 msgid ""
 "後方参照のセレクタが効かないのは、要素を読んだ時点でスタイルを確定させる必要が あるためです。「最後の行だけ罫線を消す」といった指定は、クラスを振って "
 "`.last { … }`のように書き換えてください。"
 msgstr ""
 
-#: src/cli/streaming.md:37
+#: src/cli/streaming.md:38
 msgid "使えるもの"
 msgstr ""
 
-#: src/cli/streaming.md:39
+#: src/cli/streaming.md:40
 msgid "以下はストリーミングモードでも通常どおり使えます。"
 msgstr ""
 
-#: src/cli/streaming.md:41
+#: src/cli/streaming.md:42
 msgid "`--cover`(表紙)"
 msgstr ""
 
-#: src/cli/streaming.md:42
+#: src/cli/streaming.md:43
 msgid "ヘッダー/フッター(`[page]`まで。`[topage]`は不可)"
 msgstr ""
 
-#: src/cli/streaming.md:43
+#: src/cli/streaming.md:44
 msgid "ページ設定・PDFメタデータ"
 msgstr ""
 
-#: src/cli/streaming.md:44
+#: src/cli/streaming.md:45
 msgid "`--grayscale` / `--dpi` / `--zoom`"
 msgstr ""
 
-#: src/cli/streaming.md:45
+#: src/cli/streaming.md:46
 msgid "コンテンツ挙動のオプション(`--no-images`等)"
 msgstr ""
 
-#: src/cli/streaming.md:46
+#: src/cli/streaming.md:47
 msgid ""
 "`break-before`/`break-after`/`break-inside`・`orphans`/`widows`などの "
 "[ページ分割](../css/pagination.md)"
 msgstr ""
 
-#: src/cli/streaming.md:49
+#: src/cli/streaming.md:50
 msgid "いつ使うか"
 msgstr ""
 
-#: src/cli/streaming.md:51
+#: src/cli/streaming.md:52
 msgid "数千ページ規模の帳票を1本のHTMLから出す"
 msgstr ""
 
-#: src/cli/streaming.md:52
+#: src/cli/streaming.md:53
 msgid "メモリの上限が厳しい環境(コンテナのメモリ制限、サーバレス)で動かす"
 msgstr ""
 
-#: src/cli/streaming.md:54
+#: src/cli/streaming.md:55
 msgid "逆に、数十ページの請求書のような文書では通常モードで十分です。制約を負って まで使うものではありません。"
 msgstr ""
 
-#: src/cli/streaming.md:57
+#: src/cli/streaming.md:58
 msgid ""
 "[サーバモード](../server/index.md)では、クエリに`streaming`を付けると同じ "
 "モードになります。`?stream=1`(chunkedで返す)と組み合わせると、入力・ レンダリング・出力のすべてが逐次処理になります。"
 msgstr ""
 
-#: src/cli/streaming.md:62
+#: src/cli/streaming.md:63
 msgid "'http://127.0.0.1:8080/pdf?stream=1&streaming'"
 msgstr ""
 
@@ -1333,283 +1617,285 @@ msgid "# → 標準出力に `listening on 127.0.0.1:8080` が出る\n"
 msgstr ""
 
 #: src/server/index.md:17
+msgid ""
+"常駐させるなら、日本語フォントを同梱した[Dockerイメージ](../getting-started/docker.md)が "
+"手軽です(引数なしでこのサーバとして起動します)。"
+msgstr ""
+
+#: src/server/index.md:24
 msgid "起動オプション"
 msgstr ""
 
-#: src/server/index.md:21
+#: src/server/index.md:28
 msgid "`--listen <ADDR:PORT>`"
 msgstr ""
 
-#: src/server/index.md:21
+#: src/server/index.md:28
 msgid "`127.0.0.1:8080`"
 msgstr ""
 
-#: src/server/index.md:21
+#: src/server/index.md:28
 msgid "待ち受けアドレス。`:0`で空きポートを自動割り当て"
 msgstr ""
 
-#: src/server/index.md:22
+#: src/server/index.md:29
 msgid "`--workers <N>`"
 msgstr ""
 
-#: src/server/index.md:22
+#: src/server/index.md:29
 msgid "CPUコア数"
 msgstr ""
 
-#: src/server/index.md:22
+#: src/server/index.md:29
 msgid "同時に変換するワーカースレッド数"
 msgstr ""
 
-#: src/server/index.md:23
+#: src/server/index.md:30
 msgid "`--max-queue <N>`"
 msgstr ""
 
-#: src/server/index.md:23
+#: src/server/index.md:30
 msgid "ワーカー数×4"
 msgstr ""
 
-#: src/server/index.md:23
+#: src/server/index.md:30
 msgid "受理待ちの上限。超えると503"
 msgstr ""
 
-#: src/server/index.md:24
+#: src/server/index.md:31
 msgid "`--max-body-size <BYTES>`"
 msgstr ""
 
-#: src/server/index.md:24
+#: src/server/index.md:31
 msgid "10485760 (10MiB)"
 msgstr ""
 
-#: src/server/index.md:24
+#: src/server/index.md:31
 msgid "リクエストボディの上限"
 msgstr ""
 
-#: src/server/index.md:25
+#: src/server/index.md:32
 msgid "`--timeout <SECS>`"
 msgstr ""
 
-#: src/server/index.md:25
+#: src/server/index.md:32
 msgid "30"
 msgstr ""
 
-#: src/server/index.md:25
+#: src/server/index.md:32
 msgid "**キュー待ちの**上限秒数(超えると504)"
 msgstr ""
 
-#: src/server/index.md:26
+#: src/server/index.md:33
 msgid "`--font <PATH>` ほかフォント指定"
 msgstr ""
 
-#: src/server/index.md:26
+#: src/server/index.md:33
 msgid "リクエストからは変更できない"
 msgstr ""
 
-#: src/server/index.md:27
+#: src/server/index.md:34
 msgid "`--enable-local-file-access` / `--allow <PATH>` / `--allow-remote-assets`"
 msgstr ""
 
-#: src/server/index.md:27
+#: src/server/index.md:34
 msgid "すべて禁止"
 msgstr ""
 
-#: src/server/index.md:27
+#: src/server/index.md:34
 msgid "明示的に許可する場合のみ"
 msgstr ""
 
-#: src/server/index.md:29
-msgid "**認証とTLSは持ちません。** 外部へ公開する場合はリバースプロキシを前段に 置いてください。"
-msgstr ""
-
-#: src/server/index.md:32
+#: src/server/index.md:39
 msgid "エンドポイント"
 msgstr ""
 
-#: src/server/index.md:34
+#: src/server/index.md:41
 msgid "メソッド・パス"
 msgstr ""
 
-#: src/server/index.md:36
+#: src/server/index.md:43
 msgid "`POST /pdf`"
 msgstr ""
 
-#: src/server/index.md:36
+#: src/server/index.md:43
 msgid "ボディのHTMLをPDFへ変換して返す(`application/pdf`)"
 msgstr ""
 
-#: src/server/index.md:37
+#: src/server/index.md:44
 msgid "`POST /pdf?stream=1`"
 msgstr ""
 
-#: src/server/index.md:37
+#: src/server/index.md:44
 msgid "同上。**chunked transfer encoding**でページが確定したそばから流す"
 msgstr ""
 
-#: src/server/index.md:38
+#: src/server/index.md:45
 msgid "`GET /healthz`"
 msgstr ""
 
-#: src/server/index.md:38
+#: src/server/index.md:45
 msgid "`ok`"
 msgstr ""
 
-#: src/server/index.md:39
+#: src/server/index.md:46
 msgid "`GET /version`"
 msgstr ""
 
-#: src/server/index.md:39
+#: src/server/index.md:46
 msgid "`sghtmltopdf <version>`"
 msgstr ""
 
-#: src/server/index.md:41
+#: src/server/index.md:48
 msgid "クエリパラメータ"
 msgstr ""
 
-#: src/server/index.md:43
+#: src/server/index.md:50
 msgid "**CLIのロングオプションから`--`を取った名前**がそのまま使えます。値の解釈も CLIと同一です(同じパーサへ通しているため)。"
 msgstr ""
 
-#: src/server/index.md:54
+#: src/server/index.md:61
 msgid "値は**パーセントエンコード**できます(`%XX`と`+`)。"
 msgstr ""
 
-#: src/server/index.md:56
+#: src/server/index.md:63
 msgid "各オプションの意味は[CLIリファレンス](../cli/reference.md)を参照してください。"
 msgstr ""
 
-#: src/server/index.md:58
+#: src/server/index.md:65
 msgid "リクエストからは指定できないオプション"
 msgstr ""
 
-#: src/server/index.md:60
+#: src/server/index.md:67
 msgid "以下を指定すると`400`を返します。ローカルパスを取るもの・出力先・アクセス制御は **サーバ起動時にだけ**設定できます。"
 msgstr ""
 
-#: src/server/index.md:70
+#: src/server/index.md:77
 msgid "ステータスコード"
 msgstr ""
 
-#: src/server/index.md:72
+#: src/server/index.md:79
 msgid "コード"
 msgstr ""
 
-#: src/server/index.md:72 src/appendix/limitations.md:31
+#: src/server/index.md:79 src/appendix/limitations.md:31
 msgid "状況"
 msgstr ""
 
-#: src/server/index.md:74
+#: src/server/index.md:81
 msgid "200"
 msgstr ""
 
-#: src/server/index.md:74
+#: src/server/index.md:81
 msgid "成功(`Content-Type: application/pdf`)"
 msgstr ""
 
-#: src/server/index.md:75
+#: src/server/index.md:82
 msgid "400"
 msgstr ""
 
-#: src/server/index.md:75
+#: src/server/index.md:82
 msgid "未知/禁止のクエリキー、値の形式不正、ボディが空"
 msgstr ""
 
-#: src/server/index.md:76
+#: src/server/index.md:83
 msgid "404"
 msgstr ""
 
-#: src/server/index.md:76
+#: src/server/index.md:83
 msgid "未知のパス"
 msgstr ""
 
-#: src/server/index.md:77
+#: src/server/index.md:84
 msgid "405"
 msgstr ""
 
-#: src/server/index.md:77
+#: src/server/index.md:84
 msgid "使えないメソッド"
 msgstr ""
 
-#: src/server/index.md:78
+#: src/server/index.md:85
 msgid "413"
 msgstr ""
 
-#: src/server/index.md:78
+#: src/server/index.md:85
 msgid "ボディが`--max-body-size`超過"
 msgstr ""
 
-#: src/server/index.md:79
+#: src/server/index.md:86
 msgid "500"
 msgstr ""
 
-#: src/server/index.md:79
+#: src/server/index.md:86
 msgid "レンダリング失敗"
 msgstr ""
 
-#: src/server/index.md:80
+#: src/server/index.md:87
 msgid "503"
 msgstr ""
 
-#: src/server/index.md:80
+#: src/server/index.md:87
 msgid "キュー溢れ(`--max-queue`超過)"
 msgstr ""
 
-#: src/server/index.md:81
+#: src/server/index.md:88
 msgid "504"
 msgstr ""
 
-#: src/server/index.md:81
+#: src/server/index.md:88
 msgid "キュー待ちが`--timeout`超過"
 msgstr ""
 
-#: src/server/index.md:83
+#: src/server/index.md:90
 msgid "ストリーミング"
 msgstr ""
 
-#: src/server/index.md:85
+#: src/server/index.md:92
 msgid "**入力**: リクエストボディは読み切らずに、64KiBずつエンジンへ流します。 大きなHTMLを丸ごとメモリに載せません"
 msgstr ""
 
-#: src/server/index.md:87
+#: src/server/index.md:94
 msgid ""
 "**出力**: 既定はバッファ返却(`Content-Length`付き)。`?stream=1`を付けると chunked transfer "
 "encodingで、ページが確定したそばから流します"
 msgstr ""
 
-#: src/server/index.md:91
+#: src/server/index.md:98
 msgid "'http://127.0.0.1:8080/pdf?stream=1'"
 msgstr ""
 
-#: src/server/index.md:94
+#: src/server/index.md:101
 msgid ""
 "エンジン側の[ストリーミングモード](../cli/streaming.md)(`?streaming`)と併用 "
 "すると、入力・レンダリング・出力のすべてが逐次処理になります。"
 msgstr ""
 
-#: src/server/index.md:97
+#: src/server/index.md:104
 msgid "既知の限界"
 msgstr ""
 
-#: src/server/index.md:99
+#: src/server/index.md:106
 msgid "`--timeout`は**キュー待ち時間にしか効きません**。変換処理は同期で キャンセル点を持たないため、走り始めた変換は打ち切れません"
 msgstr ""
 
-#: src/server/index.md:101
+#: src/server/index.md:108
 msgid ""
 "`?stream=1`のとき、**ヘッダ送信後に失敗してもステータスは200のまま**に "
 "なります(パイプが閉じ、クライアントには不完全なPDFが届きます)。クエリの "
 "不正・空ボディ・サイズ超過はヘッダ送信前に検出するので400/413で返ります"
 msgstr ""
 
-#: src/server/index.md:104
+#: src/server/index.md:111
 msgid ""
 "`?stream=1`のときは**入力を先に読み切ります**(HTTPライブラリの制約で、 "
 "ボディ読み取りと応答が排他のため)。入力と出力のストリーミングは同時には 使えません"
 msgstr ""
 
-#: src/server/index.md:108
+#: src/server/index.md:115
 msgid "Railsから使う"
 msgstr ""
 
-#: src/server/index.md:110
+#: src/server/index.md:117
 msgid ""
 "Ruby gemには、変換をこのサーバへ委譲する`server_url`設定があります。 [Ruby / "
 "Rails](../ruby/index.md#サーバへ委譲する)を参照してください。"
@@ -2698,154 +2984,180 @@ msgstr ""
 msgid "`font-family`に書かれた名前でのシステムフォント探索"
 msgstr ""
 
-#: src/css/fonts.md:13
+#: src/css/fonts.md:12
+msgid "**文書中の文字を描画できるフォントのシステム探索**"
+msgstr ""
+
+#: src/css/fonts.md:14
 msgid "どれでも1つも見つからなかった場合だけ、システムの`sans-serif`候補が既定 フォントになります。"
 msgstr ""
 
-#: src/css/fonts.md:16
+#: src/css/fonts.md:17
+msgid ""
+"4番目は、`font-family`をどこにも書いていない日本語文書のように、**名前が "
+"手掛かりにならない**場合の網です。1〜3で集めたフォントで描画できない文字が 文書に含まれていれば、その文字を持つシステムフォント(日本語なら "
+"Noto Sans CJK JPなど)を探して追加します。それでも描画できない文字が残る 場合は、豆腐(□)になる前に警告を出します。"
+msgstr ""
+
+#: src/css/fonts.md:23
+msgid ""
+"```\n"
+"警告: 文字 \"ไ\" を描画できるフォントがありません(豆腐になります)。\n"
+"  --font/--gothic-font か @font-face でフォントを明示してください\n"
+"```"
+msgstr ""
+
+#: src/css/fonts.md:28
 msgid ""
 "**サーバやCIでは`--font`を明示してください。** 指定しないと出力が実行環境の "
 "フォント構成に依存します。同じHTMLが開発機と本番で違う見た目になる、という 事故はここから起きます。"
 msgstr ""
 
-#: src/css/fonts.md:20
+#: src/css/fonts.md:32
 msgid "汎用ファミリー名"
 msgstr ""
 
-#: src/css/fonts.md:22
+#: src/css/fonts.md:34
 msgid ""
 "`serif` / `sans-serif` / `monospace`はシステムフォントから解決されます (`cursive` / "
 "`fantasy`は解決しません)。"
 msgstr ""
 
-#: src/css/fonts.md:25
+#: src/css/fonts.md:37
 msgid "日本語では、この解決を環境任せにすると本文の書体が変わってしまうので、 CLIから決定的に指定できます。"
 msgstr ""
 
-#: src/css/fonts.md:35
+#: src/css/fonts.md:47
 msgid ""
 "TrueType Collection(`.ttc`)を使う場合は、直前の`--font`系オプションに対して "
 "`--font-index`でフェイス番号を指定します。"
 msgstr ""
 
-#: src/css/fonts.md:38 src/css/selectors.md:109
+#: src/css/fonts.md:50 src/css/selectors.md:109
 msgid "`@font-face`"
 msgstr ""
 
-#: src/css/fonts.md:42 src/css/fonts.md:48
+#: src/css/fonts.md:54 src/css/fonts.md:60
 msgid "\"MyFont\""
 msgstr ""
 
-#: src/css/fonts.md:43
+#: src/css/fonts.md:55
 msgid "\"fonts/MyFont-Regular.ttf\""
 msgstr ""
 
-#: src/css/fonts.md:51
+#: src/css/fonts.md:63
 msgid ""
 "対応するディスクリプタは`font-family` / `src` / `unicode-range` / `font-weight` / "
 "`font-style`です。`src`の`local()`と、`format()`/`tech()`付きの "
 "`url()`も受け付けます。`font-display`などその他のディスクリプタは無視されます。"
 msgstr ""
 
-#: src/css/fonts.md:55
+#: src/css/fonts.md:67
 msgid ""
 "**フォントファイルはTTF/OTFのみです。WOFF/WOFF2は非対応**なので、Webで "
 "配信しているwebfontをそのまま指すとエラーになります。元のTTF/OTFを使って ください。"
 msgstr ""
 
-#: src/css/fonts.md:59
+#: src/css/fonts.md:71
 msgid ""
 "**読み込みの待ち合わせはありません。** headless Chromeで必要だった "
 "`document.fonts.ready`待ちのような処理は不要で、フォントが未解決のまま PDF化されることはありません。"
 msgstr ""
 
-#: src/css/fonts.md:63
+#: src/css/fonts.md:75
 msgid "`unicode-range`"
 msgstr ""
 
-#: src/css/fonts.md:65
+#: src/css/fonts.md:77
 msgid "文字の範囲ごとにフォントを切り替えられます。英数字は欧文フォント、日本語は 和文フォント、という典型的な構成がそのまま書けます。"
 msgstr ""
 
-#: src/css/fonts.md:70 src/css/fonts.md:75
+#: src/css/fonts.md:82 src/css/fonts.md:87
 msgid "\"Mixed\""
 msgstr ""
 
-#: src/css/fonts.md:71
+#: src/css/fonts.md:83
 msgid "\"fonts/Latin.ttf\""
 msgstr ""
 
-#: src/css/fonts.md:76
+#: src/css/fonts.md:88
 msgid "\"fonts/JP.ttf\""
 msgstr ""
 
-#: src/css/fonts.md:76
+#: src/css/fonts.md:88
 msgid "/* 上の範囲外はこちら */"
 msgstr ""
 
-#: src/css/fonts.md:80
+#: src/css/fonts.md:92
 msgid "単一コードポイント・範囲・ワイルドカード(`U+4??`)・カンマ区切りの複数指定に 対応します"
 msgstr ""
 
-#: src/css/fonts.md:82
+#: src/css/fonts.md:94
 msgid "宣言された範囲は**ハードフィルタ**として働きます。範囲外の文字には、その フォントが実際にグリフを持っていても使いません"
 msgstr ""
 
-#: src/css/fonts.md:84
+#: src/css/fonts.md:96
 msgid "`unicode-range`を書かなかったフォント(`local()`・`--font`・システム探索を 含む)は全域をカバーします"
 msgstr ""
 
-#: src/css/fonts.md:86
+#: src/css/fonts.md:98
 msgid "範囲が重なった場合は、CSSの中で**先に宣言されたほう**が優先されます"
 msgstr ""
 
-#: src/css/fonts.md:88
+#: src/css/fonts.md:100
 msgid "太字と斜体"
 msgstr ""
 
-#: src/css/fonts.md:90
+#: src/css/fonts.md:102
 msgid "指定"
 msgstr ""
 
-#: src/css/fonts.md:92 src/css/properties.md:93
+#: src/css/fonts.md:104 src/css/properties.md:93
 msgid "`font-weight`"
 msgstr ""
 
-#: src/css/fonts.md:92
+#: src/css/fonts.md:104
 msgid ""
 "`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字のフォントが無い場合は、塗りに縁取りを足した**疑似ボールド**で描画します"
 msgstr ""
 
-#: src/css/fonts.md:93 src/css/properties.md:94
+#: src/css/fonts.md:105 src/css/properties.md:94
 msgid "`font-style`"
-msgstr ""
-
-#: src/css/fonts.md:93
-msgid ""
-"`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視)。イタリック字形が無い場合は、テキスト行列のせん断による**疑似イタリック**になります"
-msgstr ""
-
-#: src/css/fonts.md:95
-msgid "`font`ショートハンドは非対応です。`font-size`・`font-family`などの ロングハンドを個別に書いてください。"
-msgstr ""
-
-#: src/css/fonts.md:98
-msgid "サブセット化"
-msgstr ""
-
-#: src/css/fonts.md:100
-msgid "埋め込まれるのは**実際に使ったグリフだけ**です。日本語フォントを丸ごと 指定しても、PDFのサイズは文書に出てくる文字の分にしかなりません。"
-msgstr ""
-
-#: src/css/fonts.md:103
-msgid "ストリーミングモードでの注意"
 msgstr ""
 
 #: src/css/fonts.md:105
 msgid ""
-"[ストリーミングモード](../cli/streaming.md)では、`font-family`名からの "
-"**システムフォント自動探索が行われません**(警告を出して既定フォントで描画 "
-"します)。`--font`系オプションか`@font-face`で明示すれば、ストリーミングでも 意図どおりのフォントになります。"
+"`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視)。イタリック字形が無い場合は、テキスト行列のせん断による**疑似イタリック**になります"
+msgstr ""
+
+#: src/css/fonts.md:107
+msgid "`font`ショートハンドは非対応です。`font-size`・`font-family`などの ロングハンドを個別に書いてください。"
+msgstr ""
+
+#: src/css/fonts.md:110
+msgid "サブセット化"
+msgstr ""
+
+#: src/css/fonts.md:112
+msgid "埋め込まれるのは**実際に使ったグリフだけ**です。日本語フォントを丸ごと 指定しても、PDFのサイズは文書に出てくる文字の分にしかなりません。"
+msgstr ""
+
+#: src/css/fonts.md:115
+msgid "ストリーミングモードでの注意"
+msgstr ""
+
+#: src/css/fonts.md:117
+msgid ""
+"[ストリーミングモード](../cli/streaming.md)では、文書全体を一度に持たないため "
+"**上の3・4のシステムフォント探索が行われません**(警告を出して既定フォントで "
+"描画します)。`--font`系オプションか`@font-face`で明示すれば、ストリーミング でも意図どおりのフォントになります。"
+msgstr ""
+
+#: src/css/fonts.md:122
+msgid ""
+"例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に "
+"加えて**CJKを描画できるフォントを1本先回りで読み込みます**。日本語の文書を "
+"何も指定せずストリーミングで変換しても豆腐にならないのはこのためです。 CJK以外のスクリプトは警告の対象になります。"
 msgstr ""
 
 #: src/css/images.md:3
@@ -5643,10 +5955,6 @@ msgstr ""
 
 #: src/migration/wkhtmltopdf-options.md:158
 msgid "sghtmltopdf独自のオプション(wkhtmltopdfに無い)"
-msgstr ""
-
-#: src/migration/wkhtmltopdf-options.md:160
-msgid "内容"
 msgstr ""
 
 #: src/migration/wkhtmltopdf-options.md:162

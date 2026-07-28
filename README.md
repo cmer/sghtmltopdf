@@ -38,6 +38,9 @@ sghtmltopdf invoice.html -o invoice.pdf --page-size A4 --margin-top 20mm
 # HTTP server
 sghtmltopdf server --listen 127.0.0.1:8080
 curl --data-binary @invoice.html 'http://127.0.0.1:8080/pdf?page-size=A4' -o invoice.pdf
+
+# HTTP server, from the official image (Japanese fonts included, no arguments needed)
+docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf
 ```
 
 ```ruby
@@ -117,9 +120,18 @@ Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
 
 Everything else the full option reference, the HTTP API, CSS support tables, and migration guides from wkhtmltopdf and wicked_pdf lives in the **[documentation site](https://waka.github.io/sghtmltopdf/)** ([Ruby / Rails](https://waka.github.io/sghtmltopdf/ruby/index.html)).
 
+The Docker image (`linux/amd64` and `linux/arm64`) bundles BIZ UDPGothic and BIZ UDPMincho, so Japanese documents render without supplying a font, and the same HTML always produces the same PDF regardless of the host's fonts.
+`ENTRYPOINT` is the binary itself: no arguments starts the server, arguments run the CLI.
+
+```sh
+docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
+    ghcr.io/waka/sghtmltopdf invoice.html -o invoice.pdf
+```
+
 > **Note**
-> Version 0.1.0 has not been released yet. The gem is not on rubygems.org and no
-> Docker image is published. Build from source for now.
+> Version 0.1.0 has not been released yet. The gem is not on rubygems.org, and the
+> image is published only as `edge` (the tip of `main`) until then. The `latest`,
+> `0.1`, and `0.1.0` tags arrive with the first release.
 
 ## Guide for developer
 
