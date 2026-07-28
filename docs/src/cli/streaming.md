@@ -28,6 +28,7 @@ sghtmltopdf big.html -o big.pdf --streaming
 | 制約 | 挙動 |
 |---|---|
 | `font-family`名からのシステムフォント自動探索 | 既定のフォントで描画する。`--font`/`--gothic-font`/`--serif-font`/`--mono-font`か`@font-face`で明示すれば解決できる |
+| 文字を描画できるフォントのシステム探索 | 文書全体を先読みできないため行わない。フォントを1つも指定しなかった場合だけ、CJK用のフォントを1本先回りで読み込む([フォント](../css/fonts.md#ストリーミングモードでの注意))。描画できない文字が出たら文字ごとに警告する |
 | `:last-child`・`:nth-last-child`・`:last-of-type`・`:nth-last-of-type`・`:only-child`・`:only-of-type`・`:empty` | 常に非マッチになる(親の子リストが完結するまで判定できないため) |
 
 後方参照のセレクタが効かないのは、要素を読んだ時点でスタイルを確定させる必要が

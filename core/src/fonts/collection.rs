@@ -194,6 +194,25 @@ impl FontCollection {
         })
     }
 
+    /// `c`を**実際に描画できる**フォントがコレクションにあるか。
+    ///
+    /// [`Self::select_for_char`]はコレクションが空でない限り必ず何らかの
+    /// フォントを返す(最後の手段が「先頭のフォント」=豆腐)ので、豆腐に
+    /// なるかどうかを知りたい呼び出し側は、返ってきたフォントが本当に`c`の
+    /// グリフを持つかまで確認する必要がある。その判定をまとめたもの
+    /// ([0065](../../../docs/decisions/0065-glyph-coverage-font-fallback.md))。
+    pub fn can_render(
+        &self,
+        families: &[String],
+        weight: FontWeight,
+        style: FontStyle,
+        c: char,
+    ) -> bool {
+        self.select_for_char(families, weight, style, c)
+            .and_then(|index| self.get(index))
+            .is_some_and(|font| font.has_glyph(c))
+    }
+
     /// `index`のフォントが実際にBold相当かどうか。`@font-face`の`font-weight`
     /// 申告があればそれを優先し、無ければフォント自身のOS/2ウェイト値で判定する。
     pub fn is_bold(&self, index: usize) -> bool {

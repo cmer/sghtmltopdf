@@ -17,4 +17,7 @@ group :test do
   gem "actionpack", ">= 7.0"
   gem "rack-test", "~> 2.1"
   gem "railties", ">= 7.0"
+  # 手動確認用。`bundle exec rackup spec/dummy/config.ru`でdummyアプリを
+  # ブラウザから触るためだけに使う(specはRack::Test経由なので不要)。
+  gem "webrick", "~> 1.9"
 end

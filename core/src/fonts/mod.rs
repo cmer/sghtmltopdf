@@ -10,4 +10,7 @@ pub use collection::FontCollection;
 pub use face::{load_font_faces, LoadedFontFace};
 pub use font::{Font, FontLoadError};
 pub use shape::{measure_text, shape_text, ShapedGlyph, ShapedText};
-pub use system::{load_missing_system_fonts, SystemFonts};
+pub use system::{
+    ensure_cjk_fallback_font, load_fonts_for_uncovered_chars, load_missing_system_fonts,
+    warn_uncovered_chars, SystemFonts,
+};

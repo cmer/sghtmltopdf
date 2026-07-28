@@ -40,11 +40,14 @@
 //!   要素のスタイル計算がそのサブツリー内で完結するため、`Mode::Streaming`
 //!   では最初から構造的に評価できない(常に非マッチになる)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use crate::fonts::{load_font_faces, load_missing_system_fonts, Font, FontCollection, SystemFonts};
+use crate::fonts::{
+    ensure_cjk_fallback_font, load_font_faces, load_fonts_for_uncovered_chars,
+    load_missing_system_fonts, warn_uncovered_chars, Font, FontCollection, SystemFonts,
+};
 use crate::html::{
     collect_anchor_targets, find_base_href, find_document_title, Dom, NodeData, NodeId,
     StreamingParser,
@@ -804,6 +807,10 @@ struct StreamingState<S: Sink> {
     /// 解決できない`font-family`について警告済みの名前(同じ警告を
     /// 何度も出さないため)。
     warned_font_families: Vec<String>,
+    /// どのフォントでも描画できず警告済みの文字([0065]決定4)。
+    /// ストリーミングではトップレベル要素ごとに判定するため、既に警告した
+    /// 文字を持ち回って重複を防ぐ。
+    warned_uncovered_chars: HashSet<char>,
     paginator: StreamingPaginator,
     writer: StreamingPdfWriter<S>,
     /// `<img>`のフェッチ・デコード結果を文書内でメモ化するキャッシュ。
@@ -987,10 +994,21 @@ impl<S: Sink> Engine<S> {
                 loaded.font,
             );
         }
-        // `load_missing_system_fonts`は文書全体のスタイルを必要とするが、
-        // 真のストリーミング処理では文書全体のスタイルを一度に持たない
-        // ため、ここでは呼ばない(モジュールdocの既知の限界を参照)。
+        // `load_missing_system_fonts`・`load_fonts_for_uncovered_chars`は
+        // 文書全体のスタイル(や文字)を必要とするが、真のストリーミング処理では
+        // 文書全体を一度に持たないため、ここでは呼ばない(モジュールdocの
+        // 既知の限界を参照)。代わりに、フォントが何も与えられていない場合は
+        // 既定フォント(ラテン)に加えてCJKカバー用のフォントを先回りで足す
+        // ([0065](../.claude/plans/decisions/0065-glyph-coverage-font-fallback.md)
+        // 決定3)。`--font`/`@font-face`でフォントが供給されている場合に
+        // 勝手に足さないのは、フェースの並び順([0011]の`unicode-range`先勝ち)と
+        // 「`--font`で渡したフォントが既定になる」原則([0036]決定3-1改訂)への
+        // 影響を避けるため。
+        let had_no_fonts = fonts.is_empty();
         ensure_default_font(&mut fonts, &system_fonts)?;
+        if had_no_fonts {
+            ensure_cjk_fallback_font(&mut fonts, &system_fonts);
+        }
 
         // CSSカウンタ・quote深度はドキュメント順に依存する状態([0024]決定2・3)
         // なので、<html>から<body>直下の各トップレベル要素まで一貫して
@@ -1106,6 +1124,7 @@ impl<S: Sink> Engine<S> {
             page_settings,
             overlay_cache: None,
             warned_font_families: Vec::new(),
+            warned_uncovered_chars: HashSet::new(),
             paginator: StreamingPaginator::new(page_settings.content_height()),
             writer,
             image_cache,
@@ -1144,6 +1163,14 @@ impl<S: Sink> Engine<S> {
                 &sub_styles,
                 &state.fonts,
                 &mut state.warned_font_families,
+            );
+            // ストリーミングでは文字ベースのフォント補完ができない
+            // ([0065]決定3)ので、描画できない文字が出たら都度警告する。
+            warn_uncovered_chars(
+                &state.fonts,
+                &dom,
+                &sub_styles,
+                &mut state.warned_uncovered_chars,
             );
             let mut item_box = build_box_for_element(&dom, &sub_styles, node);
             if let (Some(item_box), true) = (&mut item_box, options_content.load_images) {
@@ -1359,7 +1386,14 @@ impl<S: Sink> Engine<S> {
             );
         }
         load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
+        // family名では手掛かりにならない文字(`font-family`未指定の日本語など)を
+        // 文字カバレッジから補う([0065]決定2)。`ensure_default_font`より先に
+        // 呼ぶ必要はないが、既定フォントを足す前に文書由来のフォントを
+        // 揃えておく方がフェースの並びが読みやすい。
+        load_fonts_for_uncovered_chars(&mut fonts, &dom, &styles, &system_fonts);
         ensure_default_font(&mut fonts, &system_fonts)?;
+        // 補ってもなお描画できない文字が残っていれば警告する([0065]決定4)。
+        warn_uncovered_chars(&fonts, &dom, &styles, &mut HashSet::new());
 
         let mut output = options.output.clone();
         output
