@@ -31,6 +31,7 @@
 //! 元の構造を保ったまま配置される。
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::fonts::FontCollection;
 use crate::html::{Dom, NodeId};
@@ -283,7 +284,7 @@ impl StreamingPaginator {
 /// 一括で行う(一括版)。
 pub fn paginate_document(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
 ) -> Vec<Page> {
@@ -387,7 +388,7 @@ fn find_node_padding_origin(b: &LaidOutBox, node: NodeId) -> Option<(f32, f32)> 
 /// メモリに載せてよい前提)。
 pub fn paginate_document_with_absolutes(
     dom: &mut Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     image_cache: &ImageAssetCache,
@@ -420,7 +421,7 @@ pub fn paginate_document_with_absolutes(
 #[allow(clippy::too_many_arguments)]
 pub fn paginate_document_streaming(
     dom: &mut Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     image_cache: &ImageAssetCache,

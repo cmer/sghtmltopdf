@@ -128,7 +128,7 @@ impl std::ops::DerefMut for RenderTarget<'_> {
 /// DOM由来のレイアウト結果(ページ列)をPDFバイト列にエンコードする。
 pub fn encode_pdf(
     pages: &[Page],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -150,7 +150,7 @@ pub fn encode_pdf(
 /// シグネチャを変えずに済ませるための分割)。
 pub fn encode_pdf_with_anchors(
     pages: &[Page],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -171,7 +171,7 @@ pub fn encode_pdf_with_anchors(
 /// 圧縮・スケール・グレースケール)を渡せるようにした版。
 pub fn encode_pdf_with_options(
     pages: &[Page],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -475,7 +475,7 @@ pub fn anchor_destination_name(id: &str) -> String {
 /// [`crate::layout::paginate_document`]の結果を、実際に`sink`へ書き出すところまで行う。
 pub fn write_document<S: Sink>(
     pages: &[Page],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -497,7 +497,7 @@ pub fn write_document<S: Sink>(
 #[allow(clippy::too_many_arguments)]
 pub fn write_document_with_options<S: Sink>(
     pages: &[Page],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     fonts: &FontCollection,
     settings: &PageSettings,
@@ -910,7 +910,7 @@ pub(super) fn internal_anchor_target(href: &str) -> Option<&str> {
 /// 付かないため`opacity`を持ちようがない)ので`b.node`は常に`Some`のはず。
 pub(super) fn collect_opacity_uses(
     b: &LaidOutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     out: &mut Vec<NodeId>,
 ) {
     if let Some(node) = b.node {
@@ -966,7 +966,7 @@ fn push_unique_image(out: &mut Vec<Rc<PreparedImage>>, image: &Rc<PreparedImage>
 pub(super) fn render_box(
     content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
@@ -1012,7 +1012,7 @@ fn render_box_with_style(
     content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     style: &ComputedStyle,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
@@ -1073,7 +1073,7 @@ fn render_box_opacity_wrapped(
     content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     style: &ComputedStyle,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
@@ -1196,7 +1196,7 @@ fn render_box_with_style_inner(
     content: &mut RenderTarget<'_>,
     b: &LaidOutBox,
     style: &ComputedStyle,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
@@ -1532,7 +1532,7 @@ fn render_box_with_style_inner(
 /// 分離は非対応(同一の直接の親を持つ兄弟間の描画順のみを制御する)。
 fn paint_order<'a>(
     children: &'a [LaidOutBox],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
 ) -> Vec<&'a LaidOutBox> {
     let effective_z_index = |child: &LaidOutBox| -> i32 {
         let Some(style) = child.node.and_then(|n| styles.get(&n)) else {
@@ -1595,7 +1595,7 @@ fn resolve_collapsed_cell_style(
     cell: &LaidOutBox,
     cell_style: &ComputedStyle,
     all_cells: &[&LaidOutBox],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
 ) -> (ComputedStyle, EdgeSizes) {
     // 矩形の接触判定に許容する誤差(浮動小数点の丸め対策)。
     const EPSILON: f32 = 0.5;
@@ -2270,7 +2270,7 @@ fn render_background_image(
 fn render_row_background(
     content: &mut RenderTarget<'_>,
     row: &LaidOutTableRow,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     settings: &PageSettings,
     alpha_gs_names: &[String],
 ) {
@@ -3402,7 +3402,10 @@ fn render_text_shadows(
     baseline_y: f32,
 ) {
     for run in &line.runs {
-        if run.text_shadow.is_empty() || run.glyphs.is_empty() {
+        let Some(shadows) = run.text_shadow.as_deref() else {
+            continue;
+        };
+        if shadows.is_empty() || run.glyphs.is_empty() {
             continue;
         }
         let remap = match remaps {
@@ -3430,7 +3433,7 @@ fn render_text_shadows(
         let shear = if run.italic { ITALIC_SHEAR } else { 0.0 };
 
         // 先頭が最前面 = 後ろに書いたものほど奥。奥から順に描く。
-        for shadow in run.text_shadow.iter().rev() {
+        for shadow in shadows.iter().rev() {
             for (dx, dy, alpha_scale) in shadow_blur_offsets(shadow.blur_radius) {
                 let alpha = shadow.color.alpha * alpha_scale;
                 if quantize_alpha_step_is_transparent(alpha) {
@@ -3694,7 +3697,7 @@ struct ShapedMarginBox {
 #[derive(Clone)]
 pub struct PageOverlay {
     pub boxes: Vec<LaidOutBox>,
-    pub styles: HashMap<NodeId, ComputedStyle>,
+    pub styles: HashMap<NodeId, Rc<ComputedStyle>>,
     /// 余白領域を基準にした描画用の設定。
     pub settings: PageSettings,
     /// はみ出しを切るクリップ矩形(CSS px・ページ左上原点)。

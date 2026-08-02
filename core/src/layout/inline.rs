@@ -103,7 +103,9 @@ pub struct TextRun {
     pub baseline_shift: f32,
     /// `text-shadow`(継承済み・色解決済み)。描画層がテキスト本体の前に
     /// 重ね描きする。レイアウトには影響しない。空なら影なし。
-    pub text_shadow: Rc<[ComputedTextShadow]>,
+    /// `text-shadow`。指定が無いのが普通なので`Option`にして、
+    /// 空でも`Rc`を確保しないようにする(ランは文書全体で数十万個になる)。
+    pub text_shadow: Option<Rc<[ComputedTextShadow]>>,
     /// `text-emphasis`のマーク。`None`ならマークなし。マーク分の高さは
     /// `ascent`/`descent`に加算済み。
     pub emphasis: Option<EmphasisMark>,
@@ -193,7 +195,7 @@ enum InlineItem<'a> {
 /// 無関係な呼び出し)なら固定の`available_width`/`origin_x`のまま(既存動作)。
 pub(crate) fn layout_inline_content(
     spans: &[InlineSpan],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     available_width: f32,
     origin_x: f32,
@@ -585,7 +587,120 @@ pub(crate) fn layout_inline_content(
         ));
     }
 
+    // `text-align`の適用まで終わってから、同じ体裁のランをまとめる。
+    for line in &mut lines {
+        merge_adjacent_runs(line, fonts);
+    }
+
     lines
+}
+
+/// 同じ体裁で横に連続するランを1つにまとめる。
+///
+/// 行組みは単語ごとにランを作るので、1段落が7ラン前後に分かれる。ランは
+/// 1つあたり構造体192バイトに加えてテキストとグリフ列の確保を伴うため、
+/// 数万段落の文書ではこの分割がレイアウトのメモリの大半を占める。
+///
+/// 単語間の空白はランに含まれず「隙間」として表現されているので、まとめる際は
+/// 隙間ぶんのアドバンスを持つ空白グリフを差し込んで復元する。こうすると描画位置は
+/// 元のまま変わらず、PDFのテキスト抽出では単語が空白で区切られるようになる。
+///
+/// `text-align: justify`が広げた隙間も同じ扱いでよい(隙間の実測値をそのまま
+/// 空白のアドバンスにする)ため、この処理は`apply_text_align`の後に呼ぶこと。
+fn merge_adjacent_runs(line: &mut LineBox, fonts: &FontCollection) {
+    if line.runs.len() < 2 {
+        return;
+    }
+    let mut merged: Vec<TextRun> = Vec::with_capacity(line.runs.len());
+    for run in std::mem::take(&mut line.runs) {
+        let Some(prev) = merged.last_mut() else {
+            merged.push(run);
+            continue;
+        };
+        match gap_if_mergeable(prev, &run, fonts) {
+            Some(gap) => append_run(prev, run, gap, fonts),
+            None => merged.push(run),
+        }
+    }
+    line.runs = merged;
+}
+
+/// `prev`の直後に`next`をまとめられるなら、2つの間の隙間(px)を返す。
+fn gap_if_mergeable(prev: &TextRun, next: &TextRun, fonts: &FontCollection) -> Option<f32> {
+    // 体裁が1つでも違えば別のランのままにする。
+    let same_style = prev.font_index == next.font_index
+        && prev.font_size == next.font_size
+        && prev.color == next.color
+        && prev.background_color == next.background_color
+        && prev.bold == next.bold
+        && prev.italic == next.italic
+        && prev.underline == next.underline
+        && prev.line_through == next.line_through
+        && prev.line_height == next.line_height
+        && prev.word_spacing == next.word_spacing
+        && prev.ascent == next.ascent
+        && prev.descent == next.descent
+        && prev.baseline_shift == next.baseline_shift
+        && prev.vertical_align == next.vertical_align
+        && prev.style_index == next.style_index
+        && prev.link == next.link
+        && prev.text_shadow == next.text_shadow;
+    if !same_style {
+        return None;
+    }
+    // `letter-spacing`はPDFの`Tc`として全グリフに効くため、差し込んだ空白にも
+    // 加算されて位置がずれる。指定がある行はまとめない。
+    if prev.letter_spacing != 0.0 || next.letter_spacing != 0.0 {
+        return None;
+    }
+    // マーク(`text-emphasis`)は文字ごとに打つので、空白の追加で数が変わりうる。
+    if prev.emphasis.is_some() || next.emphasis.is_some() {
+        return None;
+    }
+    // 行末ハイフンの直後は、ハイフンの有無が失われるためまとめない。
+    if next.hyphen_before {
+        return None;
+    }
+
+    let gap = next.x_offset - (prev.x_offset + prev.width);
+    // 重なっている(負の隙間)場合は素直に諦める。
+    if gap < -0.01 {
+        return None;
+    }
+    let gap = gap.max(0.0);
+    // 隙間を空白グリフで埋められないフォントではまとめない。
+    if gap > 0.01 && space_glyph(prev.font_index, fonts).is_none() {
+        return None;
+    }
+    Some(gap)
+}
+
+/// `font_index`のフォントが持つ空白(U+0020)のグリフID。
+fn space_glyph(font_index: usize, fonts: &FontCollection) -> Option<u16> {
+    fonts.get(font_index).and_then(|font| font.glyph_id(' '))
+}
+
+/// `prev`の末尾へ`next`を連結する。`gap`が正なら空白グリフで埋める。
+fn append_run(prev: &mut TextRun, next: TextRun, gap: f32, fonts: &FontCollection) {
+    if gap > 0.01 {
+        let glyph_id = space_glyph(prev.font_index, fonts).expect("直前に存在を確認済み");
+        prev.glyphs.push(ShapedGlyph {
+            glyph_id,
+            cluster: prev.text.len() as u32,
+            x_advance: gap,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        });
+        prev.text.push(' ');
+    }
+    // クラスタは各ランのテキスト先頭からのバイト位置なので、連結後の位置へずらす。
+    let base = prev.text.len() as u32;
+    prev.glyphs.extend(next.glyphs.into_iter().map(|mut glyph| {
+        glyph.cluster += base;
+        glyph
+    }));
+    prev.text.push_str(&next.text);
+    prev.width = next.x_offset + next.width - prev.x_offset;
 }
 
 /// 確定した行に`text-align`を適用する。`is_last_line`は`justify`が最後の行を
@@ -653,7 +768,7 @@ fn line_band(
 /// `text-transform`はここで適用する(単語分割前の1パスで完結させる)。
 fn flatten_spans(
     spans: &[InlineSpan],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
 ) -> (Vec<StyledChar>, Vec<ComputedStyle>, Vec<Option<Rc<str>>>) {
     let mut chars = Vec::new();
     let mut span_styles = Vec::with_capacity(spans.len());
@@ -664,7 +779,11 @@ fn flatten_spans(
     let mut prev_is_boundary = true;
 
     for span in spans {
-        let mut style = styles.get(&span.node).cloned().unwrap_or_default();
+        // スパンごとに背景色などを差し替えるため、共有スタイルから所有スタイルを作る。
+        let mut style = styles
+            .get(&span.node)
+            .map(|shared| (**shared).clone())
+            .unwrap_or_default();
         // インライン背景はスパンが持つ値(=直近のインライン要素の指定)を使う。
         // テキストノードの計算スタイルは親の非継承プロパティまでクローンして
         // いるため、そのまま使うとブロックの背景まで塗ってしまう
@@ -1302,7 +1421,8 @@ pub(super) fn shape_run(
         // `baseline_shift`は行が確定した時点で`resolve_baseline_shifts`が埋める。
         baseline_shift: 0.0,
         vertical_align: style.vertical_align,
-        text_shadow: Rc::from(style.text_shadow.as_slice()),
+        text_shadow: (!style.text_shadow.is_empty())
+            .then(|| Rc::from(style.text_shadow.as_slice())),
         emphasis,
         // `style_index`/`hyphen_before`は呼び出し側(`split_word_into_runs`)が
         // 設定する。単体で使う経路(`shape_standalone_line`等)では既定値でよい。
@@ -1497,14 +1617,14 @@ pub(super) fn finish_line(
 /// 明示指定があればそれ、無ければ内容の自然幅を使える幅でクランプする。
 fn layout_atomic_inline(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     available_width: f32,
 ) -> LaidOutBox {
     let mut style = b
         .node
         .and_then(|n| styles.get(&n))
-        .cloned()
+        .map(|shared| (**shared).clone())
         .unwrap_or_default();
     // 置換要素(`<img>`)は`width`/`height`属性・画像の固有サイズから寸法が
     // 決まる。ブロック配置時(`resolve_box_geometry`)と同じ処理をここでも
@@ -1670,7 +1790,7 @@ mod tests {
     fn spans_for(
         inner_html: &str,
         css: &str,
-    ) -> (Dom, Vec<InlineSpan>, HashMap<NodeId, ComputedStyle>) {
+    ) -> (Dom, Vec<InlineSpan>, HashMap<NodeId, Rc<ComputedStyle>>) {
         let html_src = format!("<p>{inner_html}</p>");
         let dom = html::parse(html_src.as_bytes());
         let ua = user_agent_stylesheet();
@@ -1714,8 +1834,9 @@ mod tests {
             lines[0].rect.height,
             ComputedStyle::default().font_size.0 * 1.2
         );
-        // "hello"と"world"それぞれ1ランクずつ、同じフォントで連続。
-        assert_eq!(lines[0].runs.len(), 2);
+        // 同じ体裁で連続するので1ランにまとまり、単語間の空白も復元される。
+        assert_eq!(lines[0].runs.len(), 1);
+        assert_eq!(lines[0].runs[0].text, "hello world");
         assert!(lines[0].runs.iter().all(|r| r.font_index == 0));
     }
 
@@ -1748,9 +1869,9 @@ mod tests {
         );
         assert!(runs[0].bold);
 
-        // 単語間の空白はラン間の隙間として表現され、`text`には含まれない。
+        // 残りは同じ体裁なので1ランにまとまり、単語間の空白も含む。
         let remainder: String = runs[1..].iter().map(|r| r.text.as_str()).collect();
-        assert_eq!(remainder, "elloworld");
+        assert_eq!(remainder, "ello world");
         assert_eq!(runs[1].font_size, base_font_size);
         assert_eq!(runs[1].color, ComputedStyle::default().color);
         assert!(!runs[1].bold);
@@ -1860,8 +1981,9 @@ mod tests {
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
-        // 3単語、それぞれ1ランク。
-        assert_eq!(lines[0].runs.len(), 3);
+        // 連続する空白・改行・タブは空白1つに畳まれる。
+        assert_eq!(lines[0].runs.len(), 1);
+        assert_eq!(lines[0].runs[0].text, "a b c");
     }
 
     #[test]
@@ -1875,19 +1997,19 @@ mod tests {
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
-        assert_eq!(lines[0].runs.len(), 4, "café / 日 / 本 / 語 の4ラン");
+        // フォントが変わる境界だけがランを分ける(CJKは1文字ずつ組んだあと、
+        // 同じフォントで隙間なく続くのでまとまる)。
+        assert_eq!(lines[0].runs.len(), 2, "café / 日本語 の2ラン");
         assert_eq!(
             lines[0].runs[0].font_index, 0,
             "café should use DejaVu Sans"
         );
         assert_eq!(lines[0].runs[0].text, "café");
-        for (run, expected_char) in lines[0].runs[1..].iter().zip(['日', '本', '語']) {
-            assert_eq!(
-                run.font_index, 1,
-                "{expected_char} should use the CJK fallback font"
-            );
-            assert_eq!(run.text, expected_char.to_string());
-        }
+        assert_eq!(
+            lines[0].runs[1].font_index, 1,
+            "日本語 should use the CJK fallback font"
+        );
+        assert_eq!(lines[0].runs[1].text, "日本語");
         // 各ランは隙間なく(単語内なので空白は挟まず)左から右へ連続する。
         let mut prev_end = lines[0].runs[0].x_offset + lines[0].runs[0].width;
         for run in &lines[0].runs[1..] {
@@ -1904,13 +2026,12 @@ mod tests {
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
         assert_eq!(lines.len(), 1);
-        // "Invoice"は1ラン、"請求書"はCJKなので1文字ずつ3ランに分かれる。
-        assert_eq!(lines[0].runs.len(), 4);
+        // フォントが違うので2ラン。"請求書"は同じフォントなのでまとまる。
+        assert_eq!(lines[0].runs.len(), 2);
         assert_eq!(lines[0].runs[0].font_index, 0);
         assert_eq!(lines[0].runs[0].text, "Invoice");
-        for run in &lines[0].runs[1..] {
-            assert_eq!(run.font_index, 1);
-        }
+        assert_eq!(lines[0].runs[1].font_index, 1);
+        assert_eq!(lines[0].runs[1].text, "請求書");
     }
 
     #[test]
@@ -2034,12 +2155,12 @@ mod tests {
         let fonts = dejavu_only();
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
         let text: String = lines[0].runs.iter().map(|r| r.text.as_str()).collect();
-        assert_eq!(text, "HELLOWORLD");
+        assert_eq!(text, "HELLO WORLD");
 
         let (_, spans, styles) = spans_for("Hello World", "p { text-transform: lowercase; }");
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
         let text: String = lines[0].runs.iter().map(|r| r.text.as_str()).collect();
-        assert_eq!(text, "helloworld");
+        assert_eq!(text, "hello world");
     }
 
     #[test]
@@ -2048,7 +2169,7 @@ mod tests {
         let fonts = dejavu_only();
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
         let text: String = lines[0].runs.iter().map(|r| r.text.as_str()).collect();
-        assert_eq!(text, "HelloWorld");
+        assert_eq!(text, "Hello World");
     }
 
     #[test]
@@ -2072,13 +2193,12 @@ mod tests {
         let (_, spans, styles) = spans_for("hello world", "p { word-spacing: 20px; }");
         let with = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 
-        let gap_without =
-            without[0].runs[1].x_offset - (without[0].runs[0].x_offset + without[0].runs[0].width);
-        let gap_with =
-            with[0].runs[1].x_offset - (with[0].runs[0].x_offset + with[0].runs[0].width);
+        // 単語間の空白はランにまとめられるため、行全体の幅で比べる。
+        let width_without = without[0].rect.width;
+        let width_with = with[0].rect.width;
         assert!(
-            gap_with > gap_without,
-            "word-spacing should widen the gap between words: without={gap_without}, with={gap_with}"
+            width_with > width_without,
+            "word-spacing should widen the gap: without={width_without}, with={width_with}"
         );
     }
 
@@ -2199,8 +2319,9 @@ mod tests {
 
         // 最後の行以外は、行幅ちょうど(available_width)まで引き伸ばされるはず。
         for line in &lines[..lines.len() - 1] {
+            let text: String = line.runs.iter().map(|r| r.text.as_str()).collect();
             assert!(
-                line.runs.len() >= 2,
+                text.contains(' '),
                 "a justified non-last line needs at least one word gap to stretch"
             );
             assert_eq!(
@@ -2372,7 +2493,7 @@ mod tests {
         let (_, spans, styles) = spans_for("one two<br>three four", "");
         let fonts = dejavu_only();
         let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
-        assert_eq!(line_texts(&lines), vec!["onetwo", "threefour"]);
+        assert_eq!(line_texts(&lines), vec!["one two", "three four"]);
     }
 
     #[test]

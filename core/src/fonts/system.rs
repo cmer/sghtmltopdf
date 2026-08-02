@@ -24,6 +24,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use crate::html::{Dom, NodeData, NodeId};
 use crate::style::{ComputedStyle, FontStyle, FontWeight};
@@ -378,7 +379,7 @@ fn to_fontdb_style(style: FontStyle) -> fontdb::Style {
 /// 別のバイト列が出てしまう。
 pub fn load_missing_system_fonts(
     fonts: &mut FontCollection,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     system: &SystemFonts,
 ) {
     let mut node_ids: Vec<NodeId> = styles.keys().copied().collect();
@@ -428,7 +429,7 @@ pub fn load_missing_system_fonts(
 pub fn load_fonts_for_uncovered_chars(
     fonts: &mut FontCollection,
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     system: &SystemFonts,
 ) {
     let mut seen = HashSet::new();
@@ -461,14 +462,14 @@ pub fn load_fonts_for_uncovered_chars(
 /// キーの反復順は不定)。
 fn document_chars<'a>(
     dom: &'a Dom,
-    styles: &'a HashMap<NodeId, ComputedStyle>,
+    styles: &'a HashMap<NodeId, Rc<ComputedStyle>>,
 ) -> impl Iterator<Item = (char, &'a ComputedStyle)> {
     let mut node_ids: Vec<NodeId> = styles.keys().copied().collect();
     node_ids.sort_by_key(|id| id.0);
 
     node_ids
         .into_iter()
-        .filter_map(move |id| styles.get(&id).map(|style| (id, style)))
+        .filter_map(move |id| styles.get(&id).map(|style| (id, style.as_ref())))
         .flat_map(move |(id, style)| {
             let text = match &dom.node(id).data {
                 NodeData::Text { contents } => Some(contents.as_str()),
@@ -547,7 +548,7 @@ pub fn ensure_cjk_fallback_font(fonts: &mut FontCollection, system: &SystemFonts
 pub fn warn_uncovered_chars(
     fonts: &FontCollection,
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     warned: &mut HashSet<char>,
 ) {
     for (c, style) in document_chars(dom, styles) {

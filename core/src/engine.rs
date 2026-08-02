@@ -561,7 +561,7 @@ fn build_toc_pages(
     page_offset: usize,
     fonts: &FontCollection,
     settings: &PageSettings,
-) -> (Vec<crate::layout::Page>, HashMap<NodeId, ComputedStyle>) {
+) -> (Vec<crate::layout::Page>, HashMap<NodeId, Rc<ComputedStyle>>) {
     const MAX_ROUNDS: usize = 3;
 
     let mut toc_page_count = 1;
@@ -648,7 +648,7 @@ fn ensure_default_font<E>(
 /// 探して足すことができない(`load_missing_system_fonts`を呼べない)。
 /// 該当する指定は黙って既定フォントで描画されるので、一度だけ警告する。
 fn warn_unresolved_font_families(
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     warned: &mut Vec<String>,
 ) {
@@ -691,15 +691,20 @@ fn append_user_stylesheets(ua: &mut Stylesheet, user_css: &[String]) {
 }
 
 /// スタイル計算後の一括後処理(`--no-background`・`--minimum-font-size`)。
-fn apply_content_options(styles: &mut HashMap<NodeId, ComputedStyle>, content: &ContentOptions) {
-    for style in styles.values_mut() {
+fn apply_content_options(
+    styles: &mut HashMap<NodeId, Rc<ComputedStyle>>,
+    content: &ContentOptions,
+) {
+    for shared in styles.values_mut() {
+        // 共有されているスタイルを書き換えるので、必要なときだけ複製する。
         if !content.draw_backgrounds {
+            let style = Rc::make_mut(shared);
             style.background_color = RgbaColor::TRANSPARENT;
             style.background_image = None;
         }
         if let Some(min) = content.minimum_font_size {
-            if style.font_size.0 < min {
-                style.font_size.0 = min;
+            if shared.font_size.0 < min {
+                Rc::make_mut(shared).font_size.0 = min;
             }
         }
     }
@@ -746,7 +751,7 @@ struct StreamingState<S: Sink> {
     /// 処理済みの全トップレベル要素のスタイルを蓄積する、永続的なマップ。
     /// 1ページに複数のトップレベル要素のボックスが混在しうるため、
     /// `StreamingPdfWriter::write_page`はこの全体を必要とする。
-    styles: HashMap<NodeId, ComputedStyle>,
+    styles: HashMap<NodeId, Rc<ComputedStyle>>,
     /// `background-image`を持つ要素の、デコード済み画像を`NodeId`キーで
     /// 引けるようにする側マップ。`styles`と同じく処理済みトップレベル要素
     /// ぶんを蓄積する。
@@ -1447,7 +1452,7 @@ impl<S: Sink> Engine<S> {
 
         // 書き出し順は cover → TOC → 本文。ページ番号はcoverを数えず、
         // TOCから`1 + --page-offset`で始める。
-        let empty_styles: HashMap<NodeId, ComputedStyle> = HashMap::new();
+        let empty_styles: HashMap<NodeId, Rc<ComputedStyle>> = HashMap::new();
         let empty_images: HashMap<NodeId, Rc<PreparedImage>> = HashMap::new();
 
         for page in &cover_pages {
@@ -1549,7 +1554,7 @@ fn apply_page_rule_settings_override(base: PageSettings, page_rules: &[PageRule]
 fn remove_subtree_styles(
     dom: &Dom,
     root: NodeId,
-    styles: &mut HashMap<NodeId, ComputedStyle>,
+    styles: &mut HashMap<NodeId, Rc<ComputedStyle>>,
     background_images: &mut HashMap<NodeId, Rc<PreparedImage>>,
 ) {
     let mut stack = vec![root];

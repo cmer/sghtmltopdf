@@ -33,7 +33,7 @@ pub fn shape_text(font: &Font, text: &str, font_size: f32) -> ShapedText {
 
     let mut buffer = rustybuzz::UnicodeBuffer::new();
     buffer.push_str(text);
-    let output = rustybuzz::shape(&face, &[], buffer);
+    let output = rustybuzz::shape(face, &[], buffer);
 
     let mut glyphs = Vec::with_capacity(output.len());
     let mut width = 0.0;

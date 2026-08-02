@@ -242,7 +242,7 @@ enum ChildKind {
     Inline,
 }
 
-pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>) -> LayoutBox {
+pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>) -> LayoutBox {
     let child_ids: Vec<NodeId> = dom.children(dom.document()).collect();
     LayoutBox {
         node: None,
@@ -258,7 +258,7 @@ pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>) -> Lay
 /// 特定の`node`だけを対象にする)。
 pub(crate) fn build_box_for_element(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
 ) -> Option<LayoutBox> {
     let style = styles.get(&node)?;
@@ -390,7 +390,7 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
 /// フェッチ・デコードに失敗した要素は、その要素だけ背景画像なし扱いにして
 /// マップに含めない(0014と同じフォールバック方針、文書全体は止めない)。
 pub fn resolve_background_images(
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     image_cache: &ImageAssetCache,
 ) -> HashMap<NodeId, Rc<PreparedImage>> {
     let mut out = HashMap::new();
@@ -428,7 +428,7 @@ fn build_image_box_content(
 /// 1から数え直す)。
 fn build_children_boxes(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     child_ids: &[NodeId],
     list_item_start: usize,
 ) -> Vec<LayoutBox> {
@@ -496,7 +496,7 @@ fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<Inlin
 /// `b.marker`にテキストを持たせ、実際の
 /// 配置はレイアウト層(`block.rs`)に委ねる。
 fn apply_list_item_marker(
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     b: &mut LayoutBox,
     counter: &mut usize,
@@ -561,7 +561,7 @@ fn read_list_item_start(dom: &Dom, node: NodeId) -> usize {
 /// [`TableBox`]を組み立てる。
 fn build_table_box(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     table_node: NodeId,
 ) -> TableBox {
     let mut rows = Vec::new();
@@ -592,13 +592,13 @@ fn build_table_box(
 /// するが、防御的に直下も見る)も同様に扱う。
 fn collect_column_widths(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     table_node: NodeId,
 ) -> Vec<Option<LengthPercentage>> {
     let mut widths = Vec::new();
 
     fn push_column(
-        styles: &HashMap<NodeId, ComputedStyle>,
+        styles: &HashMap<NodeId, Rc<ComputedStyle>>,
         node: NodeId,
         span: usize,
         out: &mut Vec<Option<LengthPercentage>>,
@@ -645,7 +645,7 @@ fn collect_column_widths(
 /// 表示する(`<option>`自身はUAスタイルシートで`display: none`のまま)。
 fn push_form_control_content(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {
@@ -737,7 +737,7 @@ fn collect_text_content(dom: &Dom, node: NodeId) -> String {
 /// 通常のブロックと同じ規則で組み立てる。
 fn build_inline_block_box(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
 ) -> Option<LayoutBox> {
     let child_ids: Vec<NodeId> = dom.children(node).collect();
@@ -819,7 +819,7 @@ fn read_span(dom: &Dom, node: NodeId) -> usize {
 /// `display: none`の子・裸のテキストノード(要素で包まれていないもの)は
 /// 無視する(後者は既知の簡略化、実務上flexコンテナの子は要素で
 /// ラップされることがほとんどのため)。
-fn build_flex_box(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) -> FlexBox {
+fn build_flex_box(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>, node: NodeId) -> FlexBox {
     let items = dom
         .children(node)
         // `build_box_for_element`は要素ノードを前提にしている(`styles`は
@@ -839,7 +839,7 @@ fn build_flex_box(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: Node
 /// (その中の行は内側のテーブルに属する)ここでは再帰しない。
 fn collect_table_rows(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     out: &mut Vec<TableRow>,
     out_caption: &mut Option<NodeId>,
@@ -858,7 +858,7 @@ fn collect_table_rows(
 /// [`collect_table_rows`]の本体。`section`は「今いる入れ物」が示すセクション。
 fn collect_table_rows_in_section(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     section: TableSection,
     out: &mut Vec<TableRow>,
@@ -892,7 +892,7 @@ fn collect_table_rows_in_section(
 
 fn build_table_row(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     row_node: NodeId,
     section: TableSection,
 ) -> TableRow {
@@ -962,7 +962,7 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
     pending.clear();
 }
 
-fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) -> ChildKind {
+fn child_kind(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>, node: NodeId) -> ChildKind {
     match &dom.node(node).data {
         NodeData::Element { .. } => {
             let display = styles.get(&node).map(|s| s.display);
@@ -1007,7 +1007,7 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
 /// 前後にスパンとして挿入する。
 fn collect_spans(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {
@@ -1018,7 +1018,7 @@ fn collect_spans(
 /// 受け継ぐ情報」(IFCの外側=ブロック側の指定は含まない)。
 fn collect_spans_in_context(
     dom: &Dom,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     context: &InlineContext,
     out: &mut Vec<InlineSpan>,
@@ -1092,7 +1092,7 @@ fn collect_spans_in_context(
 /// `node`に`::before`の生成コンテンツがあれば、その計算スタイルを引くための
 /// ノードID(`node`自身)と共にスパンを積む。
 fn push_before_content(
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {
@@ -1107,7 +1107,7 @@ fn push_before_content(
 /// `node`に`::after`の生成コンテンツがあれば、その計算スタイルを引くための
 /// ノードID(`node`自身)と共にスパンを積む。
 fn push_after_content(
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {

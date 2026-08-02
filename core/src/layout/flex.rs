@@ -13,6 +13,7 @@
 //! `tf`という別名で参照する。
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use taffy as tf;
 
@@ -37,7 +38,7 @@ use super::table::measure_natural_content_width;
 /// 明示`height`指定で上書きする前の値、`layout_table`と同じ役割分担)。
 pub(super) fn layout_flex(
     flex: &FlexBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     container_style: &ComputedStyle,
     content_width: f32,
@@ -86,7 +87,7 @@ pub(super) struct GridRowTracks {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_taffy_subtree(
     flex_items: &[LayoutBox],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     container_style: &ComputedStyle,
     content_width: f32,

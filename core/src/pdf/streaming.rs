@@ -201,7 +201,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
     pub fn write_page(
         &mut self,
         page: &Page,
-        styles: &HashMap<NodeId, ComputedStyle>,
+        styles: &HashMap<NodeId, Rc<ComputedStyle>>,
         background_images: &HashMap<NodeId, Rc<PreparedImage>>,
         fonts: &FontCollection,
         total_pages: Option<usize>,

@@ -332,7 +332,7 @@ mod tests {
         let dom = html::parse(html_src.as_bytes());
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(""));
         let node = find(&dom, dom.document(), tag).expect("element not found");
-        styles[&node].clone()
+        (*styles[&node]).clone()
     }
 
     #[test]

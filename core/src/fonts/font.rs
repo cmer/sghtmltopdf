@@ -3,18 +3,114 @@
 //! M1ではローカルパス指定の最小実装のみ対応する。システムフォント探索や
 //! `@font-face`によるwebfont解決は将来のマイルストーンで扱う。
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
+use self_cell::self_cell;
+
+/// `rustybuzz::Face`のライフタイムを`self_cell`へ渡すための型構築子。
+type FaceView<'a> = rustybuzz::Face<'a>;
+
+self_cell!(
+    /// フォントのバイト列と、そこから作った`rustybuzz::Face`を一緒に持つ。
+    ///
+    /// `Face`はバイト列を借用するため、素直に構造体へ入れると自己参照になる。
+    /// `Face`の構築はフォント全体のパースを伴い1回あたり数マイクロ秒かかるので、
+    /// 呼び出しのたびに作り直すとレイアウトが処理時間の大半を占めてしまう。
+    struct OwnedFace {
+        owner: Vec<u8>,
+        #[covariant]
+        dependent: FaceView,
+    }
+);
+
 /// 読み込み済みのフォントデータ。
 ///
-/// ファイルの生バイト列を所有し、シェイピングに必要な`rustybuzz::Face`は
-/// 呼び出しのたびに借用ビューとして構築する(`Face`自体はライフタイムを
-/// 持つため、`Font`に保持させると自己参照構造体になってしまうのを避けるため)。
-#[derive(Debug, Clone)]
+/// ファイルの生バイト列と、そこから構築した`rustybuzz::Face`を保持する。
+/// 値の変わらないメトリクスは[`Metrics`]として構築時に1度だけ読み、
+/// グリフ検索は[`Font::glyphs`]でメモ化する。
 pub struct Font {
-    data: Vec<u8>,
+    face: OwnedFace,
     index: u32,
+    metrics: Metrics,
+    /// 文字 → グリフID(cmapに無ければ`None`)のメモ。
+    ///
+    /// 文書に現れる異なり文字数は多くないので、素直な`HashMap`で十分に効く。
+    /// 内容はフォントから決まるためキャッシュとして透過的で、外から観測できる
+    /// 振る舞いは変わらない。
+    glyphs: RefCell<HashMap<char, Option<u16>>>,
+}
+
+impl Clone for Font {
+    /// バイト列を複製して`Face`を作り直す(`Face`は複製元のバイト列を
+    /// 借用しているため、そのままは持ち出せない)。
+    fn clone(&self) -> Self {
+        Self::from_bytes(self.data().to_vec(), self.index)
+            .expect("複製元が有効なフォントなので失敗しない")
+    }
+}
+
+impl fmt::Debug for Font {
+    /// `rustybuzz::Face`が`Debug`を実装しないため、識別に足る情報だけ出す。
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Font")
+            .field("family_name", &self.metrics.family_name)
+            .field("index", &self.index)
+            .field("bytes", &self.data().len())
+            .finish()
+    }
+}
+
+/// フォントから1度だけ読めば足りるメトリクス。
+#[derive(Debug, Clone)]
+struct Metrics {
+    units_per_em: u16,
+    ascender: i16,
+    descender: i16,
+    capital_height: Option<i16>,
+    x_height: Option<i16>,
+    subscript_y_offset: Option<i16>,
+    superscript_y_offset: Option<i16>,
+    italic_angle: f32,
+    is_italic: bool,
+    underline: Option<(i16, i16)>,
+    strikeout: Option<(i16, i16)>,
+    is_monospaced: bool,
+    weight: u16,
+    bounding_box: ttf_parser::Rect,
+    family_name: Option<String>,
+}
+
+impl Metrics {
+    fn read(face: &rustybuzz::Face<'_>) -> Self {
+        let names = face.names();
+        let pick_name = |id: u16| {
+            names
+                .into_iter()
+                .find(|n| n.name_id == id && n.is_unicode())
+                .and_then(|n| n.to_string())
+        };
+        Self {
+            units_per_em: face.units_per_em() as u16,
+            ascender: face.ascender(),
+            descender: face.descender(),
+            capital_height: face.capital_height(),
+            x_height: face.x_height(),
+            subscript_y_offset: face.subscript_metrics().map(|m| m.y_offset),
+            superscript_y_offset: face.superscript_metrics().map(|m| m.y_offset),
+            italic_angle: face.italic_angle(),
+            is_italic: face.is_italic(),
+            underline: face.underline_metrics().map(|m| (m.position, m.thickness)),
+            strikeout: face.strikeout_metrics().map(|m| (m.position, m.thickness)),
+            is_monospaced: face.is_monospaced(),
+            weight: face.weight().to_number(),
+            bounding_box: face.global_bounding_box(),
+            family_name: pick_name(ttf_parser::name_id::TYPOGRAPHIC_FAMILY)
+                .or_else(|| pick_name(ttf_parser::name_id::FAMILY)),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -46,20 +142,26 @@ impl Font {
     /// 読み込み済みのバイト列からフォントを構築する(TrueType Collection等、
     /// 複数フェイスを含む場合は`index`でフェイスを選択する)。
     pub fn from_bytes(data: Vec<u8>, index: u32) -> Result<Self, FontLoadError> {
-        if rustybuzz::Face::from_slice(&data, index).is_none() {
-            return Err(FontLoadError("不正なフォントデータです".to_string()));
-        }
-        Ok(Self { data, index })
+        let face = OwnedFace::try_new(data, |data| {
+            rustybuzz::Face::from_slice(data, index)
+                .ok_or_else(|| FontLoadError("不正なフォントデータです".to_string()))
+        })?;
+        let metrics = Metrics::read(face.borrow_dependent());
+        Ok(Self {
+            face,
+            index,
+            metrics,
+            glyphs: RefCell::new(HashMap::new()),
+        })
     }
 
-    pub(crate) fn face(&self) -> rustybuzz::Face<'_> {
-        rustybuzz::Face::from_slice(&self.data, self.index)
-            .expect("Font構築時に検証済みのため、ここでのパース失敗はありえない")
+    pub(crate) fn face(&self) -> &rustybuzz::Face<'_> {
+        self.face.borrow_dependent()
     }
 
     /// フォントファイルの生バイト列(PDFへのフォント埋め込み等で必要)。
     pub fn data(&self) -> &[u8] {
-        &self.data
+        self.face.borrow_owner()
     }
 
     /// TrueType Collection(`.ttc`)等、複数フェイスを含むファイル内でのフェイス番号。
@@ -68,19 +170,19 @@ impl Font {
     }
 
     pub fn units_per_em(&self) -> u16 {
-        self.face().units_per_em() as u16
+        self.metrics.units_per_em
     }
 
     pub fn ascender(&self) -> i16 {
-        self.face().ascender()
+        self.metrics.ascender
     }
 
     pub fn descender(&self) -> i16 {
-        self.face().descender()
+        self.metrics.descender
     }
 
     pub fn capital_height(&self) -> Option<i16> {
-        self.face().capital_height()
+        self.metrics.capital_height
     }
 
     /// アセント/ディセントから、行ボックス上端からベースラインまでの距離を
@@ -99,7 +201,7 @@ impl Font {
     /// (`vertical-align: middle`の基準)。
     pub fn x_height(&self, font_size: f32) -> f32 {
         let units_per_em = self.units_per_em() as f32;
-        match self.face().x_height() {
+        match self.metrics.x_height {
             Some(x) => x as f32 / units_per_em * font_size,
             None => self.ascender() as f32 / units_per_em * font_size * 0.5,
         }
@@ -109,8 +211,8 @@ impl Font {
     /// subscriptのYオフセットを持たない場合は`0.2em`で近似する。
     pub fn subscript_offset(&self, font_size: f32) -> f32 {
         let units_per_em = self.units_per_em() as f32;
-        match self.face().subscript_metrics() {
-            Some(m) => m.y_offset as f32 / units_per_em * font_size,
+        match self.metrics.subscript_y_offset {
+            Some(y_offset) => y_offset as f32 / units_per_em * font_size,
             None => font_size * 0.2,
         }
     }
@@ -118,45 +220,43 @@ impl Font {
     /// `vertical-align: super`の上げ幅(px、正の値)。持たない場合は`0.33em`。
     pub fn superscript_offset(&self, font_size: f32) -> f32 {
         let units_per_em = self.units_per_em() as f32;
-        match self.face().superscript_metrics() {
-            Some(m) => m.y_offset as f32 / units_per_em * font_size,
+        match self.metrics.superscript_y_offset {
+            Some(y_offset) => y_offset as f32 / units_per_em * font_size,
             None => font_size * 0.33,
         }
     }
 
     pub fn italic_angle(&self) -> f32 {
-        self.face().italic_angle()
+        self.metrics.italic_angle
     }
 
     pub fn is_italic(&self) -> bool {
-        self.face().is_italic()
+        self.metrics.is_italic
     }
 
     /// 下線の中心位置(ベースラインからの符号付きオフセット、フォントユニット。
     /// 上方向が正)と太さ。フォントが`post`テーブルを持たない場合は`None`。
     pub fn underline_metrics(&self) -> Option<(i16, i16)> {
-        let metrics = self.face().underline_metrics()?;
-        Some((metrics.position, metrics.thickness))
+        self.metrics.underline
     }
 
     /// 取り消し線の中心位置(ベースラインからの符号付きオフセット、フォントユニット。
     /// 上方向が正)と太さ。フォントが`OS/2`テーブルを持たない場合は`None`。
     pub fn strikeout_metrics(&self) -> Option<(i16, i16)> {
-        let metrics = self.face().strikeout_metrics()?;
-        Some((metrics.position, metrics.thickness))
+        self.metrics.strikeout
     }
 
     pub fn is_monospaced(&self) -> bool {
-        self.face().is_monospaced()
+        self.metrics.is_monospaced
     }
 
     /// OS/2テーブルのウェイト値(400=標準, 700=太字)。
     pub fn weight(&self) -> u16 {
-        self.face().weight().to_number()
+        self.metrics.weight
     }
 
     pub fn bounding_box(&self) -> ttf_parser::Rect {
-        self.face().global_bounding_box()
+        self.metrics.bounding_box
     }
 
     /// `glyph_id`の水平アドバンス幅(フォントユニット)。
@@ -168,27 +268,22 @@ impl Font {
     /// font-familyフォールバック(どのフォントでこの文字を描画できるか)の判定に使う。
     /// 文字に対応するグリフID(cmapに無ければ`None`)。
     pub fn glyph_id(&self, c: char) -> Option<u16> {
-        self.face().glyph_index(c).map(|id| id.0)
+        if let Some(cached) = self.glyphs.borrow().get(&c) {
+            return *cached;
+        }
+        let found = self.face().glyph_index(c).map(|id| id.0);
+        self.glyphs.borrow_mut().insert(c, found);
+        found
     }
 
     pub fn has_glyph(&self, c: char) -> bool {
-        self.face().glyph_index(c).is_some()
+        self.glyph_id(c).is_some()
     }
 
     /// フォント名(`name`テーブルの Typographic Family、無ければ Family)。
     /// Unicodeエンコードの英語名のみ対応する。
     pub fn family_name(&self) -> Option<String> {
-        let face = self.face();
-        let names = face.names();
-
-        let pick = |id: u16| {
-            names
-                .into_iter()
-                .find(|n| n.name_id == id && n.is_unicode())
-                .and_then(|n| n.to_string())
-        };
-
-        pick(ttf_parser::name_id::TYPOGRAPHIC_FAMILY).or_else(|| pick(ttf_parser::name_id::FAMILY))
+        self.metrics.family_name.clone()
     }
 }
 

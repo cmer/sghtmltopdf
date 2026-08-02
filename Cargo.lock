@@ -922,6 +922,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "self_cell"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ab42ca02749e120097e328d91d415325bdf43b1c72c4c8badf37375fe40a813"
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -986,6 +992,7 @@ dependencies = [
  "precomputed-hash",
  "rustybuzz",
  "selectors",
+ "self_cell",
  "subsetter",
  "taffy",
  "tiny_http",

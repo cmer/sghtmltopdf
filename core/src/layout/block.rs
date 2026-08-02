@@ -191,7 +191,7 @@ impl<'a> PosCtx<'a> {
 /// `(content_width, content_height)`で、`fixed`のcontaining blockとして使う。
 pub fn layout_document_positioned(
     root: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     page_size: (f32, f32),
 ) -> (LaidOutBox, Vec<PositionedBox>) {
@@ -205,7 +205,7 @@ pub fn layout_document_positioned(
 /// ページ幅を初期containing blockとして、ボックスツリー全体をレイアウトする。
 pub fn layout_document(
     root: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     page_width: f32,
 ) -> LaidOutBox {
@@ -224,7 +224,7 @@ pub fn layout_document(
 /// containing blockになるため)。
 pub fn layout_document_from(
     root: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     start_x: f32,
@@ -249,7 +249,7 @@ pub fn layout_document_from(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_document_from_positioned(
     root: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     start_x: f32,
@@ -276,7 +276,7 @@ pub(super) fn layout_document_from_positioned(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     float_ctx: &mut FloatContext,
@@ -304,7 +304,7 @@ pub(super) fn layout_box(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_with_forced_width(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: f32,
@@ -335,7 +335,7 @@ pub(super) fn layout_box_with_forced_width(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_with_forced_size(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: f32,
@@ -365,7 +365,7 @@ pub(super) fn layout_box_with_forced_size(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_ignoring_positioned(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     float_ctx: &mut FloatContext,
@@ -389,7 +389,7 @@ pub(super) fn layout_box_ignoring_positioned(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_with_forced_width_ignoring_positioned(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: f32,
@@ -415,7 +415,7 @@ pub(super) fn layout_box_with_forced_width_ignoring_positioned(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_with_forced_size_ignoring_positioned(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: f32,
@@ -449,7 +449,7 @@ pub(super) fn layout_box_with_forced_size_ignoring_positioned(
 fn layout_out_of_flow_child(
     child: &LayoutBox,
     child_style: &ComputedStyle,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     pos: &mut PosCtx,
 ) {
@@ -574,7 +574,7 @@ fn layout_out_of_flow_child(
 /// availableを超えると折り返す)。
 pub(super) fn shrink_to_fit_content_width(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     style: &ComputedStyle,
     available_width: f32,
@@ -586,7 +586,7 @@ pub(super) fn shrink_to_fit_content_width(
 
 fn resolve_box_geometry(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: Option<f32>,
@@ -686,7 +686,7 @@ fn resolve_box_geometry(
 #[allow(clippy::too_many_arguments)]
 fn layout_box_impl(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     forced_content_width: Option<f32>,
@@ -994,7 +994,7 @@ fn layout_list_marker(
 fn layout_float_child(
     child: &LayoutBox,
     child_style: &ComputedStyle,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     float_ctx: &mut FloatContext,
@@ -1085,9 +1085,12 @@ pub(crate) fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) 
     .any(|(width, border_style)| width > 0.0 && border_style != BorderStyle::None)
 }
 
-pub(super) fn box_style(b: &LayoutBox, styles: &HashMap<NodeId, ComputedStyle>) -> ComputedStyle {
+pub(super) fn box_style(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+) -> ComputedStyle {
     match b.node {
-        Some(node) => styles[&node].clone(),
+        Some(node) => (*styles[&node]).clone(),
         // 無名ボックス(CSS2.1 9.2.1.1)。マージン/パディング/枠線を持たないblock。
         None => ComputedStyle {
             display: Display::Block,
@@ -1604,7 +1607,13 @@ fn place_atomic_inlines(lines: &mut [LineBox]) {
 
 /// [`shift_box_y`]のx方向版(アトミックインラインボックスの水平配置に使う)。
 pub(super) fn shift_box_x(b: &LaidOutBox, delta: f32) -> LaidOutBox {
-    let mut b = b.clone();
+    let mut shifted = b.clone();
+    shift_box_x_in_place(&mut shifted, delta);
+    shifted
+}
+
+/// [`shift_box_x`]のその場書き換え版([`shift_box_y_in_place`]と同じ理由)。
+pub(super) fn shift_box_x_in_place(b: &mut LaidOutBox, delta: f32) {
     b.layout.content.x += delta;
     if let Some(marker) = &mut b.marker {
         marker.rect.x += delta;
@@ -1613,13 +1622,13 @@ pub(super) fn shift_box_x(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     match &mut b.content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children.iter_mut() {
-                *child = shift_box_x(child, delta);
+                shift_box_x_in_place(child, delta);
             }
         }
         LaidOutContent::Grid(grid) => {
             for row in grid.rows.iter_mut() {
                 for item in row.items.iter_mut() {
-                    *item = shift_box_x(item, delta);
+                    shift_box_x_in_place(item, delta);
                 }
             }
         }
@@ -1627,27 +1636,36 @@ pub(super) fn shift_box_x(b: &LaidOutBox, delta: f32) -> LaidOutBox {
             for line in lines.iter_mut() {
                 line.rect.x += delta;
                 for atomic in line.atomics.iter_mut() {
-                    atomic.content = shift_box_x(&atomic.content, delta);
+                    shift_box_x_in_place(&mut atomic.content, delta);
                 }
             }
         }
         LaidOutContent::Table(table) => {
             if let Some(caption) = &mut table.caption {
-                **caption = shift_box_x(caption, delta);
+                shift_box_x_in_place(caption, delta);
             }
             for row in table.rows.iter_mut() {
                 for cell in row.cells.iter_mut() {
-                    *cell = shift_box_x(cell, delta);
+                    shift_box_x_in_place(cell, delta);
                 }
             }
         }
         LaidOutContent::Image(_) => {}
     }
-    b
 }
 
 pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
-    let mut b = b.clone();
+    let mut shifted = b.clone();
+    shift_box_y_in_place(&mut shifted, delta);
+    shifted
+}
+
+/// [`shift_box_y`]のその場書き換え版。
+///
+/// 再帰の各段で部分木を複製し直すと、深さぶん同じデータを作り直すことになり、
+/// 時間もピークメモリも無駄に膨らむ。移動は借用したまま行えるので、複製は
+/// 呼び出し側が必要なときだけ1回行う。
+pub(super) fn shift_box_y_in_place(b: &mut LaidOutBox, delta: f32) {
     shift_rect_y(&mut b.layout.content, delta);
     if let Some(marker) = &mut b.marker {
         shift_rect_y(&mut marker.rect, delta);
@@ -1656,7 +1674,7 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     match &mut b.content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
             for child in children.iter_mut() {
-                *child = shift_box_y(child, delta);
+                shift_box_y_in_place(child, delta);
             }
         }
         LaidOutContent::Grid(grid) => {
@@ -1664,7 +1682,7 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
                 row.top += delta;
                 row.bottom += delta;
                 for item in row.items.iter_mut() {
-                    *item = shift_box_y(item, delta);
+                    shift_box_y_in_place(item, delta);
                 }
             }
         }
@@ -1673,17 +1691,17 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
                 shift_rect_y(&mut line.rect, delta);
                 // 行内のアトミックボックスも行と一緒に動かす。
                 for atomic in line.atomics.iter_mut() {
-                    atomic.content = shift_box_y(&atomic.content, delta);
+                    shift_box_y_in_place(&mut atomic.content, delta);
                 }
             }
         }
         LaidOutContent::Table(table) => {
             if let Some(caption) = &mut table.caption {
-                **caption = shift_box_y(caption, delta);
+                shift_box_y_in_place(caption, delta);
             }
             for row in table.rows.iter_mut() {
                 for cell in row.cells.iter_mut() {
-                    *cell = shift_box_y(cell, delta);
+                    shift_box_y_in_place(cell, delta);
                 }
             }
         }
@@ -1691,8 +1709,6 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         // `Inline`の行のような、それ自身が別途Rectを持つ子要素を持たない。
         LaidOutContent::Image(_) => {}
     }
-
-    b
 }
 
 fn shift_rect_y(rect: &mut Rect, delta: f32) {

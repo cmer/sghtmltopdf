@@ -16,6 +16,7 @@
 //!   (ネストしたテーブル・置換要素)は`bottom`相当にフォールバックする
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
@@ -26,7 +27,8 @@ use crate::style::{
 use super::block::{
     box_style, clamp_used_width, layout_box_ignoring_positioned,
     layout_box_with_forced_width_ignoring_positioned, resolve_border, resolve_lp, resolve_padding,
-    shift_box_y, shift_content_vertical, LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow,
+    shift_box_y, shift_box_y_in_place, shift_content_vertical, LaidOutBox, LaidOutContent,
+    LaidOutTable, LaidOutTableRow,
 };
 use super::box_tree::{BoxContent, TableBox, TableCell, TableRow};
 use super::float_ctx::FloatContext;
@@ -43,7 +45,7 @@ const UNCONSTRAINED_WIDTH: f32 = f32::MAX / 4.0;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_table(
     table: &TableBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     containing_width: f32,
     table_layout: TableLayout,
@@ -255,7 +257,10 @@ pub(super) fn layout_table(
         let mut laid_cells: Vec<LaidOutBox> = row_cells
             .iter()
             .zip(laid_row)
-            .map(|(gc, laid_cell)| shift_box_y(&laid_cell, -row_y[gc.row_index]))
+            .map(|(gc, mut laid_cell)| {
+                shift_box_y_in_place(&mut laid_cell, -row_y[gc.row_index]);
+                laid_cell
+            })
             .collect();
 
         // ベースライン揃えのセルについて、自身の先頭行のベースラインがセル
@@ -340,7 +345,7 @@ pub(super) fn layout_table(
 /// セル(`display: table-cell`)自身の`vertical-align`計算値。
 fn cell_vertical_align(
     cell: &LaidOutBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
 ) -> VerticalAlign {
     cell.node
         .and_then(|n| styles.get(&n))
@@ -437,7 +442,7 @@ fn build_table_grid(rows: &[TableRow], column_count: usize) -> Vec<Vec<GridCell<
 /// 配分の対象に含める。内容の測定は一切行わない。
 fn compute_fixed_column_widths(
     grid: &[Vec<GridCell<'_>>],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     column_hints: &[Option<f32>],
     column_count: usize,
     containing_width: f32,
@@ -484,7 +489,7 @@ fn compute_fixed_column_widths(
 /// ヒントの無い列へ自然幅に比例して配分する。
 fn compute_column_widths(
     grid: &[Vec<GridCell<'_>>],
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     column_hints: &[Option<f32>],
     column_count: usize,
@@ -608,7 +613,7 @@ fn distribute_with_column_hints(
 /// 収める処理)は従来どおり行うため、最終列幅は`min-width`を保証しない。
 fn natural_cell_width(
     cell: &TableCell,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
 ) -> f32 {
     let style = box_style(&cell.content, styles);
@@ -635,7 +640,7 @@ fn natural_cell_width(
 /// (`available_space`が`MinContent`/`MaxContent`の場合)からも共有で使う。
 pub(super) fn measure_natural_content_width(
     content: &BoxContent,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
 ) -> f32 {
     match content {

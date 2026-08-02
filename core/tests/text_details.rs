@@ -191,7 +191,7 @@ fn overflow_wrap_keeps_short_words_intact() {
     let css = "body { margin: 0; } p { width: 200px; overflow-wrap: break-word; }";
     let lines = lines_of_first_p("<p>alpha beta gamma</p>", css);
     assert_eq!(lines.len(), 1);
-    assert_eq!(line_text(&lines[0]), "alphabetagamma");
+    assert_eq!(line_text(&lines[0]), "alpha beta gamma");
 }
 
 #[test]

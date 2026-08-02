@@ -6,6 +6,7 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::html::{Dom, NodeData, NodeId};
 
@@ -549,11 +550,43 @@ impl Default for ComputedStyle {
 /// 初期値`16px`を仮の基準として使うが、ルート要素自身が`rem`単位で
 /// 自分自身のfont-sizeを指定するような通常あり得ない記述を除けば、
 /// ルート要素の子孫は必ずルート確定後に処理されるため実用上問題ない。
+/// 同じ計算結果になったスタイルを1つの`Rc`にまとめる小さなキャッシュ。
+///
+/// 帳票のように同じ体裁の行が並ぶ文書では、要素ごとに計算しても結果は数種類に
+/// 収束する。1件が1KB強あるため、共有しないとノード数に比例してメモリを食う
+/// (10万セルの表でスタイルだけが数百MBになる)。
+///
+/// 直近に使ったものから線形に比較し、見つかったら先頭へ移す(MRU)。
+/// 走査コストを抑えるため保持数に上限を設け、あふれたら最後尾を捨てる。
+/// 捨てても共有し損ねるだけで、結果は変わらない。
+#[derive(Default)]
+struct StyleInterner {
+    recent: Vec<Rc<ComputedStyle>>,
+}
+
+/// インターナが覚えておくスタイルの数。表の列数や見出しの種類より十分大きく、
+/// かつ線形比較が問題にならない程度に小さい値。
+const STYLE_CACHE_LIMIT: usize = 64;
+
+impl StyleInterner {
+    fn intern(&mut self, style: ComputedStyle) -> Rc<ComputedStyle> {
+        if let Some(index) = self.recent.iter().position(|known| **known == style) {
+            let found = self.recent.remove(index);
+            self.recent.insert(0, Rc::clone(&found));
+            return found;
+        }
+        let shared = Rc::new(style);
+        self.recent.insert(0, Rc::clone(&shared));
+        self.recent.truncate(STYLE_CACHE_LIMIT);
+        shared
+    }
+}
+
 pub fn compute_styles(
     dom: &Dom,
     ua: &Stylesheet,
     author: &Stylesheet,
-) -> HashMap<NodeId, ComputedStyle> {
+) -> HashMap<NodeId, Rc<ComputedStyle>> {
     let mut styles = HashMap::new();
     let ctx = StyleContext {
         ua,
@@ -573,6 +606,7 @@ pub fn compute_styles(
         &mut counters,
         &mut quote_depth,
         &mut styles,
+        &mut StyleInterner::default(),
     );
     styles
 }
@@ -601,7 +635,7 @@ pub fn compute_styles_with_parent(
     author: &Stylesheet,
     counters: &mut HashMap<String, Vec<i32>>,
     quote_depth: &mut i32,
-) -> HashMap<NodeId, ComputedStyle> {
+) -> HashMap<NodeId, Rc<ComputedStyle>> {
     let mut styles = HashMap::new();
     let ctx = StyleContext {
         ua,
@@ -617,6 +651,7 @@ pub fn compute_styles_with_parent(
         counters,
         quote_depth,
         &mut styles,
+        &mut StyleInterner::default(),
     );
     styles
 }
@@ -685,7 +720,8 @@ fn compute_recursive(
     ctx: &StyleContext<'_>,
     counters: &mut HashMap<String, Vec<i32>>,
     quote_depth: &mut i32,
-    out: &mut HashMap<NodeId, ComputedStyle>,
+    out: &mut HashMap<NodeId, Rc<ComputedStyle>>,
+    interner: &mut StyleInterner,
 ) -> Vec<String> {
     let (mut style, own_pushed_counter_names, after_parts) = match &dom.node(node).data {
         NodeData::Element { .. } => {
@@ -721,6 +757,7 @@ fn compute_recursive(
             counters,
             quote_depth,
             out,
+            interner,
         );
         children_pushed_counter_names.extend(pushed_by_child);
     }
@@ -740,7 +777,7 @@ fn compute_recursive(
     style.pseudo_after_content =
         resolve_content_parts(after_parts, dom, node, counters, quote_depth, &quotes);
 
-    out.insert(node, style);
+    out.insert(node, interner.intern(style));
     own_pushed_counter_names
 }
 
@@ -2505,7 +2542,7 @@ mod tests {
         let author = Stylesheet::default();
 
         let styles = compute_styles(&dom, &ua, &author);
-        assert_eq!(styles[&div], ComputedStyle::default());
+        assert_eq!(*styles[&div], ComputedStyle::default());
     }
 
     #[test]

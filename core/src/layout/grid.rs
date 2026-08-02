@@ -7,6 +7,7 @@
 //! 部分と、「レイアウト結果を行帯(ページ分割の単位)へ分類する」部分。
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use taffy as tf;
 
@@ -43,7 +44,7 @@ pub struct LaidOutGridRow {
 /// 返り値はレイアウト済みのグリッドと、コンテナの自然なcontent-box高さ。
 pub(super) fn layout_grid(
     grid: &GridBox,
-    styles: &HashMap<NodeId, ComputedStyle>,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     container_style: &ComputedStyle,
     content_width: f32,
