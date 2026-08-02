@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-02T22:25:24+09:00\n"
+"POT-Creation-Date: 2026-08-02T23:05:24+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -69,7 +69,7 @@ msgstr ""
 msgid "セレクタ・値・at-rule"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/usage/cli/reference.md:58 src/usage/ruby_rails.md:100
+#: src/SUMMARY.md:22 src/usage/cli/reference.md:58 src/usage/ruby_rails.md:95
 #: src/supports/fonts.md:1 src/migration/wkhtmltopdf.md:18
 #: src/migration/wicked-pdf.md:125
 msgid "フォント"
@@ -366,16 +366,14 @@ msgstr ""
 #: src/index.md:73
 msgid ""
 "ヘッドレスChromeとは桁が違い、20,000行の帳票では6.2GBに達します。 "
-"1段落だけのHTMLでも約390MBを使うことから、この多くはブラウザ一式（ブラウザ・レンダラ・GPUなど8つ以上のプロセス）を立ち上げる固定費です。 "
-"そこに文書サイズに比例した分が積み上がります。 "
-"ブラウザとして必要なものを一通り持つ以上は妥当なコストで、PDFの出力だけを目的とする場合に割高になる、という関係です。"
+"ヘッドレスChromeはブラウザとして必要な機能が全て含まれているため、PDF出力に特化した sdhtmltopdf の方がメモリ効率が良くなります。"
 msgstr ""
 
-#: src/index.md:78
+#: src/index.md:76
 msgid "処理の流れ"
 msgstr ""
 
-#: src/index.md:91
+#: src/index.md:89
 msgid ""
 "ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしています。"
 msgstr ""
@@ -772,7 +770,7 @@ msgid ""
 "wkhtmltopdfのオプションとの対応(非対応にしたものを含む全一覧)は[wkhtmltopdfオプション対応表](../../migration/wkhtmltopdf-options.md)を参照してください。"
 msgstr ""
 
-#: src/usage/cli/reference.md:12 src/usage/ruby_rails.md:35
+#: src/usage/cli/reference.md:12 src/usage/ruby_rails.md:30
 msgid "基本"
 msgstr ""
 
@@ -796,7 +794,7 @@ msgstr ""
 #: src/usage/cli/reference.md:60 src/usage/cli/reference.md:77
 #: src/usage/cli/reference.md:94 src/usage/cli/reference.md:121
 #: src/usage/cli/reference.md:156 src/usage/cli/reference.md:176
-#: src/usage/server.md:25 src/usage/ruby_rails.md:49
+#: src/usage/server.md:25 src/usage/ruby_rails.md:44
 #: src/migration/wkhtmltopdf-options.md:29
 #: src/migration/wkhtmltopdf-options.md:67
 #: src/migration/wkhtmltopdf-options.md:76
@@ -808,8 +806,8 @@ msgstr ""
 
 #: src/usage/cli/reference.md:27 src/usage/cli/reference.md:39
 #: src/usage/cli/reference.md:77 src/usage/cli/reference.md:156
-#: src/usage/server.md:25 src/usage/ruby_rails.md:78
-#: src/usage/ruby_rails.md:164
+#: src/usage/server.md:25 src/usage/ruby_rails.md:73
+#: src/usage/ruby_rails.md:159
 msgid "既定"
 msgstr ""
 
@@ -817,7 +815,7 @@ msgstr ""
 #: src/usage/cli/reference.md:60 src/usage/cli/reference.md:77
 #: src/usage/cli/reference.md:94 src/usage/cli/reference.md:121
 #: src/usage/cli/reference.md:156 src/usage/server.md:25 src/usage/server.md:40
-#: src/usage/ruby_rails.md:78
+#: src/usage/ruby_rails.md:73
 msgid "説明"
 msgstr ""
 
@@ -1465,8 +1463,8 @@ msgstr ""
 msgid "code"
 msgstr ""
 
-#: src/usage/cli/reference.md:189 src/usage/ruby_rails.md:59
-#: src/usage/ruby_rails.md:164 src/migration/wkhtmltopdf-options.md:6
+#: src/usage/cli/reference.md:189 src/usage/ruby_rails.md:54
+#: src/usage/ruby_rails.md:159 src/migration/wkhtmltopdf-options.md:6
 msgid "意味"
 msgstr ""
 
@@ -2073,22 +2071,11 @@ msgid ""
 "wicked_pdfから移ってくる場合は[wicked_pdfからの移行](../migration/wicked-pdf.md)もあわせて読んでください。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:19 src/supports/pagination.md:124
-msgid "Note"
-msgstr ""
-
-#: src/usage/ruby_rails.md:21
-msgid ""
-"まだ0.1.0をリリースしていないため、現時点ではrubygems.orgから取得できません。 "
-"試す場合はリポジトリを取得して`bindings/ruby`で`bundle install && bundle exec rake "
-"compile`してください。"
-msgstr ""
-
-#: src/usage/ruby_rails.md:24
+#: src/usage/ruby_rails.md:19
 msgid "ビルド済み(precompiled)のgemを配布するため、Rustのツールチェインは不要です。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:26 src/supports/properties.md:20
+#: src/usage/ruby_rails.md:21 src/supports/properties.md:20
 #: src/supports/properties.md:31 src/supports/properties.md:44
 #: src/supports/properties.md:61 src/supports/properties.md:81
 #: src/supports/properties.md:108 src/supports/properties.md:123
@@ -2102,573 +2089,573 @@ msgstr ""
 msgid "対応"
 msgstr ""
 
-#: src/usage/ruby_rails.md:28
+#: src/usage/ruby_rails.md:23
 msgid "プラットフォーム"
 msgstr ""
 
-#: src/usage/ruby_rails.md:28
+#: src/usage/ruby_rails.md:23
 msgid "`x86_64-linux` / `aarch64-linux` / `arm64-darwin`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:29
+#: src/usage/ruby_rails.md:24
 msgid "Ruby"
 msgstr ""
 
-#: src/usage/ruby_rails.md:29
+#: src/usage/ruby_rails.md:24
 msgid "3.2以上"
 msgstr ""
 
-#: src/usage/ruby_rails.md:31
+#: src/usage/ruby_rails.md:26
 msgid ""
 "Linuxはglibc向け(Debian/Ubuntu系)のみで、musl(Alpine)・Windows・Intel Macは対象外です。 "
 "これらの環境ではインストールできません。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:38
+#: src/usage/ruby_rails.md:33
 msgid "\"<h1>請求書</h1>\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:38
+#: src/usage/ruby_rails.md:33
 msgid "# → PDFのバイト列(String)\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:39
+#: src/usage/ruby_rails.md:34
 msgid "\"invoice.pdf\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:39
+#: src/usage/ruby_rails.md:34
 msgid "# → ファイルへ書き出す(nil)\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:42
+#: src/usage/ruby_rails.md:37
 msgid "返り値のエンコーディングはASCII-8BIT(バイナリ)です"
 msgstr ""
 
-#: src/usage/ruby_rails.md:43
+#: src/usage/ruby_rails.md:38
 msgid ""
 "入力のHTMLはバイト列としてそのまま渡ります。文字コードの判定はエンジン側で BOM > `encoding:` > `<meta charset>` "
 "> UTF-8の順に行われるので、UTF-8のStringならそのまま渡せます。 Shift_JISなどを渡す場合は`encoding: "
 "\"Shift_JIS\"`を明示してください"
 msgstr ""
 
-#: src/usage/ruby_rails.md:46
+#: src/usage/ruby_rails.md:41
 msgid "`render_to_file`は一時ファイルへ書いてからrenameするので、途中で失敗しても壊れたPDFが残りません"
 msgstr ""
 
-#: src/usage/ruby_rails.md:47
+#: src/usage/ruby_rails.md:42
 msgid "重い処理(レイアウト・PDFエンコード)の間はGVLを解放するので、Pumaの他のスレッドは止まりません。複数スレッドから同時に呼べます"
 msgstr ""
 
-#: src/usage/ruby_rails.md:51
+#: src/usage/ruby_rails.md:46
 msgid "CLIのロングオプションから`--`を取り、`-`を`_`にした名前をキーにします。 値の解釈もCLIと同一です(同じパーサへ通しているため)。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:55 src/usage/ruby_rails.md:92
-#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:191
+#: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:87
+#: src/usage/ruby_rails.md:136 src/usage/ruby_rails.md:186
 #: src/migration/wicked-pdf.md:34
 msgid "\"A4\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:55 src/usage/ruby_rails.md:141
+#: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:136
 #: src/migration/wicked-pdf.md:35
 msgid "\"20mm\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:55
+#: src/usage/ruby_rails.md:50
 msgid "#                        --page-size A4   --margin-top 20mm   --toc\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:59
+#: src/usage/ruby_rails.md:54
 msgid "値の書き方"
 msgstr ""
 
-#: src/usage/ruby_rails.md:61 src/migration/wicked-pdf.md:56
+#: src/usage/ruby_rails.md:56 src/migration/wicked-pdf.md:56
 msgid "`page_size: \"A4\"`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:61
+#: src/usage/ruby_rails.md:56
 msgid "値を取るオプション"
 msgstr ""
 
-#: src/usage/ruby_rails.md:62 src/migration/wicked-pdf.md:61
+#: src/usage/ruby_rails.md:57 src/migration/wicked-pdf.md:61
 msgid "`grayscale: true`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:62
+#: src/usage/ruby_rails.md:57
 msgid "値を取らないフラグ"
 msgstr ""
 
-#: src/usage/ruby_rails.md:63
+#: src/usage/ruby_rails.md:58
 msgid "`grayscale: false` / `nil`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:63
+#: src/usage/ruby_rails.md:58
 msgid "指定なしと同じ"
 msgstr ""
 
-#: src/usage/ruby_rails.md:64
+#: src/usage/ruby_rails.md:59
 msgid "`allow: [\"/a\", \"/b\"]`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:64
+#: src/usage/ruby_rails.md:59
 msgid "同じオプションの繰り返し"
 msgstr ""
 
-#: src/usage/ruby_rails.md:65
+#: src/usage/ruby_rails.md:60
 msgid "`font: {path: \"a.ttc\", index: 1}`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:65
+#: src/usage/ruby_rails.md:60
 msgid "`--font a.ttc --font-index 1`(順序も保つ)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:67
+#: src/usage/ruby_rails.md:62
 msgid ""
 "キー名の妥当性はRuby側では検査しません。 "
 "オプションの定義をRust側の1か所に集約しているため、未知のキーはエンジン側が`UsageError`として報告します。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:70
+#: src/usage/ruby_rails.md:65
 msgid ""
 "wicked_pdfのような入れ子のHash(`margin: {top: 10}`)は受け付けません。 "
 "wicked_pdf/wkhtmltopdfの数値はmm、こちらのCLIはpx解釈なので、機械的に平坦化すると黙って別の余白になるためです。 "
 "`margin_top: \"10mm\"`と書いてください。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:74
+#: src/usage/ruby_rails.md:69
 msgid "Ruby側だけのオプション"
 msgstr ""
 
-#: src/usage/ruby_rails.md:76
+#: src/usage/ruby_rails.md:71
 msgid "CLIには無い、gemが解釈するキーです。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:78 src/usage/ruby_rails.md:148
-#: src/usage/ruby_rails.md:164
+#: src/usage/ruby_rails.md:73 src/usage/ruby_rails.md:143
+#: src/usage/ruby_rails.md:159
 msgid "キー"
 msgstr ""
 
-#: src/usage/ruby_rails.md:80
+#: src/usage/ruby_rails.md:75
 msgid "`server_url`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:80
+#: src/usage/ruby_rails.md:75
 msgid "なし"
 msgstr ""
 
-#: src/usage/ruby_rails.md:80
+#: src/usage/ruby_rails.md:75
 msgid "指定するとHTTPサーバモードへ委譲する"
 msgstr ""
 
-#: src/usage/ruby_rails.md:81
+#: src/usage/ruby_rails.md:76
 msgid "`server_open_timeout`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:81
+#: src/usage/ruby_rails.md:76
 msgid "5"
 msgstr ""
 
-#: src/usage/ruby_rails.md:81
+#: src/usage/ruby_rails.md:76
 msgid "接続のタイムアウト(秒)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:82
+#: src/usage/ruby_rails.md:77
 msgid "`server_read_timeout`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:82
+#: src/usage/ruby_rails.md:77
 msgid "120"
 msgstr ""
 
-#: src/usage/ruby_rails.md:82
+#: src/usage/ruby_rails.md:77
 msgid "応答のタイムアウト(秒)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:83
+#: src/usage/ruby_rails.md:78
 msgid "`chunk_size`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:83
+#: src/usage/ruby_rails.md:78
 msgid "65536"
 msgstr ""
 
-#: src/usage/ruby_rails.md:83
+#: src/usage/ruby_rails.md:78
 msgid "ブロック付き`render`で1回に渡すバイト数の目安(ローカル変換のみ)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:85
+#: src/usage/ruby_rails.md:80
 msgid ""
 "Railsのレンダラ(`render "
 "pdf:`)では、これに加えて`disposition`・`filename`・`status`・`show_as_html`を解釈します。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:87
+#: src/usage/ruby_rails.md:82
 msgid "グローバル設定"
 msgstr ""
 
-#: src/usage/ruby_rails.md:90
+#: src/usage/ruby_rails.md:85
 msgid "# config/initializers/sghtmltopdf.rb など\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:93 src/migration/wicked-pdf.md:36
+#: src/usage/ruby_rails.md:88 src/migration/wicked-pdf.md:36
 #: src/migration/wicked-pdf.md:132
 msgid "\"vendor/fonts/NotoSansJP-Regular.ttf\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:97
+#: src/usage/ruby_rails.md:92
 msgid ""
 "マージ順はグローバル設定 → 呼び出し時の引数で、後者が勝ちます。 `Sghtmltopdf.reset_config!`で空に戻せます(主にテスト用)。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:102
+#: src/usage/ruby_rails.md:97
 msgid "指定しなければシステムのフォントが使われるため、出力が実行環境に依存します。 コンテナのフォント事情に左右されたくない場合は明示してください。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:107
+#: src/usage/ruby_rails.md:102
 msgid "\"/app/vendor/fonts/NotoSansJP-Regular.ttf\"  # sans-serif\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:108
+#: src/usage/ruby_rails.md:103
 msgid "\"/app/vendor/fonts/NotoSerifJP-Regular.ttf\" # serif\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:109
+#: src/usage/ruby_rails.md:104
 msgid "\"/app/vendor/fonts/NotoSansMono-Regular.ttf\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:113
+#: src/usage/ruby_rails.md:108
 msgid "`font`系で渡すフォントは、後述の`allow`(ローカル参照の制限)の対象外です。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:115
+#: src/usage/ruby_rails.md:110
 msgid "エラー"
 msgstr ""
 
-#: src/usage/ruby_rails.md:117
+#: src/usage/ruby_rails.md:112
 msgid "すべて`Sghtmltopdf::Error < StandardError`を継承します。 メッセージはCLIと同じ文言です。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:120
+#: src/usage/ruby_rails.md:115
 msgid "クラス"
 msgstr ""
 
-#: src/usage/ruby_rails.md:120
+#: src/usage/ruby_rails.md:115
 msgid "起きるとき"
 msgstr ""
 
-#: src/usage/ruby_rails.md:122
+#: src/usage/ruby_rails.md:117
 msgid "`Sghtmltopdf::UsageError`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:122
+#: src/usage/ruby_rails.md:117
 msgid "オプションの誤り(未知のキー、値の形式、非対応オプション)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:123
+#: src/usage/ruby_rails.md:118
 msgid "`Sghtmltopdf::InputError`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:123
+#: src/usage/ruby_rails.md:118
 msgid "入力や出力ファイルの読み書きに失敗した"
 msgstr ""
 
-#: src/usage/ruby_rails.md:124
+#: src/usage/ruby_rails.md:119
 msgid "`Sghtmltopdf::RenderError`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:124
+#: src/usage/ruby_rails.md:119
 msgid "レンダリングに失敗した"
 msgstr ""
 
-#: src/usage/ruby_rails.md:125
+#: src/usage/ruby_rails.md:120
 msgid "`Sghtmltopdf::ServerError`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:125
+#: src/usage/ruby_rails.md:120
 msgid "サーバへ委譲したときの到達不能・過負荷"
 msgstr ""
 
-#: src/usage/ruby_rails.md:127
+#: src/usage/ruby_rails.md:122
 msgid ""
 "画像やCSSの取得失敗は既定では無視され、警告を出して続行します(`load_media_error_handling: "
 "\"abort\"`で中断できます)。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:129
+#: src/usage/ruby_rails.md:124
 msgid "Railsで使う"
 msgstr ""
 
-#: src/usage/ruby_rails.md:131
+#: src/usage/ruby_rails.md:126
 msgid "Railsが読み込まれているときだけRailtieが読み込まれるので、素のRuby・Sinatraでの利用には影響しません。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:133
+#: src/usage/ruby_rails.md:128
 msgid "レンダラ"
 msgstr ""
 
-#: src/usage/ruby_rails.md:138 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:133 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:92
 msgid "\"invoice\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:138
+#: src/usage/ruby_rails.md:133
 msgid "# ファイル名(.pdfは自動で付く)\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:139 src/usage/ruby_rails.md:257
+#: src/usage/ruby_rails.md:134 src/usage/ruby_rails.md:252
 #: src/migration/wicked-pdf.md:22 src/migration/wicked-pdf.md:92
 msgid "\"invoices/show\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:175
-#: src/usage/ruby_rails.md:257 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:135 src/usage/ruby_rails.md:170
+#: src/usage/ruby_rails.md:252 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:114
 msgid "\"pdf\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:146
+#: src/usage/ruby_rails.md:141
 msgid "オプションは3つに振り分けられます。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:148
+#: src/usage/ruby_rails.md:143
 msgid "種類"
 msgstr ""
 
-#: src/usage/ruby_rails.md:150
+#: src/usage/ruby_rails.md:145
 msgid "ビューの描画へ渡す"
 msgstr ""
 
-#: src/usage/ruby_rails.md:150
+#: src/usage/ruby_rails.md:145
 msgid ""
 "`template` `partial` `inline` `file` `plain` `html` `body` `layout` `locals` "
 "`formats` `variants` `handlers` `prefixes` `object` `collection` `assigns` "
 "`action`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:151
+#: src/usage/ruby_rails.md:146
 msgid "レスポンスの組み立て"
 msgstr ""
 
-#: src/usage/ruby_rails.md:151
+#: src/usage/ruby_rails.md:146
 msgid "`disposition`(既定`inline`) `filename` `status`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:152
+#: src/usage/ruby_rails.md:147
 msgid "デバッグ"
 msgstr ""
 
-#: src/usage/ruby_rails.md:152
+#: src/usage/ruby_rails.md:147
 msgid "`show_as_html`(PDFにせずHTMLを返す)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:153
+#: src/usage/ruby_rails.md:148
 msgid "上記以外すべて"
 msgstr ""
 
-#: src/usage/ruby_rails.md:153
+#: src/usage/ruby_rails.md:148
 msgid "変換オプション"
 msgstr ""
 
-#: src/usage/ruby_rails.md:155
+#: src/usage/ruby_rails.md:150
 msgid "`pdf:`の値が空ならアクション名がファイル名になります。 `filename:`があればそちらが勝ち、`.pdf`は二重に付きません。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:158
+#: src/usage/ruby_rails.md:153
 msgid "アセットのパス解決"
 msgstr ""
 
-#: src/usage/ruby_rails.md:160
+#: src/usage/ruby_rails.md:155
 msgid ""
 "PDFのレンダリングはHTTPサーバを介さないため、`/assets/…`のようなURLは ローカルファイルとして解決されます。 "
 "Railtieが次の既定値を入れます。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:166
+#: src/usage/ruby_rails.md:161
 msgid "`base_url`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:166
+#: src/usage/ruby_rails.md:161
 msgid "`Rails.root/public`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:166
+#: src/usage/ruby_rails.md:161
 msgid "絶対パス参照の基準。precompile済みなら素の`stylesheet_link_tag`がそのまま動く"
 msgstr ""
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:162
 msgid "`allow`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:162
 msgid "`[Rails.root]`"
 msgstr ""
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:162
 msgid "ローカル参照をアプリ配下に限定する"
 msgstr ""
 
-#: src/usage/ruby_rails.md:169
+#: src/usage/ruby_rails.md:164
 msgid ""
 "どちらも`Sghtmltopdf.configure`で上書きできます(イニシャライザの実行順に依存しません)。 "
 "`allow`の既定はテンプレートにユーザー入力が混ざっても文書外のファイルを読ませないためのものなので、アプリの外(例: "
 "`/usr/share/fonts`)を参照している場合は明示的に足してください。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:172
+#: src/usage/ruby_rails.md:167
 msgid "開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、CSSの中身を`<style>`へ展開するヘルパがあります。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:176 src/usage/ruby_rails.md:177
+#: src/usage/ruby_rails.md:171 src/usage/ruby_rails.md:172
 #: src/supports/images.md:14
 msgid "\"logo.png\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:177
+#: src/usage/ruby_rails.md:172
 msgid "<%# 見つからなければnil %>"
 msgstr ""
 
-#: src/usage/ruby_rails.md:180
+#: src/usage/ruby_rails.md:175
 msgid "サーバへ委譲する"
 msgstr ""
 
-#: src/usage/ruby_rails.md:182
+#: src/usage/ruby_rails.md:177
 msgid ""
 "`server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く 別プロセスへ投げます。 "
 "アプリのCPUを使いたくない場合や、gemの対応プラットフォーム外(Alpineなど)で動かす場合に使います。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:188 src/migration/wicked-pdf.md:142
+#: src/usage/ruby_rails.md:183 src/migration/wicked-pdf.md:142
 msgid "\"http://pdf.internal:8080\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:191
+#: src/usage/ruby_rails.md:186
 msgid "# 委譲される\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:194
+#: src/usage/ruby_rails.md:189
 msgid "URLは1つだけです。負荷分散はLB(nginx・k8s Service)を前段に置く前提です"
 msgstr ""
 
-#: src/usage/ruby_rails.md:195
+#: src/usage/ruby_rails.md:190
 msgid ""
 "到達できないときはローカルへフォールバックしません(`ServerError`)。 "
 "サーバ起動時にだけ指定できるフォントが効かず、出力が変わってしまうためです"
 msgstr ""
 
-#: src/usage/ruby_rails.md:197
+#: src/usage/ruby_rails.md:192
 msgid ""
 "HTTPのステータスは上のエラー分類へ対応します(400→`UsageError`、413→`InputError`、500→`RenderError`、その他→`ServerError`)"
 msgstr ""
 
-#: src/usage/ruby_rails.md:199
+#: src/usage/ruby_rails.md:194
 msgid "サーバでは指定できないオプション"
 msgstr ""
 
-#: src/usage/ruby_rails.md:201
+#: src/usage/ruby_rails.md:196
 msgid "ローカルパスを取るものと出力先・アクセス制御はサーバ起動時にしか設定できません(指定すると`UsageError`)。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:210
+#: src/usage/ruby_rails.md:205
 msgid ""
 "Railtieが入れる`base_url`/`allow`の既定値は自動的に外れるので、Railsでそのまま`server_url`を足しても400にはなりません。 "
 "`configure`で明示的に設定している場合は、サーバ側の起動オプションへ移してください。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:213
+#: src/usage/ruby_rails.md:208
 msgid "チャンクごとに受け取る"
 msgstr ""
 
-#: src/usage/ruby_rails.md:215
+#: src/usage/ruby_rails.md:210
 msgid ""
 "ブロックを渡すと、PDF全体を組み立ててから返す代わりにチャンクごとにブロックが呼ばれます(返り値は`nil`)。 "
 "Rackの`response.stream`へ流したり、S3のマルチパートアップロードへ繋いだりするための口です。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:222
+#: src/usage/ruby_rails.md:217
 msgid ""
 "ローカル変換でもサーバ委譲でも逐次になります。 ローカルは確定したページから順に、サーバはその`?stream=1`(chunked transfer "
 "encoding)をそのまま流します。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:225
+#: src/usage/ruby_rails.md:220
 msgid ""
 "1回に渡すバイト数の目安は`chunk_size:`で変えられます(既定64KiB、ローカル変換のみ)。 "
 "小さくすると細かく届きますが、そのたびにGVLを取り直すのでレンダリングは遅くなります。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:232
+#: src/usage/ruby_rails.md:227
 msgid "`Thread#kill`とタイムアウトが効く"
 msgstr ""
 
-#: src/usage/ruby_rails.md:234
+#: src/usage/ruby_rails.md:229
 msgid ""
 "ブロックの呼び出しはRubyのメソッド呼び出しなので、その時点で保留中の割り込みが処理されます。 "
 "ブロック付きで呼んでいる限り、`Thread#kill`や`Timeout.timeout`・`Rack::Timeout`がチャンク境界で効きます。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:239
+#: src/usage/ruby_rails.md:234
 msgid "# 10秒で中断できる\n"
 msgstr ""
 
-#: src/usage/ruby_rails.md:243
+#: src/usage/ruby_rails.md:238
 msgid ""
 "ブロックを渡さない`render`/`render_to_file`は変換の間まったくRubyへ戻らないため、途中で止められません。 "
 "長い変換に上限をかけたい場合はブロック付きで呼んでください。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:246
+#: src/usage/ruby_rails.md:241
 msgid "Railsで逐次返却する"
 msgstr ""
 
-#: src/usage/ruby_rails.md:248
+#: src/usage/ruby_rails.md:243
 msgid ""
 "`render pdf:`のレンダラは、組み上がったPDFを`send_data`で一括返却します。 "
 "確定したページから順に返したい場合は`ActionController::Live`と組み合わせます。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:256
+#: src/usage/ruby_rails.md:251
 msgid "\"Content-Type\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:256 src/usage/ruby_rails.md:275
+#: src/usage/ruby_rails.md:251 src/usage/ruby_rails.md:270
 msgid "\"application/pdf\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:265
+#: src/usage/ruby_rails.md:260
 msgid ""
 "途中まで書き出したあとに失敗すると、クライアントには壊れたPDFが届きます(ヘッダは既に送信済みなのでステータスを変えられません)。 "
 "サーバモードの`?stream=1`と同じ性質です。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:268
+#: src/usage/ruby_rails.md:263
 msgid "S3へ直接上げる"
 msgstr ""
 
-#: src/usage/ruby_rails.md:270
+#: src/usage/ruby_rails.md:265
 msgid ""
 "gemはS3向けの実装を持ちません(依存を増やさず、書き方も短いためです)。 "
 "マルチパートアップロードは最後のパート以外は5MB以上という制約があるので、溜めてから上げます。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:276
+#: src/usage/ruby_rails.md:271
 msgid "\"\""
 msgstr ""
 
-#: src/usage/ruby_rails.md:299
+#: src/usage/ruby_rails.md:294
 msgid "小さいPDFなら`put_object(body: Sghtmltopdf.render(html))`で十分です。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:301
+#: src/usage/ruby_rails.md:296
 msgid "メモリを抑えたいとき"
 msgstr ""
 
-#: src/usage/ruby_rails.md:303
+#: src/usage/ruby_rails.md:298
 msgid ""
 "数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)を使うとメモリが大きく減ります(実測: "
 "60,000要素で 228MB → 28MB。[メモリと処理時間](./cli/streaming.md#メモリと処理時間))。"
 msgstr ""
 
-#: src/usage/ruby_rails.md:309
+#: src/usage/ruby_rails.md:304
 msgid ""
 "その代わり、文書全体を見ないと決まらないもの(`toc`・`counter(pages)`・`<body>`より後の`<style>`など)が使えません。 "
 "制約の一覧は[ストリーミングモード](./cli/streaming.md)を参照してください。"
@@ -5015,6 +5002,10 @@ msgstr ""
 msgid "章ごとに必ず改ページする:"
 msgstr ""
 
+#: src/supports/pagination.md:124
+msgid "Note"
+msgstr ""
+
 #: src/supports/pagination.md:126
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では`:last-child`などの後方参照セレクタが常に非マッチになります。 "
@@ -5232,16 +5223,16 @@ msgid "`!important`が使えません。付いた宣言は無視されます"
 msgstr ""
 
 #: src/migration/wkhtmltopdf.md:85
-msgid ""
-"CSSの中で使える長さの単位は`px`/`em`/`rem`/`%`だけです(`pt`や`mm`はCLIオプションでは使えますが、CSSでは使えません)"
-msgstr ""
-
-#: src/migration/wkhtmltopdf.md:86
 msgid "`inherit`/`initial`/`unset`が使えません"
 msgstr ""
 
+#: src/migration/wkhtmltopdf.md:86
+msgid ""
+"ビューポート単位(`vw`/`vh`等)と`ex`/`ch`/`lh`が使えません。長さは`px`/`em`/`rem`と絶対単位(`mm`/`cm`/`in`/`pt`/`pc`/`Q`)で書いてください"
+msgstr ""
+
 #: src/migration/wkhtmltopdf.md:88
-msgid "詳しくは[先に読んでほしい規則](../supports/rules.md)を参照してください。"
+msgid "詳しくは[セレクタ・値・at-rule](../supports/selectors.md)を参照してください。"
 msgstr ""
 
 #: src/migration/wkhtmltopdf.md:90

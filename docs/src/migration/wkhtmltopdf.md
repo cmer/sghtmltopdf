@@ -82,10 +82,10 @@ HTMLでヘッダーを作る場合も、HTMLのテキストとして`[page]`が�
 移行時によく当たるのは次の3つです。
 
 1. `!important`が使えません。付いた宣言は無視されます
-2. CSSの中で使える長さの単位は`px`/`em`/`rem`/`%`だけです(`pt`や`mm`はCLIオプションでは使えますが、CSSでは使えません)
-3. `inherit`/`initial`/`unset`が使えません
+2. `inherit`/`initial`/`unset`が使えません
+3. ビューポート単位(`vw`/`vh`等)と`ex`/`ch`/`lh`が使えません。長さは`px`/`em`/`rem`と絶対単位(`mm`/`cm`/`in`/`pt`/`pc`/`Q`)で書いてください
 
-詳しくは[先に読んでほしい規則](../supports/rules.md)を参照してください。
+詳しくは[セレクタ・値・at-rule](../supports/selectors.md)を参照してください。
 
 ## 移行できたか確かめる
 
