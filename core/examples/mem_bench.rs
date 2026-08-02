@@ -5,10 +5,6 @@
 //!
 //! 実行: `cargo run --release --example mem_bench`
 //!
-//! 現在の表はCLIバイナリを`/usr/bin/time`で測った値なので、この例の出力とは
-//! CLIのプロセス起動ぶんだけずれる(1,000要素で1MB程度)。次に表を更新する
-//! ときはこの例の出力に揃えること。
-//!
 //! 測るのはプロセスのピークRSS(Linuxの`/proc/self/status`の`VmHWM`)なので、
 //! 1プロセスで両モードを回すと先に走ったほうの山が残って比較にならない。
 //! そのため親プロセスが条件ごとに自分自身を再実行し、子プロセスが自分の
@@ -69,7 +65,7 @@ fn best_of(exe: &Path, count: usize, mode: Mode) -> String {
         best_rss = best_rss.min(rss_kib);
         best_secs = best_secs.min(secs);
     }
-    format!("{:.0}MB / {:.1}秒", best_rss / MIB, best_secs)
+    format!("{:.0}MB / {:.2}秒", best_rss / MIB, best_secs)
 }
 
 /// 自分自身を子プロセスとして起動し、`(ピークRSS[KiB], 秒)`を受け取る。

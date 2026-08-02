@@ -300,7 +300,7 @@ end
 
 ## メモリを抑えたいとき
 
-数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)を使うとメモリが大きく減ります(実測: 60,000要素で 825MB → 27MB。[メモリと処理時間](./cli/streaming.md#メモリと処理時間))。
+数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)を使うとメモリが大きく減ります(実測: 60,000要素で 228MB → 28MB。[メモリと処理時間](./cli/streaming.md#メモリと処理時間))。
 
 ```ruby
 Sghtmltopdf.render(html, streaming: true)

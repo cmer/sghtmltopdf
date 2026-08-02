@@ -13,7 +13,7 @@ Compared with the common headless-Chrome approach:
 
 * No browser process. One binary, or a native extension living inside your Ruby process.
 * Fonts are resolved during rendering. There is no `document.fonts.ready` to wait for, so a PDF is never emitted with unresolved webfonts.
-* Streaming. HTML is read in chunks and each page is written out as soon as its layout is final, so memory does not grow with document size (measured: 825MB → 27MB on a 60,000-element document).
+* Streaming. HTML is read in chunks and each page is written out as soon as its layout is final, so memory does not grow with document size (measured: 228MB → 28MB on a 60,000-element document).
 * Page breaks are first class. CSS Fragmentation (`break-before`, `break-inside`, `orphans`, `widows`) and `@page` are implemented directly.
 
 Non-goals: executing JavaScript, pixel-perfect parity with browsers, and full CSS coverage. See [what is not supported](https://waka.github.io/sghtmltopdf/appendix/limitations.html).

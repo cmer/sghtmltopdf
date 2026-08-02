@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-02T18:04:00+09:00\n"
+"POT-Creation-Date: 2026-08-02T21:10:17+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -175,42 +175,185 @@ msgid "Webアプリとは別にバイナリをインストールする必要が�
 msgstr ""
 
 #: src/index.md:28
-msgid "同時リクエスト数が増えると CPU 消費コストが増えやすい"
+msgid "巨大な HTML が渡ってくると、出力にかかる時間やメモリ消費コストが一気に増える"
 msgstr ""
 
-#: src/index.md:29
-msgid "巨大な HTML が渡ってくると、メモリ消費コストが増えやすい"
-msgstr ""
-
-#: src/index.md:31
+#: src/index.md:30
 msgid "これらを解決するために、sghtmltopdf では以下のような対応を入れました。"
 msgstr ""
 
-#: src/index.md:33
+#: src/index.md:32
 msgid "CSS3 にほぼ対応（レアプロパティは一部非対応）"
 msgstr ""
 
-#: src/index.md:34
+#: src/index.md:33
 msgid "Webfont に対応。serif/sans-serif/mono それぞれ個別に指定可能に"
 msgstr ""
 
-#: src/index.md:35
+#: src/index.md:34
 msgid "表（Table）の途中で改ページが起きてもヘッダーを表示するように"
 msgstr ""
 
+#: src/index.md:35
+msgid "ネイティブ拡張を FFI で呼び出すことで、ブラウザプロセスの起動を必要とせず、Webアプリのプロセスに同居可能に"
+msgstr ""
+
 #: src/index.md:36
-msgid "ネイティブ拡張を FFI で呼び出すことで、ブラウザを必要とせず、Webアプリのプロセスに同居可能に"
+msgid "HTML をチャンク単位で読み確定したページから書き出せるストリーミングモードを用意して、メモリ消費量を律速に"
 msgstr ""
 
-#: src/index.md:37
-msgid "HTML をチャンク単位で読み、確定したページから書き出せるストリーミングモードを用意"
+#: src/index.md:38
+msgid "wkhtmltopdfとのパフォーマンス比較"
 msgstr ""
 
-#: src/index.md:39
+#: src/index.md:40
+msgid "同じHTMLを同じ用紙設定で変換したときの実測値です。 各セルは「ピークメモリ / 処理時間」を表します。"
+msgstr ""
+
+#: src/index.md:43
+msgid "段落だけの文書:"
+msgstr ""
+
+#: src/index.md:45 src/usage/cli/streaming.md:52
+msgid "要素数"
+msgstr ""
+
+#: src/index.md:45 src/index.md:53 src/migration/wkhtmltopdf.md:11
+msgid "wkhtmltopdf"
+msgstr ""
+
+#: src/index.md:45 src/index.md:53 src/migration/wkhtmltopdf.md:11
+#: src/migration/wicked-pdf.md:50 src/migration/wicked-pdf.md:100
+msgid "sghtmltopdf"
+msgstr ""
+
+#: src/index.md:45 src/index.md:53
+msgid "sghtmltopdf（ストリーミング）"
+msgstr ""
+
+#: src/index.md:47 src/index.md:55 src/usage/cli/streaming.md:55
+msgid "5,000"
+msgstr ""
+
+#: src/index.md:47
+msgid "50MB / 0.5秒"
+msgstr ""
+
+#: src/index.md:47
+msgid "28MB / 0.2秒"
+msgstr ""
+
+#: src/index.md:47
+msgid "11MB / 0.2秒"
+msgstr ""
+
+#: src/index.md:48 src/index.md:56 src/usage/cli/streaming.md:56
+msgid "20,000"
+msgstr ""
+
+#: src/index.md:48
+msgid "92MB / 2.1秒"
+msgstr ""
+
+#: src/index.md:48
+msgid "83MB / 0.9秒"
+msgstr ""
+
+#: src/index.md:48
+msgid "16MB / 0.8秒"
+msgstr ""
+
+#: src/index.md:49 src/usage/cli/streaming.md:57
+msgid "60,000"
+msgstr ""
+
+#: src/index.md:49
+msgid "206MB / 25.3秒"
+msgstr ""
+
+#: src/index.md:49
+msgid "233MB / 3.3秒"
+msgstr ""
+
+#: src/index.md:49
+msgid "26MB / 3.0秒"
+msgstr ""
+
+#: src/index.md:51
+msgid "表が主体の帳票:"
+msgstr ""
+
+#: src/index.md:53
+msgid "行数"
+msgstr ""
+
+#: src/index.md:55
+msgid "72MB / 1.6秒"
+msgstr ""
+
+#: src/index.md:55
+msgid "50MB / 0.8秒"
+msgstr ""
+
+#: src/index.md:55
+msgid "50MB / 0.9秒"
+msgstr ""
+
+#: src/index.md:56
+msgid "182MB / 12.8秒"
+msgstr ""
+
+#: src/index.md:56
+msgid "175MB / 2.8秒"
+msgstr ""
+
+#: src/index.md:58
+msgid "処理時間は文書が大きくなるほど差が開き、60,000要素で約7.7倍、20,000行の帳票で約4.6倍の差になります。"
+msgstr ""
+
+#: src/index.md:60
+msgid ""
+"メモリは、通常モードでは同程度です。 60,000要素では通常モードのほうが多く使っており（233MB 対 "
+"206MB）、文書サイズに比例して増える点はwkhtmltopdfと変わりません。 "
+"[ストリーミングモード](usage/cli/streaming.md)を使うと、ここが26MBまで下がります。 "
+"一方、巨大な表が1つだけの帳票ではストリーミングの効果がありません。 "
+"確定したページを書き出す区切りが`<body>`直下の要素単位のため、表が1つしかない文書では最後まで解放できないからです。"
+msgstr ""
+
+#: src/index.md:66 src/usage/cli/streaming.md:67
+msgid "測定条件は次のとおりです。"
+msgstr ""
+
+#: src/index.md:68
+msgid "sghtmltopdf 0.1.0 と wkhtmltopdf 0.12.6.1（アーカイブ時点の最終版）"
+msgstr ""
+
+#: src/index.md:69
+msgid "Intel Core Ultra 7 258V / メモリ16GB / WSL2(Linux 5.15)"
+msgstr ""
+
+#: src/index.md:70
+msgid ""
+"用紙A4・余白10mmを両者へ明示し、フォントは`@font-face`で同じファイルを参照。wkhtmltopdfには`--disable-javascript`を指定"
+msgstr ""
+
+#: src/index.md:71
+msgid "wkhtmltopdfはCSSのpxを1/72インチとして扱うため、`--zoom 1.3333333`で1px = 1/96インチに揃えている"
+msgstr ""
+
+#: src/index.md:72
+msgid "それでもページ数は完全には一致せず、wkhtmltopdf側が4〜10%多くなる（つまりwkhtmltopdfはわずかに多く処理したうえでの数値）"
+msgstr ""
+
+#: src/index.md:73
+msgid "各条件2回実行して良いほうの値"
+msgstr ""
+
+#: src/index.md:75
 msgid "処理の流れ"
 msgstr ""
 
-#: src/index.md:52
+#: src/index.md:88
 msgid ""
 "ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしています。"
 msgstr ""
@@ -1478,10 +1621,6 @@ msgid "同じHTMLを両モードで変換した実測値です。 各セルは�
 msgstr ""
 
 #: src/usage/cli/streaming.md:52
-msgid "要素数"
-msgstr ""
-
-#: src/usage/cli/streaming.md:52
 msgid "HTMLサイズ"
 msgstr ""
 
@@ -1494,51 +1633,39 @@ msgid "1,000"
 msgstr ""
 
 #: src/usage/cli/streaming.md:54
-msgid "48KB"
+msgid "46KB"
 msgstr ""
 
 #: src/usage/cli/streaming.md:54
-msgid "22MB / 1.4秒"
+msgid "11MB / 0.04秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:54
-msgid "10MB / 1.4秒"
+msgid "9MB / 0.05秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:55
-msgid "5,000"
+msgid "233KB"
 msgstr ""
 
 #: src/usage/cli/streaming.md:55
-msgid "236KB"
+msgid "27MB / 0.19秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:55
-msgid "72MB / 7.0秒"
-msgstr ""
-
-#: src/usage/cli/streaming.md:55
-msgid "11MB / 8.6秒"
+msgid "10MB / 0.22秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:56
-msgid "20,000"
+msgid "946KB"
 msgstr ""
 
 #: src/usage/cli/streaming.md:56
-msgid "948KB"
+msgid "81MB / 0.82秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:56
-msgid "264MB / 30.1秒"
-msgstr ""
-
-#: src/usage/cli/streaming.md:56
-msgid "15MB / 29.2秒"
-msgstr ""
-
-#: src/usage/cli/streaming.md:57
-msgid "60,000"
+msgid "15MB / 0.88秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:57
@@ -1546,29 +1673,24 @@ msgid "2.8MB"
 msgstr ""
 
 #: src/usage/cli/streaming.md:57
-msgid "825MB / 92.8秒"
+msgid "228MB / 2.53秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:57
-msgid "27MB / 104.6秒"
+msgid "28MB / 2.51秒"
 msgstr ""
 
 #: src/usage/cli/streaming.md:59
 msgid ""
 "通常モードのピークメモリは文書サイズにほぼ比例して増えますが、`--streaming`ではほとんど増えません。 "
-"60,000要素では約30分の1になります。 "
+"60,000要素では約8分の1になります。 "
 "`--streaming`でもわずかに増えるのは、PDFの相互参照表(全オブジェクトの位置)と使用グリフの集計を最後まで保持するためです。"
 msgstr ""
 
 #: src/usage/cli/streaming.md:63
 msgid ""
-"処理時間は両モードでほぼ変わりません。 "
-"この計測では`--streaming`が5,000要素で2割ほど、60,000要素で1割ほど遅く、20,000要素ではほぼ同じでした。 "
-"メモリを大きく減らす代わりに時間を大きく損なう、という関係にはなっていません。"
-msgstr ""
-
-#: src/usage/cli/streaming.md:67
-msgid "測定条件は次のとおりです。"
+"処理時間は両モードでほぼ変わりません。 この計測での差は数パーセントで、実行ごとのばらつきと同程度でした。 "
+"メモリを大きく減らす代わりに時間を損なう、という関係にはなっていません。"
 msgstr ""
 
 #: src/usage/cli/streaming.md:69
@@ -1582,7 +1704,7 @@ msgid "高さ60pxの`<p>`を要素数ぶん並べただけのHTML。フォント
 msgstr ""
 
 #: src/usage/cli/streaming.md:71
-msgid "ピークメモリは`/usr/bin/time`が報告する最大常駐セットサイズ(RSS)。2回実行して良いほうの値"
+msgid "ピークメモリはプロセスの最大常駐セットサイズ(RSS)。2回実行して良いほうの値"
 msgstr ""
 
 #: src/usage/cli/streaming.md:73
@@ -1949,8 +2071,8 @@ msgstr ""
 #: src/supports/properties.md:211 src/supports/properties.md:227
 #: src/supports/selectors.md:15 src/supports/selectors.md:27
 #: src/supports/selectors.md:44 src/supports/selectors.md:55
-#: src/supports/selectors.md:71 src/supports/selectors.md:84
-#: src/supports/selectors.md:99
+#: src/supports/selectors.md:74 src/supports/selectors.md:87
+#: src/supports/selectors.md:102
 msgid "対応"
 msgstr ""
 
@@ -2517,7 +2639,7 @@ msgstr ""
 #: src/usage/ruby_rails.md:303
 msgid ""
 "数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)を使うとメモリが大きく減ります(実測: "
-"60,000要素で 825MB → 27MB。[メモリと処理時間](./cli/streaming.md#メモリと処理時間))。"
+"60,000要素で 228MB → 28MB。[メモリと処理時間](./cli/streaming.md#メモリと処理時間))。"
 msgstr ""
 
 #: src/usage/ruby_rails.md:309
@@ -2608,7 +2730,7 @@ msgstr ""
 #: src/supports/properties.md:176 src/supports/properties.md:211
 #: src/supports/properties.md:227 src/supports/selectors.md:15
 #: src/supports/selectors.md:27 src/supports/selectors.md:44
-#: src/supports/selectors.md:71 src/supports/selectors.md:99
+#: src/supports/selectors.md:74 src/supports/selectors.md:102
 #: src/migration/wkhtmltopdf-options.md:29
 #: src/migration/wkhtmltopdf-options.md:67
 #: src/migration/wkhtmltopdf-options.md:76
@@ -2648,10 +2770,10 @@ msgstr ""
 #: src/supports/properties.md:180 src/supports/properties.md:185
 #: src/supports/properties.md:187 src/supports/selectors.md:36
 #: src/supports/selectors.md:46 src/supports/selectors.md:47
-#: src/supports/selectors.md:73 src/supports/selectors.md:75
-#: src/supports/selectors.md:77 src/supports/selectors.md:101
-#: src/supports/selectors.md:102 src/supports/selectors.md:103
-#: src/supports/selectors.md:104
+#: src/supports/selectors.md:76 src/supports/selectors.md:78
+#: src/supports/selectors.md:80 src/supports/selectors.md:104
+#: src/supports/selectors.md:105 src/supports/selectors.md:106
+#: src/supports/selectors.md:107
 msgid "⚠️"
 msgstr ""
 
@@ -2783,11 +2905,11 @@ msgstr ""
 #: src/supports/selectors.md:32 src/supports/selectors.md:33
 #: src/supports/selectors.md:34 src/supports/selectors.md:37
 #: src/supports/selectors.md:57 src/supports/selectors.md:58
-#: src/supports/selectors.md:59 src/supports/selectors.md:76
-#: src/supports/selectors.md:78 src/supports/selectors.md:86
-#: src/supports/selectors.md:87 src/supports/selectors.md:88
-#: src/supports/selectors.md:89 src/supports/selectors.md:91
-#: src/supports/selectors.md:105
+#: src/supports/selectors.md:59 src/supports/selectors.md:60
+#: src/supports/selectors.md:79 src/supports/selectors.md:81
+#: src/supports/selectors.md:89 src/supports/selectors.md:90
+#: src/supports/selectors.md:91 src/supports/selectors.md:92
+#: src/supports/selectors.md:94 src/supports/selectors.md:108
 msgid "✅"
 msgstr ""
 
@@ -2912,11 +3034,11 @@ msgstr ""
 #: src/supports/properties.md:221 src/supports/properties.md:222
 #: src/supports/properties.md:223 src/supports/selectors.md:23
 #: src/supports/selectors.md:35 src/supports/selectors.md:48
-#: src/supports/selectors.md:49 src/supports/selectors.md:60
-#: src/supports/selectors.md:61 src/supports/selectors.md:74
-#: src/supports/selectors.md:79 src/supports/selectors.md:80
-#: src/supports/selectors.md:92 src/supports/selectors.md:93
-#: src/supports/selectors.md:106 src/supports/selectors.md:107
+#: src/supports/selectors.md:49 src/supports/selectors.md:61
+#: src/supports/selectors.md:77 src/supports/selectors.md:82
+#: src/supports/selectors.md:83 src/supports/selectors.md:95
+#: src/supports/selectors.md:96 src/supports/selectors.md:109
+#: src/supports/selectors.md:110
 msgid "❌"
 msgstr ""
 
@@ -4054,15 +4176,15 @@ msgid "`px` / `em` / `rem`"
 msgstr ""
 
 #: src/supports/selectors.md:58
-msgid "`%`(パーセンテージを取るプロパティで)"
+msgid "`mm` / `cm` / `in` / `pt` / `pc` / `Q`"
 msgstr ""
 
 #: src/supports/selectors.md:59
-msgid "単位なしの`0`"
+msgid "`%`(パーセンテージを取るプロパティで)"
 msgstr ""
 
 #: src/supports/selectors.md:60
-msgid "`pt` / `pc` / `cm` / `mm` / `in` / `Q`"
+msgid "単位なしの`0`"
 msgstr ""
 
 #: src/supports/selectors.md:61
@@ -4071,222 +4193,228 @@ msgstr ""
 
 #: src/supports/selectors.md:63
 msgid ""
+"絶対単位は1インチ = 96pxとして解釈する(`10mm`は37.795px)。 印刷向けに寸法を実寸で書けるので、`@page { size: "
+"210mm 297mm; margin: 15mm; }`のような指定がそのまま通る。"
+msgstr ""
+
+#: src/supports/selectors.md:66
+msgid ""
 "`@page`の`size`だけは例外的にページサイズのキーワード(`a4`/`letter`等)と`landscape`/`portrait`を受け付ける。"
 msgstr ""
 
-#: src/supports/selectors.md:65
+#: src/supports/selectors.md:68
 msgid "角度(`transform`専用)"
 msgstr ""
 
-#: src/supports/selectors.md:67
+#: src/supports/selectors.md:70
 msgid "`deg` / `rad` / `grad` / `turn`、および単位なしの`0`に対応 ✅。"
 msgstr ""
 
-#: src/supports/selectors.md:69 src/supports/selectors.md:71
+#: src/supports/selectors.md:72 src/supports/selectors.md:74
 msgid "関数"
 msgstr ""
 
-#: src/supports/selectors.md:73
+#: src/supports/selectors.md:76
 msgid "`calc()`"
 msgstr ""
 
-#: src/supports/selectors.md:73
+#: src/supports/selectors.md:76
 msgid ""
-"`+`/`-`/`*`/`/`と括弧のネスト。項に使えるのは`px`/`em`/`rem`/`%`/数値のみ。長さ・パーセンテージを取るプロパティ全般で使える"
+"`+`/`-`/`*`/`/`と括弧のネスト。項に使えるのは長さ(絶対単位・`em`/`rem`)・`%`・数値のみ。長さ・パーセンテージを取るプロパティ全般で使える"
 msgstr ""
 
-#: src/supports/selectors.md:74
+#: src/supports/selectors.md:77
 msgid "`min()` / `max()` / `clamp()`"
 msgstr ""
 
-#: src/supports/selectors.md:75
+#: src/supports/selectors.md:78
 msgid "`var()`"
 msgstr ""
 
-#: src/supports/selectors.md:75
+#: src/supports/selectors.md:78
 msgid ""
 "カスタムプロパティ(`--foo`)をパース前のテキスト置換で解決する。フォールバック(`var(--x, "
 "10px)`)・カスタムプロパティ同士の参照に対応。カスケードや継承には従わず、文書全体で「最後に書かれた宣言が勝つ」単純な解決になる点が本来の仕様と異なる"
 msgstr ""
 
-#: src/supports/selectors.md:76
+#: src/supports/selectors.md:79
 msgid "`url()`"
 msgstr ""
 
-#: src/supports/selectors.md:76
+#: src/supports/selectors.md:79
 msgid ""
 "`background-image`/`list-style-image`/`@font-face`の`src`/`@import`。相対URLは`<base "
 "href>`または入力元を基準に解決する"
 msgstr ""
 
-#: src/supports/selectors.md:77
+#: src/supports/selectors.md:80
 msgid "`attr()`"
 msgstr ""
 
-#: src/supports/selectors.md:77
+#: src/supports/selectors.md:80
 msgid "`content`の中でのみ使える"
 msgstr ""
 
-#: src/supports/selectors.md:78
+#: src/supports/selectors.md:81
 msgid "`counter()` / `counters()`"
 msgstr ""
 
-#: src/supports/selectors.md:78
+#: src/supports/selectors.md:81
 msgid "`content`の中。第2引数のスタイルは`list-style-type`の値集合"
 msgstr ""
 
-#: src/supports/selectors.md:79
+#: src/supports/selectors.md:82
 msgid "`linear-gradient()`等のグラデーション"
 msgstr ""
 
-#: src/supports/selectors.md:80
+#: src/supports/selectors.md:83
 msgid "`env()` / `image-set()` / `element()`"
 msgstr ""
 
-#: src/supports/selectors.md:82
+#: src/supports/selectors.md:85
 msgid "色"
 msgstr ""
 
-#: src/supports/selectors.md:84
+#: src/supports/selectors.md:87
 msgid "記法"
 msgstr ""
 
-#: src/supports/selectors.md:86
+#: src/supports/selectors.md:89
 msgid "名前付き色(`red`等のCSS色キーワード)"
 msgstr ""
 
-#: src/supports/selectors.md:87
+#: src/supports/selectors.md:90
 msgid "`#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`"
 msgstr ""
 
-#: src/supports/selectors.md:88
+#: src/supports/selectors.md:91
 msgid "`rgb()` / `rgba()`(カンマ区切り・スペース区切りとも)"
 msgstr ""
 
-#: src/supports/selectors.md:89
+#: src/supports/selectors.md:92
 msgid "`hsl()` / `hsla()` / `hwb()`"
 msgstr ""
 
-#: src/supports/selectors.md:90
+#: src/supports/selectors.md:93
 msgid "`lab()` / `lch()` / `oklab()` / `oklch()`"
 msgstr ""
 
-#: src/supports/selectors.md:90
+#: src/supports/selectors.md:93
 msgid "✅ (sRGBへ変換して描画)"
 msgstr ""
 
-#: src/supports/selectors.md:91
+#: src/supports/selectors.md:94
 msgid "`currentcolor` / `transparent`"
 msgstr ""
 
-#: src/supports/selectors.md:92
+#: src/supports/selectors.md:95
 msgid "`color()`(`color(display-p3 ...)`等)"
 msgstr ""
 
-#: src/supports/selectors.md:93
+#: src/supports/selectors.md:96
 msgid "`color-mix()` / 相対色構文(`rgb(from ...)`)"
 msgstr ""
 
-#: src/supports/selectors.md:95
+#: src/supports/selectors.md:98
 msgid "アルファ付きの色は塗り・背景ともPDFのExtGStateで透過描画する。"
 msgstr ""
 
-#: src/supports/selectors.md:97 src/supports/selectors.md:99
+#: src/supports/selectors.md:100 src/supports/selectors.md:102
 msgid "at-rule"
 msgstr ""
 
-#: src/supports/selectors.md:101
+#: src/supports/selectors.md:104
 msgid "`@media`"
 msgstr ""
 
-#: src/supports/selectors.md:101
+#: src/supports/selectors.md:104
 msgid ""
 "メディアタイプのみを評価する。`screen`(および`not "
 "screen`以外の否定)はブロックごと無視し、`print`/`all`/タイプ省略は適用する。`(min-width: "
 "...)`のような特性クエリは評価せず読み飛ばす(=タイプさえ合致すれば中身が適用される)"
 msgstr ""
 
-#: src/supports/selectors.md:102
+#: src/supports/selectors.md:105
 msgid "`@page`"
 msgstr ""
 
-#: src/supports/selectors.md:102
+#: src/supports/selectors.md:105
 msgid ""
 "`size`(キーワード/`<length>{1,2}`/`landscape`/`portrait`)と`margin`系に対応。`:first`/`:left`/`:right`擬似クラス単体に対応し、名前付きページ(`@page "
 "intro`)・`:blank`・複合擬似クラス(`:first:left`)は非対応"
 msgstr ""
 
-#: src/supports/selectors.md:103
+#: src/supports/selectors.md:106
 msgid "`@page`内のmargin box"
 msgstr ""
 
-#: src/supports/selectors.md:103
+#: src/supports/selectors.md:106
 msgid ""
 "`@top-left-corner`/`@top-left`/`@top-center`/`@top-right`…の16種すべて。`content`のテキスト描画のみで、背景色・枠線等の装飾は非対応。`counter(page)`/`counter(pages)`でページ番号を出力できる(`counter(pages)`はストリーミングモードでは非対応)"
 msgstr ""
 
-#: src/supports/selectors.md:104 src/supports/fonts.md:43
+#: src/supports/selectors.md:107 src/supports/fonts.md:43
 msgid "`@font-face`"
 msgstr ""
 
-#: src/supports/selectors.md:104
+#: src/supports/selectors.md:107
 msgid ""
 "`font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタに対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-display`等その他のディスクリプタは無視。フォントファイルはTTF/OTFのみで、WOFF/WOFF2は非対応"
 msgstr ""
 
-#: src/supports/selectors.md:105
+#: src/supports/selectors.md:108
 msgid "`@import`"
 msgstr ""
 
-#: src/supports/selectors.md:105
+#: src/supports/selectors.md:108
 msgid ""
 "ネスト(深さ上限16、超過分はその1件だけ無視)・循環参照の検出に対応。`@import url(...) "
 "screen;`のようなメディアクエリ条件は評価せず常に取り込む"
 msgstr ""
 
-#: src/supports/selectors.md:106
+#: src/supports/selectors.md:109
 msgid "`@charset`"
 msgstr ""
 
-#: src/supports/selectors.md:106
+#: src/supports/selectors.md:109
 msgid "入力はUTF-8前提"
 msgstr ""
 
-#: src/supports/selectors.md:107
+#: src/supports/selectors.md:110
 msgid ""
 "`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
 "`@container` / `@property`"
 msgstr ""
 
-#: src/supports/selectors.md:107
+#: src/supports/selectors.md:110
 msgid "ブロックごと無視される"
 msgstr ""
 
-#: src/supports/selectors.md:109
+#: src/supports/selectors.md:112
 msgid "ストリーミングモード固有の制約"
 msgstr ""
 
-#: src/supports/selectors.md:111
+#: src/supports/selectors.md:114
 msgid "`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::Streaming`でのみ以下が適用される。"
 msgstr ""
 
-#: src/supports/selectors.md:114
+#: src/supports/selectors.md:117
 msgid ""
 "後方参照セレクタは常に非マッチ: "
 "`:last-child`/`:last-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:empty`(対象要素の親の子リストが完結するまで原理的に判定できないため)"
 msgstr ""
 
-#: src/supports/selectors.md:115
+#: src/supports/selectors.md:118
 msgid ""
 "`<body>`開始後の`<style>`タグはエラー: `EngineError::UnsupportedInStreamingMode`を返す。 "
 "黙って見た目が崩れるのを避けるため、`<style>`は`<head>`に集約する"
 msgstr ""
 
-#: src/supports/selectors.md:117
+#: src/supports/selectors.md:120
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr ""
 
-#: src/supports/selectors.md:118
+#: src/supports/selectors.md:121
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr ""
 
@@ -4879,15 +5007,6 @@ msgstr ""
 
 #: src/migration/wkhtmltopdf.md:9
 msgid "挙動が違うところ"
-msgstr ""
-
-#: src/migration/wkhtmltopdf.md:11
-msgid "wkhtmltopdf"
-msgstr ""
-
-#: src/migration/wkhtmltopdf.md:11 src/migration/wicked-pdf.md:50
-#: src/migration/wicked-pdf.md:100
-msgid "sghtmltopdf"
 msgstr ""
 
 #: src/migration/wkhtmltopdf.md:13
