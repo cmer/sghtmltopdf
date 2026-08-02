@@ -47,23 +47,24 @@ RSpec.describe "Sghtmltopdf.render" do
   describe "グローバル設定" do
     it "configureで設定した値が既定になる" do
       Sghtmltopdf.configure { |c| c.page_size = "A5" }
-      expect(Sghtmltopdf.render(html)).to eq(Sghtmltopdf.render(html, page_size: "A5"))
+      expect(normalize(Sghtmltopdf.render(html)))
+        .to eq(normalize(Sghtmltopdf.render(html, page_size: "A5")))
     end
 
     it "呼び出し時のオプションがグローバル設定に勝つ" do
       Sghtmltopdf.configure { |c| c.page_size = "A5" }
-      expect(Sghtmltopdf.render(html, page_size: "A4"))
-        .to eq(Sghtmltopdf.render(html, page_size: "A4"))
-      expect(Sghtmltopdf.render(html, page_size: "A4"))
-        .not_to eq(Sghtmltopdf.render(html))
+      expect(normalize(Sghtmltopdf.render(html, page_size: "A4")))
+        .to eq(normalize(Sghtmltopdf.render(html, page_size: "A4")))
+      expect(normalize(Sghtmltopdf.render(html, page_size: "A4")))
+        .not_to eq(normalize(Sghtmltopdf.render(html)))
     end
   end
 
   describe "スレッド安全性" do
     it "複数スレッドから同時に呼んでも同じ結果になる" do
-      expected = Sghtmltopdf.render(html)
+      expected = normalize(Sghtmltopdf.render(html))
       results = 4.times.map { Thread.new { Sghtmltopdf.render(html) } }.map(&:value)
-      expect(results).to all(eq(expected))
+      expect(results.map { |pdf| normalize(pdf) }).to all(eq(expected))
     end
   end
 end

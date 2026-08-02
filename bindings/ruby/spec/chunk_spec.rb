@@ -129,12 +129,21 @@ RSpec.describe "ブロック付きrender(ローカル変換)" do
   # Phase 6で得られた副次的な効果: ブロックの呼び出しはRubyのメソッド
   # 呼び出しなので、そこで保留中の割り込みが処理される。
   describe "割り込み" do
+    # 変換そのものの速さはマシンによって数倍変わるので、「止めようとした時点で
+    # まだ変換の途中」であることを実行時間に頼らずに作る。チャンクごとに少し
+    # 眠らせれば、全体の所要時間は眠った時間の合計で決まる。
+    CHUNK_SLEEP = 0.005
+
     it "Thread#killがチャンク境界で効く" do
+      first_chunk = Queue.new
       thread = Thread.new do
-        Sghtmltopdf.render(multipage_html(pages: 120), chunk_size: 512) { |_| }
+        Sghtmltopdf.render(multipage_html(pages: 120), chunk_size: 512) do |_|
+          first_chunk << true
+          sleep CHUNK_SLEEP
+        end
       end
       # 最初のチャンクが出るまで待ってから止める。
-      sleep 0.05
+      first_chunk.pop
       thread.kill
 
       expect(thread.join(10)).to eq(thread)
@@ -148,7 +157,7 @@ RSpec.describe "ブロック付きrender(ローカル変換)" do
 
       expect {
         Timeout.timeout(0.1) do
-          Sghtmltopdf.render(multipage_html(pages: 120), chunk_size: 512) { |_| }
+          Sghtmltopdf.render(multipage_html(pages: 120), chunk_size: 512) { |_| sleep CHUNK_SLEEP }
         end
       }.to raise_error(Timeout::Error)
 
