@@ -48,12 +48,17 @@ pub fn matching_declarations_by_origin<'a>(
         MatchingForInvalidation::No,
     );
 
+    let mut candidates = Vec::new();
     let mut collect = |sheet: &'a Stylesheet| {
+        // 索引で候補を絞ってから照合する(索引は取りこぼしを作らないため、
+        // 全ルールを走査した場合と結果は変わらない)。
+        sheet.index().candidates(dom, element, &mut candidates);
         let mut matched: Vec<(u32, usize, &'a Vec<PropertyDeclaration>)> = Vec::new();
-        for (source_order, rule) in sheet.rules.iter().enumerate() {
+        for &source_order in &candidates {
+            let rule = &sheet.rules[source_order as usize];
             if let Some(specificity) = best_matching_specificity(&rule.selectors, &el, &mut context)
             {
-                matched.push((specificity, source_order, &rule.declarations));
+                matched.push((specificity, source_order as usize, &rule.declarations));
             }
         }
         matched.sort_by_key(|(specificity, source_order, _)| (*specificity, *source_order));
@@ -112,7 +117,11 @@ pub(super) fn matching_pseudo_declarations<'a>(
 
     let mut matched: Vec<(Origin, u32, usize, &'a Vec<PropertyDeclaration>)> = Vec::new();
     for (origin, sheet) in [(Origin::UserAgent, ua), (Origin::Author, author)] {
-        for (source_order, rule) in sheet.rules.iter().enumerate() {
+        // 擬似要素セレクタを持つルールだけが対象になる。
+        let index = sheet.index();
+        for &source_order in index.pseudo_candidates() {
+            let source_order = source_order as usize;
+            let rule = &sheet.rules[source_order];
             let specificity = rule
                 .selectors
                 .slice()

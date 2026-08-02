@@ -10,6 +10,7 @@ mod import;
 mod page_rule;
 mod presentational;
 mod properties;
+mod rule_index;
 mod selector_impl;
 mod stylesheet;
 mod ua;

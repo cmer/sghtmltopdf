@@ -33,7 +33,12 @@ pub fn shape_text(font: &Font, text: &str, font_size: f32) -> ShapedText {
 
     let mut buffer = rustybuzz::UnicodeBuffer::new();
     buffer.push_str(text);
-    let output = rustybuzz::shape(face, &[], buffer);
+    // 書字方向・スクリプト・言語をここで確定させ、それをキーに計画を引く
+    // (`rustybuzz::shape`も内部で同じ推測をしてから計画を作るため、結果は
+    // 変わらない)。
+    buffer.guess_segment_properties();
+    let plan = font.shape_plan(&(buffer.direction(), buffer.script(), buffer.language()));
+    let output = rustybuzz::shape_with_plan(face, &plan, buffer);
 
     let mut glyphs = Vec::with_capacity(output.len());
     let mut width = 0.0;

@@ -1,5 +1,8 @@
 //! stylesheet全体(ルールの集合)のパース。
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, StyleSheetParser, Token,
@@ -9,6 +12,7 @@ use selectors::parser::{ParseRelative, SelectorList};
 use super::font_face::{parse_font_face_block, FontFaceRule};
 use super::page_rule::{parse_page_rule_block, parse_page_selector, PageRule};
 use super::properties::{parse_declaration, PropertyDeclaration};
+use super::rule_index::RuleIndex;
 use super::selector_impl::{SelectorParser, SgSelectorImpl};
 
 #[derive(Debug, Clone)]
@@ -22,6 +26,26 @@ pub struct Stylesheet {
     pub rules: Vec<StyleRule>,
     pub font_faces: Vec<FontFaceRule>,
     pub page_rules: Vec<PageRule>,
+    /// [`Self::index`]が作る索引のメモ。
+    index: RefCell<Option<Rc<RuleIndex>>>,
+}
+
+impl Stylesheet {
+    /// セレクタマッチングの候補を絞る索引。初回の参照時に組み立てる。
+    ///
+    /// `rules`は公開フィールドで、パース後に連結される場合がある
+    /// (ユーザーCSSをUAスタイルシートの末尾へ足す経路)。連結の際に索引を
+    /// 捨て忘れると古い索引が残るため、ルール数が変わっていたら作り直す。
+    pub fn index(&self) -> Rc<RuleIndex> {
+        if let Some(index) = self.index.borrow().as_ref() {
+            if index.rule_count() == self.rules.len() {
+                return Rc::clone(index);
+            }
+        }
+        let built = Rc::new(RuleIndex::build(&self.rules));
+        *self.index.borrow_mut() = Some(Rc::clone(&built));
+        built
+    }
 }
 
 /// トップレベルルールの中間表現。通常のスタイルルール・`@font-face`・
@@ -52,6 +76,7 @@ pub fn parse_stylesheet(css: &str) -> Stylesheet {
         rules,
         font_faces,
         page_rules,
+        index: RefCell::new(None),
     }
 }
 

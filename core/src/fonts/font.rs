@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
+use std::rc::Rc;
 
 use self_cell::self_cell;
 
@@ -26,6 +27,14 @@ self_cell!(
     }
 );
 
+/// シェイピング計画のキャッシュキー。rustybuzzがバッファの内容から推測した
+/// 書字方向・スクリプト・言語で、計画の中身はこの3つとフェイスだけで決まる。
+type PlanKey = (
+    rustybuzz::Direction,
+    rustybuzz::Script,
+    Option<rustybuzz::Language>,
+);
+
 /// 読み込み済みのフォントデータ。
 ///
 /// ファイルの生バイト列と、そこから構築した`rustybuzz::Face`を保持する。
@@ -41,6 +50,8 @@ pub struct Font {
     /// 内容はフォントから決まるためキャッシュとして透過的で、外から観測できる
     /// 振る舞いは変わらない。
     glyphs: RefCell<HashMap<char, Option<u16>>>,
+    /// シェイピング計画のメモ([`Font::shape_plan`])。
+    plans: RefCell<HashMap<PlanKey, Rc<rustybuzz::ShapePlan>>>,
 }
 
 impl Clone for Font {
@@ -152,11 +163,36 @@ impl Font {
             index,
             metrics,
             glyphs: RefCell::new(HashMap::new()),
+            plans: RefCell::new(HashMap::new()),
         })
     }
 
     pub(crate) fn face(&self) -> &rustybuzz::Face<'_> {
         self.face.borrow_dependent()
+    }
+
+    /// `key`(方向・スクリプト・言語)に対応するシェイピング計画。
+    ///
+    /// `rustybuzz::shape`は呼び出しのたびに計画を構築するが、その構築は
+    /// シェイピング本体より重い。レイアウトは単語(スタイル/フォントが連続
+    /// する区間)ごとにシェイピングを呼ぶため、計画をフェイス単位で使い回さ
+    /// ないと処理時間の大半を計画構築が占める。計画の中身はフェイスとキー
+    /// だけで決まるため、キャッシュとして透過的で結果は変わらない。
+    pub(crate) fn shape_plan(&self, key: &PlanKey) -> Rc<rustybuzz::ShapePlan> {
+        if let Some(cached) = self.plans.borrow().get(key) {
+            return Rc::clone(cached);
+        }
+        let plan = Rc::new(rustybuzz::ShapePlan::new(
+            self.face(),
+            key.0,
+            Some(key.1),
+            key.2.as_ref(),
+            &[],
+        ));
+        self.plans
+            .borrow_mut()
+            .insert(key.clone(), Rc::clone(&plan));
+        plan
     }
 
     /// フォントファイルの生バイト列(PDFへのフォント埋め込み等で必要)。

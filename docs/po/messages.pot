@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-02T23:59:34+09:00\n"
+"POT-Creation-Date: 2026-08-03T01:46:16+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -253,11 +253,11 @@ msgid "5,000"
 msgstr ""
 
 #: src/index.md:52
-msgid "26MB / 0.21秒"
+msgid "26MB / 0.12秒"
 msgstr ""
 
 #: src/index.md:52
-msgid "9MB / 0.21秒"
+msgid "9MB / 0.13秒"
 msgstr ""
 
 #: src/index.md:52
@@ -273,11 +273,11 @@ msgid "20,000"
 msgstr ""
 
 #: src/index.md:53
-msgid "79MB / 0.89秒"
+msgid "80MB / 0.49秒"
 msgstr ""
 
 #: src/index.md:53
-msgid "13MB / 0.88秒"
+msgid "13MB / 0.48秒"
 msgstr ""
 
 #: src/index.md:53
@@ -293,11 +293,11 @@ msgid "60,000"
 msgstr ""
 
 #: src/index.md:54
-msgid "228MB / 3.33秒"
+msgid "228MB / 1.60秒"
 msgstr ""
 
 #: src/index.md:54
-msgid "24MB / 2.80秒"
+msgid "25MB / 1.29秒"
 msgstr ""
 
 #: src/index.md:54
@@ -317,11 +317,11 @@ msgid "行数"
 msgstr ""
 
 #: src/index.md:60
-msgid "48MB / 0.76秒"
+msgid "48MB / 0.44秒"
 msgstr ""
 
 #: src/index.md:60
-msgid "48MB / 0.84秒"
+msgid "48MB / 0.49秒"
 msgstr ""
 
 #: src/index.md:60
@@ -333,11 +333,11 @@ msgid "1,369MB / 4.77秒"
 msgstr ""
 
 #: src/index.md:61
-msgid "171MB / 2.93秒"
+msgid "172MB / 1.98秒"
 msgstr ""
 
 #: src/index.md:61
-msgid "171MB / 3.12秒"
+msgid "171MB / 1.95秒"
 msgstr ""
 
 #: src/index.md:61
@@ -350,15 +350,15 @@ msgstr ""
 
 #: src/index.md:63
 msgid ""
-"処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約10倍、ヘッドレスChromeの約28倍の速さです。 "
-"20,000行の帳票では、それぞれ約4.6倍・約13倍になります。"
+"処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約20倍、ヘッドレスChromeの約59倍の速さです。 "
+"20,000行の帳票では、それぞれ約6.8倍・約20倍になります。"
 msgstr ""
 
 #: src/index.md:67
 msgid ""
 "メモリは、wkhtmltopdfとはほぼ同等です。 60,000要素と20,000行の帳票では sghtmltopdf "
 "のほうがやや多く、文書サイズに比例して増える点も変わりません。 "
-"[ストリーミングモード](usage/cli/streaming.md)を使うと、段落主体の文書では24MBまで下がります。 "
+"[ストリーミングモード](usage/cli/streaming.md)を使うと、段落主体の文書では25MBまで下がります。 "
 "一方、巨大な表が1つだけの帳票ではストリーミングの効果がありません。 "
 "確定したページを書き出す区切りが`<body>`直下の要素単位のため、表が1つしかない文書では表の最後を書き出すまでメモリを解放できないからです。"
 msgstr ""

@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-02T23:59:34+09:00\n"
+"POT-Creation-Date: 2026-08-03T01:46:16+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -323,12 +323,12 @@ msgid "5,000"
 msgstr "5,000"
 
 #: src/index.md:52
-msgid "26MB / 0.21秒"
-msgstr "26MB / 0.21s"
+msgid "26MB / 0.12秒"
+msgstr "26MB / 0.12s"
 
 #: src/index.md:52
-msgid "9MB / 0.21秒"
-msgstr "9MB / 0.21s"
+msgid "9MB / 0.13秒"
+msgstr "9MB / 0.13s"
 
 #: src/index.md:52
 msgid "43MB / 0.48秒"
@@ -343,12 +343,12 @@ msgid "20,000"
 msgstr "20,000"
 
 #: src/index.md:53
-msgid "79MB / 0.89秒"
-msgstr "79MB / 0.89s"
+msgid "80MB / 0.49秒"
+msgstr "80MB / 0.49s"
 
 #: src/index.md:53
-msgid "13MB / 0.88秒"
-msgstr "13MB / 0.88s"
+msgid "13MB / 0.48秒"
+msgstr "13MB / 0.48s"
 
 #: src/index.md:53
 msgid "86MB / 2.30秒"
@@ -363,12 +363,12 @@ msgid "60,000"
 msgstr "60,000"
 
 #: src/index.md:54
-msgid "228MB / 3.33秒"
-msgstr "228MB / 3.33s"
+msgid "228MB / 1.60秒"
+msgstr "228MB / 1.60s"
 
 #: src/index.md:54
-msgid "24MB / 2.80秒"
-msgstr "24MB / 2.80s"
+msgid "25MB / 1.29秒"
+msgstr "25MB / 1.29s"
 
 #: src/index.md:54
 msgid "200MB / 32.54秒"
@@ -387,12 +387,12 @@ msgid "行数"
 msgstr "Rows"
 
 #: src/index.md:60
-msgid "48MB / 0.76秒"
-msgstr "48MB / 0.76s"
+msgid "48MB / 0.44秒"
+msgstr "48MB / 0.44s"
 
 #: src/index.md:60
-msgid "48MB / 0.84秒"
-msgstr "48MB / 0.84s"
+msgid "48MB / 0.49秒"
+msgstr "48MB / 0.49s"
 
 #: src/index.md:60
 msgid "62MB / 1.50秒"
@@ -403,12 +403,12 @@ msgid "1,369MB / 4.77秒"
 msgstr "1,369MB / 4.77s"
 
 #: src/index.md:61
-msgid "171MB / 2.93秒"
-msgstr "171MB / 2.93s"
+msgid "172MB / 1.98秒"
+msgstr "172MB / 1.98s"
 
 #: src/index.md:61
-msgid "171MB / 3.12秒"
-msgstr "171MB / 3.12s"
+msgid "171MB / 1.95秒"
+msgstr "171MB / 1.95s"
 
 #: src/index.md:61
 msgid "163MB / 13.53秒"
@@ -421,27 +421,27 @@ msgstr "6,221MB / 39.19s"
 #: src/index.md:63
 msgid ""
 "処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約"
-"10倍、ヘッドレスChromeの約28倍の速さです。 20,000行の帳票では、それぞれ約4.6"
-"倍・約13倍になります。"
+"20倍、ヘッドレスChromeの約59倍の速さです。 20,000行の帳票では、それぞれ約6.8"
+"倍・約20倍になります。"
 msgstr ""
 "The gap in processing time widens as the document grows. At 60,000 elements "
-"sghtmltopdf is about 10 times faster than wkhtmltopdf and about 28 times "
+"sghtmltopdf is about 20 times faster than wkhtmltopdf and about 59 times "
 "faster than Headless Chrome. For the 20,000 row statement the factors are "
-"about 4.6 and about 13."
+"about 6.8 and about 20."
 
 #: src/index.md:67
 msgid ""
 "メモリは、wkhtmltopdfとはほぼ同等です。 60,000要素と20,000行の帳票では "
 "sghtmltopdf のほうがやや多く、文書サイズに比例して増える点も変わりません。 "
 "[ストリーミングモード](usage/cli/streaming.md)を使うと、段落主体の文書では"
-"24MBまで下がります。 一方、巨大な表が1つだけの帳票ではストリーミングの効果が"
+"25MBまで下がります。 一方、巨大な表が1つだけの帳票ではストリーミングの効果が"
 "ありません。 確定したページを書き出す区切りが`<body>`直下の要素単位のため、表"
 "が1つしかない文書では表の最後を書き出すまでメモリを解放できないからです。"
 msgstr ""
 "Memory use is roughly on par with wkhtmltopdf. At 60,000 elements and for "
 "the 20,000 row statement sghtmltopdf uses slightly more, and it grows with "
 "document size just as wkhtmltopdf does. [Streaming mode](usage/cli/streaming."
-"md) brings this down to 24MB for the paragraph document. It does not help "
+"md) brings this down to 25MB for the paragraph document. It does not help "
 "for a statement built from one huge table, however. Pages are flushed at the "
 "boundaries of the elements directly under `<body>`, so a document that "
 "contains a single table cannot release memory until the end of that table "
@@ -1595,7 +1595,13 @@ msgid ""
 "  --footer-right \"[page] / [topage]\" \\\n"
 "  --header-line\n"
 "```"
-msgstr "```\nsghtmltopdf report.html \\\n  --header-center \"Quarterly report\" \\\n  --footer-right \"[page] / [topage]\" \\\n  --header-line\n```"
+msgstr ""
+"```\n"
+"sghtmltopdf report.html \\\n"
+"  --header-center \"Quarterly report\" \\\n"
+"  --footer-right \"[page] / [topage]\" \\\n"
+"  --header-line\n"
+"```"
 
 #: src/usage/cli/reference.md:125
 msgid "`--header-left` / `--header-center` / `--header-right <TEXT>`"
@@ -8327,6 +8333,24 @@ msgstr ""
 "Embedding a JavaScript engine remains something to consider if the need "
 "arises. Items above that are not deliberate non-goals, such as PDF outlines, "
 "may well be supported later."
+
+#~ msgid "79MB / 0.89秒"
+#~ msgstr "79MB / 0.89s"
+
+#~ msgid "13MB / 0.88秒"
+#~ msgstr "13MB / 0.88s"
+
+#~ msgid "228MB / 3.33秒"
+#~ msgstr "228MB / 3.33s"
+
+#~ msgid "24MB / 2.80秒"
+#~ msgstr "24MB / 2.80s"
+
+#~ msgid "48MB / 0.76秒"
+#~ msgstr "48MB / 0.76s"
+
+#~ msgid "171MB / 3.12秒"
+#~ msgstr "171MB / 3.12s"
 
 #~ msgid "# 変換\n"
 #~ msgstr "# convert\n"
