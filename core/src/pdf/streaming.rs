@@ -761,7 +761,8 @@ mod tests {
         )
         .expect("new should not fail");
         let mut page_count = 0usize;
-        paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
+        let mut laid_out = laid_out;
+        paginate_streaming(&mut laid_out, settings.content_height(), &mut |page| {
             writer
                 .write_page(&page, &styles, &HashMap::new(), &fonts, None)
                 .expect("write_page should not fail");

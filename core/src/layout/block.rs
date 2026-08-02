@@ -59,7 +59,10 @@ pub struct LaidOutBox {
     /// `TextRun`1つを持つ`LineBox`として表現し、`pdf::document::render_line`
     /// をそのまま再利用して描画する。ページ分割でこのボックスが複数
     /// ページにまたがる場合、先頭フラグメントにのみ残す(`paginate.rs`)。
-    pub marker: Option<LineBox>,
+    /// `display: list-item`のマーカー。箇条書き以外では常に`None`なのに
+    /// [`LineBox`]は72バイトあり、全ボックスがその分を抱えることになるため
+    /// `Box`に逃がす(ボックスは大きな文書で10万個単位になる)。
+    pub marker: Option<Box<LineBox>>,
 }
 
 /// [`LaidOutBox`]が持つCSS Fragmentation関連の計算値。ページ分割(`paginate.rs`)が
@@ -926,6 +929,7 @@ fn layout_box_impl(
             content_x + offset_x,
             content_y + offset_y,
         )
+        .map(Box::new)
     });
 
     LaidOutBox {

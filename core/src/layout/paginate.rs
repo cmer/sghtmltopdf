@@ -40,8 +40,9 @@ use crate::style::{BreakBetween, BreakInside, ComputedStyle};
 use crate::pdf::ImageAssetCache;
 
 use super::block::{
-    layout_document, layout_document_positioned, shift_box_x, shift_box_y, FragmentationHints,
-    LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow, PositionedBox, PositionedKind,
+    layout_document, layout_document_positioned, shift_box_x, shift_box_y, shift_box_y_in_place,
+    FragmentationHints, LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow, PositionedBox,
+    PositionedKind,
 };
 use super::box_tree::TableSection;
 use super::box_tree::{build_box_tree, resolve_images};
@@ -202,7 +203,7 @@ impl<'a> PaginationState<'a> {
 /// `root`(通常は[`super::layout_document`]の返り値)を、高さ`page_content_height`の
 /// ページに分割する(一括版)。内部的には[`paginate_streaming`]にすべての
 /// ページを`Vec`へ積ませるだけの薄いラッパー。
-pub fn paginate(root: &LaidOutBox, page_content_height: f32) -> Vec<Page> {
+pub fn paginate(root: &mut LaidOutBox, page_content_height: f32) -> Vec<Page> {
     let mut result = Vec::new();
     paginate_streaming(root, page_content_height, &mut |page| result.push(page));
     result
@@ -214,7 +215,7 @@ pub fn paginate(root: &LaidOutBox, page_content_height: f32) -> Vec<Page> {
 /// `on_page`の中でそのページに対応するDOMサブツリーを
 /// [`crate::html::Dom::release_subtree`]で解放する、という使い方を想定する。
 pub fn paginate_streaming(
-    root: &LaidOutBox,
+    root: &mut LaidOutBox,
     page_content_height: f32,
     on_page: &mut dyn FnMut(Page),
 ) {
@@ -260,7 +261,7 @@ impl StreamingPaginator {
     }
 
     /// 1つのアイテムを追加する。この呼び出しで確定したページを返す。
-    pub fn push_item(&mut self, item: &LaidOutBox) -> Vec<Page> {
+    pub fn push_item(&mut self, item: &mut LaidOutBox) -> Vec<Page> {
         let mut flushed = Vec::new();
         {
             let mut on_flush = |page: Page| flushed.push(page);
@@ -295,7 +296,11 @@ pub fn paginate_document(
         fonts,
         (settings.content_width(), settings.content_height()),
     );
-    let mut pages = paginate(&laid_out, settings.content_height());
+    // box treeはレイアウトが終われば用済み。ページ分割中はレイアウト結果と
+    // ページの両方を抱えるので、ここで手放しておかないとピークが跳ね上がる。
+    drop(tree);
+    let mut laid_out = laid_out;
+    let mut pages = paginate(&mut laid_out, settings.content_height());
     apply_positioned_overlays(&mut pages, &positioned);
     pages
 }
@@ -401,7 +406,8 @@ pub fn paginate_document_with_absolutes(
         fonts,
         (settings.content_width(), settings.content_height()),
     );
-    let mut pages = paginate(&laid_out, settings.content_height());
+    let mut laid_out = laid_out;
+    let mut pages = paginate(&mut laid_out, settings.content_height());
     apply_positioned_overlays(&mut pages, &positioned);
     pages
 }
@@ -429,8 +435,8 @@ pub fn paginate_document_streaming(
 ) {
     let mut tree = build_box_tree(dom, styles);
     resolve_images(&mut tree, dom, image_cache);
-    let laid_out = layout_document(&tree, styles, fonts, settings.content_width());
-    paginate_streaming(&laid_out, settings.content_height(), &mut |page| {
+    let mut laid_out = layout_document(&tree, styles, fonts, settings.content_width());
+    paginate_streaming(&mut laid_out, settings.content_height(), &mut |page| {
         release_completed_subtrees(dom, &page);
         on_page(page);
     });
@@ -494,9 +500,17 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
     }
 }
 
-fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, cursor: &mut f32) {
+fn place_box(
+    b: &mut LaidOutBox,
+    page_height: f32,
+    state: &mut PaginationState<'_>,
+    cursor: &mut f32,
+) {
     let height = b.layout.margin_box_height();
     let has_forced_break_inside = subtree_requires_child_walk(b);
+    let orphans = b.fragmentation.orphans as usize;
+    let widows = b.fragmentation.widows as usize;
+    let break_inside_avoid = b.fragmentation.break_inside == BreakInside::Avoid;
 
     if *cursor + height <= page_height && !has_forced_break_inside {
         place_leaf(b, state, cursor);
@@ -510,7 +524,7 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
     // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
     // 進んでいるだけの場合を含む)、移動しても無意味なのでそのまま現在の
     // ページに置く。
-    if b.fragmentation.break_inside == BreakInside::Avoid
+    if break_inside_avoid
         && current_page_has_content(state)
         && height <= page_height
         && !has_forced_break_inside
@@ -520,10 +534,12 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
         return;
     }
 
-    match &b.content {
+    // 子を`&mut`で配る間、コンテナ自身のスカラ情報は別に控えておく。
+    let mut container = SplitContainer::take_from(b);
+    match &mut b.content {
         LaidOutContent::Blocks(children) if !children.is_empty() => {
             place_split(
-                b,
+                &mut container,
                 children,
                 page_height,
                 state,
@@ -545,12 +561,12 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
         // テーブルは行単位で分割する。これが無いと、
         // ページに収まらない行が描画されずに失われる。
         LaidOutContent::Table(table) if !table.rows.is_empty() => {
-            place_table(b, table, page_height, state, cursor);
+            place_table(&container, table, page_height, state, cursor);
             return;
         }
         // グリッドは行帯単位で分割する。
         LaidOutContent::Grid(grid) if grid.rows.len() > 1 => {
-            place_grid(b, grid, page_height, state, cursor);
+            place_grid(&container, grid, page_height, state, cursor);
             return;
         }
         LaidOutContent::Inline(lines) if lines.len() > 1 => {
@@ -559,13 +575,11 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
             // 計算しておく。`place_split`が加える上マージン/枠線/パディング分
             // (`container_top_extra`)を、シミュレーションの初期カーソルにも
             // 反映しておかないと、実際の配置と分割点がずれてしまう。
-            let orphans = b.fragmentation.orphans as usize;
-            let widows = b.fragmentation.widows as usize;
-            let initial_cursor = *cursor + container_top_extra(b);
+            let initial_cursor = *cursor + container.top_extra();
             let forced_breaks =
                 compute_orphans_widows_breaks(lines, orphans, widows, page_height, initial_cursor);
             place_split(
-                b,
+                &mut container,
                 lines,
                 page_height,
                 state,
@@ -585,19 +599,14 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
         _ => {}
     }
 
+    // 分割経路に入らなかったので、奪ったマーカーを戻してから最小単位として置く。
+    b.marker = container.marker.take();
     // これ以上分割できない最小単位。ページに余白を使ってしまっていれば
     // 次ページの先頭へ送る(まっさらなページの先頭ならそのまま置く)。
     if *cursor > 0.0 {
         new_page(state, cursor);
     }
     place_leaf(b, state, cursor);
-}
-
-/// コンテナ`b`自身の上マージン/枠線/パディングの合計(最初のフラグメントの前に
-/// 確保すべきスペース)。`place_split`と、行分割前の`orphans`/`widows`事前計算
-/// (どちらも「このページの残り高さ」の起点を揃える必要がある)の双方で使う。
-fn container_top_extra(b: &LaidOutBox) -> f32 {
-    b.layout.margin.top + b.layout.border.top + b.layout.padding.top
 }
 
 /// `b`のmargin boxの上端の絶対Y座標(`content.y`からmargin/border/padding分を
@@ -743,19 +752,51 @@ fn compute_orphans_widows_breaks(
 /// カーソルを使って`place_one`へ再帰させる
 /// (`place_leaf`/`place_line`/`new_page`はこの分岐のために一切変更しない)。
 #[allow(clippy::too_many_arguments)]
+/// 分割中のコンテナから、装飾フラグメントの生成に要る情報だけを取り出したもの。
+///
+/// 子(`items`)を`&mut`で配りながら、同じボックスの他のフィールドも読みたい
+/// ため、借用が競合しないようスカラだけ先に複製しておく。
+struct SplitContainer {
+    node: Option<NodeId>,
+    layout: Layout,
+    has_visible_decoration: bool,
+    /// マーカーは先頭フラグメントへ移す。`place_split`が取り出して使う。
+    marker: Option<Box<LineBox>>,
+}
+
+impl SplitContainer {
+    /// `b`からスカラ情報を取り出す(マーカーは所有権ごと奪う)。
+    fn take_from(b: &mut LaidOutBox) -> Self {
+        Self {
+            node: b.node,
+            layout: b.layout,
+            has_visible_decoration: b.has_visible_decoration,
+            marker: b.marker.take(),
+        }
+    }
+
+    /// コンテナ自身の上マージン/枠線/パディングの合計。
+    fn top_extra(&self) -> f32 {
+        self.layout.margin.top + self.layout.border.top + self.layout.padding.top
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn place_split<T>(
-    b: &LaidOutBox,
-    items: &[T],
+    container: &mut SplitContainer,
+    items: &mut [T],
     page_height: f32,
     state: &mut PaginationState<'_>,
     cursor: &mut f32,
     break_hints: impl Fn(usize, &T) -> (bool, bool),
     is_float: impl Fn(&T) -> bool,
     item_margin_box_top: impl Fn(&T) -> f32,
-    place_one: impl Fn(&T, f32, &mut PaginationState<'_>, &mut f32),
+    place_one: impl Fn(&mut T, f32, &mut PaginationState<'_>, &mut f32),
 ) {
-    let top_extra = container_top_extra(b);
-    let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
+    let top_extra = container.top_extra();
+    let bottom_extra = container.layout.padding.bottom
+        + container.layout.border.bottom
+        + container.layout.margin.bottom;
 
     // 最初のフラグメントの前に、コンテナ自身の上マージン/枠線/パディング分の
     // スペースを確保する(この余白がページの残りを超える極端なケースの調整は
@@ -767,7 +808,7 @@ fn place_split<T>(
     // content領域の絶対Y位置(`b.layout.content.y`)に一致するため、これを
     // 初期値として使える。非float項目を配置するたびに更新する(改ページで
     // `*cursor`がリセットされても追従できるようにするため)。
-    let mut shift_reference = b.layout.content.y - *cursor;
+    let mut shift_reference = container.layout.content.y - *cursor;
 
     // `b`が実際に背景色・枠線を描画しないなら、そもそも装飾フラグメントを
     // 生成する必要がない。この場合`segments`の追跡自体が不要で、
@@ -775,7 +816,7 @@ fn place_split<T>(
     // (`enter_split`/`exit_split`を呼ばない)。装飾を持たないコンテナ
     // (`<html>`/`<body>`や大半のラッパー`<div>`)がこの高速経路を通ることで、
     // ストリーミング時のflush頻度が大きく改善される。
-    let needs_decoration = b.has_visible_decoration;
+    let needs_decoration = container.has_visible_decoration;
     if needs_decoration {
         // このコンテナが最初に触れる絶対ページインデックスを記録する
         // (`PaginationState`のflush判定に使う。モジュールdoc参照)。
@@ -814,7 +855,8 @@ fn place_split<T>(
         }
     };
 
-    for (i, item) in items.iter().enumerate() {
+    let item_count = items.len();
+    for (i, item) in items.iter_mut().enumerate() {
         let (breaks_before, breaks_after) = break_hints(i, item);
         // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
         // 進んでいるだけの場合を含む)、改ページしても無意味な空ページを
@@ -856,7 +898,7 @@ fn place_split<T>(
 
         // 次に置く要素がある場合のみ改ページする(末尾の要素の後ろに
         // 空ページを作らないため)。
-        if breaks_after && i + 1 < items.len() {
+        if breaks_after && i + 1 < item_count {
             force_new_page(state, cursor, &mut current_page, &mut segments);
         }
     }
@@ -884,9 +926,9 @@ fn place_split<T>(
             let end_index = state.get(seg.page_index).boxes.len();
             let (top, bottom) =
                 extent_of(&state.get(seg.page_index).boxes[seg.start_index..end_index]);
-            let layout = fragment_layout(&b.layout, top, bottom, is_first, is_last);
+            let layout = fragment_layout(&container.layout, top, bottom, is_first, is_last);
             let decoration = LaidOutBox {
-                node: b.node,
+                node: container.node,
                 layout,
                 // 装飾専用フラグメントはこれ以上分割対象にならないため、
                 // fragmentationヒントは意味を持たない(初期値のまま)。
@@ -903,7 +945,11 @@ fn place_split<T>(
                 // マーカーは`b`の先頭フラグメントにのみ残す(このボックスが
                 // 複数ページにまたがって分割される場合、後続フラグメントで
                 // 重複して描画されるのを避ける)。
-                marker: if is_first { b.marker.clone() } else { None },
+                marker: if is_first {
+                    container.marker.take()
+                } else {
+                    None
+                },
             };
             (seg.page_index, seg.start_index, decoration)
         })
@@ -1038,14 +1084,16 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
 /// 行帯の下端をまたぐアイテム(複数行にまたがるグリッドアイテム)がある境界では
 /// 分割しない(テーブルの`rowspan`と同じ扱い)。
 fn place_grid(
-    b: &LaidOutBox,
+    container: &SplitContainer,
     grid: &LaidOutGrid,
     page_height: f32,
     state: &mut PaginationState<'_>,
     cursor: &mut f32,
 ) {
-    let top_extra = container_top_extra(b);
-    let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
+    let top_extra = container.top_extra();
+    let bottom_extra = container.layout.padding.bottom
+        + container.layout.border.bottom
+        + container.layout.margin.bottom;
 
     let mut pending: Vec<LaidOutGridRow> = Vec::new();
     let mut shift = 0.0f32;
@@ -1067,7 +1115,7 @@ fn place_grid(
         let row_bottom_on_page = row.bottom - shift;
         if row_bottom_on_page > page_height && !pending.is_empty() && can_break_before {
             flush_grid_fragment(
-                b,
+                container,
                 &mut pending,
                 fragment_top,
                 *cursor,
@@ -1086,7 +1134,7 @@ fn place_grid(
     }
 
     flush_grid_fragment(
-        b,
+        container,
         &mut pending,
         fragment_top,
         *cursor,
@@ -1113,7 +1161,7 @@ fn shift_grid_row_y(row: &LaidOutGridRow, delta: f32) -> LaidOutGridRow {
 
 /// [`place_grid`]が組み立てた行帯群を1つの断片としてページへ積む。
 fn flush_grid_fragment(
-    b: &LaidOutBox,
+    container: &SplitContainer,
     rows: &mut Vec<LaidOutGridRow>,
     fragment_top: f32,
     fragment_bottom: f32,
@@ -1125,14 +1173,16 @@ fn flush_grid_fragment(
         return;
     }
 
-    let mut layout = b.layout;
-    layout.content.y =
-        fragment_top + b.layout.margin.top + b.layout.border.top + b.layout.padding.top;
+    let mut layout = container.layout;
+    layout.content.y = fragment_top
+        + container.layout.margin.top
+        + container.layout.border.top
+        + container.layout.padding.top;
     layout.content.height = (fragment_bottom
         - fragment_top
-        - b.layout.margin.top
-        - b.layout.border.top
-        - b.layout.padding.top)
+        - container.layout.margin.top
+        - container.layout.border.top
+        - container.layout.padding.top)
         .max(0.0);
     layout.fragment = match (is_first, is_last) {
         (true, true) => FragmentPosition::Whole,
@@ -1142,12 +1192,12 @@ fn flush_grid_fragment(
     };
 
     let fragment = LaidOutBox {
-        node: b.node,
+        node: container.node,
         layout,
         fragmentation: FragmentationHints::default(),
-        is_float: b.is_float,
+        is_float: false,
         marker: None,
-        has_visible_decoration: b.has_visible_decoration,
+        has_visible_decoration: container.has_visible_decoration,
         content: LaidOutContent::Grid(LaidOutGrid {
             rows: std::mem::take(rows),
         }),
@@ -1156,14 +1206,16 @@ fn flush_grid_fragment(
 }
 
 fn place_table(
-    b: &LaidOutBox,
-    table: &LaidOutTable,
+    container: &SplitContainer,
+    table: &mut LaidOutTable,
     page_height: f32,
     state: &mut PaginationState<'_>,
     cursor: &mut f32,
 ) {
-    let top_extra = container_top_extra(b);
-    let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
+    let top_extra = container.top_extra();
+    let bottom_extra = container.layout.padding.bottom
+        + container.layout.border.bottom
+        + container.layout.margin.bottom;
 
     // 断片に積む行と、その断片の絶対座標→ページ内座標への平行移動量。
     let mut pending: Vec<LaidOutTableRow> = Vec::new();
@@ -1173,18 +1225,18 @@ fn place_table(
 
     // 2ページ目以降の先頭に複製する`<thead>`の行。見出しだけでページが埋まる
     // (=1行も進まない)場合は繰り返さない。
-    let head_rows: Vec<&LaidOutTableRow> = table
+    // 見出し行は2ページ目以降に複製して置くので、ここだけは複製を持つ
+    // (行数はたかが知れている)。本文の行は複製せずそのまま移す。
+    let head_rows: Vec<LaidOutTableRow> = table
         .rows
         .iter()
         .filter(|row| row.section == TableSection::Head)
+        .cloned()
         .collect();
-    let head_top = head_rows
-        .iter()
-        .map(|row| table_row_top(row))
-        .fold(f32::MAX, f32::min);
+    let head_top = head_rows.iter().map(table_row_top).fold(f32::MAX, f32::min);
     let head_bottom = head_rows
         .iter()
-        .map(|row| table_row_bottom(row))
+        .map(table_row_bottom)
         .fold(f32::MIN, f32::max);
     let head_height = if head_rows.is_empty() {
         0.0
@@ -1212,9 +1264,9 @@ fn place_table(
         (top, first_row_top - extra_above - *cursor)
     };
 
-    for (index, row) in table.rows.iter().enumerate() {
-        let row_top = table_row_top(row);
-        let row_bottom = table_row_bottom(row);
+    for (index, mut row) in std::mem::take(&mut table.rows).into_iter().enumerate() {
+        let row_top = table_row_top(&row);
+        let row_bottom = table_row_bottom(&row);
         let extra_above = if index == 0 { caption_height } else { 0.0 };
 
         if pending.is_empty() {
@@ -1230,7 +1282,7 @@ fn place_table(
         let row_bottom_on_page = row_bottom - shift;
         if row_bottom_on_page > page_height && !pending.is_empty() {
             flush_table_fragment(
-                b,
+                container,
                 &mut pending,
                 &mut pending_caption,
                 fragment_top,
@@ -1254,7 +1306,8 @@ fn place_table(
             shift = row_top - *cursor;
         }
 
-        pending.push(shift_table_row_y(row, shift));
+        shift_table_row_y_in_place(&mut row, shift);
+        pending.push(row);
         *cursor = row_bottom - shift;
     }
 
@@ -1268,7 +1321,7 @@ fn place_table(
     }
 
     flush_table_fragment(
-        b,
+        container,
         &mut pending,
         &mut pending_caption,
         fragment_top,
@@ -1283,7 +1336,7 @@ fn place_table(
 /// [`place_table`]が組み立てた行群を1つの断片としてページへ積む。
 #[allow(clippy::too_many_arguments)]
 fn flush_table_fragment(
-    b: &LaidOutBox,
+    container: &SplitContainer,
     rows: &mut Vec<LaidOutTableRow>,
     caption: &mut Option<LaidOutBox>,
     fragment_top: f32,
@@ -1296,14 +1349,16 @@ fn flush_table_fragment(
         return;
     }
 
-    let mut layout = b.layout;
-    layout.content.y =
-        fragment_top + b.layout.margin.top + b.layout.border.top + b.layout.padding.top;
+    let mut layout = container.layout;
+    layout.content.y = fragment_top
+        + container.layout.margin.top
+        + container.layout.border.top
+        + container.layout.padding.top;
     layout.content.height = (fragment_bottom
         - fragment_top
-        - b.layout.margin.top
-        - b.layout.border.top
-        - b.layout.padding.top)
+        - container.layout.margin.top
+        - container.layout.border.top
+        - container.layout.padding.top)
         .max(0.0);
     layout.fragment = match (is_first, is_last) {
         (true, true) => FragmentPosition::Whole,
@@ -1313,10 +1368,10 @@ fn flush_table_fragment(
     };
 
     let fragment = LaidOutBox {
-        node: b.node,
+        node: container.node,
         layout,
         fragmentation: FragmentationHints::default(),
-        has_visible_decoration: b.has_visible_decoration,
+        has_visible_decoration: container.has_visible_decoration,
         is_float: false,
         content: LaidOutContent::Table(LaidOutTable {
             caption: caption.take().map(Box::new),
@@ -1344,6 +1399,13 @@ fn table_row_bottom(row: &LaidOutTableRow) -> f32 {
         .fold(f32::MIN, f32::max)
 }
 
+/// 行(のセル全部)をその場で縦に平行移動する。
+fn shift_table_row_y_in_place(row: &mut LaidOutTableRow, shift: f32) {
+    for cell in &mut row.cells {
+        shift_box_y_in_place(cell, shift);
+    }
+}
+
 /// 行(のセル全部)を縦に平行移動する。`shift`は`shift_box_y`と同じ「引く量」。
 fn shift_table_row_y(row: &LaidOutTableRow, shift: f32) -> LaidOutTableRow {
     LaidOutTableRow {
@@ -1353,10 +1415,26 @@ fn shift_table_row_y(row: &LaidOutTableRow, shift: f32) -> LaidOutTableRow {
     }
 }
 
-fn place_leaf(b: &LaidOutBox, state: &mut PaginationState<'_>, cursor: &mut f32) {
+/// これ以上分割しないボックスを、そのままページへ移す。
+///
+/// 中身(`content`/`marker`)は所有権ごと奪う。ここで複製すると、レイアウト
+/// 結果とページ群が同時に存在することになり、大きな文書でピークメモリが
+/// 倍増するため。奪ったあとの`b`は空の`Blocks`になり、呼び出し側は
+/// 二度と中身を読まない(いずれの経路も直後にreturnする)。
+fn place_leaf(b: &mut LaidOutBox, state: &mut PaginationState<'_>, cursor: &mut f32) {
     let shift = margin_box_top(b) - *cursor;
-    let translated = shift_box_y(b, shift);
     let height = b.layout.margin_box_height();
+
+    let mut translated = LaidOutBox {
+        node: b.node,
+        layout: b.layout,
+        fragmentation: b.fragmentation,
+        has_visible_decoration: b.has_visible_decoration,
+        is_float: false,
+        content: std::mem::replace(&mut b.content, LaidOutContent::Blocks(Vec::new())),
+        marker: b.marker.take(),
+    };
+    shift_box_y_in_place(&mut translated, shift);
 
     *cursor += height;
     state.last_mut().boxes.push(translated);
@@ -2160,7 +2238,7 @@ mod tests {
         let mut on_page = |_page: Page| {};
         let mut state = PaginationState::new(&mut buffer, &mut on_page);
         let mut cursor = 0.0f32;
-        place_box(laid_out, page_height, &mut state, &mut cursor);
+        place_box(&mut laid_out.clone(), page_height, &mut state, &mut cursor);
         buffer.buffer.len()
     }
 
@@ -2181,10 +2259,10 @@ mod tests {
         let settings = PageSettings::default();
 
         let tree = build_box_tree(&dom, &styles);
-        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let mut laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
         let page_height = settings.content_height();
 
-        let total_pages = paginate(&laid_out, page_height).len();
+        let total_pages = paginate(&mut laid_out, page_height).len();
         assert!(
             total_pages >= 5,
             "expected several pages, got {total_pages}"
@@ -2230,10 +2308,10 @@ mod tests {
         let settings = PageSettings::default();
 
         let tree = build_box_tree(&dom, &styles);
-        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let mut laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
         let page_height = settings.content_height();
 
-        let total_pages = paginate(&laid_out, page_height).len();
+        let total_pages = paginate(&mut laid_out, page_height).len();
         assert!(
             total_pages >= 3,
             "expected the wrapper to span multiple pages, got {total_pages}"
@@ -2272,12 +2350,12 @@ mod tests {
         let settings = PageSettings::default();
 
         let tree = build_box_tree(&dom, &styles);
-        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let mut laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
         let page_height = settings.content_height();
 
-        let batched = paginate(&laid_out, page_height);
+        let batched = paginate(&mut laid_out, page_height);
         let mut streamed = Vec::new();
-        paginate_streaming(&laid_out, page_height, &mut |page| streamed.push(page));
+        paginate_streaming(&mut laid_out, page_height, &mut |page| streamed.push(page));
 
         assert_eq!(batched.len(), streamed.len());
         assert!(batched.len() >= 3);
@@ -2431,14 +2509,14 @@ mod tests {
         let wrapper = divs[0];
 
         let tree = build_box_tree(&dom, &styles);
-        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let mut laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
         let page_height = settings.content_height();
-        let total_pages = paginate(&laid_out, page_height).len();
+        let total_pages = paginate(&mut laid_out, page_height).len();
         assert!(total_pages >= 3);
 
         let mut flushed_pages = 0usize;
         let mut observed_mid_release = Vec::new();
-        paginate_streaming(&laid_out, page_height, &mut |page| {
+        paginate_streaming(&mut laid_out, page_height, &mut |page| {
             flushed_pages += 1;
             release_completed_subtrees(&mut dom, &page);
             if flushed_pages < total_pages {
@@ -2478,10 +2556,10 @@ mod tests {
         assert_eq!(ps.len(), 20);
 
         let tree = build_box_tree(&dom, &styles);
-        let laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let mut laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
         let page_height = settings.content_height();
 
-        let batched = paginate(&laid_out, page_height);
+        let batched = paginate(&mut laid_out, page_height);
         assert!(batched.len() > 1, "expected multiple pages");
         let page_of: HashMap<NodeId, usize> = ps
             .iter()
@@ -2495,7 +2573,7 @@ mod tests {
             .collect();
 
         let mut current_page_index = 0usize;
-        paginate_streaming(&laid_out, page_height, &mut |page| {
+        paginate_streaming(&mut laid_out, page_height, &mut |page| {
             release_completed_subtrees(&mut dom, &page);
             for (&p, &expected_page) in &page_of {
                 if expected_page > current_page_index {
@@ -2530,13 +2608,13 @@ mod tests {
         let combined_dom = html::parse(combined_html.as_bytes());
         let combined_styles = compute_styles(&combined_dom, &ua, &author);
         let combined_tree = build_box_tree(&combined_dom, &combined_styles);
-        let combined_laid_out = layout_document(
+        let mut combined_laid_out = layout_document(
             &combined_tree,
             &combined_styles,
             &fonts,
             settings.content_width(),
         );
-        let batched_pages = paginate(&combined_laid_out, settings.content_height());
+        let batched_pages = paginate(&mut combined_laid_out, settings.content_height());
         assert!(batched_pages.len() > 1, "expected multiple pages");
 
         // push_item版: 同じ`combined_dom`/`combined_styles`から、<p>要素
@@ -2564,7 +2642,7 @@ mod tests {
                 start_y,
             );
             start_y += item_laid_out.layout.margin_box_height();
-            streamed_pages.extend(paginator.push_item(&item_laid_out));
+            streamed_pages.extend(paginator.push_item(&mut item_laid_out.clone()));
         }
         streamed_pages.extend(paginator.finish());
 

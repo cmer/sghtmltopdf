@@ -1184,7 +1184,8 @@ impl<S: Sink> Engine<S> {
             state.background_images.remove(&node);
         }
 
-        let pages = state.paginator.push_item(&laid_out);
+        let mut laid_out = laid_out;
+        let pages = state.paginator.push_item(&mut laid_out);
         for page in &pages {
             if !options.header_footer_html.is_empty() {
                 let page_number = state.writer.page_count() + 1;

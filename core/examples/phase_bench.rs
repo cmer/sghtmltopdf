@@ -25,6 +25,17 @@ static PEAK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::ne
 /// サイズ帯(2の冪)ごとの、現在生きている割り当てのバイト数。
 static BUCKETS: [std::sync::atomic::AtomicUsize; 24] =
     [const { std::sync::atomic::AtomicUsize::new(0) }; 24];
+/// ピークを更新した瞬間のサイズ帯別内訳(どの構造がピークを作っているかを見る)。
+static PEAK_BUCKETS: [std::sync::atomic::AtomicUsize; 24] =
+    [const { std::sync::atomic::AtomicUsize::new(0) }; 24];
+/// サイズ帯ごとの、現在生きている割り当ての件数。
+static COUNTS: [std::sync::atomic::AtomicUsize; 24] =
+    [const { std::sync::atomic::AtomicUsize::new(0) }; 24];
+/// ピーク時点の件数。
+static PEAK_COUNTS: [std::sync::atomic::AtomicUsize; 24] =
+    [const { std::sync::atomic::AtomicUsize::new(0) }; 24];
+/// 次に内訳を控える生存量のしきい値。
+static NEXT_SNAPSHOT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 fn bucket_of(size: usize) -> usize {
     ((usize::BITS - size.leading_zeros()) as usize).min(23)
@@ -39,6 +50,23 @@ unsafe impl std::alloc::GlobalAlloc for CountingAlloc {
             PEAK.fetch_max(now, std::sync::atomic::Ordering::Relaxed);
             BUCKETS[bucket_of(layout.size())]
                 .fetch_add(layout.size(), std::sync::atomic::Ordering::Relaxed);
+            COUNTS[bucket_of(layout.size())].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            // 生存量が8MB伸びるごとに、その時点のサイズ帯別内訳を控える。
+            if now > NEXT_SNAPSHOT.load(std::sync::atomic::Ordering::Relaxed) {
+                NEXT_SNAPSHOT.store(now + 8 * 1024 * 1024, std::sync::atomic::Ordering::Relaxed);
+                for (dst, src) in PEAK_BUCKETS.iter().zip(BUCKETS.iter()) {
+                    dst.store(
+                        src.load(std::sync::atomic::Ordering::Relaxed),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+                for (dst, src) in PEAK_COUNTS.iter().zip(COUNTS.iter()) {
+                    dst.store(
+                        src.load(std::sync::atomic::Ordering::Relaxed),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+            }
         }
         ptr
     }
@@ -47,6 +75,7 @@ unsafe impl std::alloc::GlobalAlloc for CountingAlloc {
         LIVE.fetch_sub(layout.size(), std::sync::atomic::Ordering::Relaxed);
         BUCKETS[bucket_of(layout.size())]
             .fetch_sub(layout.size(), std::sync::atomic::Ordering::Relaxed);
+        COUNTS[bucket_of(layout.size())].fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         unsafe { std::alloc::System.dealloc(ptr, layout) }
     }
 }
@@ -57,7 +86,12 @@ static ALLOC: CountingAlloc = CountingAlloc;
 /// ピークをこの時点の生存量まで戻す(段ごとのピークを見るため)。
 fn reset_peak() {
     use std::sync::atomic::Ordering::Relaxed;
-    PEAK.store(LIVE.load(Relaxed), Relaxed);
+    let live = LIVE.load(Relaxed);
+    PEAK.store(live, Relaxed);
+    NEXT_SNAPSHOT.store(live, Relaxed);
+    for b in PEAK_BUCKETS.iter() {
+        b.store(0, Relaxed);
+    }
 }
 
 /// 生きている割り当てをサイズ帯ごとに表示する。
@@ -68,10 +102,22 @@ fn dump_live_allocations(label: &str) {
         "{label}: 生存 {live:.0}MB (ピーク {:.0}MB)",
         PEAK.load(Relaxed) as f64 / 1024.0 / 1024.0
     );
-    for (i, b) in BUCKETS.iter().enumerate() {
+    println!("  ピーク時点の内訳:");
+    for (i, b) in PEAK_BUCKETS.iter().enumerate() {
         let mb = b.load(Relaxed) as f64 / 1024.0 / 1024.0;
+        let n = PEAK_COUNTS[i].load(Relaxed);
         if mb >= 5.0 {
-            println!("    ~{:>7}B  {:>6.0}MB", 1usize << i, mb);
+            println!(
+                "    ~{:>8}B  {:>6.0}MB  {:>9}件  平均{:>6.0}B",
+                1usize << i,
+                mb,
+                n,
+                if n > 0 {
+                    b.load(Relaxed) as f64 / n as f64
+                } else {
+                    0.0
+                }
+            );
         }
     }
 }
@@ -88,7 +134,14 @@ fn main() {
             size_of::<LaidOutBox>(),
         );
         use sghtmltopdf_core::fonts::ShapedGlyph;
+        use sghtmltopdf_core::layout::{LaidOutContent, Layout};
         use sghtmltopdf_core::layout::{LineBox, TextRun};
+        println!(
+            "          Layout {}B / LaidOutContent {}B / Option<LineBox> {}B",
+            size_of::<Layout>(),
+            size_of::<LaidOutContent>(),
+            size_of::<Option<LineBox>>(),
+        );
         println!(
             "          LineBox {}B / TextRun {}B / ShapedGlyph {}B",
             size_of::<LineBox>(),
