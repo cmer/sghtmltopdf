@@ -1,0 +1,7025 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: sghtmltopdf\n"
+"POT-Creation-Date: 2026-08-02T22:25:24+09:00\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/SUMMARY.md:1
+msgid "目次"
+msgstr "Summary"
+
+#: src/SUMMARY.md:3
+msgid "sghtmltopdfについて"
+msgstr "About sghtmltopdf"
+
+#: src/SUMMARY.md:5
+msgid "はじめに"
+msgstr "Getting started"
+
+#: src/SUMMARY.md:7 src/getting-started/install.md:1 src/usage/ruby_rails.md:12
+msgid "インストール"
+msgstr "Installation"
+
+#: src/SUMMARY.md:8 src/getting-started/install.md:15
+#: src/getting-started/docker.md:1
+msgid "Docker"
+msgstr "Docker"
+
+#: src/SUMMARY.md:9 src/getting-started/first-pdf.md:1
+msgid "はじめてのPDF"
+msgstr "Your first PDF"
+
+#: src/SUMMARY.md:11 src/getting-started/install.md:5
+msgid "使い方"
+msgstr "Usage"
+
+#: src/SUMMARY.md:13
+msgid "CLIから"
+msgstr "From the CLI"
+
+#: src/SUMMARY.md:14 src/usage/cli/streaming.md:1
+msgid "ストリーミングモード"
+msgstr "Streaming mode"
+
+#: src/SUMMARY.md:15
+msgid "HTTPサーバから"
+msgstr "From the HTTP server"
+
+#: src/SUMMARY.md:16
+msgid "Ruby / Railsから"
+msgstr "From Ruby / Rails"
+
+#: src/SUMMARY.md:18
+msgid "サポート状況"
+msgstr "What is supported"
+
+#: src/SUMMARY.md:20
+msgid "CSSプロパティ"
+msgstr "CSS properties"
+
+#: src/SUMMARY.md:21
+msgid "セレクタ・値・at-rule"
+msgstr "Selectors, values, and at-rules"
+
+#: src/SUMMARY.md:22 src/usage/cli/reference.md:58 src/usage/ruby_rails.md:100
+#: src/supports/fonts.md:1 src/migration/wkhtmltopdf.md:18
+#: src/migration/wicked-pdf.md:125
+msgid "フォント"
+msgstr "Fonts"
+
+#: src/SUMMARY.md:23
+msgid "画像フォーマット"
+msgstr "Image formats"
+
+#: src/SUMMARY.md:24 src/supports/pagination.md:1 src/supports/pagination.md:92
+msgid "ページ分割"
+msgstr "Page breaks"
+
+#: src/SUMMARY.md:26
+msgid "移行ガイド"
+msgstr "Migration guides"
+
+#: src/SUMMARY.md:28 src/migration/wkhtmltopdf.md:1
+msgid "wkhtmltopdfからの移行"
+msgstr "Migrating from wkhtmltopdf"
+
+#: src/SUMMARY.md:29
+msgid "オプション対応表"
+msgstr "Option mapping"
+
+#: src/SUMMARY.md:30
+msgid "wicked_pdfからの移行"
+msgstr "Migrating from wicked_pdf"
+
+#: src/SUMMARY.md:32
+msgid "付録"
+msgstr "Appendix"
+
+#: src/SUMMARY.md:34 src/appendix/limitations.md:1
+msgid "対応していないこと"
+msgstr "What is not supported"
+
+#: src/index.md:1
+msgid "sghtmltopdf とは"
+msgstr "About sghtmltopdf"
+
+#: src/index.md:3
+msgid ""
+"HTML をそのまま PDF として出力するための変換器/レンダラーです。 Rust で書かれ"
+"ており、Chromium/Webkit/Geckoのヘッドレスブラウザのインストールを必要とせず "
+"PDF を出力できます。"
+msgstr "sghtmltopdf is a converter and renderer that turns HTML directly into PDF. It is written in Rust and produces PDFs without installing a headless browser such as Chromium, WebKit, or Gecko."
+
+#: src/index.md:6
+msgid ""
+"使い方は、CLI・HTTPサーバ・ライブラリの3種類から選択でき、どれも同じエンジン"
+"を同じオプションで動かします。 ライブラリについては、現時点で Rubygems に対応"
+"しています。"
+msgstr "You can use it in three ways, as a CLI, as an HTTP server, or as a library, and all three drive the same engine with the same options. As a library, it is currently available as a Ruby gem."
+
+#: src/index.md:9
+msgid ""
+"PDFエンジンは、html5ever/Stylo/Taffy といった Servo が提供している Rust ク"
+"レートをベースに構築しています。"
+msgstr "The PDF engine is built on Rust crates from the Servo project, including html5ever, Stylo, and Taffy."
+
+#: src/index.md:11
+msgid "wkhtmltopdf/WickedPDF への感謝"
+msgstr "Thanks to wkhtmltopdf and wicked_pdf"
+
+#: src/index.md:13
+msgid ""
+"作者が初めてWebアプリ上で PDF を出力する機能を実装することになったとき、当時"
+"の開発環境は Ruby on Rails だったのですが、[wkhtmltopdf](https://github.com/"
+"wkhtmltopdf/wkhtmltopdf) と Railsから使うための [wicked_pdf gem](https://"
+"github.com/mileszs/wicked_pdf) を使っていました。  \n"
+"それまで何となく PDF は難しそうで敬遠していたのですが、HTML で見た目を確認し"
+"てそのまま PDF に出力できるという快適な開発フローに感動したのを覚えています。"
+msgstr "The first time I had to add PDF output to a web application, I was working in Ruby on Rails, and I used [wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) together with the [wicked_pdf gem](https://github.com/mileszs/wicked_pdf) that made it usable from Rails.  \nUntil then I had vaguely assumed PDFs were hard and had kept away from them, so I still remember how impressed I was by a workflow where you check the layout as HTML and then get exactly that as a PDF."
+
+#: src/index.md:16
+msgid ""
+"しかし、[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) は依存して"
+"いた QtWebkit がメンテナンス終了になったため、それに伴い2023年1月にアーカイブ"
+"されてしまいました。  \n"
+"現在は、Headless Chrome等のヘッドレスブラウザを使って PDF を出力する場面が多"
+"いと思います。"
+msgstr "However, [wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) was archived in January 2023, because QtWebKit, the engine it depended on, reached end of maintenance.  \nThese days, PDFs are usually produced with a headless browser such as Headless Chrome."
+
+#: src/index.md:19
+msgid ""
+"個人的にwkhtmltopdf のアプローチがとても好きだったので、使っていて感じた課題"
+"を解消させてモダナイズした wkhtmltopdf を作ろうと思いました。  \n"
+"sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf への敬意を込めて"
+"「次世代」をつけました。"
+msgstr "I personally liked the approach wkhtmltopdf took, so I set out to build a modernised version of it that fixes the problems I ran into while using it.  \nThe \"sg\" in sghtmltopdf stands for Second Generation, a nod to wkhtmltopdf."
+
+#: src/index.md:22
+msgid ""
+"wkhtmltopdf（QtWebkit）やヘッドレスブラウザを使ったPDF出力に感じていた課題"
+msgstr "Problems I ran into with wkhtmltopdf (QtWebKit) and with headless browsers"
+
+#: src/index.md:24
+msgid ""
+"QtWebkit が古く、CSS3 への対応が限定的（FlexboxやGridやカスタムプロパティに非"
+"対応）"
+msgstr "QtWebKit is old, and its CSS3 support is limited (no Flexbox, Grid, or custom properties)"
+
+#: src/index.md:25
+msgid "Webfont を使うと、読み込みを待たずに PDF 出力されてしまうことがある"
+msgstr "With webfonts, the PDF is sometimes written out before the fonts have finished loading"
+
+#: src/index.md:26
+msgid ""
+"表（Table）の最中で改ページした場合、改ページ後のページに表のヘッダーが出せな"
+"い"
+msgstr "When a table breaks across pages, the table header cannot be repeated on the following pages"
+
+#: src/index.md:27
+msgid ""
+"Webアプリとは別にバイナリをインストールする必要があり、AWS Lambda などで環境"
+"構築に手間がかかる"
+msgstr "A separate binary has to be installed alongside the web application, which makes environments such as AWS Lambda awkward to set up"
+
+#: src/index.md:28
+msgid ""
+"巨大な HTML が渡ってくると、出力にかかる時間やメモリ消費コストが一気に増える"
+msgstr "When a very large HTML document comes in, both the time and the memory it takes grow sharply"
+
+#: src/index.md:30
+msgid "これらを解決するために、sghtmltopdf では以下のような対応を入れました。"
+msgstr "sghtmltopdf addresses these as follows."
+
+#: src/index.md:32
+msgid "CSS3 にほぼ対応（レアプロパティは一部非対応）"
+msgstr "Covers most of CSS3 (some rarely used properties are not supported)"
+
+#: src/index.md:33
+msgid "Webfont に対応。serif/sans-serif/mono それぞれ個別に指定可能に"
+msgstr "Supports webfonts, and lets you specify serif, sans-serif, and monospace fonts individually"
+
+#: src/index.md:34
+msgid "表（Table）の途中で改ページが起きてもヘッダーを表示するように"
+msgstr "Repeats the table header on every page when a table breaks across pages"
+
+#: src/index.md:35
+msgid ""
+"ネイティブ拡張を FFI で呼び出すことで、ブラウザプロセスの起動を必要とせず、"
+"Webアプリのプロセスに同居可能に"
+msgstr "Runs as a native extension called over FFI, so no browser process is started and the renderer lives inside your web application process"
+
+#: src/index.md:36
+msgid ""
+"HTML をチャンク単位で読み確定したページから書き出せるストリーミングモードを用"
+"意して、メモリ消費量を律速に"
+msgstr "Offers a streaming mode that reads HTML in chunks and writes out each page as soon as it is final, which keeps memory use bounded"
+
+#: src/index.md:38
+msgid "wkhtmltopdf / ヘッドレスChromeとのパフォーマンス比較"
+msgstr "Performance compared with wkhtmltopdf and Headless Chrome"
+
+#: src/index.md:40
+msgid ""
+"同じHTMLを同じ用紙設定で変換したときの実測値です。 用紙設定は「用紙A4・余白"
+"10mm」を`@page`で指定し、フォントは`@font-face`で同じファイルを参照していま"
+"す。"
+msgstr "These are measured figures for converting the same HTML with the same page setup. The page setup is A4 with 10mm margins, given through `@page`, and every engine loads the same font file through `@font-face`."
+
+#: src/index.md:43
+msgid ""
+"比較対象は、アーカイブ時点の最終版である wkhtmltopdf 0.12.6.1 と、Google "
+"Chrome 151 のヘッドレスモードです。 各セルは「ピークメモリ / 処理時間」を表し"
+"ます。"
+msgstr "The engines compared are wkhtmltopdf 0.12.6.1, the last release before it was archived, and Google Chrome 151 in headless mode. Each cell shows peak memory and processing time."
+
+#: src/index.md:46
+msgid ""
+"この比較は `cargo run --release --example compare_engines` で出したものです。"
+msgstr "These figures come from `cargo run --release --example compare_engines`."
+
+#: src/index.md:48
+msgid "段落が主体の文書:"
+msgstr "A document made of paragraphs:"
+
+#: src/index.md:50 src/usage/cli/streaming.md:52
+msgid "要素数"
+msgstr "Elements"
+
+#: src/index.md:50 src/index.md:58 src/migration/wkhtmltopdf.md:11
+#: src/migration/wicked-pdf.md:50 src/migration/wicked-pdf.md:100
+msgid "sghtmltopdf"
+msgstr ""
+
+#: src/index.md:50 src/index.md:58
+msgid "sghtmltopdf（ストリーミング）"
+msgstr "sghtmltopdf (streaming)"
+
+#: src/index.md:50 src/index.md:58 src/migration/wkhtmltopdf.md:11
+msgid "wkhtmltopdf"
+msgstr ""
+
+#: src/index.md:50 src/index.md:58
+msgid "ヘッドレスChrome"
+msgstr "Headless Chrome"
+
+#: src/index.md:52 src/index.md:60 src/usage/cli/streaming.md:55
+msgid "5,000"
+msgstr "5,000"
+
+#: src/index.md:52
+msgid "26MB / 0.21秒"
+msgstr "26MB / 0.21s"
+
+#: src/index.md:52
+msgid "9MB / 0.21秒"
+msgstr "9MB / 0.21s"
+
+#: src/index.md:52
+msgid "43MB / 0.48秒"
+msgstr "43MB / 0.48s"
+
+#: src/index.md:52
+msgid "563MB / 1.29秒"
+msgstr "563MB / 1.29s"
+
+#: src/index.md:53 src/index.md:61 src/usage/cli/streaming.md:56
+msgid "20,000"
+msgstr "20,000"
+
+#: src/index.md:53
+msgid "79MB / 0.89秒"
+msgstr "79MB / 0.89s"
+
+#: src/index.md:53
+msgid "13MB / 0.88秒"
+msgstr "13MB / 0.88s"
+
+#: src/index.md:53
+msgid "86MB / 2.30秒"
+msgstr "86MB / 2.30s"
+
+#: src/index.md:53
+msgid "952MB / 7.40秒"
+msgstr "952MB / 7.40s"
+
+#: src/index.md:54 src/usage/cli/streaming.md:57
+msgid "60,000"
+msgstr "60,000"
+
+#: src/index.md:54
+msgid "228MB / 3.33秒"
+msgstr "228MB / 3.33s"
+
+#: src/index.md:54
+msgid "24MB / 2.80秒"
+msgstr "24MB / 2.80s"
+
+#: src/index.md:54
+msgid "200MB / 32.54秒"
+msgstr "200MB / 32.54s"
+
+#: src/index.md:54
+msgid "1,649MB / 93.89秒"
+msgstr "1,649MB / 93.89s"
+
+#: src/index.md:56
+msgid "表が主体の帳票:"
+msgstr "A statement made of a single large table:"
+
+#: src/index.md:58
+msgid "行数"
+msgstr "Rows"
+
+#: src/index.md:60
+msgid "48MB / 0.76秒"
+msgstr "48MB / 0.76s"
+
+#: src/index.md:60
+msgid "48MB / 0.84秒"
+msgstr "48MB / 0.84s"
+
+#: src/index.md:60
+msgid "62MB / 1.50秒"
+msgstr "62MB / 1.50s"
+
+#: src/index.md:60
+msgid "1,369MB / 4.77秒"
+msgstr "1,369MB / 4.77s"
+
+#: src/index.md:61
+msgid "171MB / 2.93秒"
+msgstr "171MB / 2.93s"
+
+#: src/index.md:61
+msgid "171MB / 3.12秒"
+msgstr "171MB / 3.12s"
+
+#: src/index.md:61
+msgid "163MB / 13.53秒"
+msgstr "163MB / 13.53s"
+
+#: src/index.md:61
+msgid "6,221MB / 39.19秒"
+msgstr "6,221MB / 39.19s"
+
+#: src/index.md:63
+msgid ""
+"処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約"
+"10倍、ヘッドレスChromeの約28倍の速さです。 20,000行の帳票では、それぞれ約4.6"
+"倍・約13倍になります。"
+msgstr "The gap in processing time widens as the document grows. At 60,000 elements sghtmltopdf is about 10 times faster than wkhtmltopdf and about 28 times faster than Headless Chrome. For the 20,000 row statement the factors are about 4.6 and about 13."
+
+#: src/index.md:67
+msgid ""
+"メモリは、wkhtmltopdfとはほぼ同等です。 60,000要素と20,000行の帳票では "
+"sghtmltopdf のほうがやや多く、文書サイズに比例して増える点も変わりません。 "
+"[ストリーミングモード](usage/cli/streaming.md)を使うと、段落主体の文書では"
+"24MBまで下がります。 一方、巨大な表が1つだけの帳票ではストリーミングの効果が"
+"ありません。 確定したページを書き出す区切りが`<body>`直下の要素単位のため、表"
+"が1つしかない文書では表の最後を書き出すまでメモリを解放できないからです。"
+msgstr "Memory use is roughly on par with wkhtmltopdf. At 60,000 elements and for the 20,000 row statement sghtmltopdf uses slightly more, and it grows with document size just as wkhtmltopdf does. [Streaming mode](usage/cli/streaming.md) brings this down to 24MB for the paragraph document. It does not help for a statement built from one huge table, however. Pages are flushed at the boundaries of the elements directly under `<body>`, so a document that contains a single table cannot release memory until the end of that table has been written."
+
+#: src/index.md:73
+msgid ""
+"ヘッドレスChromeとは桁が違い、20,000行の帳票では6.2GBに達します。 1段落だけの"
+"HTMLでも約390MBを使うことから、この多くはブラウザ一式（ブラウザ・レンダラ・"
+"GPUなど8つ以上のプロセス）を立ち上げる固定費です。 そこに文書サイズに比例した"
+"分が積み上がります。 ブラウザとして必要なものを一通り持つ以上は妥当なコスト"
+"で、PDFの出力だけを目的とする場合に割高になる、という関係です。"
+msgstr "Headless Chrome is in a different order of magnitude, reaching 6.2GB for the 20,000 row statement. Since an HTML file with a single paragraph already costs about 390MB, much of that is the fixed cost of starting a whole browser, which here means more than eight processes for the browser, the renderer, the GPU, and so on. The part that scales with document size is added on top of that. This is a reasonable price for something that has to be a full browser; it is simply expensive when all you want is a PDF."
+
+#: src/index.md:78
+msgid "処理の流れ"
+msgstr "How it works"
+
+#: src/index.md:91
+msgid ""
+"ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先"
+"へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしていま"
+"す。"
+msgstr "As soon as a page boundary is final, that page is written to the PDF and the memory it used is released before reading on, which is how large documents are processed without memory use growing."
+
+#: src/getting-started/install.md:3
+msgid "使い方に応じて3通りあります。"
+msgstr "There are three ways to install it, depending on how you plan to use it."
+
+#: src/getting-started/install.md:5
+msgid "入れるもの"
+msgstr "What you install"
+
+#: src/getting-started/install.md:7
+msgid "[HTTPサーバ](../usage/server.md)を常駐させる"
+msgstr "Run the [HTTP server](../usage/server.md) as a long-lived process"
+
+#: src/getting-started/install.md:7
+msgid "Dockerイメージ`ghcr.io/waka/sghtmltopdf`"
+msgstr "The Docker image `ghcr.io/waka/sghtmltopdf`"
+
+#: src/getting-started/install.md:8
+msgid "Ruby・Railsから使う"
+msgstr "Use it from Ruby or Rails"
+
+#: src/getting-started/install.md:8
+msgid "gem `sghtmltopdf`"
+msgstr "The `sghtmltopdf` gem"
+
+#: src/getting-started/install.md:9
+msgid "手元のコマンドラインで変換する"
+msgstr "Convert from your own command line"
+
+#: src/getting-started/install.md:9
+msgid "実行ファイル`sghtmltopdf`(ソースからビルド)"
+msgstr "The `sghtmltopdf` binary, built from source"
+
+#: src/getting-started/install.md:11
+msgid ""
+"素の実行ファイル(GitHub Releasesのtarballやhomebrew)は配布していません。 サー"
+"バはイメージの中に、FFIから使う場合はgemの中にそれぞれ実行ファイル相当が入っ"
+"ているためです。 CLIを手元で試したい場合は下のソースビルドを使ってください。"
+msgstr "Plain binaries, as a tarball on GitHub Releases or through Homebrew, are not distributed. The server ships inside the image, and the FFI path ships inside the gem, so each already carries what it needs. To try the CLI locally, build from source as shown below."
+
+#: src/getting-started/install.md:22
+msgid ""
+"日本語フォント(BIZ UDPGothic / BIZ UDPMincho)を同梱しているので、フォントを用"
+"意しなくても日本語のPDFが出ます。 詳しくは[Docker](docker.md)を参照してくださ"
+"い。"
+msgstr "Japanese fonts (BIZ UDPGothic and BIZ UDPMincho) are bundled, so Japanese PDFs come out without supplying a font yourself. See [Docker](docker.md) for details."
+
+#: src/getting-started/install.md:25
+msgid "ソースからビルド"
+msgstr "Building from source"
+
+#: src/getting-started/install.md:27
+msgid ""
+"必要なのは[Rustのstableツールチェイン](https://rustup.rs/)だけです。 C言語の"
+"ライブラリやシステムパッケージへの依存はありません。"
+msgstr "All you need is the [stable Rust toolchain](https://rustup.rs/). There are no C libraries or system packages to install."
+
+#: src/getting-started/install.md:36
+msgid ""
+"実行ファイルは`target/release/sghtmltopdf`にできます。 パスの通った場所へ置く"
+"か、そのまま呼び出してください。"
+msgstr "The binary is written to `target/release/sghtmltopdf`. Put it somewhere on your `PATH`, or call it where it is."
+
+#: src/getting-started/install.md:43
+msgid "HTTPサーバモードが要らない場合は、featureを削って小さくできます。"
+msgstr "If you do not need the HTTP server mode, you can drop that feature and get a smaller binary."
+
+#: src/getting-started/install.md:49 src/usage/ruby_rails.md:1
+msgid "Ruby / Rails"
+msgstr "Ruby / Rails"
+
+#: src/getting-started/install.md:52 src/usage/ruby_rails.md:15
+#: src/migration/wicked-pdf.md:11
+msgid "# Gemfile\n"
+msgstr "# Gemfile\n"
+
+#: src/getting-started/install.md:53 src/getting-started/docker.md:48
+#: src/usage/ruby_rails.md:16 src/migration/wicked-pdf.md:14
+msgid "\"sghtmltopdf\""
+msgstr "\"sghtmltopdf\""
+
+#: src/getting-started/install.md:56
+msgid ""
+"ビルド済み(precompiled)のgemを配布する方針のため、利用側にRustのツールチェイ"
+"ンは要りません。 対応は`x86_64-linux`・`aarch64-linux`・`arm64-darwin`(glibc)"
+"と、Ruby 3.2以上です。"
+msgstr "Precompiled gems are distributed, so you do not need a Rust toolchain to install it. The supported platforms are `x86_64-linux`, `aarch64-linux`, and `arm64-darwin` (glibc), on Ruby 3.2 or later."
+
+#: src/getting-started/install.md:59
+msgid ""
+"外部プロセスは起動せず、ネイティブ拡張(magnus + rb-sys)として同じプロセスの中"
+"で変換します。 重い処理の間はGVLを解放するので、Pumaの他のスレッドは止まりま"
+"せん。"
+msgstr "No external process is started. Conversion happens inside your own process as a native extension built with magnus and rb-sys. The GVL is released while the heavy work runs, so other Puma threads keep going."
+
+#: src/getting-started/install.md:62
+msgid "使い方は[Ruby / Rails](../usage/ruby_rails.md)を参照してください。"
+msgstr "See [Ruby / Rails](../usage/ruby_rails.md) for how to use it."
+
+#: src/getting-started/install.md:64
+msgid "フォントについて"
+msgstr "About fonts"
+
+#: src/getting-started/install.md:66
+msgid ""
+"`--font`を指定しない場合、システムにインストールされているフォントが使われま"
+"す。 日本語を含む文書では、フォントファイルを明示するか、フォントを同梱した"
+"[Dockerイメージ](docker.md)を使うことを推奨します。"
+msgstr "Without `--font`, the fonts installed on the system are used. For documents that contain Japanese, we recommend naming a font file explicitly, or using the [Docker image](docker.md), which bundles fonts."
+
+#: src/getting-started/install.md:75
+msgid "詳しくは[フォント](../supports/fonts.md)を参照してください。"
+msgstr "See [Fonts](../supports/fonts.md) for details."
+
+#: src/getting-started/docker.md:3
+msgid ""
+"日本語フォントを同梱した公式イメージを`ghcr.io`で配布しています。 サーバモー"
+"ドを常駐させる場合はこれが一番手軽です。"
+msgstr "An official image with Japanese fonts bundled is published on `ghcr.io`. It is the easiest way to run the server mode as a long-lived process."
+
+#: src/getting-started/docker.md:10
+msgid ""
+"対応プラットフォームは`linux/amd64`と`linux/arm64`(どちらもglibc。Alpine等の"
+"muslは対象外)です。 同じタグでどちらも引けます。"
+msgstr "The supported platforms are `linux/amd64` and `linux/arm64`, both glibc; musl systems such as Alpine are out of scope. The same tag serves both."
+
+#: src/getting-started/docker.md:13
+msgid "サーバとして使う"
+msgstr "Running it as a server"
+
+#: src/getting-started/docker.md:15
+msgid "引数なしで起動すると[HTTPサーバ](../usage/server.md)になります。"
+msgstr "Started with no arguments, it runs as the [HTTP server](../usage/server.md)."
+
+#: src/getting-started/docker.md:27
+msgid ""
+"コンテナの中では`--listen 0.0.0.0:8080`で待ち受けます。 サーバモードの既定は"
+"`127.0.0.1`(何も設定しないまま外部公開されるのを防ぐため)ですが、それだとコン"
+"テナの外から届かないので、イメージ側の`CMD`で明示しています。"
+msgstr "Inside the container it listens on `--listen 0.0.0.0:8080`. The server mode defaults to `127.0.0.1`, so that nothing is exposed by accident, but that address cannot be reached from outside the container, so the image sets the flag explicitly in its `CMD`."
+
+#: src/getting-started/docker.md:30
+msgid "起動オプションを変えたいときは、`server`から書き直します。"
+msgstr "To change the startup options, write the command out yourself, starting from `server`."
+
+#: src/getting-started/docker.md:37 src/usage/server.md:35
+msgid ""
+"認証とTLSは持ちません。 外部へ公開する場合はリバースプロキシを前段に置いてく"
+"ださい。"
+msgstr "There is no authentication and no TLS. Put a reverse proxy in front of it before exposing it to the outside."
+
+#: src/getting-started/docker.md:40
+msgid "docker compose"
+msgstr "docker compose"
+
+#: src/getting-started/docker.md:43
+msgid "services"
+msgstr "services"
+
+#: src/getting-started/docker.md:44
+msgid "pdf"
+msgstr "pdf"
+
+#: src/getting-started/docker.md:45
+msgid "image"
+msgstr "image"
+
+#: src/getting-started/docker.md:45
+msgid "ghcr.io/waka/sghtmltopdf:0.1"
+msgstr "ghcr.io/waka/sghtmltopdf:0.1"
+
+#: src/getting-started/docker.md:46
+msgid "ports"
+msgstr "ports"
+
+#: src/getting-started/docker.md:46
+msgid "\"8080:8080\""
+msgstr "\"8080:8080\""
+
+#: src/getting-started/docker.md:47
+msgid "healthcheck"
+msgstr "healthcheck"
+
+#: src/getting-started/docker.md:48
+msgid "test"
+msgstr "test"
+
+#: src/getting-started/docker.md:48
+msgid "\"CMD\""
+msgstr "\"CMD\""
+
+#: src/getting-started/docker.md:48
+msgid "\"--version\""
+msgstr "\"--version\""
+
+#: src/getting-started/docker.md:49
+msgid "interval"
+msgstr "interval"
+
+#: src/getting-started/docker.md:49
+msgid "30s"
+msgstr "30s"
+
+#: src/getting-started/docker.md:52
+msgid ""
+"`curl`はイメージに入っていないので、ヘルスチェックは`--version`で代用するか、"
+"外側(ロードバランサ等)から`GET /healthz`を叩いてください。"
+msgstr "`curl` is not in the image, so either use `--version` as the health check as shown, or call `GET /healthz` from outside, for example from your load balancer."
+
+#: src/getting-started/docker.md:54
+msgid "CLIとして使う"
+msgstr "Running it as a CLI"
+
+#: src/getting-started/docker.md:56
+msgid ""
+"`ENTRYPOINT`が実行ファイルそのものなので、引数を渡せばCLIとして動きます。"
+msgstr "The `ENTRYPOINT` is the binary itself, so passing arguments runs it as the CLI."
+
+#: src/getting-started/docker.md:59 src/getting-started/docker.md:86
+msgid "\"$PWD:/work\""
+msgstr "\"$PWD:/work\""
+
+#: src/getting-started/docker.md:59 src/getting-started/docker.md:86
+msgid "\"$(id -u):$(id -g)\""
+msgstr "\"$(id -u):$(id -g)\""
+
+#: src/getting-started/docker.md:63
+msgid ""
+"コンテナはrootでは動きません(UID 10001)。 ホストのディレクトリへPDFを書き出す"
+"ときは、上のように`--user`でホスト側の所有者に合わせてください。"
+msgstr "The container does not run as root; it runs as UID 10001. When writing a PDF into a directory on the host, match the host owner with `--user`, as shown above."
+
+#: src/getting-started/docker.md:66
+msgid "同梱しているフォント"
+msgstr "Bundled fonts"
+
+#: src/getting-started/docker.md:68
+msgid ""
+"[BIZ UDPGothic](https://fonts.google.com/specimen/BIZ+UDPGothic)と[BIZ "
+"UDPMincho](https://fonts.google.com/specimen/BIZ+UDPMincho)のRegular・Bold(計"
+"4本、SIL Open Font License 1.1)が入っています。 ライセンス全文はイメージ内の"
+"`/usr/share/doc/sghtmltopdf/fonts/`にあります。"
+msgstr "The image contains [BIZ UDPGothic](https://fonts.google.com/specimen/BIZ+UDPGothic) and [BIZ UDPMincho](https://fonts.google.com/specimen/BIZ+UDPMincho), Regular and Bold, four faces in total, under the SIL Open Font License 1.1. The full licence text is at `/usr/share/doc/sghtmltopdf/fonts/` inside the image."
+
+#: src/getting-started/docker.md:71
+msgid "CSSの指定"
+msgstr "What the CSS says"
+
+#: src/getting-started/docker.md:71
+msgid "使われるフォント"
+msgstr "Font that is used"
+
+#: src/getting-started/docker.md:73
+msgid "`font-family`未指定"
+msgstr "No `font-family`"
+
+#: src/getting-started/docker.md:73
+msgid "BIZ UDPMincho(明朝)"
+msgstr "BIZ UDPMincho (serif)"
+
+#: src/getting-started/docker.md:74
+msgid "`font-family: sans-serif`"
+msgstr "`font-family: sans-serif`"
+
+#: src/getting-started/docker.md:74
+msgid "BIZ UDPGothic(ゴシック)"
+msgstr "BIZ UDPGothic (sans-serif)"
+
+#: src/getting-started/docker.md:75
+msgid "`font-family: serif`"
+msgstr "`font-family: serif`"
+
+#: src/getting-started/docker.md:75
+msgid "BIZ UDPMincho"
+msgstr "BIZ UDPMincho"
+
+#: src/getting-started/docker.md:76
+msgid "`font-family: monospace`"
+msgstr "`font-family: monospace`"
+
+#: src/getting-started/docker.md:76
+msgid "等幅フォントは同梱していないため、BIZ UDPMinchoにフォールバック"
+msgstr "No monospace font is bundled, so this falls back to BIZ UDPMincho"
+
+#: src/getting-started/docker.md:77
+msgid "`font-weight: bold`"
+msgstr "`font-weight: bold`"
+
+#: src/getting-started/docker.md:77
+msgid "各書体のBold(合成太字ではありません)"
+msgstr "The real Bold face of each family, not synthesised bold"
+
+#: src/getting-started/docker.md:79
+msgid ""
+"フォントが固定されているので、同じHTMLからは同じPDFが出ます(PDF内の作成日時を"
+"除く)。 ホストのフォント構成に出力が左右されないのがイメージを使う利点のひと"
+"つです。"
+msgstr "Because the fonts are fixed, the same HTML always produces the same PDF, apart from the creation timestamp inside the file. Not depending on the host's font setup is one of the reasons to use the image."
+
+#: src/getting-started/docker.md:82
+msgid ""
+"別のフォントを使いたい場合は、マウントして[`--font`](../supports/fonts.md)で"
+"渡してください。 同梱フォントより優先されます。"
+msgstr "To use a different font, mount it and pass it with [`--font`](../supports/fonts.md). It takes precedence over the bundled fonts."
+
+#: src/getting-started/docker.md:91
+msgid "イメージの中身"
+msgstr "What is in the image"
+
+#: src/getting-started/docker.md:100
+msgid ""
+"ベースは`debian:bookworm-slim`で、追加のシステムパッケージはありません(TLSの"
+"ルート証明書は実行ファイルに埋め込まれているため`ca-certificates`も不要で"
+"す)。"
+msgstr "The base is `debian:bookworm-slim` with no extra system packages. Even `ca-certificates` is unnecessary, because the TLS root certificates are embedded in the binary."
+
+#: src/getting-started/first-pdf.md:3
+msgid ""
+"[インストール](install.md)が済んでいる前提で、1枚出すところから改ページまでを"
+"順に試します。"
+msgstr "Assuming you have finished [installing](install.md), this page walks from a single page through to page breaks."
+
+#: src/getting-started/first-pdf.md:5
+msgid "1. 変換する"
+msgstr "1. Convert"
+
+#: src/getting-started/first-pdf.md:7
+msgid "`hello.html`を用意します。"
+msgstr "Start with a `hello.html`."
+
+#: src/getting-started/first-pdf.md:13
+msgid "\"utf-8\""
+msgstr "\"utf-8\""
+
+#: src/getting-started/first-pdf.md:23
+msgid "\"total\""
+msgstr "\"total\""
+
+#: src/getting-started/first-pdf.md:28
+msgid "変換します。"
+msgstr "Then convert it."
+
+#: src/getting-started/first-pdf.md:34
+msgid ""
+"出力先(`-o`)を省略すると、入力の拡張子を`.pdf`にしたファイル名になります。 `-"
+"`を使うと標準入力から読み、標準出力へ書けます。"
+msgstr "Without `-o`, the output file is the input name with the extension changed to `.pdf`. Use `-` to read from standard input and write to standard output."
+
+#: src/getting-started/first-pdf.md:41
+msgid "2. 用紙と余白を決める"
+msgstr "2. Choose the paper and margins"
+
+#: src/getting-started/first-pdf.md:48
+msgid "単位は`mm`/`cm`/`in`/`pt`/`px`が使え、省略すると`mm`です。"
+msgstr "The units `mm`, `cm`, `in`, `pt`, and `px` are accepted, and a bare number means `mm`."
+
+#: src/getting-started/first-pdf.md:50
+msgid ""
+"同じことはCSSの`@page`でも書けます。 両方書いた場合はCSSが勝ちます(CLIオプ"
+"ションは初期値として扱われます)。 wkhtmltopdfと逆なので、移行時は[wkhtmltopdf"
+"からの移行](../migration/wkhtmltopdf.md)を確認してください。"
+msgstr "The same thing can be written in CSS with `@page`. If you write both, the CSS wins; the CLI options are treated as initial values. This is the opposite of wkhtmltopdf, so check [Migrating from wkhtmltopdf](../migration/wkhtmltopdf.md) when you move over."
+
+#: src/getting-started/first-pdf.md:61
+msgid "3. 改ページする"
+msgstr "3. Break pages"
+
+#: src/getting-started/first-pdf.md:63
+msgid "「ここから次のページ」は、CSSの`break-before`で指定します。"
+msgstr "\"Start a new page here\" is expressed with the CSS property `break-before`."
+
+#: src/getting-started/first-pdf.md:73
+msgid "\"page-break\""
+msgstr "\"page-break\""
+
+#: src/getting-started/first-pdf.md:79
+msgid ""
+"`break-after`(この要素の後で改ページ)、`break-inside: avoid`(この要素を分割し"
+"ない)も使えます。 見出しだけが行末に取り残されるのを防ぐ`orphans`/`widows`も"
+"あります。 詳しくは[ページ分割](../supports/pagination.md)を参照してくださ"
+"い。"
+msgstr "`break-after`, which breaks after the element, and `break-inside: avoid`, which keeps the element in one piece, are available too. So are `orphans` and `widows`, which stop a single line from being stranded at a page boundary. See [Page breaks](../supports/pagination.md) for details."
+
+#: src/getting-started/first-pdf.md:83
+msgid "4. ヘッダーとフッターを付ける"
+msgstr "4. Add headers and footers"
+
+#: src/getting-started/first-pdf.md:92
+msgid ""
+"`[page]`は現在のページ番号、`[topage]`は総ページ数に置き換わります。 "
+"JavaScriptは実行しないため、この置換で表現します。 HTMLでヘッダーを作りたい場"
+"合は`--header-html`が使えます。"
+msgstr "`[page]` is replaced with the current page number and `[topage]` with the total page count. JavaScript is never executed, so these placeholders take its place. If you would rather build the header in HTML, use `--header-html`."
+
+#: src/getting-started/first-pdf.md:96
+msgid "5. フォントを固定する"
+msgstr "5. Pin the fonts"
+
+#: src/getting-started/first-pdf.md:98
+msgid ""
+"ここまでの例はシステムのフォントを使っています。 サーバやCIで出力を環境に依存"
+"させたくない場合は、フォントファイルを明示してください。"
+msgstr "The examples so far use whatever fonts the system has. On a server or in CI, where you do not want the output to depend on the environment, name the font files explicitly."
+
+#: src/usage/cli/reference.md:1
+msgid "CLIリファレンス"
+msgstr "CLI reference"
+
+#: src/usage/cli/reference.md:3
+msgid "`sghtmltopdf`コマンドの全オプション。"
+msgstr "Every option of the `sghtmltopdf` command."
+
+#: src/usage/cli/reference.md:10
+msgid ""
+"wkhtmltopdfのオプションとの対応(非対応にしたものを含む全一覧)は[wkhtmltopdfオ"
+"プション対応表](../../migration/wkhtmltopdf-options.md)を参照してください。"
+msgstr "For how these map to wkhtmltopdf's options, including the full list of the ones that are not supported, see the [wkhtmltopdf option mapping](../../migration/wkhtmltopdf-options.md)."
+
+#: src/usage/cli/reference.md:12 src/usage/ruby_rails.md:35
+msgid "基本"
+msgstr "Basics"
+
+#: src/usage/cli/reference.md:15
+msgid "# もっとも単純な使い方(フォントはシステムのものが使われる)\n"
+msgstr "# The simplest form; the system fonts are used\n"
+
+#: src/usage/cli/reference.md:17
+msgid "# 出力先を省略すると入力の拡張子を .pdf にしたもの\n"
+msgstr "# Without an output path, the input name with the extension changed to .pdf\n"
+
+#: src/usage/cli/reference.md:20
+msgid "# 標準入力から読み、標準出力へ書く\n"
+msgstr "# Read from standard input and write to standard output\n"
+
+#: src/usage/cli/reference.md:25
+msgid "入出力"
+msgstr "Input and output"
+
+#: src/usage/cli/reference.md:27 src/usage/cli/reference.md:39
+#: src/usage/cli/reference.md:60 src/usage/cli/reference.md:77
+#: src/usage/cli/reference.md:94 src/usage/cli/reference.md:121
+#: src/usage/cli/reference.md:156 src/usage/cli/reference.md:176
+#: src/usage/server.md:25 src/usage/ruby_rails.md:49
+#: src/migration/wkhtmltopdf-options.md:29
+#: src/migration/wkhtmltopdf-options.md:67
+#: src/migration/wkhtmltopdf-options.md:76
+#: src/migration/wkhtmltopdf-options.md:121
+#: src/migration/wkhtmltopdf-options.md:142
+#: src/migration/wkhtmltopdf-options.md:153
+msgid "オプション"
+msgstr "Option"
+
+#: src/usage/cli/reference.md:27 src/usage/cli/reference.md:39
+#: src/usage/cli/reference.md:77 src/usage/cli/reference.md:156
+#: src/usage/server.md:25 src/usage/ruby_rails.md:78
+#: src/usage/ruby_rails.md:164
+msgid "既定"
+msgstr "Default"
+
+#: src/usage/cli/reference.md:27 src/usage/cli/reference.md:39
+#: src/usage/cli/reference.md:60 src/usage/cli/reference.md:77
+#: src/usage/cli/reference.md:94 src/usage/cli/reference.md:121
+#: src/usage/cli/reference.md:156 src/usage/server.md:25 src/usage/server.md:40
+#: src/usage/ruby_rails.md:78
+msgid "説明"
+msgstr "Description"
+
+#: src/usage/cli/reference.md:29
+msgid "`<INPUT.HTML>`"
+msgstr "`<INPUT.HTML>`"
+
+#: src/usage/cli/reference.md:29
+msgid "(必須)"
+msgstr "(required)"
+
+#: src/usage/cli/reference.md:29
+msgid "入力HTML。`-`で標準入力"
+msgstr "The input HTML; `-` means standard input"
+
+#: src/usage/cli/reference.md:30
+msgid "`-o`, `--output <PATH>`"
+msgstr "`-o`, `--output <PATH>`"
+
+#: src/usage/cli/reference.md:30
+msgid "入力の拡張子を`.pdf`に"
+msgstr "The input name with `.pdf`"
+
+#: src/usage/cli/reference.md:30
+msgid "出力先。`-`で標準出力。標準入力から読む場合は省略できない"
+msgstr "Where to write. `-` means standard output. It cannot be omitted when reading from standard input"
+
+#: src/usage/cli/reference.md:31
+msgid "`--base-url <URL\\|DIR>`"
+msgstr "`--base-url <URL\\|DIR>`"
+
+#: src/usage/cli/reference.md:31
+msgid "入力HTMLのあるディレクトリ"
+msgstr "The directory of the input HTML"
+
+#: src/usage/cli/reference.md:31
+msgid ""
+"相対参照の解決基準。http(s)のURLを渡すと`<base href>`の既定値になる(HTML内の"
+"`<base href>`が優先)"
+msgstr "The base for resolving relative references. An http(s) URL becomes the default `<base href>`; a `<base href>` in the HTML wins"
+
+#: src/usage/cli/reference.md:32
+msgid "`--encoding <NAME>`"
+msgstr "`--encoding <NAME>`"
+
+#: src/usage/cli/reference.md:32
+msgid "自動判定"
+msgstr "Detected"
+
+#: src/usage/cli/reference.md:32
+msgid ""
+"入力の文字エンコーディング。判定順は BOM > `--encoding` > `<meta charset>` > "
+"UTF-8"
+msgstr "The character encoding of the input. The order is BOM, then `--encoding`, then `<meta charset>`, then UTF-8"
+
+#: src/usage/cli/reference.md:33 src/usage/cli/streaming.md:52
+#: src/migration/wkhtmltopdf-options.md:158
+msgid "`--streaming`"
+msgstr "`--streaming`"
+
+#: src/usage/cli/reference.md:33 src/usage/cli/reference.md:83
+#: src/usage/cli/reference.md:84 src/usage/cli/reference.md:159
+msgid "オフ"
+msgstr "Off"
+
+#: src/usage/cli/reference.md:33
+msgid "[ストリーミングモード](streaming.md)で処理する"
+msgstr "Process in [streaming mode](streaming.md)"
+
+#: src/usage/cli/reference.md:35
+msgid ""
+"出力ファイルは一時ファイルへ書いてから`rename`されるため、失敗したときに壊れ"
+"たPDFが残ることはありません。"
+msgstr "The output is written to a temporary file and then renamed, so a failure never leaves a broken PDF behind."
+
+#: src/usage/cli/reference.md:37
+msgid "ページ設定"
+msgstr "Page setup"
+
+#: src/usage/cli/reference.md:41
+msgid "`-s`, `--page-size <SIZE>`"
+msgstr "`-s`, `--page-size <SIZE>`"
+
+#: src/usage/cli/reference.md:41
+msgid "A4"
+msgstr "A4"
+
+#: src/usage/cli/reference.md:41
+msgid "`A3`/`A4`/`A5`/`Letter`/`Legal`(大文字小文字を区別しない)"
+msgstr "`A3`, `A4`, `A5`, `Letter`, or `Legal`, case insensitive"
+
+#: src/usage/cli/reference.md:42
+msgid "`--page-width <LENGTH>`"
+msgstr "`--page-width <LENGTH>`"
+
+#: src/usage/cli/reference.md:42
+msgid "用紙の幅。`--page-size`より優先"
+msgstr "The paper width; takes precedence over `--page-size`"
+
+#: src/usage/cli/reference.md:43
+msgid "`--page-height <LENGTH>`"
+msgstr "`--page-height <LENGTH>`"
+
+#: src/usage/cli/reference.md:43
+msgid "用紙の高さ。`--page-size`より優先"
+msgstr "The paper height; takes precedence over `--page-size`"
+
+#: src/usage/cli/reference.md:44
+msgid "`-O`, `--orientation <O>`"
+msgstr "`-O`, `--orientation <O>`"
+
+#: src/usage/cli/reference.md:44
+msgid "Portrait"
+msgstr "Portrait"
+
+#: src/usage/cli/reference.md:44
+msgid "`Landscape`は最後に幅と高さを入れ替える"
+msgstr "`Landscape` swaps width and height at the end"
+
+#: src/usage/cli/reference.md:45
+msgid "`-T`, `--margin-top <LENGTH>`"
+msgstr "`-T`, `--margin-top <LENGTH>`"
+
+#: src/usage/cli/reference.md:45
+msgid "1in (96px)"
+msgstr "1in (96px)"
+
+#: src/usage/cli/reference.md:45
+msgid "上マージン"
+msgstr "Top margin"
+
+#: src/usage/cli/reference.md:46
+msgid "`-B`, `--margin-bottom <LENGTH>`"
+msgstr "`-B`, `--margin-bottom <LENGTH>`"
+
+#: src/usage/cli/reference.md:46 src/usage/cli/reference.md:47
+#: src/usage/cli/reference.md:48
+msgid "1in"
+msgstr "1in"
+
+#: src/usage/cli/reference.md:46
+msgid "下マージン"
+msgstr "Bottom margin"
+
+#: src/usage/cli/reference.md:47
+msgid "`-L`, `--margin-left <LENGTH>`"
+msgstr "`-L`, `--margin-left <LENGTH>`"
+
+#: src/usage/cli/reference.md:47
+msgid "左マージン"
+msgstr "Left margin"
+
+#: src/usage/cli/reference.md:48
+msgid "`-R`, `--margin-right <LENGTH>`"
+msgstr "`-R`, `--margin-right <LENGTH>`"
+
+#: src/usage/cli/reference.md:48
+msgid "右マージン"
+msgstr "Right margin"
+
+#: src/usage/cli/reference.md:50
+msgid ""
+"長さの単位は`mm`/`cm`/`in`/`pt`/`px`。 単位を省略するとmmです(wkhtmltopdf互"
+"換)。"
+msgstr "Lengths take the units `mm`, `cm`, `in`, `pt`, and `px`. A bare number means mm, as in wkhtmltopdf."
+
+#: src/usage/cli/reference.md:53
+msgid "CSSの`@page`との関係"
+msgstr "How this relates to `@page` in CSS"
+
+#: src/usage/cli/reference.md:55
+msgid ""
+"これらのオプションは初期値であり、HTMLのCSSに`@page { size: … }`や`@page "
+"{ margin: … }`が書かれていればそちらが勝ちます(プロパティ単位)。 wkhtmltopdf"
+"とは逆なので注意してください。"
+msgstr "These options are initial values. If the CSS in the HTML says `@page { size: … }` or `@page { margin: … }`, the CSS wins, property by property. Note that this is the opposite of wkhtmltopdf."
+
+#: src/usage/cli/reference.md:62
+msgid "`--font <PATH>`"
+msgstr "`--font <PATH>`"
+
+#: src/usage/cli/reference.md:62
+msgid "使うフォント(複数指定可)。省略するとシステムフォントを使う"
+msgstr "The font to use; may be given more than once. Without it, system fonts are used"
+
+#: src/usage/cli/reference.md:63
+msgid "`--font-index <N>`"
+msgstr "`--font-index <N>`"
+
+#: src/usage/cli/reference.md:63
+msgid "直前の`--font`に対する、TrueType Collection(`.ttc`)内のフェイス番号"
+msgstr "The face index inside a TrueType Collection (`.ttc`), for the preceding `--font`"
+
+#: src/usage/cli/reference.md:64
+msgid "`--gothic-font <PATH>` (+`--gothic-font-index`)"
+msgstr "`--gothic-font <PATH>` (with `--gothic-font-index`)"
+
+#: src/usage/cli/reference.md:64
+msgid "`font-family: sans-serif`の実体"
+msgstr "The font behind `font-family: sans-serif`"
+
+#: src/usage/cli/reference.md:65
+msgid "`--serif-font <PATH>` (+`--serif-font-index`)"
+msgstr "`--serif-font <PATH>` (with `--serif-font-index`)"
+
+#: src/usage/cli/reference.md:65
+msgid "`font-family: serif`の実体"
+msgstr "The font behind `font-family: serif`"
+
+#: src/usage/cli/reference.md:66
+msgid "`--mono-font <PATH>` (+`--mono-font-index`)"
+msgstr "`--mono-font <PATH>` (with `--mono-font-index`)"
+
+#: src/usage/cli/reference.md:66
+msgid "`font-family: monospace`の実体"
+msgstr "The font behind `font-family: monospace`"
+
+#: src/usage/cli/reference.md:68
+msgid ""
+"フォントの解決順は「`--font` → `@font-face` → `font-family`名でのシステム探"
+"索」。 それでも1つも見つからない場合だけ、システムの`sans-serif`候補が既定"
+"フォントになります。"
+msgstr "Fonts are resolved in the order `--font`, then `@font-face`, then a system search by `font-family` name. Only if none of those finds anything does a system sans-serif candidate become the default font."
+
+#: src/usage/cli/reference.md:71
+msgid ""
+"`--font`を指定しないと出力が実行環境のフォントに依存します。 サーバ運用やCIで"
+"出力を安定させたい場合は`--font`(または`@font-face`)を明示してください。 詳し"
+"くは[フォント](../../supports/fonts.md)を参照。"
+msgstr "Without `--font`, the output depends on the fonts of the machine it runs on. To keep output stable on a server or in CI, name the fonts with `--font` or `@font-face`. See [Fonts](../../supports/fonts.md) for details."
+
+#: src/usage/cli/reference.md:75
+msgid "PDFの出力形式・メタデータ"
+msgstr "PDF output and metadata"
+
+#: src/usage/cli/reference.md:79
+msgid "`--title <TEXT>`"
+msgstr "`--title <TEXT>`"
+
+#: src/usage/cli/reference.md:79
+msgid "HTMLの`<title>`"
+msgstr "The `<title>` of the HTML"
+
+#: src/usage/cli/reference.md:79
+msgid "PDFの`/Title`"
+msgstr "The `/Title` of the PDF"
+
+#: src/usage/cli/reference.md:80
+msgid "`--author` / `--subject` / `--keywords <TEXT>`"
+msgstr "`--author`, `--subject`, `--keywords <TEXT>`"
+
+#: src/usage/cli/reference.md:80
+msgid "Info辞書の各項目(sghtmltopdf独自)"
+msgstr "The matching entries of the Info dictionary; specific to sghtmltopdf"
+
+#: src/usage/cli/reference.md:81
+msgid "`-d`, `--dpi <DPI>`"
+msgstr "`-d`, `--dpi <DPI>`"
+
+#: src/usage/cli/reference.md:81
+msgid "96"
+msgstr "96"
+
+#: src/usage/cli/reference.md:81
+msgid "CSS pxを何dpiとして解釈するか。`72`にすると1px=1pt"
+msgstr "How many dpi a CSS px stands for. At `72`, 1px equals 1pt"
+
+#: src/usage/cli/reference.md:82
+msgid "`--zoom <FACTOR>`"
+msgstr "`--zoom <FACTOR>`"
+
+#: src/usage/cli/reference.md:82
+msgid "1.0"
+msgstr "1.0"
+
+#: src/usage/cli/reference.md:82
+msgid "拡大率。`--dpi`の係数に掛かる"
+msgstr "A scale factor, multiplied into the `--dpi` factor"
+
+#: src/usage/cli/reference.md:83
+msgid "`-g`, `--grayscale`"
+msgstr "`-g`, `--grayscale`"
+
+#: src/usage/cli/reference.md:83
+msgid "塗り・線をグレースケール化(sRGB相対輝度)"
+msgstr "Convert fills and strokes to greyscale, by sRGB relative luminance"
+
+#: src/usage/cli/reference.md:84 src/migration/wkhtmltopdf-options.md:51
+msgid "`--no-pdf-compression`"
+msgstr "`--no-pdf-compression`"
+
+#: src/usage/cli/reference.md:84
+msgid "PDFオブジェクトのFlate圧縮を止める(画像データは対象外)"
+msgstr "Turn off Flate compression of PDF objects; image data is unaffected"
+
+#: src/usage/cli/reference.md:86
+msgid "`/Producer`と`/CreationDate`は常に書かれます。"
+msgstr "`/Producer` and `/CreationDate` are always written."
+
+#: src/usage/cli/reference.md:88
+msgid "グレースケールの限界"
+msgstr "The limits of greyscale"
+
+#: src/usage/cli/reference.md:90
+msgid ""
+"JPEG(`/DCTDecode`のパススルー)とCMYK画像はデコーダを持たないため、変換されず"
+"カラーのまま残ります。"
+msgstr "JPEG images, which pass through as `/DCTDecode`, and CMYK images have no decoder here, so they stay in colour."
+
+#: src/usage/cli/reference.md:92
+msgid "コンテンツの挙動"
+msgstr "What gets drawn"
+
+#: src/usage/cli/reference.md:96
+msgid "`--no-images`"
+msgstr "`--no-images`"
+
+#: src/usage/cli/reference.md:96
+msgid "`<img>`とCSS`background-image`を読み込まない"
+msgstr "Do not load `<img>` or the CSS `background-image`"
+
+#: src/usage/cli/reference.md:97
+msgid "`--no-background`"
+msgstr "`--no-background`"
+
+#: src/usage/cli/reference.md:97
+msgid "要素の背景(色・画像)を描かない"
+msgstr "Do not paint element backgrounds, neither colour nor image"
+
+#: src/usage/cli/reference.md:98
+msgid "`--user-style-sheet <PATH>`"
+msgstr "`--user-style-sheet <PATH>`"
+
+#: src/usage/cli/reference.md:98
+msgid "ユーザーオリジンのCSS(複数指定可)。UAスタイルより強く、著者CSSより弱い"
+msgstr "CSS in the user origin; may be given more than once. Stronger than the UA stylesheet, weaker than the author's CSS"
+
+#: src/usage/cli/reference.md:99
+msgid "`--minimum-font-size <PX>`"
+msgstr "`--minimum-font-size <PX>`"
+
+#: src/usage/cli/reference.md:99
+msgid "算出`font-size`の下限"
+msgstr "A lower bound on the computed `font-size`"
+
+#: src/usage/cli/reference.md:100
+msgid "`--disable-external-links`"
+msgstr "`--disable-external-links`"
+
+#: src/usage/cli/reference.md:100
+msgid "外部リンク(http(s))のPDF注釈を作らない"
+msgstr "Do not create PDF annotations for external http(s) links"
+
+#: src/usage/cli/reference.md:101
+msgid "`--disable-internal-links`"
+msgstr "`--disable-internal-links`"
+
+#: src/usage/cli/reference.md:101
+msgid "内部リンク(`#id`)のPDF注釈を作らない"
+msgstr "Do not create PDF annotations for internal `#id` links"
+
+#: src/usage/cli/reference.md:102
+msgid "`--keep-relative-links`"
+msgstr "`--keep-relative-links`"
+
+#: src/usage/cli/reference.md:102
+msgid "相対URLの外部リンクを絶対化せずそのまま書く"
+msgstr "Write relative external links as they are, without making them absolute"
+
+#: src/usage/cli/reference.md:103
+msgid "`--load-media-error-handling <ignore\\|abort>`"
+msgstr "`--load-media-error-handling <ignore\\|abort>`"
+
+#: src/usage/cli/reference.md:103
+msgid "画像・CSS・フォントの取得失敗時の挙動(既定`ignore`)"
+msgstr "What to do when an image, stylesheet, or font cannot be fetched; `ignore` by default"
+
+#: src/usage/cli/reference.md:105
+msgid "ヘッダー/フッター"
+msgstr "Headers and footers"
+
+#: src/usage/cli/reference.md:107
+msgid ""
+"2つの方法があります。 同じ側に両方を指定した場合は`--header-html`が優先されま"
+"す。"
+msgstr "There are two ways to do this. If both are given for the same side, `--header-html` wins."
+
+#: src/usage/cli/reference.md:110
+msgid "1. テキストで指定する"
+msgstr "1. As text"
+
+#: src/usage/cli/reference.md:112
+msgid "`@page`のmargin boxへマップされます。"
+msgstr "These map onto the margin boxes of `@page`."
+
+#: src/usage/cli/reference.md:123
+msgid "`--header-left` / `--header-center` / `--header-right <TEXT>`"
+msgstr "`--header-left`, `--header-center`, `--header-right <TEXT>`"
+
+#: src/usage/cli/reference.md:123
+msgid "ヘッダーの3分割位置"
+msgstr "The three positions across the header"
+
+#: src/usage/cli/reference.md:124
+msgid "`--footer-left` / `--footer-center` / `--footer-right <TEXT>`"
+msgstr "`--footer-left`, `--footer-center`, `--footer-right <TEXT>`"
+
+#: src/usage/cli/reference.md:124
+msgid "フッターの3分割位置"
+msgstr "The three positions across the footer"
+
+#: src/usage/cli/reference.md:125 src/migration/wkhtmltopdf-options.md:129
+msgid "`--header-font-name` / `--header-font-size`"
+msgstr "`--header-font-name`, `--header-font-size`"
+
+#: src/usage/cli/reference.md:125
+msgid "ヘッダーのフォント(footerも同様)"
+msgstr "The header font; the footer has the same pair"
+
+#: src/usage/cli/reference.md:126
+msgid "`--header-line` / `--footer-line`"
+msgstr "`--header-line`, `--footer-line`"
+
+#: src/usage/cli/reference.md:126
+msgid "罫線を引く"
+msgstr "Draw a rule"
+
+#: src/usage/cli/reference.md:127
+msgid "`--header-spacing` / `--footer-spacing <MM>`"
+msgstr "`--header-spacing`, `--footer-spacing <MM>`"
+
+#: src/usage/cli/reference.md:127
+msgid "本文との間隔。その分だけマージンが増える"
+msgstr "The gap from the body text; the margin grows by that much"
+
+#: src/usage/cli/reference.md:128 src/migration/wkhtmltopdf-options.md:86
+msgid "`--default-header`"
+msgstr "`--default-header`"
+
+#: src/usage/cli/reference.md:128
+msgid "タイトルとページ番号の既定ヘッダー"
+msgstr "A default header with the title and the page number"
+
+#: src/usage/cli/reference.md:129
+msgid "`--replace <NAME=VALUE>`"
+msgstr "`--replace <NAME=VALUE>`"
+
+#: src/usage/cli/reference.md:129
+msgid "任意の`[NAME]`を値へ置換(複数指定可)"
+msgstr "Replace any `[NAME]` with a value; may be given more than once"
+
+#: src/usage/cli/reference.md:131
+msgid ""
+"プレースホルダは`[page]`(現在ページ)・`[topage]`(総ページ数)・`[frompage]`・"
+"`[title]`/`[doctitle]`・`[date]`・`[time]`、および`--replace`で定義した名前で"
+"す。"
+msgstr "The placeholders are `[page]` for the current page, `[topage]` for the total page count, `[frompage]`, `[title]` and `[doctitle]`, `[date]`, `[time]`, and any name you define with `--replace`."
+
+#: src/usage/cli/reference.md:133
+msgid ""
+"`[section]`/`[subsection]`と`[webpage]`/`[sitepage]`/`[sitepages]`は非対応で"
+"す。"
+msgstr "`[section]`, `[subsection]`, `[webpage]`, `[sitepage]`, and `[sitepages]` are not supported."
+
+#: src/usage/cli/reference.md:135
+msgid "2. HTMLで指定する"
+msgstr "2. As HTML"
+
+#: src/usage/cli/reference.md:141
+msgid ""
+"各ページの余白領域へ、別のHTMLをレンダリングして合成します。 プレースホルダは"
+"HTMLのテキストとして置換されます(JavaScriptは実行しません)。"
+msgstr "A separate HTML file is rendered into the margin area of every page. Placeholders are substituted in the HTML as text; JavaScript is not executed."
+
+#: src/usage/cli/reference.md:144
+msgid "余白に入りきらない分はクリップされます(マージンは自動で広がりません)"
+msgstr "Anything that does not fit in the margin is clipped; the margin does not grow to accommodate it"
+
+#: src/usage/cli/reference.md:145
+msgid ""
+"外部リソースを取得しません。使えるのはインラインの`<style>`・テキスト・枠線・"
+"背景色までで、`<img>`と外部CSSは非対応です"
+msgstr "No external resources are fetched. Inline `<style>`, text, borders, and background colours work; `<img>` and external CSS do not"
+
+#: src/usage/cli/reference.md:146
+msgid ""
+"ヘッダー/フッターHTML内の`@font-face`は読み込みません。そこでしか使わないフォ"
+"ントは`--font`で明示してください"
+msgstr "`@font-face` inside the header or footer HTML is not loaded. Name any font used only there with `--font`"
+
+#: src/usage/cli/reference.md:148 src/migration/wkhtmltopdf.md:43
+msgid "表紙と目次"
+msgstr "Cover page and table of contents"
+
+#: src/usage/cli/reference.md:151
+msgid "\"[page]\""
+msgstr "\"[page]\""
+
+#: src/usage/cli/reference.md:154
+msgid "書き出される順は 表紙 → 目次 → 本文 です。"
+msgstr "They are written in the order cover, table of contents, body."
+
+#: src/usage/cli/reference.md:158
+msgid "`--cover <PATH>`"
+msgstr "`--cover <PATH>`"
+
+#: src/usage/cli/reference.md:158
+msgid "表紙にするHTML。ページ番号に数えず、ヘッダー/フッターも出さない"
+msgstr "The HTML to use as the cover. It is not counted in the page numbers and gets no header or footer"
+
+#: src/usage/cli/reference.md:159 src/usage/cli/streaming.md:19
+msgid "`--toc`"
+msgstr "`--toc`"
+
+#: src/usage/cli/reference.md:159
+msgid "目次を本文の前に挿入する(ストリーミングモードでは使えない)"
+msgstr "Insert a table of contents before the body; not available in streaming mode"
+
+#: src/usage/cli/reference.md:160
+msgid "`--toc-header-text <TEXT>`"
+msgstr "`--toc-header-text <TEXT>`"
+
+#: src/usage/cli/reference.md:160
+msgid "`Table of Contents`"
+msgstr "`Table of Contents`"
+
+#: src/usage/cli/reference.md:160
+msgid "目次の`<h1>`"
+msgstr "The `<h1>` of the table of contents"
+
+#: src/usage/cli/reference.md:161
+msgid "`--toc-level-indentation <WIDTH>`"
+msgstr "`--toc-level-indentation <WIDTH>`"
+
+#: src/usage/cli/reference.md:161
+msgid "`1em`"
+msgstr "`1em`"
+
+#: src/usage/cli/reference.md:161
+msgid "階層1段ごとのインデント"
+msgstr "The indent added per level"
+
+#: src/usage/cli/reference.md:162
+msgid "`--toc-text-size-shrink <REAL>`"
+msgstr "`--toc-text-size-shrink <REAL>`"
+
+#: src/usage/cli/reference.md:162
+msgid "`0.8`"
+msgstr "`0.8`"
+
+#: src/usage/cli/reference.md:162
+msgid "階層1段ごとの文字サイズ比"
+msgstr "The text size ratio applied per level"
+
+#: src/usage/cli/reference.md:163 src/migration/wkhtmltopdf-options.md:147
+msgid "`--disable-dotted-lines`"
+msgstr "`--disable-dotted-lines`"
+
+#: src/usage/cli/reference.md:163
+msgid "(引く)"
+msgstr "(drawn)"
+
+#: src/usage/cli/reference.md:163
+msgid "項目の破線の下線を引かない"
+msgstr "Do not draw the dotted leader under each entry"
+
+#: src/usage/cli/reference.md:164 src/migration/wkhtmltopdf-options.md:148
+msgid "`--disable-toc-links`"
+msgstr "`--disable-toc-links`"
+
+#: src/usage/cli/reference.md:164
+msgid "(張る)"
+msgstr "(linked)"
+
+#: src/usage/cli/reference.md:164
+msgid "目次から見出しへのリンクを張らない"
+msgstr "Do not link the entries to their headings"
+
+#: src/usage/cli/reference.md:165
+msgid "`--enable-toc-back-links`"
+msgstr "`--enable-toc-back-links`"
+
+#: src/usage/cli/reference.md:165
+msgid "(張らない)"
+msgstr "(not linked)"
+
+#: src/usage/cli/reference.md:165
+msgid "見出しから目次へ戻るリンクを張る"
+msgstr "Link each heading back to the table of contents"
+
+#: src/usage/cli/reference.md:166
+msgid "`--page-offset <N>`"
+msgstr "`--page-offset <N>`"
+
+#: src/usage/cli/reference.md:166 src/usage/cli/reference.md:191
+msgid "0"
+msgstr "0"
+
+#: src/usage/cli/reference.md:166
+msgid "ページ番号の起点をずらす"
+msgstr "Shift where the page numbering starts"
+
+#: src/usage/cli/reference.md:168
+msgid ""
+"目次のHTML構造と既定スタイルはwkhtmltopdfの既定TOC XSLの出力に合わせてありま"
+"す(階層は入れ子の`<ul>`、各項目は`<div><a>見出し</a><span>ページ番号</span></"
+"div>`)。 見た目を変えたい場合は`--user-style-sheet`でCSSを当ててください(XSLT"
+"は非対応)。"
+msgstr "The HTML structure and default styling of the table of contents follow what wkhtmltopdf's default TOC XSL produces: nested `<ul>` for the levels, and `<div><a>heading</a><span>page number</span></div>` for each entry. To change how it looks, apply CSS with `--user-style-sheet`; XSLT is not supported."
+
+#: src/usage/cli/reference.md:171
+msgid ""
+"見出しは`h1`〜`h6`から集めます。 `id`が無い見出しには自動で宛先名が振られま"
+"す。"
+msgstr "Headings are collected from `h1` through `h6`. A heading without an `id` is given a generated destination name."
+
+#: src/usage/cli/reference.md:174
+msgid "アクセス制御"
+msgstr "Access control"
+
+#: src/usage/cli/reference.md:176
+msgid "CLIの既定"
+msgstr "CLI default"
+
+#: src/usage/cli/reference.md:176
+msgid "サーバの既定"
+msgstr "Server default"
+
+#: src/usage/cli/reference.md:178
+msgid "`--enable-local-file-access` / `--disable-local-file-access`"
+msgstr "`--enable-local-file-access`, `--disable-local-file-access`"
+
+#: src/usage/cli/reference.md:178
+msgid "許可"
+msgstr "Allowed"
+
+#: src/usage/cli/reference.md:178 src/usage/cli/reference.md:180
+msgid "禁止"
+msgstr "Denied"
+
+#: src/usage/cli/reference.md:179
+msgid "`--allow <PATH>`"
+msgstr "`--allow <PATH>`"
+
+#: src/usage/cli/reference.md:179
+msgid "制限なし"
+msgstr "No restriction"
+
+#: src/usage/cli/reference.md:180 src/migration/wkhtmltopdf-options.md:157
+msgid "`--allow-remote-assets`"
+msgstr "`--allow-remote-assets`"
+
+#: src/usage/cli/reference.md:182
+msgid ""
+"`--allow`を1つ以上指定すると、ローカル参照はそのディレクトリ配下だけに限定さ"
+"れます。 `<img src>`・外部CSS・`@font-face`のすべてに効きます。"
+msgstr "Given one or more `--allow` paths, local references are confined to those directories. This applies to `<img src>`, external CSS, and `@font-face` alike."
+
+#: src/usage/cli/reference.md:185
+msgid "ログとexit code"
+msgstr "Logging and exit codes"
+
+#: src/usage/cli/reference.md:187
+msgid ""
+"`--log-level <none|error|warn|info>`(既定`info`)、`-q`/`--quiet`(=`--log-"
+"level none`)。"
+msgstr "`--log-level <none|error|warn|info>`, `info` by default, and `-q` or `--quiet`, which is the same as `--log-level none`."
+
+#: src/usage/cli/reference.md:189
+msgid "code"
+msgstr "Code"
+
+#: src/usage/cli/reference.md:189 src/usage/ruby_rails.md:59
+#: src/usage/ruby_rails.md:164 src/migration/wkhtmltopdf-options.md:6
+msgid "意味"
+msgstr "Meaning"
+
+#: src/usage/cli/reference.md:191
+msgid "成功"
+msgstr "Success"
+
+#: src/usage/cli/reference.md:192
+msgid "1"
+msgstr "1"
+
+#: src/usage/cli/reference.md:192
+msgid "使用法エラー(不明なオプション、値の形式不正、非対応オプションの指定)"
+msgstr "Usage error: an unknown option, a malformed value, or an option that is not supported"
+
+#: src/usage/cli/reference.md:193
+msgid "2"
+msgstr "2"
+
+#: src/usage/cli/reference.md:193
+msgid ""
+"入力/リソースエラー(ファイルが無い、フォントが読めない、`abort`指定での取得失"
+"敗)"
+msgstr "Input or resource error: a missing file, a font that cannot be read, or a failed fetch under `abort`"
+
+#: src/usage/cli/reference.md:194
+msgid "3"
+msgstr "3"
+
+#: src/usage/cli/reference.md:194
+msgid "レンダリングエラー(ストリーミングモードの制約違反など)"
+msgstr "Rendering error, such as breaking one of the streaming mode restrictions"
+
+#: src/usage/cli/streaming.md:3
+msgid ""
+"`--streaming`を付けると、HTMLをチャンク単位で読みながら、ページが確定したそば"
+"からPDFを書き出して、そのページ分のメモリを手放します。"
+msgstr "With `--streaming`, the HTML is read in chunks, each page is written to the PDF as soon as its layout is final, and the memory that page used is released."
+
+#: src/usage/cli/streaming.md:9
+msgid ""
+"数万要素規模のHTMLで効果があります([メモリと処理時間](#メモリと処理時間))。 "
+"その代わり、文書全体を見ないと決まらないものが使えなくなります。"
+msgstr "It pays off for HTML with tens of thousands of elements (see [Memory and processing time](#memory-and-processing-time)). In exchange, anything that cannot be decided without seeing the whole document becomes unavailable."
+
+#: src/usage/cli/streaming.md:12
+msgid "使えないもの(エラーになる)"
+msgstr "Not available (these are errors)"
+
+#: src/usage/cli/streaming.md:14
+msgid "指定するとexit code 3で終了します。"
+msgstr "Passing any of these exits with code 3."
+
+#: src/usage/cli/streaming.md:16
+msgid "使えないもの"
+msgstr "Not available"
+
+#: src/usage/cli/streaming.md:16
+msgid "理由"
+msgstr "Why"
+
+#: src/usage/cli/streaming.md:18
+msgid "`counter(pages)` / ヘッダー・フッターの`[topage]`"
+msgstr "`counter(pages)`, and `[topage]` in headers and footers"
+
+#: src/usage/cli/streaming.md:18
+msgid "総ページ数は1パスでは決まらない"
+msgstr "The total page count is not known in a single pass"
+
+#: src/usage/cli/streaming.md:19
+msgid "同上(目次には本文のページ番号が要る)"
+msgstr "Same reason; a table of contents needs the page numbers of the body"
+
+#: src/usage/cli/streaming.md:20
+msgid "`<html>`/`<body>`自身の背景色・枠線"
+msgstr "A background colour or border on `<html>` or `<body>` itself"
+
+#: src/usage/cli/streaming.md:20
+msgid "複数ページにまたがる装飾の再現が必要になる"
+msgstr "That decoration would have to be reproduced across every page"
+
+#: src/usage/cli/streaming.md:21
+msgid "`<body>`より後の`<style>` / `<link rel=\"stylesheet\">`"
+msgstr "`<style>` or `<link rel=\"stylesheet\">` after `<body>`"
+
+#: src/usage/cli/streaming.md:21
+msgid "既に書き出したページへ遡って適用できない"
+msgstr "It cannot be applied retroactively to pages that are already written"
+
+#: src/usage/cli/streaming.md:23
+msgid "警告のうえ続行するもの"
+msgstr "Warned about, but processing continues"
+
+#: src/usage/cli/streaming.md:25
+msgid "結果が変わるため、黙って進めずに警告を出します。"
+msgstr "These change the result, so a warning is printed rather than passing over them silently."
+
+#: src/usage/cli/streaming.md:27
+msgid "制約"
+msgstr "Limitation"
+
+#: src/usage/cli/streaming.md:27 src/supports/fonts.md:90
+msgid "挙動"
+msgstr "Behaviour"
+
+#: src/usage/cli/streaming.md:29
+msgid "`font-family`名からのシステムフォント自動探索"
+msgstr "Finding a system font from a `font-family` name"
+
+#: src/usage/cli/streaming.md:29
+msgid ""
+"既定のフォントで描画する。`--font`/`--gothic-font`/`--serif-font`/`--mono-"
+"font`か`@font-face`で明示すれば解決できる"
+msgstr "The default font is used instead. Naming the font with `--font`, `--gothic-font`, `--serif-font`, `--mono-font`, or `@font-face` resolves it."
+
+#: src/usage/cli/streaming.md:30
+msgid "文字を描画できるフォントのシステム探索"
+msgstr "Searching the system for a font that can draw a given character"
+
+#: src/usage/cli/streaming.md:30
+msgid ""
+"文書全体を先読みできないため行わない。フォントを1つも指定しなかった場合だけ、"
+"CJK用のフォントを1本先回りで読み込む([フォント](../../supports/fonts.md#スト"
+"リーミングモードでの注意))。描画できない文字が出たら文字ごとに警告する"
+msgstr "Not done, because the whole document cannot be read ahead. Only when no font at all is given, one CJK font is loaded up front (see [Fonts](../../supports/fonts.md#ストリーミングモードでの注意)). Characters that cannot be drawn are reported one by one."
+
+#: src/usage/cli/streaming.md:31
+msgid ""
+"`:last-child`・`:nth-last-child`・`:last-of-type`・`:nth-last-of-type`・`:"
+"only-child`・`:only-of-type`・`:empty`"
+msgstr "`:last-child`, `:nth-last-child`, `:last-of-type`, `:nth-last-of-type`, `:only-child`, `:only-of-type`, and `:empty`"
+
+#: src/usage/cli/streaming.md:31
+msgid "常に非マッチになる(親の子リストが完結するまで判定できないため)"
+msgstr "Never match, because they cannot be decided until the parent's child list is complete"
+
+#: src/usage/cli/streaming.md:33
+msgid ""
+"後方参照のセレクタが効かないのは、要素を読んだ時点でスタイルを確定させる必要"
+"があるためです。 「最後の行だけ罫線を消す」といった指定は、クラスを振って`."
+"last { … }`のように書き換えてください。"
+msgstr "Selectors that look backwards do not work because the style has to be settled the moment the element is read. Rewrite rules such as \"remove the rule on the last row only\" by adding a class and writing `.last { … }` instead."
+
+#: src/usage/cli/streaming.md:36
+msgid "使えるもの"
+msgstr "Still available"
+
+#: src/usage/cli/streaming.md:38
+msgid "以下はストリーミングモードでも通常どおり使えます。"
+msgstr "The following work exactly as they do in the normal mode."
+
+#: src/usage/cli/streaming.md:40
+msgid "`--cover`(表紙)"
+msgstr "`--cover`, the cover page"
+
+#: src/usage/cli/streaming.md:41
+msgid "ヘッダー/フッター(`[page]`まで。`[topage]`は不可)"
+msgstr "Headers and footers, as far as `[page]`; `[topage]` is not available"
+
+#: src/usage/cli/streaming.md:42
+msgid "ページ設定・PDFメタデータ"
+msgstr "Page setup and PDF metadata"
+
+#: src/usage/cli/streaming.md:43
+msgid "`--grayscale` / `--dpi` / `--zoom`"
+msgstr "`--grayscale`, `--dpi`, and `--zoom`"
+
+#: src/usage/cli/streaming.md:44
+msgid "コンテンツ挙動のオプション(`--no-images`等)"
+msgstr "The options that change what is drawn, such as `--no-images`"
+
+#: src/usage/cli/streaming.md:45
+msgid ""
+"`break-before`/`break-after`/`break-inside`・`orphans`/`widows`などの[ページ"
+"分割](../../supports/pagination.md)"
+msgstr "[Page breaks](../../supports/pagination.md), including `break-before`, `break-after`, `break-inside`, `orphans`, and `widows`"
+
+#: src/usage/cli/streaming.md:47
+msgid "メモリと処理時間"
+msgstr "Memory and processing time"
+
+#: src/usage/cli/streaming.md:49
+msgid ""
+"同じHTMLを両モードで変換した実測値です。 各セルは「ピークメモリ / 処理時間」"
+"を表します。"
+msgstr "These are measured figures for converting the same HTML in both modes. Each cell shows peak memory and processing time."
+
+#: src/usage/cli/streaming.md:52
+msgid "HTMLサイズ"
+msgstr "HTML size"
+
+#: src/usage/cli/streaming.md:52
+msgid "通常モード"
+msgstr "Normal mode"
+
+#: src/usage/cli/streaming.md:54
+msgid "1,000"
+msgstr "1,000"
+
+#: src/usage/cli/streaming.md:54
+msgid "46KB"
+msgstr "46KB"
+
+#: src/usage/cli/streaming.md:54
+msgid "11MB / 0.04秒"
+msgstr "11MB / 0.04s"
+
+#: src/usage/cli/streaming.md:54
+msgid "9MB / 0.05秒"
+msgstr "9MB / 0.05s"
+
+#: src/usage/cli/streaming.md:55
+msgid "233KB"
+msgstr "233KB"
+
+#: src/usage/cli/streaming.md:55
+msgid "27MB / 0.19秒"
+msgstr "27MB / 0.19s"
+
+#: src/usage/cli/streaming.md:55
+msgid "10MB / 0.22秒"
+msgstr "10MB / 0.22s"
+
+#: src/usage/cli/streaming.md:56
+msgid "946KB"
+msgstr "946KB"
+
+#: src/usage/cli/streaming.md:56
+msgid "81MB / 0.82秒"
+msgstr "81MB / 0.82s"
+
+#: src/usage/cli/streaming.md:56
+msgid "15MB / 0.88秒"
+msgstr "15MB / 0.88s"
+
+#: src/usage/cli/streaming.md:57
+msgid "2.8MB"
+msgstr "2.8MB"
+
+#: src/usage/cli/streaming.md:57
+msgid "228MB / 2.53秒"
+msgstr "228MB / 2.53s"
+
+#: src/usage/cli/streaming.md:57
+msgid "28MB / 2.51秒"
+msgstr "28MB / 2.51s"
+
+#: src/usage/cli/streaming.md:59
+msgid ""
+"通常モードのピークメモリは文書サイズにほぼ比例して増えますが、`--streaming`で"
+"はほとんど増えません。 60,000要素では約8分の1になります。 `--streaming`でもわ"
+"ずかに増えるのは、PDFの相互参照表(全オブジェクトの位置)と使用グリフの集計を最"
+"後まで保持するためです。"
+msgstr "Peak memory in the normal mode grows roughly in proportion to the document, while with `--streaming` it barely grows at all; at 60,000 elements it is about one eighth. The slight growth that remains comes from the PDF cross-reference table, which holds the position of every object, and from the tally of glyphs in use, both of which are kept until the end."
+
+#: src/usage/cli/streaming.md:63
+msgid ""
+"処理時間は両モードでほぼ変わりません。 この計測での差は数パーセントで、実行ご"
+"とのばらつきと同程度でした。 メモリを大きく減らす代わりに時間を損なう、という"
+"関係にはなっていません。"
+msgstr "Processing time is much the same in both modes. The difference here was a few per cent, on the order of the variation between runs. You are not trading time away for the large drop in memory."
+
+#: src/usage/cli/streaming.md:67
+msgid "測定条件は次のとおりです。"
+msgstr "The measurements were taken as follows."
+
+#: src/usage/cli/streaming.md:69
+msgid ""
+"sghtmltopdf 0.1.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / "
+"WSL2(Linux 5.15)"
+msgstr "A release build of sghtmltopdf 0.1.0, on an Intel Core Ultra 7 258V with 16GB of memory, under WSL2 (Linux 5.15)"
+
+#: src/usage/cli/streaming.md:70
+msgid "高さ60pxの`<p>`を要素数ぶん並べただけのHTML。フォントは`--font`で明示"
+msgstr "HTML consisting of nothing but the given number of `<p>` elements, each 60px tall, with the font named through `--font`"
+
+#: src/usage/cli/streaming.md:71
+msgid ""
+"ピークメモリはプロセスの最大常駐セットサイズ(RSS)。2回実行して良いほうの値"
+msgstr "Peak memory is the maximum resident set size (RSS) of the process, taking the better of two runs"
+
+#: src/usage/cli/streaming.md:73
+msgid "いつ使うか"
+msgstr "When to use it"
+
+#: src/usage/cli/streaming.md:75
+msgid "数千ページ規模の帳票を1本のHTMLから出す"
+msgstr "Producing a statement of several thousand pages from a single HTML file"
+
+#: src/usage/cli/streaming.md:76
+msgid "メモリの上限が厳しい環境(コンテナのメモリ制限、サーバレス)で動かす"
+msgstr "Running where memory is tightly capped, such as under a container limit or on a serverless platform"
+
+#: src/usage/cli/streaming.md:78
+msgid ""
+"逆に、数十ページの請求書のような文書では通常モードで十分です。 制約を負ってま"
+"で使うものではありません。"
+msgstr "For a document of a few dozen pages, such as an invoice, the normal mode is fine. There is no reason to take on the limitations."
+
+#: src/usage/cli/streaming.md:81
+msgid ""
+"[サーバモード](../server.md)では、クエリに`streaming`を付けると同じモードにな"
+"ります。 `?stream=1`(chunkedで返す)と組み合わせると、入力・レンダリング・出力"
+"のすべてが逐次処理になります。"
+msgstr "In [server mode](../server.md) the same mode is selected by adding `streaming` to the query. Combined with `?stream=1`, which returns the body chunked, input, rendering, and output all become incremental."
+
+#: src/usage/cli/streaming.md:85
+msgid "'http://127.0.0.1:8080/pdf?stream=1&streaming'"
+msgstr "'http://127.0.0.1:8080/pdf?stream=1&streaming'"
+
+#: src/usage/server.md:1 src/migration/wkhtmltopdf-options.md:162
+msgid "HTTPサーバモード"
+msgstr "HTTP server mode"
+
+#: src/usage/server.md:3
+msgid ""
+"常駐させて、HTTP経由で変換を受け付けるモードです。 アプリケーションからプロセ"
+"スを起動する必要がなくなり、負荷分散もロードバランサに任せられます。"
+msgstr "In this mode the binary stays resident and accepts conversions over HTTP. Your application no longer has to start a process, and load balancing can be left to a load balancer."
+
+#: src/usage/server.md:7
+msgid "# → 標準出力に `listening on 127.0.0.1:8080` が出る\n"
+msgstr "# → `listening on 127.0.0.1:8080` appears on standard output\n"
+
+#: src/usage/server.md:17
+msgid ""
+"常駐させるなら、日本語フォントを同梱した[Dockerイメージ](../getting-started/"
+"docker.md)が手軽です(引数なしでこのサーバとして起動します)。"
+msgstr "For a long-lived process, the [Docker image](../getting-started/docker.md) with Japanese fonts bundled is the easy path; with no arguments it starts as this server."
+
+#: src/usage/server.md:23
+msgid "起動オプション"
+msgstr "Startup options"
+
+#: src/usage/server.md:27
+msgid "`--listen <ADDR:PORT>`"
+msgstr "`--listen <ADDR:PORT>`"
+
+#: src/usage/server.md:27
+msgid "`127.0.0.1:8080`"
+msgstr "`127.0.0.1:8080`"
+
+#: src/usage/server.md:27
+msgid "待ち受けアドレス。`:0`で空きポートを自動割り当て"
+msgstr "The address to listen on. `:0` picks a free port automatically"
+
+#: src/usage/server.md:28
+msgid "`--workers <N>`"
+msgstr "`--workers <N>`"
+
+#: src/usage/server.md:28
+msgid "CPUコア数"
+msgstr "CPU cores"
+
+#: src/usage/server.md:28
+msgid "同時に変換するワーカースレッド数"
+msgstr "How many worker threads convert at the same time"
+
+#: src/usage/server.md:29
+msgid "`--max-queue <N>`"
+msgstr "`--max-queue <N>`"
+
+#: src/usage/server.md:29
+msgid "ワーカー数×4"
+msgstr "Workers × 4"
+
+#: src/usage/server.md:29
+msgid "受理待ちの上限。超えると503"
+msgstr "How many requests may wait to be accepted; beyond that, 503"
+
+#: src/usage/server.md:30
+msgid "`--max-body-size <BYTES>`"
+msgstr "`--max-body-size <BYTES>`"
+
+#: src/usage/server.md:30
+msgid "10485760 (10MiB)"
+msgstr "10485760 (10MiB)"
+
+#: src/usage/server.md:30
+msgid "リクエストボディの上限"
+msgstr "The maximum request body size"
+
+#: src/usage/server.md:31
+msgid "`--timeout <SECS>`"
+msgstr "`--timeout <SECS>`"
+
+#: src/usage/server.md:31
+msgid "30"
+msgstr "30"
+
+#: src/usage/server.md:31
+msgid "キュー待ちの上限秒数(超えると504)"
+msgstr "How long a request may wait in the queue, in seconds; beyond that, 504"
+
+#: src/usage/server.md:32
+msgid "`--font <PATH>` ほかフォント指定"
+msgstr "`--font <PATH>` and the other font options"
+
+#: src/usage/server.md:32
+msgid "リクエストからは変更できない"
+msgstr "Cannot be changed per request"
+
+#: src/usage/server.md:33
+msgid ""
+"`--enable-local-file-access` / `--allow <PATH>` / `--allow-remote-assets`"
+msgstr "`--enable-local-file-access`, `--allow <PATH>`, `--allow-remote-assets`"
+
+#: src/usage/server.md:33
+msgid "すべて禁止"
+msgstr "All denied"
+
+#: src/usage/server.md:33
+msgid "明示的に許可する場合のみ"
+msgstr "Only when you allow them explicitly"
+
+#: src/usage/server.md:38
+msgid "エンドポイント"
+msgstr "Endpoints"
+
+#: src/usage/server.md:40
+msgid "メソッド・パス"
+msgstr "Method and path"
+
+#: src/usage/server.md:42
+msgid "`POST /pdf`"
+msgstr "`POST /pdf`"
+
+#: src/usage/server.md:42
+msgid "ボディのHTMLをPDFへ変換して返す(`application/pdf`)"
+msgstr "Convert the HTML in the body to PDF and return it as `application/pdf`"
+
+#: src/usage/server.md:43
+msgid "`POST /pdf?stream=1`"
+msgstr "`POST /pdf?stream=1`"
+
+#: src/usage/server.md:43
+msgid "同上。chunked transfer encodingでページが確定したそばから流す"
+msgstr "The same, but sent with chunked transfer encoding as each page becomes final"
+
+#: src/usage/server.md:44
+msgid "`GET /healthz`"
+msgstr "`GET /healthz`"
+
+#: src/usage/server.md:44
+msgid "`ok`"
+msgstr "`ok`"
+
+#: src/usage/server.md:45
+msgid "`GET /version`"
+msgstr "`GET /version`"
+
+#: src/usage/server.md:45
+msgid "`sghtmltopdf <version>`"
+msgstr "`sghtmltopdf <version>`"
+
+#: src/usage/server.md:47
+msgid "クエリパラメータ"
+msgstr "Query parameters"
+
+#: src/usage/server.md:49
+msgid ""
+"CLIのロングオプションから`--`を取った名前がそのまま使えます。 値の解釈もCLIと"
+"同一です(同じパーサへ通しているため)。"
+msgstr "Take any long CLI option, drop the `--`, and use it as a query key. Values are interpreted exactly as on the CLI, because they go through the same parser."
+
+#: src/usage/server.md:60
+msgid "値はパーセントエンコードできます(`%XX`と`+`)。"
+msgstr "Values may be percent encoded, with `%XX` and `+`."
+
+#: src/usage/server.md:62
+msgid ""
+"各オプションの意味は[CLIリファレンス](./cli/reference.md)を参照してください。"
+msgstr "See the [CLI reference](./cli/reference.md) for what each option means."
+
+#: src/usage/server.md:64
+msgid "リクエストからは指定できないオプション"
+msgstr "Options that cannot be set per request"
+
+#: src/usage/server.md:66
+msgid ""
+"以下を指定すると`400`を返します。 ローカルパスを取るもの・出力先・アクセス制"
+"御は サーバ起動時にだけ設定できます。"
+msgstr "Passing any of these returns `400`. Options that take a local path, the output destination, and the access controls can only be set when the server starts."
+
+#: src/usage/server.md:77
+msgid "ステータスコード"
+msgstr "Status codes"
+
+#: src/usage/server.md:79
+msgid "コード"
+msgstr "Code"
+
+#: src/usage/server.md:79 src/appendix/limitations.md:26
+msgid "状況"
+msgstr "When"
+
+#: src/usage/server.md:81
+msgid "200"
+msgstr "200"
+
+#: src/usage/server.md:81
+msgid "成功(`Content-Type: application/pdf`)"
+msgstr "Success, with `Content-Type: application/pdf`"
+
+#: src/usage/server.md:82
+msgid "400"
+msgstr "400"
+
+#: src/usage/server.md:82
+msgid "未知/禁止のクエリキー、値の形式不正、ボディが空"
+msgstr "An unknown or forbidden query key, a malformed value, or an empty body"
+
+#: src/usage/server.md:83
+msgid "404"
+msgstr "404"
+
+#: src/usage/server.md:83
+msgid "未知のパス"
+msgstr "An unknown path"
+
+#: src/usage/server.md:84
+msgid "405"
+msgstr "405"
+
+#: src/usage/server.md:84
+msgid "使えないメソッド"
+msgstr "A method that is not allowed"
+
+#: src/usage/server.md:85
+msgid "413"
+msgstr "413"
+
+#: src/usage/server.md:85
+msgid "ボディが`--max-body-size`超過"
+msgstr "The body is larger than `--max-body-size`"
+
+#: src/usage/server.md:86
+msgid "500"
+msgstr "500"
+
+#: src/usage/server.md:86
+msgid "レンダリング失敗"
+msgstr "Rendering failed"
+
+#: src/usage/server.md:87
+msgid "503"
+msgstr "503"
+
+#: src/usage/server.md:87
+msgid "キュー溢れ(`--max-queue`超過)"
+msgstr "The queue is full, beyond `--max-queue`"
+
+#: src/usage/server.md:88
+msgid "504"
+msgstr "504"
+
+#: src/usage/server.md:88
+msgid "キュー待ちが`--timeout`超過"
+msgstr "The request waited in the queue longer than `--timeout`"
+
+#: src/usage/server.md:90
+msgid "ストリーミング"
+msgstr "Streaming"
+
+#: src/usage/server.md:92
+msgid "入力: リクエストボディは読み切らずに、64KiBずつエンジンへ流します。"
+msgstr "Input: the request body is not read to the end first; it is fed to the engine 64KiB at a time."
+
+#: src/usage/server.md:93
+msgid "大きなHTMLを丸ごとメモリに載せません"
+msgstr "A large HTML file never sits in memory as a whole"
+
+#: src/usage/server.md:94
+msgid ""
+"出力: 既定はバッファ返却(`Content-Length`付き)。`?stream=1`を付けるとchunked "
+"transfer encodingで、ページが確定したそばから流します"
+msgstr "Output: by default the PDF is buffered and returned with a `Content-Length`. With `?stream=1` it is sent with chunked transfer encoding as each page becomes final"
+
+#: src/usage/server.md:97
+msgid "'http://127.0.0.1:8080/pdf?stream=1'"
+msgstr "'http://127.0.0.1:8080/pdf?stream=1'"
+
+#: src/usage/server.md:100
+msgid ""
+"エンジン側の[ストリーミングモード](./cli/streaming.md)(`?streaming`)と併用す"
+"ると、入力・レンダリング・出力のすべてが逐次処理になります。"
+msgstr "Combined with the engine's own [streaming mode](./cli/streaming.md), selected with `?streaming`, input, rendering, and output all become incremental."
+
+#: src/usage/server.md:102
+msgid "既知の限界"
+msgstr "Known limitations"
+
+#: src/usage/server.md:104
+msgid ""
+"`--timeout`はキュー待ち時間にしか効きません。変換処理は同期でキャンセル点を持"
+"たないため、走り始めた変換は打ち切れません"
+msgstr "`--timeout` applies only to the time spent in the queue. Conversion is synchronous and has no cancellation points, so once it starts it cannot be stopped"
+
+#: src/usage/server.md:105
+msgid ""
+"`?stream=1`のとき、ヘッダ送信後に失敗してもステータスは200のままになります(パ"
+"イプが閉じ、クライアントには不完全なPDFが届きます)。クエリの不正・空ボディ・"
+"サイズ超過はヘッダ送信前に検出するので400/413で返ります"
+msgstr "With `?stream=1`, a failure after the headers are sent leaves the status at 200; the pipe closes and the client receives an incomplete PDF. A bad query, an empty body, and an oversized body are all detected before the headers go out, so those still return 400 or 413"
+
+#: src/usage/server.md:106
+msgid ""
+"`?stream=1`のときは入力を先に読み切ります(HTTPライブラリの制約で、ボディ読み"
+"取りと応答が排他のため)。入力と出力のストリーミングは同時には使えません"
+msgstr "With `?stream=1` the input is read to the end first, because the HTTP library treats reading the body and writing the response as mutually exclusive. Streaming the input and the output at the same time is not possible"
+
+#: src/usage/server.md:108
+msgid "Railsから使う"
+msgstr "Using it from Rails"
+
+#: src/usage/server.md:110
+msgid ""
+"Ruby gemには、変換をこのサーバへ委譲する`server_url`設定があります。 [Ruby / "
+"Rails](./ruby_rails.md#サーバへ委譲する)を参照してください。"
+msgstr "The Ruby gem has a `server_url` setting that delegates conversion to this server. See [Ruby / Rails](./ruby_rails.md#サーバへ委譲する)."
+
+#: src/usage/ruby_rails.md:3
+msgid ""
+"gem `sghtmltopdf`の使い方です。 エンジン本体はRust製で、ネイティブ拡張"
+"(magnus + rb-sys)経由で同じプロセスの中で動きます。 外部プロセスの起動も一時"
+"ファイルの受け渡しもありません。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:7
+msgid ""
+"変換オプションはCLIとまったく同じものが使えるので、オプションの意味は[CLIリ"
+"ファレンス](../cli/reference.md)を参照してください。 このページはRuby側の作法"
+"(命名規則・Rails連携・エラー・サーバ委譲)を扱います。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:10
+msgid ""
+"wicked_pdfから移ってくる場合は[wicked_pdfからの移行](../migration/wicked-pdf."
+"md)もあわせて読んでください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:19 src/supports/pagination.md:124
+msgid "Note"
+msgstr ""
+
+#: src/usage/ruby_rails.md:21
+msgid ""
+"まだ0.1.0をリリースしていないため、現時点ではrubygems.orgから取得できませ"
+"ん。 試す場合はリポジトリを取得して`bindings/ruby`で`bundle install && "
+"bundle exec rake compile`してください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:24
+msgid ""
+"ビルド済み(precompiled)のgemを配布するため、Rustのツールチェインは不要です。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:26 src/supports/properties.md:20
+#: src/supports/properties.md:31 src/supports/properties.md:44
+#: src/supports/properties.md:61 src/supports/properties.md:81
+#: src/supports/properties.md:108 src/supports/properties.md:123
+#: src/supports/properties.md:141 src/supports/properties.md:150
+#: src/supports/properties.md:161 src/supports/properties.md:176
+#: src/supports/properties.md:211 src/supports/properties.md:227
+#: src/supports/selectors.md:15 src/supports/selectors.md:27
+#: src/supports/selectors.md:44 src/supports/selectors.md:55
+#: src/supports/selectors.md:74 src/supports/selectors.md:87
+#: src/supports/selectors.md:102
+msgid "対応"
+msgstr ""
+
+#: src/usage/ruby_rails.md:28
+msgid "プラットフォーム"
+msgstr ""
+
+#: src/usage/ruby_rails.md:28
+msgid "`x86_64-linux` / `aarch64-linux` / `arm64-darwin`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:29
+msgid "Ruby"
+msgstr ""
+
+#: src/usage/ruby_rails.md:29
+msgid "3.2以上"
+msgstr ""
+
+#: src/usage/ruby_rails.md:31
+msgid ""
+"Linuxはglibc向け(Debian/Ubuntu系)のみで、musl(Alpine)・Windows・Intel Macは対"
+"象外です。 これらの環境ではインストールできません。 [サーバへ委譲する](#サー"
+"バへ委譲する)という手があります。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:38
+msgid "\"<h1>請求書</h1>\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:38
+msgid "# → PDFのバイト列(String)\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:39
+msgid "\"invoice.pdf\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:39
+msgid "# → ファイルへ書き出す(nil)\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:42
+msgid "返り値のエンコーディングはASCII-8BIT(バイナリ)です"
+msgstr ""
+
+#: src/usage/ruby_rails.md:43
+msgid ""
+"入力のHTMLはバイト列としてそのまま渡ります。文字コードの判定はエンジン側で "
+"BOM > `encoding:` > `<meta charset>` > UTF-8の順に行われるので、UTF-8のString"
+"ならそのまま渡せます。 Shift_JISなどを渡す場合は`encoding: \"Shift_JIS\"`を明"
+"示してください"
+msgstr ""
+
+#: src/usage/ruby_rails.md:46
+msgid ""
+"`render_to_file`は一時ファイルへ書いてからrenameするので、途中で失敗しても壊"
+"れたPDFが残りません"
+msgstr ""
+
+#: src/usage/ruby_rails.md:47
+msgid ""
+"重い処理(レイアウト・PDFエンコード)の間はGVLを解放するので、Pumaの他のスレッ"
+"ドは止まりません。複数スレッドから同時に呼べます"
+msgstr ""
+
+#: src/usage/ruby_rails.md:51
+msgid ""
+"CLIのロングオプションから`--`を取り、`-`を`_`にした名前をキーにします。 値の"
+"解釈もCLIと同一です(同じパーサへ通しているため)。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:55 src/usage/ruby_rails.md:92
+#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:191
+#: src/migration/wicked-pdf.md:34
+msgid "\"A4\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:55 src/usage/ruby_rails.md:141
+#: src/migration/wicked-pdf.md:35
+msgid "\"20mm\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:55
+msgid "#                        --page-size A4   --margin-top 20mm   --toc\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:59
+msgid "値の書き方"
+msgstr ""
+
+#: src/usage/ruby_rails.md:61 src/migration/wicked-pdf.md:56
+msgid "`page_size: \"A4\"`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:61
+msgid "値を取るオプション"
+msgstr ""
+
+#: src/usage/ruby_rails.md:62 src/migration/wicked-pdf.md:61
+msgid "`grayscale: true`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:62
+msgid "値を取らないフラグ"
+msgstr ""
+
+#: src/usage/ruby_rails.md:63
+msgid "`grayscale: false` / `nil`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:63
+msgid "指定なしと同じ"
+msgstr ""
+
+#: src/usage/ruby_rails.md:64
+msgid "`allow: [\"/a\", \"/b\"]`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:64
+msgid "同じオプションの繰り返し"
+msgstr ""
+
+#: src/usage/ruby_rails.md:65
+msgid "`font: {path: \"a.ttc\", index: 1}`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:65
+msgid "`--font a.ttc --font-index 1`(順序も保つ)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:67
+msgid ""
+"キー名の妥当性はRuby側では検査しません。 オプションの定義をRust側の1か所に集"
+"約しているため、未知のキーはエンジン側が`UsageError`として報告します。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:70
+msgid ""
+"wicked_pdfのような入れ子のHash(`margin: {top: 10}`)は受け付けません。 "
+"wicked_pdf/wkhtmltopdfの数値はmm、こちらのCLIはpx解釈なので、機械的に平坦化す"
+"ると黙って別の余白になるためです。 `margin_top: \"10mm\"`と書いてください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:74
+msgid "Ruby側だけのオプション"
+msgstr ""
+
+#: src/usage/ruby_rails.md:76
+msgid "CLIには無い、gemが解釈するキーです。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:78 src/usage/ruby_rails.md:148
+#: src/usage/ruby_rails.md:164
+msgid "キー"
+msgstr ""
+
+#: src/usage/ruby_rails.md:80
+msgid "`server_url`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:80
+msgid "なし"
+msgstr ""
+
+#: src/usage/ruby_rails.md:80
+msgid "指定するとHTTPサーバモードへ委譲する"
+msgstr ""
+
+#: src/usage/ruby_rails.md:81
+msgid "`server_open_timeout`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:81
+msgid "5"
+msgstr ""
+
+#: src/usage/ruby_rails.md:81
+msgid "接続のタイムアウト(秒)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:82
+msgid "`server_read_timeout`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:82
+msgid "120"
+msgstr ""
+
+#: src/usage/ruby_rails.md:82
+msgid "応答のタイムアウト(秒)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:83
+msgid "`chunk_size`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:83
+msgid "65536"
+msgstr ""
+
+#: src/usage/ruby_rails.md:83
+msgid "ブロック付き`render`で1回に渡すバイト数の目安(ローカル変換のみ)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:85
+msgid ""
+"Railsのレンダラ(`render pdf:`)では、これに加えて`disposition`・`filename`・"
+"`status`・`show_as_html`を解釈します。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:87
+msgid "グローバル設定"
+msgstr ""
+
+#: src/usage/ruby_rails.md:90
+msgid "# config/initializers/sghtmltopdf.rb など\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:93 src/migration/wicked-pdf.md:36
+#: src/migration/wicked-pdf.md:132
+msgid "\"vendor/fonts/NotoSansJP-Regular.ttf\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:97
+msgid ""
+"マージ順はグローバル設定 → 呼び出し時の引数で、後者が勝ちます。 `Sghtmltopdf."
+"reset_config!`で空に戻せます(主にテスト用)。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:102
+msgid ""
+"指定しなければシステムのフォントが使われるため、出力が実行環境に依存します。 "
+"コンテナのフォント事情に左右されたくない場合は明示してください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:107
+msgid "\"/app/vendor/fonts/NotoSansJP-Regular.ttf\"  # sans-serif\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:108
+msgid "\"/app/vendor/fonts/NotoSerifJP-Regular.ttf\" # serif\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:109
+msgid "\"/app/vendor/fonts/NotoSansMono-Regular.ttf\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:113
+msgid ""
+"`font`系で渡すフォントは、後述の`allow`(ローカル参照の制限)の対象外です。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:115
+msgid "エラー"
+msgstr ""
+
+#: src/usage/ruby_rails.md:117
+msgid ""
+"すべて`Sghtmltopdf::Error < StandardError`を継承します。 メッセージはCLIと同"
+"じ文言です。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:120
+msgid "クラス"
+msgstr ""
+
+#: src/usage/ruby_rails.md:120
+msgid "起きるとき"
+msgstr ""
+
+#: src/usage/ruby_rails.md:122
+msgid "`Sghtmltopdf::UsageError`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:122
+msgid "オプションの誤り(未知のキー、値の形式、非対応オプション)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:123
+msgid "`Sghtmltopdf::InputError`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:123
+msgid "入力や出力ファイルの読み書きに失敗した"
+msgstr ""
+
+#: src/usage/ruby_rails.md:124
+msgid "`Sghtmltopdf::RenderError`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:124
+msgid "レンダリングに失敗した"
+msgstr ""
+
+#: src/usage/ruby_rails.md:125
+msgid "`Sghtmltopdf::ServerError`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:125
+msgid "サーバへ委譲したときの到達不能・過負荷"
+msgstr ""
+
+#: src/usage/ruby_rails.md:127
+msgid ""
+"画像やCSSの取得失敗は既定では無視され、警告を出して続行します"
+"(`load_media_error_handling: \"abort\"`で中断できます)。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:129
+msgid "Railsで使う"
+msgstr ""
+
+#: src/usage/ruby_rails.md:131
+msgid ""
+"Railsが読み込まれているときだけRailtieが読み込まれるので、素のRuby・Sinatraで"
+"の利用には影響しません。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:133
+msgid "レンダラ"
+msgstr ""
+
+#: src/usage/ruby_rails.md:138 src/migration/wicked-pdf.md:22
+#: src/migration/wicked-pdf.md:92
+msgid "\"invoice\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:138
+msgid "# ファイル名(.pdfは自動で付く)\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:139 src/usage/ruby_rails.md:257
+#: src/migration/wicked-pdf.md:22 src/migration/wicked-pdf.md:92
+msgid "\"invoices/show\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:175
+#: src/usage/ruby_rails.md:257 src/migration/wicked-pdf.md:22
+#: src/migration/wicked-pdf.md:114
+msgid "\"pdf\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:146
+msgid "オプションは3つに振り分けられます。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:148
+msgid "種類"
+msgstr ""
+
+#: src/usage/ruby_rails.md:150
+msgid "ビューの描画へ渡す"
+msgstr ""
+
+#: src/usage/ruby_rails.md:150
+msgid ""
+"`template` `partial` `inline` `file` `plain` `html` `body` `layout` `locals` "
+"`formats` `variants` `handlers` `prefixes` `object` `collection` `assigns` "
+"`action`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:151
+msgid "レスポンスの組み立て"
+msgstr ""
+
+#: src/usage/ruby_rails.md:151
+msgid "`disposition`(既定`inline`) `filename` `status`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:152
+msgid "デバッグ"
+msgstr ""
+
+#: src/usage/ruby_rails.md:152
+msgid "`show_as_html`(PDFにせずHTMLを返す)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:153
+msgid "上記以外すべて"
+msgstr ""
+
+#: src/usage/ruby_rails.md:153
+msgid "変換オプション"
+msgstr ""
+
+#: src/usage/ruby_rails.md:155
+msgid ""
+"`pdf:`の値が空ならアクション名がファイル名になります。 `filename:`があればそ"
+"ちらが勝ち、`.pdf`は二重に付きません。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:158
+msgid "アセットのパス解決"
+msgstr ""
+
+#: src/usage/ruby_rails.md:160
+msgid ""
+"PDFのレンダリングはHTTPサーバを介さないため、`/assets/…`のようなURLは ローカ"
+"ルファイルとして解決されます。 Railtieが次の既定値を入れます。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:166
+msgid "`base_url`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:166
+msgid "`Rails.root/public`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:166
+msgid ""
+"絶対パス参照の基準。precompile済みなら素の`stylesheet_link_tag`がそのまま動く"
+msgstr ""
+
+#: src/usage/ruby_rails.md:167
+msgid "`allow`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:167
+msgid "`[Rails.root]`"
+msgstr ""
+
+#: src/usage/ruby_rails.md:167
+msgid "ローカル参照をアプリ配下に限定する"
+msgstr ""
+
+#: src/usage/ruby_rails.md:169
+msgid ""
+"どちらも`Sghtmltopdf.configure`で上書きできます(イニシャライザの実行順に依存"
+"しません)。 `allow`の既定はテンプレートにユーザー入力が混ざっても文書外のファ"
+"イルを読ませないためのものなので、アプリの外(例: `/usr/share/fonts`)を参照し"
+"ている場合は明示的に足してください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:172
+msgid ""
+"開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、CSS"
+"の中身を`<style>`へ展開するヘルパがあります。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:176 src/usage/ruby_rails.md:177
+#: src/supports/images.md:14
+msgid "\"logo.png\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:177
+msgid "<%# 見つからなければnil %>"
+msgstr ""
+
+#: src/usage/ruby_rails.md:180
+msgid "サーバへ委譲する"
+msgstr ""
+
+#: src/usage/ruby_rails.md:182
+msgid ""
+"`server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く "
+"別プロセスへ投げます。 アプリのCPUを使いたくない場合や、gemの対応プラット"
+"フォーム外(Alpineなど)で動かす場合に使います。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:188 src/migration/wicked-pdf.md:142
+msgid "\"http://pdf.internal:8080\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:191
+msgid "# 委譲される\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:194
+msgid "URLは1つだけです。負荷分散はLB(nginx・k8s Service)を前段に置く前提です"
+msgstr ""
+
+#: src/usage/ruby_rails.md:195
+msgid ""
+"到達できないときはローカルへフォールバックしません(`ServerError`)。 サーバ起"
+"動時にだけ指定できるフォントが効かず、出力が変わってしまうためです"
+msgstr ""
+
+#: src/usage/ruby_rails.md:197
+msgid ""
+"HTTPのステータスは上のエラー分類へ対応します(400→`UsageError`、"
+"413→`InputError`、500→`RenderError`、その他→`ServerError`)"
+msgstr ""
+
+#: src/usage/ruby_rails.md:199
+msgid "サーバでは指定できないオプション"
+msgstr ""
+
+#: src/usage/ruby_rails.md:201
+msgid ""
+"ローカルパスを取るものと出力先・アクセス制御はサーバ起動時にしか設定できませ"
+"ん(指定すると`UsageError`)。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:210
+msgid ""
+"Railtieが入れる`base_url`/`allow`の既定値は自動的に外れるので、Railsでそのま"
+"ま`server_url`を足しても400にはなりません。 `configure`で明示的に設定している"
+"場合は、サーバ側の起動オプションへ移してください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:213
+msgid "チャンクごとに受け取る"
+msgstr ""
+
+#: src/usage/ruby_rails.md:215
+msgid ""
+"ブロックを渡すと、PDF全体を組み立ててから返す代わりにチャンクごとにブロックが"
+"呼ばれます(返り値は`nil`)。 Rackの`response.stream`へ流したり、S3のマルチパー"
+"トアップロードへ繋いだりするための口です。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:222
+msgid ""
+"ローカル変換でもサーバ委譲でも逐次になります。 ローカルは確定したページから順"
+"に、サーバはその`?stream=1`(chunked transfer encoding)をそのまま流します。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:225
+msgid ""
+"1回に渡すバイト数の目安は`chunk_size:`で変えられます(既定64KiB、ローカル変換"
+"のみ)。 小さくすると細かく届きますが、そのたびにGVLを取り直すのでレンダリング"
+"は遅くなります。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:232
+msgid "`Thread#kill`とタイムアウトが効く"
+msgstr ""
+
+#: src/usage/ruby_rails.md:234
+msgid ""
+"ブロックの呼び出しはRubyのメソッド呼び出しなので、その時点で保留中の割り込み"
+"が処理されます。 ブロック付きで呼んでいる限り、`Thread#kill`や`Timeout."
+"timeout`・`Rack::Timeout`がチャンク境界で効きます。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:239
+msgid "# 10秒で中断できる\n"
+msgstr ""
+
+#: src/usage/ruby_rails.md:243
+msgid ""
+"ブロックを渡さない`render`/`render_to_file`は変換の間まったくRubyへ戻らないた"
+"め、途中で止められません。 長い変換に上限をかけたい場合はブロック付きで呼んで"
+"ください。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:246
+msgid "Railsで逐次返却する"
+msgstr ""
+
+#: src/usage/ruby_rails.md:248
+msgid ""
+"`render pdf:`のレンダラは、組み上がったPDFを`send_data`で一括返却します。 確"
+"定したページから順に返したい場合は`ActionController::Live`と組み合わせます。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:256
+msgid "\"Content-Type\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:256 src/usage/ruby_rails.md:275
+msgid "\"application/pdf\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:265
+msgid ""
+"途中まで書き出したあとに失敗すると、クライアントには壊れたPDFが届きます(ヘッ"
+"ダは既に送信済みなのでステータスを変えられません)。 サーバモードの`?stream=1`"
+"と同じ性質です。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:268
+msgid "S3へ直接上げる"
+msgstr ""
+
+#: src/usage/ruby_rails.md:270
+msgid ""
+"gemはS3向けの実装を持ちません(依存を増やさず、書き方も短いためです)。 マルチ"
+"パートアップロードは最後のパート以外は5MB以上という制約があるので、溜めてから"
+"上げます。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:276
+msgid "\"\""
+msgstr ""
+
+#: src/usage/ruby_rails.md:299
+msgid "小さいPDFなら`put_object(body: Sghtmltopdf.render(html))`で十分です。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:301
+msgid "メモリを抑えたいとき"
+msgstr ""
+
+#: src/usage/ruby_rails.md:303
+msgid ""
+"数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)"
+"を使うとメモリが大きく減ります(実測: 60,000要素で 228MB → 28MB。[メモリと処理"
+"時間](./cli/streaming.md#メモリと処理時間))。"
+msgstr ""
+
+#: src/usage/ruby_rails.md:309
+msgid ""
+"その代わり、文書全体を見ないと決まらないもの(`toc`・`counter(pages)`・"
+"`<body>`より後の`<style>`など)が使えません。 制約の一覧は[ストリーミングモー"
+"ド](./cli/streaming.md)を参照してください。"
+msgstr ""
+
+#: src/supports/properties.md:1
+msgid "CSSプロパティ対応表"
+msgstr ""
+
+#: src/supports/properties.md:3
+msgid "[表示・可視性](#表示可視性)"
+msgstr ""
+
+#: src/supports/properties.md:4
+msgid "[ボックスモデル](#ボックスモデル)"
+msgstr ""
+
+#: src/supports/properties.md:5
+msgid "[枠線・角丸・アウトライン・影](#枠線角丸アウトライン影)"
+msgstr ""
+
+#: src/supports/properties.md:6
+msgid ""
+"[配置(positioning / float / transform)](#配置positioning--float--transform)"
+msgstr ""
+
+#: src/supports/properties.md:7
+msgid "[フォント・テキスト](#フォントテキスト)"
+msgstr ""
+
+#: src/supports/properties.md:8
+msgid "[背景](#背景)"
+msgstr ""
+
+#: src/supports/properties.md:9
+msgid "[テーブル](#テーブル)"
+msgstr ""
+
+#: src/supports/properties.md:10
+msgid "[リスト](#リスト)"
+msgstr ""
+
+#: src/supports/properties.md:11
+msgid "[生成コンテンツ・カウンタ](#生成コンテンツカウンタ)"
+msgstr ""
+
+#: src/supports/properties.md:12
+msgid "[ページ分割(CSS Fragmentation)](#ページ分割css-fragmentation)"
+msgstr ""
+
+#: src/supports/properties.md:13
+msgid "[Flexbox](#flexbox)"
+msgstr ""
+
+#: src/supports/properties.md:14
+msgid "[Grid](#grid)"
+msgstr ""
+
+#: src/supports/properties.md:15
+msgid "[置換要素(画像)](#置換要素画像)"
+msgstr ""
+
+#: src/supports/properties.md:16
+msgid "[非対応プロパティ一覧](#非対応プロパティ一覧)"
+msgstr ""
+
+#: src/supports/properties.md:18
+msgid "表示・可視性"
+msgstr ""
+
+#: src/supports/properties.md:20 src/supports/properties.md:31
+#: src/supports/properties.md:44 src/supports/properties.md:61
+#: src/supports/properties.md:81 src/supports/properties.md:108
+#: src/supports/properties.md:123 src/supports/properties.md:141
+#: src/supports/properties.md:150 src/supports/properties.md:161
+#: src/supports/properties.md:176 src/supports/properties.md:211
+#: src/supports/properties.md:227 src/supports/pagination.md:13
+msgid "プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:20 src/supports/properties.md:31
+#: src/supports/properties.md:44 src/supports/properties.md:61
+#: src/supports/properties.md:81 src/supports/properties.md:108
+#: src/supports/properties.md:123 src/supports/properties.md:141
+#: src/supports/properties.md:150 src/supports/properties.md:161
+#: src/supports/properties.md:176 src/supports/properties.md:211
+#: src/supports/properties.md:227 src/supports/selectors.md:15
+#: src/supports/selectors.md:27 src/supports/selectors.md:44
+#: src/supports/selectors.md:74 src/supports/selectors.md:102
+#: src/migration/wkhtmltopdf-options.md:29
+#: src/migration/wkhtmltopdf-options.md:67
+#: src/migration/wkhtmltopdf-options.md:76
+#: src/migration/wkhtmltopdf-options.md:121
+#: src/migration/wkhtmltopdf-options.md:142 src/migration/wicked-pdf.md:50
+msgid "備考"
+msgstr ""
+
+#: src/supports/properties.md:22
+msgid "`display`"
+msgstr ""
+
+#: src/supports/properties.md:22 src/supports/properties.md:23
+#: src/supports/properties.md:24 src/supports/properties.md:25
+#: src/supports/properties.md:26 src/supports/properties.md:27
+#: src/supports/properties.md:33 src/supports/properties.md:34
+#: src/supports/properties.md:35 src/supports/properties.md:36
+#: src/supports/properties.md:49 src/supports/properties.md:50
+#: src/supports/properties.md:52 src/supports/properties.md:53
+#: src/supports/properties.md:55 src/supports/properties.md:57
+#: src/supports/properties.md:65 src/supports/properties.md:66
+#: src/supports/properties.md:68 src/supports/properties.md:69
+#: src/supports/properties.md:83 src/supports/properties.md:84
+#: src/supports/properties.md:85 src/supports/properties.md:86
+#: src/supports/properties.md:90 src/supports/properties.md:91
+#: src/supports/properties.md:92 src/supports/properties.md:93
+#: src/supports/properties.md:94 src/supports/properties.md:95
+#: src/supports/properties.md:97 src/supports/properties.md:98
+#: src/supports/properties.md:99 src/supports/properties.md:100
+#: src/supports/properties.md:101 src/supports/properties.md:102
+#: src/supports/properties.md:104 src/supports/properties.md:110
+#: src/supports/properties.md:112 src/supports/properties.md:115
+#: src/supports/properties.md:116 src/supports/properties.md:126
+#: src/supports/properties.md:128 src/supports/properties.md:144
+#: src/supports/properties.md:146 src/supports/properties.md:152
+#: src/supports/properties.md:163 src/supports/properties.md:164
+#: src/supports/properties.md:180 src/supports/properties.md:185
+#: src/supports/properties.md:187 src/supports/selectors.md:36
+#: src/supports/selectors.md:46 src/supports/selectors.md:47
+#: src/supports/selectors.md:76 src/supports/selectors.md:78
+#: src/supports/selectors.md:80 src/supports/selectors.md:104
+#: src/supports/selectors.md:105 src/supports/selectors.md:106
+#: src/supports/selectors.md:107
+msgid "⚠️"
+msgstr ""
+
+#: src/supports/properties.md:22
+msgid ""
+"`block`/`inline`/`inline-block`/`list-item`/`table`/`table-row`/`table-cell`/"
+"`table-caption`/`flex`/`none`のみ。`grid`は対応([Grid](#grid)節)。`inline-"
+"flex`/`inline-grid`・`table-row-group`等のテーブル内部値・`flow-root`は非対"
+"応。`<thead>`/`<tbody>`/`<tfoot>`はUAスタイルで`block`のままだが、行収集が透"
+"過するのでテーブルとして機能する"
+msgstr ""
+
+#: src/supports/properties.md:23
+msgid "`visibility`"
+msgstr ""
+
+#: src/supports/properties.md:23
+msgid ""
+"`visible`/`hidden`/`collapse`。`collapse`は`hidden`と同一視(テーブル行/列の高"
+"さ再計算はしない)。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:24
+msgid "`overflow`"
+msgstr ""
+
+#: src/supports/properties.md:24
+msgid ""
+"`visible`以外(`hidden`/`scroll`/`auto`)は区別せず一律クリップ。スクロールバー"
+"の概念は無い。`overflow-x`/`overflow-y`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:25
+msgid "`opacity`"
+msgstr ""
+
+#: src/supports/properties.md:25
+msgid ""
+"`<number>`/`<percentage>`を0〜1にクランプ。PDFの透明グループ+ExtGStateで実"
+"装。要素単位の合成で、`mix-blend-mode`等のブレンドは非対応"
+msgstr ""
+
+#: src/supports/properties.md:26
+msgid "`z-index`"
+msgstr ""
+
+#: src/supports/properties.md:26
+msgid ""
+"`auto`/`<integer>`。`position: relative`の要素にのみ効く(仕様では他の"
+"positioned要素にも効く)。同じ親を持つ兄弟間の描画順のみを制御し、スタッキング"
+"コンテキストの分離は非対応。絶対配置要素は常に通常フローの上に描かれる"
+msgstr ""
+
+#: src/supports/properties.md:27
+msgid "`box-sizing`"
+msgstr ""
+
+#: src/supports/properties.md:27
+msgid "`content-box`/`border-box`。標準外の`padding-box`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:29
+msgid "ボックスモデル"
+msgstr ""
+
+#: src/supports/properties.md:33
+msgid "`width` / `height`"
+msgstr ""
+
+#: src/supports/properties.md:33
+msgid ""
+"`auto`/`<length>`/`<percentage>`/`calc()`。`min-content`/`max-content`/`fit-"
+"content`は非対応。`height`のパーセンテージはcontaining block高さ不定として無"
+"視される"
+msgstr ""
+
+#: src/supports/properties.md:34
+msgid "`min-width` / `min-height`"
+msgstr ""
+
+#: src/supports/properties.md:34
+msgid ""
+"`<length>`/`<percentage>`/`calc()`(初期値`0`)。`auto`/`min-content`等のキー"
+"ワードは非対応。`min-height`のパーセンテージは無視される"
+msgstr ""
+
+#: src/supports/properties.md:35
+msgid "`max-width` / `max-height`"
+msgstr ""
+
+#: src/supports/properties.md:35
+msgid ""
+"`none`/`<length>`/`<percentage>`/`calc()`(初期値`none`)。`min > max`のときは"
+"`min`が勝つ(仕様通り)。`max-height`のパーセンテージは無視される"
+msgstr ""
+
+#: src/supports/properties.md:36
+msgid "`aspect-ratio`"
+msgstr ""
+
+#: src/supports/properties.md:36
+msgid ""
+"`auto \\| <ratio> \\| auto <ratio>`。「幅確定→高さ導出」が基本で、「高さ確定→"
+"幅導出」はfloat/`inline-block`/絶対配置/`<img>`のshrink-to-fit文脈のみ(通常フ"
+"ローのブロックの`width: auto`はstretch優先、仕様通り)。`min-*`/`max-*`でクラ"
+"ンプされて比が崩れた場合の再計算は行わない"
+msgstr ""
+
+#: src/supports/properties.md:37
+msgid "`margin`"
+msgstr ""
+
+#: src/supports/properties.md:37 src/supports/properties.md:38
+#: src/supports/properties.md:39 src/supports/properties.md:40
+#: src/supports/properties.md:46 src/supports/properties.md:47
+#: src/supports/properties.md:48 src/supports/properties.md:51
+#: src/supports/properties.md:54 src/supports/properties.md:63
+#: src/supports/properties.md:64 src/supports/properties.md:88
+#: src/supports/properties.md:89 src/supports/properties.md:96
+#: src/supports/properties.md:103 src/supports/properties.md:111
+#: src/supports/properties.md:113 src/supports/properties.md:114
+#: src/supports/properties.md:125 src/supports/properties.md:127
+#: src/supports/properties.md:129 src/supports/properties.md:130
+#: src/supports/properties.md:143 src/supports/properties.md:145
+#: src/supports/properties.md:153 src/supports/properties.md:154
+#: src/supports/properties.md:165 src/supports/properties.md:166
+#: src/supports/properties.md:178 src/supports/properties.md:179
+#: src/supports/properties.md:181 src/supports/properties.md:182
+#: src/supports/properties.md:183 src/supports/properties.md:184
+#: src/supports/properties.md:186 src/supports/properties.md:213
+#: src/supports/properties.md:214 src/supports/properties.md:215
+#: src/supports/properties.md:216 src/supports/properties.md:217
+#: src/supports/properties.md:218 src/supports/properties.md:219
+#: src/supports/properties.md:220 src/supports/properties.md:229
+#: src/supports/properties.md:230 src/supports/selectors.md:17
+#: src/supports/selectors.md:18 src/supports/selectors.md:19
+#: src/supports/selectors.md:20 src/supports/selectors.md:21
+#: src/supports/selectors.md:22 src/supports/selectors.md:29
+#: src/supports/selectors.md:30 src/supports/selectors.md:31
+#: src/supports/selectors.md:32 src/supports/selectors.md:33
+#: src/supports/selectors.md:34 src/supports/selectors.md:37
+#: src/supports/selectors.md:57 src/supports/selectors.md:58
+#: src/supports/selectors.md:59 src/supports/selectors.md:60
+#: src/supports/selectors.md:79 src/supports/selectors.md:81
+#: src/supports/selectors.md:89 src/supports/selectors.md:90
+#: src/supports/selectors.md:91 src/supports/selectors.md:92
+#: src/supports/selectors.md:94 src/supports/selectors.md:108
+msgid "✅"
+msgstr ""
+
+#: src/supports/properties.md:37
+msgid "1〜4値ショートハンド。`auto`(中央寄せ)・負値に対応"
+msgstr ""
+
+#: src/supports/properties.md:38
+msgid "`margin-top` / `-right` / `-bottom` / `-left`"
+msgstr ""
+
+#: src/supports/properties.md:38
+msgid "隣接兄弟間・親子間のマージン相殺に対応"
+msgstr ""
+
+#: src/supports/properties.md:39
+msgid "`padding`"
+msgstr ""
+
+#: src/supports/properties.md:39 src/supports/properties.md:48
+msgid "1〜4値ショートハンド"
+msgstr ""
+
+#: src/supports/properties.md:40
+msgid "`padding-top` / `-right` / `-bottom` / `-left`"
+msgstr ""
+
+#: src/supports/properties.md:40
+msgid "パーセンテージはcontaining block幅基準(仕様通り)"
+msgstr ""
+
+#: src/supports/properties.md:42
+msgid "枠線・角丸・アウトライン・影"
+msgstr ""
+
+#: src/supports/properties.md:46
+msgid "`border`"
+msgstr ""
+
+#: src/supports/properties.md:46
+msgid ""
+"`<width> \\|\\| <style> \\|\\| <color>`を任意順・任意省略で受け付け、4辺へ適"
+"用"
+msgstr ""
+
+#: src/supports/properties.md:47
+msgid "`border-top` / `-right` / `-bottom` / `-left`"
+msgstr ""
+
+#: src/supports/properties.md:47
+msgid "辺別ショートハンド(値文法は`border`と同じ)"
+msgstr ""
+
+#: src/supports/properties.md:48
+msgid "`border-width` / `border-style` / `border-color`"
+msgstr ""
+
+#: src/supports/properties.md:49
+msgid "`border-*-width`"
+msgstr ""
+
+#: src/supports/properties.md:49
+msgid "`<length>`のみ。`thin`/`medium`/`thick`キーワードは非対応"
+msgstr ""
+
+#: src/supports/properties.md:50
+msgid "`border-*-style`"
+msgstr ""
+
+#: src/supports/properties.md:50
+msgid ""
+"`none`/`hidden`/`solid`/`dashed`/`dotted`/`double`/`groove`/`ridge`/`inset`/"
+"`outset`。`hidden`は`none`と同一視(テーブルの枠線競合解決でも区別しない)。"
+"`groove`/`ridge`/`inset`/`outset`は`border-color`から2階調の陰影を算出して描"
+"画"
+msgstr ""
+
+#: src/supports/properties.md:51
+msgid "`border-*-color`"
+msgstr ""
+
+#: src/supports/properties.md:51
+msgid "初期値は`currentcolor`"
+msgstr ""
+
+#: src/supports/properties.md:52
+msgid "`border-radius`"
+msgstr ""
+
+#: src/supports/properties.md:52
+msgid ""
+"1〜4値+`/`区切りの楕円構文に対応。パーセンテージ指定は非対応(`<length>`の"
+"み)。4辺の太さ・スタイル・色が揃っていない場合は角丸を諦めて直線4辺へフォール"
+"バックする。`groove`/`ridge`/`inset`/`outset`との併用も同様にフォールバック"
+msgstr ""
+
+#: src/supports/properties.md:53
+msgid "`border-top-left-radius`ほか3隅"
+msgstr ""
+
+#: src/supports/properties.md:53
+msgid "`<length>{1,2}`(水平/垂直半径)。制約は`border-radius`と同じ"
+msgstr ""
+
+#: src/supports/properties.md:54
+msgid "`outline`"
+msgstr ""
+
+#: src/supports/properties.md:54
+msgid ""
+"`<width> \\|\\| <style> \\|\\| <color>`。border-boxの外側に描画し、レイアウト"
+"には影響しない"
+msgstr ""
+
+#: src/supports/properties.md:55
+msgid "`outline-width` / `outline-style` / `outline-color`"
+msgstr ""
+
+#: src/supports/properties.md:55
+msgid "`outline-style`は`border-style`と同じ値集合。UA依存の`auto`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:56
+msgid "`outline-offset`"
+msgstr ""
+
+#: src/supports/properties.md:56 src/supports/properties.md:67
+#: src/supports/properties.md:87 src/supports/properties.md:117
+#: src/supports/properties.md:155 src/supports/properties.md:167
+#: src/supports/properties.md:188 src/supports/properties.md:189
+#: src/supports/properties.md:221 src/supports/properties.md:222
+#: src/supports/properties.md:223 src/supports/selectors.md:23
+#: src/supports/selectors.md:35 src/supports/selectors.md:48
+#: src/supports/selectors.md:49 src/supports/selectors.md:61
+#: src/supports/selectors.md:77 src/supports/selectors.md:82
+#: src/supports/selectors.md:83 src/supports/selectors.md:95
+#: src/supports/selectors.md:96 src/supports/selectors.md:109
+#: src/supports/selectors.md:110
+msgid "❌"
+msgstr ""
+
+#: src/supports/properties.md:56
+msgid "常に0固定"
+msgstr ""
+
+#: src/supports/properties.md:57
+msgid "`box-shadow`"
+msgstr ""
+
+#: src/supports/properties.md:57
+msgid ""
+"`none \\| <shadow>#`(カンマ区切りで複数指定可、先頭が最前面)。`inset`はパース"
+"するが描画は非対応。ぼかしは4段階の同心矩形による近似"
+msgstr ""
+
+#: src/supports/properties.md:59
+msgid "配置(positioning / float / transform)"
+msgstr ""
+
+#: src/supports/properties.md:63
+msgid "`float`"
+msgstr ""
+
+#: src/supports/properties.md:63
+msgid "`none`/`left`/`right`。`width: auto`のshrink-to-fitに対応"
+msgstr ""
+
+#: src/supports/properties.md:64
+msgid "`clear`"
+msgstr ""
+
+#: src/supports/properties.md:64
+msgid "`none`/`left`/`right`/`both`"
+msgstr ""
+
+#: src/supports/properties.md:65
+msgid "`position`"
+msgstr ""
+
+#: src/supports/properties.md:65
+msgid ""
+"`static`/`relative`/`absolute`/`fixed`。`sticky`は非対応。`absolute`/`fixed`"
+"には後述の制約あり"
+msgstr ""
+
+#: src/supports/properties.md:66
+msgid "`top` / `right` / `bottom` / `left`"
+msgstr ""
+
+#: src/supports/properties.md:66
+msgid ""
+"`absolute`/`fixed`では`bottom`単独指定による下端揃えが非対応(高さの循環参照を"
+"避けるため`top`基準に解決する)。`relative`ではオフセットとして機能する"
+msgstr ""
+
+#: src/supports/properties.md:67
+msgid "`inset`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:67
+msgid "個別の`top`/`right`/`bottom`/`left`を使う"
+msgstr ""
+
+#: src/supports/properties.md:68
+msgid "`transform`"
+msgstr ""
+
+#: src/supports/properties.md:68
+msgid ""
+"`translate`/`translateX`/`translateY`/`scale`/`scaleX`/`scaleY`/`rotate`/"
+"`skew`/`skewX`/`skewY`/`matrix`。3D系(`translate3d`/`rotate3d`/"
+"`perspective()`等)は非対応。PDFのCTM変換で実装するため、変換後の内容はページ"
+"分割の判定に影響しない"
+msgstr ""
+
+#: src/supports/properties.md:69
+msgid "`transform-origin`"
+msgstr ""
+
+#: src/supports/properties.md:69
+msgid ""
+"`background-position`と同じ値文法(キーワード/長さ/パーセンテージの1〜2値)。初"
+"期値`50% 50%`。3値目(Z軸)は非対応"
+msgstr ""
+
+#: src/supports/properties.md:71
+msgid "`position: absolute`/`fixed`の既知の制約:"
+msgstr ""
+
+#: src/supports/properties.md:73
+msgid ""
+"絶対配置要素は「通常フローから外し、確定したページへ後付けするオーバーレイ」"
+"として配置する"
+msgstr ""
+
+#: src/supports/properties.md:74
+msgid ""
+"containing blockになれるのは、単一ページに収まっているpositioned祖先(または"
+"ページ領域)"
+msgstr ""
+
+#: src/supports/properties.md:75
+msgid ""
+"インラインフォーマッティングコンテキストの内側(テキストの途中)にある"
+"`absolute`、テーブルセル内・flexアイテム内の`absolute`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:76
+msgid "絶対配置要素自身がページを跨ぐ分割は非対応(1ページにbest-effortで置く)"
+msgstr ""
+
+#: src/supports/properties.md:77
+msgid "ストリーミングモード(`Mode::Streaming`)では絶対配置を無視する"
+msgstr ""
+
+#: src/supports/properties.md:79
+msgid "フォント・テキスト"
+msgstr ""
+
+#: src/supports/properties.md:83
+msgid "`font-family`"
+msgstr ""
+
+#: src/supports/properties.md:83
+msgid ""
+"カンマ区切りリスト。汎用family名は`serif`/`sans-serif`/`monospace`をシステム"
+"フォントから解決する(`cursive`/`fantasy`は解決しない)。`sans-serif`の解決先は"
+"CLIの`--gothic-font`で決定的に上書きできる"
+msgstr ""
+
+#: src/supports/properties.md:84
+msgid "`font-size`"
+msgstr ""
+
+#: src/supports/properties.md:84
+msgid ""
+"`<length>`(`px`/`em`/`rem`)のみ。`smaller`/`larger`/`medium`等のキーワード、"
+"パーセンテージ指定は非対応"
+msgstr ""
+
+#: src/supports/properties.md:85 src/supports/fonts.md:92
+msgid "`font-weight`"
+msgstr ""
+
+#: src/supports/properties.md:85
+msgid ""
+"`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字フォン"
+"トが無い場合は塗り+縁取りの疑似ボールドで描画"
+msgstr ""
+
+#: src/supports/properties.md:86 src/supports/fonts.md:93
+msgid "`font-style`"
+msgstr ""
+
+#: src/supports/properties.md:86
+msgid ""
+"`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視、傾斜角の指定は不"
+"可)。イタリック字形が無い場合はテキスト行列のせん断による疑似イタリック"
+msgstr ""
+
+#: src/supports/properties.md:87
+msgid "`font`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:87
+msgid "個別のロングハンドを使う"
+msgstr ""
+
+#: src/supports/properties.md:88
+msgid "`color`"
+msgstr ""
+
+#: src/supports/properties.md:88
+msgid ""
+"継承プロパティ。指定できる色の記法は[セレクタ・値・at-rule](selectors.md#色)"
+"を参照"
+msgstr ""
+
+#: src/supports/properties.md:89
+msgid "`line-height`"
+msgstr ""
+
+#: src/supports/properties.md:89
+msgid "`normal`/`<number>`/`<length>`/`<percentage>`"
+msgstr ""
+
+#: src/supports/properties.md:90
+msgid "`text-align`"
+msgstr ""
+
+#: src/supports/properties.md:90
+msgid ""
+"`left`/`right`/`center`/`justify`。`justify`は最終行以外の単語間で余白を配分"
+"する。`start`/`end`は非対応(`direction`自体が非対応のため)"
+msgstr ""
+
+#: src/supports/properties.md:91
+msgid "`text-indent`"
+msgstr ""
+
+#: src/supports/properties.md:91
+msgid "`<length>`/`<percentage>`。`hanging`/`each-line`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:92
+msgid "`text-transform`"
+msgstr ""
+
+#: src/supports/properties.md:92
+msgid ""
+"`none`/`uppercase`/`lowercase`/`capitalize`(語頭のみ変換)。`full-width`/"
+"`full-size-kana`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:93
+msgid "`text-decoration` / `text-decoration-line`"
+msgstr ""
+
+#: src/supports/properties.md:93
+msgid ""
+"`none`/`underline`/`line-through`(併記可)。`overline`/`blink`は非対応。ショー"
+"トハンドの`text-decoration-color`/`-style`/`-thickness`部分も非対応。祖先から"
+"子孫への伝播は「継承プロパティとして扱う」簡略実装"
+msgstr ""
+
+#: src/supports/properties.md:94
+msgid "`text-shadow`"
+msgstr ""
+
+#: src/supports/properties.md:94
+msgid ""
+"`none \\| <shadow>#`(`<offset-x> <offset-y> <blur>? <color>?`)。PDFにぼかし"
+"フィルタが無いため、blurはアルファを下げた多重描画による近似。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:95
+msgid "`text-overflow`"
+msgstr ""
+
+#: src/supports/properties.md:95
+msgid ""
+"`clip`/`ellipsis`。`overflow`が`visible`以外のときのみ有効。幅方向にはみ出し"
+"た行のみが対象(ブロック全体のオーバーフローは扱わない)。`<string>`指定は非対"
+"応"
+msgstr ""
+
+#: src/supports/properties.md:96
+msgid "`word-break`"
+msgstr ""
+
+#: src/supports/properties.md:96
+msgid ""
+"`normal`(CJK文字が隣接する境界のみ改行可)/`break-all`/`keep-all`。非推奨値"
+"`break-word`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:97
+msgid "`overflow-wrap` / `word-wrap`"
+msgstr ""
+
+#: src/supports/properties.md:97
+msgid ""
+"`normal`/`break-word`/`anywhere`(`anywhere`は`break-word`と同一視)。改行機会"
+"は増やさず、行頭に置いても収まらない語だけを文字単位で割る"
+msgstr ""
+
+#: src/supports/properties.md:98
+msgid "`hyphens`"
+msgstr ""
+
+#: src/supports/properties.md:98
+msgid ""
+"`none`/`manual`/`auto`。soft hyphen(U+00AD)でのみ分割し、分割時に行末へハイフ"
+"ンを表示する。`auto`は辞書を持たないため`manual`と同じ挙動(自動ハイフネーショ"
+"ンはしない)"
+msgstr ""
+
+#: src/supports/properties.md:99
+msgid "`text-emphasis` / `-style` / `-color` / `-position`"
+msgstr ""
+
+#: src/supports/properties.md:99
+msgid ""
+"`dot`/`circle`/`double-circle`/`triangle`/`sesame`(`filled`/`open`)と"
+"`<string>`。キーワードのマークはPDFのパスで描くためフォントの字形に依存しない"
+"(`<string>`はグリフ描画で、字形が無ければ描かれない)。`position`は`over`/"
+"`under`のみ(`right`/`left`は読み飛ばし)。マーク分だけ行の高さが広がる。句読点"
+"をスキップする`text-emphasis-skip`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:100
+msgid "`letter-spacing`"
+msgstr ""
+
+#: src/supports/properties.md:100
+msgid "`normal`/`<length>`。パーセンテージは非対応"
+msgstr ""
+
+#: src/supports/properties.md:101
+msgid "`word-spacing`"
+msgstr ""
+
+#: src/supports/properties.md:101
+msgid "`normal`/`<length>`"
+msgstr ""
+
+#: src/supports/properties.md:102
+msgid "`white-space`"
+msgstr ""
+
+#: src/supports/properties.md:102
+msgid "`normal`/`nowrap`/`pre`。`pre-wrap`/`pre-line`/`break-spaces`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:103
+msgid "`vertical-align`"
+msgstr ""
+
+#: src/supports/properties.md:103
+msgid ""
+"`baseline`/`sub`/`super`/`text-top`/`text-bottom`/`top`/`middle`/`bottom`/"
+"`<length>`/`<percentage>`。テーブルセル文脈では`top`/`middle`/`bottom`(と"
+"`baseline`)が意味を持つ"
+msgstr ""
+
+#: src/supports/properties.md:104
+msgid "`quotes`"
+msgstr ""
+
+#: src/supports/properties.md:104
+msgid ""
+"`none`または`\"開き\" \"閉じ\"`のペアの繰り返し。`content`の`open-quote`/"
+"`close-quote`と組で使う。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:106
+msgid "背景"
+msgstr ""
+
+#: src/supports/properties.md:110
+msgid "`background`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:110
+msgid ""
+"`<color>`/`<image>`/`<repeat>`/`<attachment>`/`<position>[ / <size>]`を任意順"
+"で受け付ける。指定しなかったロングハンドは仕様通り初期値へリセットされる。"
+"`background-clip`/`-origin`(`padding-box`等のキーワード)を含むとパースエラー"
+"になり宣言ごと無視される点に注意"
+msgstr ""
+
+#: src/supports/properties.md:111
+msgid "`background-color`"
+msgstr ""
+
+#: src/supports/properties.md:111
+msgid "アルファ付きの色はExtGStateで透過描画"
+msgstr ""
+
+#: src/supports/properties.md:112
+msgid "`background-image`"
+msgstr ""
+
+#: src/supports/properties.md:112
+msgid ""
+"`none \\| url(...)`のみ。`linear-gradient()`等のグラデーション関数、カンマ区"
+"切りの複数背景は非対応。既定ではintrinsicサイズでタイル配置"
+msgstr ""
+
+#: src/supports/properties.md:113
+msgid "`background-position`"
+msgstr ""
+
+#: src/supports/properties.md:113
+msgid ""
+"キーワード(`left`/`center`/`right`/`top`/`bottom`)と長さ/パーセンテージの1〜2"
+"値。3〜4値構文(`right 10px bottom 20px`)は非対応"
+msgstr ""
+
+#: src/supports/properties.md:114
+msgid "`background-size`"
+msgstr ""
+
+#: src/supports/properties.md:114
+msgid "`cover`/`contain`/`<length-percentage> \\| auto`の1〜2値"
+msgstr ""
+
+#: src/supports/properties.md:115
+msgid "`background-repeat`"
+msgstr ""
+
+#: src/supports/properties.md:115
+msgid ""
+"`repeat`/`repeat-x`/`repeat-y`/`no-repeat`。CSS3の`round`/`space`、2値構文は"
+"非対応"
+msgstr ""
+
+#: src/supports/properties.md:116
+msgid "`background-attachment`"
+msgstr ""
+
+#: src/supports/properties.md:116
+msgid "`scroll`/`fixed`(スクロールの概念が無いため`fixed`は`scroll`と同一視)"
+msgstr ""
+
+#: src/supports/properties.md:117
+msgid "`background-clip` / `background-origin` / `background-blend-mode`"
+msgstr ""
+
+#: src/supports/properties.md:117
+msgid "未実装。背景はborder-box基準で描画する"
+msgstr ""
+
+#: src/supports/properties.md:119
+msgid ""
+"`border-radius`と`background-image`を併用した場合、角丸によるクリップは行わな"
+"い(角丸は背景色の塗りにのみ効く)。"
+msgstr ""
+
+#: src/supports/properties.md:121
+msgid "テーブル"
+msgstr ""
+
+#: src/supports/properties.md:125
+msgid "`table-layout`"
+msgstr ""
+
+#: src/supports/properties.md:125
+msgid ""
+"`auto`/`fixed`。`auto`ではセル内容の自然幅を測って列幅を決める(ネストしたテー"
+"ブル・flexの自然幅測定のみ非対応で0扱い)"
+msgstr ""
+
+#: src/supports/properties.md:126
+msgid "`border-collapse`"
+msgstr ""
+
+#: src/supports/properties.md:126
+msgid ""
+"`separate`/`collapse`。`collapse`は見た目の枠線統合のみを行う(CSS2.1 §17.6.2"
+"の競合解決を「太い方が勝ち、同幅ならスタイル優先順」で簡略化)。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:127
+msgid "`border-spacing`"
+msgstr ""
+
+#: src/supports/properties.md:127
+msgid ""
+"`<length>{1,2}`。`border-collapse: collapse`時は0として扱う。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:128
+msgid "`caption-side`"
+msgstr ""
+
+#: src/supports/properties.md:128
+msgid "`top`/`bottom`。縦書き向けの`left`/`right`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:129
+msgid "`empty-cells`"
+msgstr ""
+
+#: src/supports/properties.md:129
+msgid ""
+"`show`/`hide`。`border-collapse: separate`でのみ意味を持つ。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:130
+msgid "`vertical-align`(セル)"
+msgstr ""
+
+#: src/supports/properties.md:130
+msgid "上記[フォント・テキスト](#フォントテキスト)を参照"
+msgstr ""
+
+#: src/supports/properties.md:132
+msgid ""
+"`<colgroup>`/`<col>`の`width`属性・CSS`width`による列幅指定、`rowspan`/"
+"`colspan`、`<thead>`のページまたぎ繰り返しに対応。 `rowspan=\"0\"`は1として扱"
+"う。"
+msgstr ""
+
+#: src/supports/properties.md:135
+msgid ""
+"セルの`min-width`/`max-width`は列幅アルゴリズムに反映される。 `table-layout: "
+"auto`では列の自然幅をクランプする形で効くため、表を紙幅に収める比例縮尺の後は"
+"`min-width`が保証されない。 `table-layout: fixed`では1行目のセルの指定幅をク"
+"ランプし、`width: auto`かつ`min-width`のみの指定はその値を列幅として使う。"
+msgstr ""
+
+#: src/supports/properties.md:139
+msgid "リスト"
+msgstr ""
+
+#: src/supports/properties.md:143
+msgid "`list-style`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:143
+msgid "`type`/`position`/`image`を任意順・任意省略で受け付ける"
+msgstr ""
+
+#: src/supports/properties.md:144
+msgid "`list-style-type`"
+msgstr ""
+
+#: src/supports/properties.md:144
+msgid ""
+"`disc`/`circle`/`square`/`decimal`/`decimal-leading-zero`/`lower-roman`/"
+"`upper-roman`/`lower-alpha`(`lower-latin`)/`upper-alpha`(`upper-latin`)/"
+"`none`。`cjk-*`/`hiragana`/`katakana`等は非対応。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:145
+msgid "`list-style-position`"
+msgstr ""
+
+#: src/supports/properties.md:145
+msgid "`outside`/`inside`。継承プロパティ"
+msgstr ""
+
+#: src/supports/properties.md:146
+msgid "`list-style-image`"
+msgstr ""
+
+#: src/supports/properties.md:146
+msgid ""
+"`none \\| url(...)`をパースするが描画には使わない(常に`list-style-type`のテキ"
+"ストマーカーへフォールバック)"
+msgstr ""
+
+#: src/supports/properties.md:148
+msgid "生成コンテンツ・カウンタ"
+msgstr ""
+
+#: src/supports/properties.md:152
+msgid "`content`"
+msgstr ""
+
+#: src/supports/properties.md:152
+msgid ""
+"`::before`/`::after`/`::first-letter`および`@page`のmargin box用。文字列リテ"
+"ラル・`attr()`・`counter()`/`counters()`・`open-quote`/`close-quote`/`no-"
+"open-quote`/`no-close-quote`の連結に対応。`url()`による画像挿入は非対応。ブ"
+"ロック子を持つ要素の`::before`/`::after`は生成されない(簡略化)"
+msgstr ""
+
+#: src/supports/properties.md:153
+msgid "`counter-reset`"
+msgstr ""
+
+#: src/supports/properties.md:153
+msgid "`none`または`name [<integer>]`の繰り返し"
+msgstr ""
+
+#: src/supports/properties.md:154
+msgid "`counter-increment`"
+msgstr ""
+
+#: src/supports/properties.md:154
+msgid "`none`または`name [<integer>]`の繰り返し(値省略時は1)"
+msgstr ""
+
+#: src/supports/properties.md:155
+msgid "`counter-set`"
+msgstr ""
+
+#: src/supports/properties.md:155 src/supports/properties.md:223
+msgid "未実装"
+msgstr ""
+
+#: src/supports/properties.md:157
+msgid ""
+"`counter(page)`/`counter(pages)`によるページ番号は`@page`のmargin box内で使え"
+"る(`counter(pages)`はストリーミングモードでは総ページ数が確定しないためエラー"
+"になる)。"
+msgstr ""
+
+#: src/supports/properties.md:159
+msgid "ページ分割(CSS Fragmentation)"
+msgstr ""
+
+#: src/supports/properties.md:163 src/supports/pagination.md:15
+msgid "`break-before` / `break-after`"
+msgstr ""
+
+#: src/supports/properties.md:163
+msgid ""
+"`auto`/`avoid`(`avoid-page`/`avoid-column`も同義)/`always`(`page`も同義)。"
+"`left`/`right`/`recto`/`verso`(見開き制御)、多段組み関連の値は非対応"
+msgstr ""
+
+#: src/supports/properties.md:164 src/supports/pagination.md:16
+msgid "`break-inside`"
+msgstr ""
+
+#: src/supports/properties.md:164
+msgid "`auto`/`avoid`(`avoid-page`/`avoid-column`も同義)"
+msgstr ""
+
+#: src/supports/properties.md:165
+msgid "`page-break-before` / `page-break-after` / `page-break-inside`"
+msgstr ""
+
+#: src/supports/properties.md:165
+msgid "上記`break-*`のエイリアス(wkhtmltopdf/wicked_pdf資産からの移行用)"
+msgstr ""
+
+#: src/supports/properties.md:166
+msgid "`orphans` / `widows`"
+msgstr ""
+
+#: src/supports/properties.md:166
+msgid "1以上の整数。初期値2"
+msgstr ""
+
+#: src/supports/properties.md:167
+msgid "`page`(名前付きページ)"
+msgstr ""
+
+#: src/supports/properties.md:167
+msgid "`@page intro`のような名前付きページ自体が非対応"
+msgstr ""
+
+#: src/supports/properties.md:169
+msgid ""
+"HTML属性`data-page-break=\"before|after|avoid\"`によるシンタックスシュガーも"
+"利用できる。"
+msgstr ""
+
+#: src/supports/properties.md:171
+msgid "Flexbox"
+msgstr ""
+
+#: src/supports/properties.md:173
+msgid ""
+"`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)へ委"
+"譲する。 flexコンテナはページ分割上アトミック(`display: table`と同じく途中で"
+"分割されない)。"
+msgstr ""
+
+#: src/supports/properties.md:178
+msgid "`flex-direction`"
+msgstr ""
+
+#: src/supports/properties.md:178
+msgid "`row`/`row-reverse`/`column`/`column-reverse`"
+msgstr ""
+
+#: src/supports/properties.md:179
+msgid "`flex-wrap`"
+msgstr ""
+
+#: src/supports/properties.md:179
+msgid "`nowrap`/`wrap`/`wrap-reverse`"
+msgstr ""
+
+#: src/supports/properties.md:180
+msgid "`justify-content`"
+msgstr ""
+
+#: src/supports/properties.md:180
+msgid ""
+"`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-"
+"around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
+msgstr ""
+
+#: src/supports/properties.md:181
+msgid "`align-items`"
+msgstr ""
+
+#: src/supports/properties.md:181
+msgid "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
+msgstr ""
+
+#: src/supports/properties.md:182
+msgid "`align-content`"
+msgstr ""
+
+#: src/supports/properties.md:182
+msgid ""
+"`flex-start`(`start`)/`flex-end`(`end`)/`center`/`stretch`/`space-between`/"
+"`space-around`/`space-evenly`"
+msgstr ""
+
+#: src/supports/properties.md:183
+msgid "`align-self`"
+msgstr ""
+
+#: src/supports/properties.md:183
+msgid ""
+"`auto`/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
+msgstr ""
+
+#: src/supports/properties.md:184
+msgid "`flex-grow` / `flex-shrink`"
+msgstr ""
+
+#: src/supports/properties.md:184
+msgid "非負の`<number>`(負値は無効な宣言として無視)"
+msgstr ""
+
+#: src/supports/properties.md:185
+msgid "`flex-basis`"
+msgstr ""
+
+#: src/supports/properties.md:185
+msgid "`auto`/`content`/`<length-percentage>`。`content`は`auto`と同一視"
+msgstr ""
+
+#: src/supports/properties.md:186
+msgid "`flex`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:186
+msgid ""
+"`none`および`<grow> [<shrink>] [<basis>]`。CSS仕様の既定値規則(`flex: 1`の"
+"basisは`0%`、`flex: <width>`のgrow/shrinkは1)を再現"
+msgstr ""
+
+#: src/supports/properties.md:187
+msgid "`gap` / `row-gap` / `column-gap`"
+msgstr ""
+
+#: src/supports/properties.md:187
+msgid "flexコンテナでのみ有効(多段組みの`column-gap`としては機能しない)"
+msgstr ""
+
+#: src/supports/properties.md:188
+msgid "`order`"
+msgstr ""
+
+#: src/supports/properties.md:188
+msgid "taffy 0.12系が未対応のため"
+msgstr ""
+
+#: src/supports/properties.md:189
+msgid "`place-content` / `place-items` / `place-self`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:189
+msgid "未実装。個別のロングハンドを使う"
+msgstr ""
+
+#: src/supports/properties.md:190 src/supports/properties.md:219
+msgid "`justify-items` / `justify-self`"
+msgstr ""
+
+#: src/supports/properties.md:190 src/migration/wicked-pdf.md:72
+#: src/migration/wicked-pdf.md:73 src/migration/wicked-pdf.md:74
+#: src/migration/wicked-pdf.md:75 src/migration/wicked-pdf.md:76
+#: src/migration/wicked-pdf.md:77
+msgid "—"
+msgstr ""
+
+#: src/supports/properties.md:190
+msgid "flexアイテムには適用されない(下記)"
+msgstr ""
+
+#: src/supports/properties.md:192
+msgid "`justify-items`/`justify-self`がflexで効かないのは仕様"
+msgstr ""
+
+#: src/supports/properties.md:194
+msgid ""
+"CSS Box Alignmentでは`justify-items`/`justify-self`はGrid・ブロックレイアウト"
+"用のプロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は"
+"`justify-content`と`margin: auto`で表現する、という設計)。 ブラウザも無視す"
+"る。 レイアウトを委譲しているtaffyでも、これらを参照するのはGridのアルゴリズ"
+"ムだけで、flexboxのアルゴリズムは一切参照しない。"
+msgstr ""
+
+#: src/supports/properties.md:198
+msgid ""
+"したがってこのエンジンでパースに対応しても見た目は変わらないため、意図的に実"
+"装していない。 flexで特定のアイテムだけを寄せたい場合は`margin: auto`を使う"
+"(こちらは対応済み):"
+msgstr ""
+
+#: src/supports/properties.md:202
+msgid "/* justify-self: end 相当(主軸の終端へ) */"
+msgstr ""
+
+#: src/supports/properties.md:203
+msgid "/* justify-self: center 相当 */"
+msgstr ""
+
+#: src/supports/properties.md:206
+msgid "Grid"
+msgstr ""
+
+#: src/supports/properties.md:208
+msgid ""
+"`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 Flexboxと違い、"
+"1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複"
+"数行にまたがるアイテムがある境界では分割しない)。"
+msgstr ""
+
+#: src/supports/properties.md:213
+msgid "`grid-template-columns` / `grid-template-rows`"
+msgstr ""
+
+#: src/supports/properties.md:213
+msgid ""
+"`none`/`<length>`/`<percentage>`/`fr`/`auto`/`min-content`/`max-content`/"
+"`minmax()`/`fit-content()`/`repeat(<整数>\\|auto-fill\\|auto-fit)`/"
+"`[name]`(ライン名)。トラックサイズに`calc()`は非対応"
+msgstr ""
+
+#: src/supports/properties.md:214
+msgid "`grid-template-areas`"
+msgstr ""
+
+#: src/supports/properties.md:214
+msgid ""
+"文字列マトリクス。列数の不一致・非矩形のエリアは不正な値として宣言ごと無視す"
+"る(仕様通り)。`.`は名前なしセル"
+msgstr ""
+
+#: src/supports/properties.md:215
+msgid "`grid-auto-columns` / `grid-auto-rows`"
+msgstr ""
+
+#: src/supports/properties.md:215
+msgid "`<track-size>+`"
+msgstr ""
+
+#: src/supports/properties.md:216
+msgid "`grid-auto-flow`"
+msgstr ""
+
+#: src/supports/properties.md:216
+msgid "`row`/`column`/`dense`(併記可)"
+msgstr ""
+
+#: src/supports/properties.md:217
+msgid "`grid-row-start` / `-end` / `grid-column-start` / `-end`"
+msgstr ""
+
+#: src/supports/properties.md:217
+msgid ""
+"`auto`/`<integer>`/`span <integer>`/`<custom-ident>`/`span <custom-ident>`"
+msgstr ""
+
+#: src/supports/properties.md:218
+msgid "`grid-row` / `grid-column` / `grid-area`"
+msgstr ""
+
+#: src/supports/properties.md:218
+msgid ""
+"`/`区切りのショートハンド。`grid-area: <name>`で名前付きエリアを指定できる"
+msgstr ""
+
+#: src/supports/properties.md:219
+msgid ""
+"Gridでのみ意味を持つ(flexアイテムには適用されない、[上記](#justify-"
+"itemsjustify-selfがflexで効かないのは仕様))"
+msgstr ""
+
+#: src/supports/properties.md:220
+msgid ""
+"`align-items` / `align-self` / `justify-content` / `align-content` / `gap`"
+msgstr ""
+
+#: src/supports/properties.md:220
+msgid "Flexboxと共有(値の範囲は[Flexbox](#flexbox)節を参照)"
+msgstr ""
+
+#: src/supports/properties.md:221
+msgid "`grid` / `grid-template`(ショートハンド)"
+msgstr ""
+
+#: src/supports/properties.md:221
+msgid ""
+"個別のロングハンドを使う。トラック定義とエリア定義を1つの構文へ詰め込む複雑な"
+"文法のため非対応"
+msgstr ""
+
+#: src/supports/properties.md:222
+msgid "`display: inline-grid`"
+msgstr ""
+
+#: src/supports/properties.md:222
+msgid "`inline-flex`と同じ理由で非対応"
+msgstr ""
+
+#: src/supports/properties.md:223
+msgid "subgrid / masonry"
+msgstr ""
+
+#: src/supports/properties.md:225
+msgid "置換要素(画像)"
+msgstr ""
+
+#: src/supports/properties.md:229
+msgid "`object-fit`"
+msgstr ""
+
+#: src/supports/properties.md:229
+msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
+msgstr ""
+
+#: src/supports/properties.md:230
+msgid "`object-position`"
+msgstr ""
+
+#: src/supports/properties.md:230
+msgid "`background-position`と同じ値文法。初期値`50% 50%`"
+msgstr ""
+
+#: src/supports/properties.md:232
+msgid ""
+"`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対"
+"応フォーマットはPNG/JPEG/WebP。 CSSで`width`/`height`の片方だけを指定した場合"
+"は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、)。"
+msgstr ""
+
+#: src/supports/properties.md:236
+msgid "非対応プロパティ一覧"
+msgstr ""
+
+#: src/supports/properties.md:238
+msgid ""
+"以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と"
+"決めたものだけではない。 カテゴリ表の`❌`行も参照。"
+msgstr ""
+
+#: src/supports/properties.md:242
+msgid ""
+"ショートハンド: `font`/`inset`/`place-content`/`place-items`/`place-self`/"
+"`text-decoration`の色・線種部分"
+msgstr ""
+
+#: src/supports/properties.md:243
+msgid ""
+"論理プロパティ: `inline-size`/`block-size`/`margin-inline`/`padding-block`/"
+"`border-inline`等すべて"
+msgstr ""
+
+#: src/supports/properties.md:244
+msgid ""
+"書字方向: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-"
+"combine-upright`"
+msgstr ""
+
+#: src/supports/properties.md:245
+msgid ""
+"テキスト詳細: `text-decoration-color`/`-style`/`-thickness`/`text-underline-"
+"offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
+msgstr ""
+
+#: src/supports/properties.md:246
+msgid ""
+"フォント詳細: `font-variant`/`font-stretch`/`font-feature-settings`/`font-"
+"variation-settings`/`font-kerning`/`font-display`"
+msgstr ""
+
+#: src/supports/properties.md:247
+msgid ""
+"多段組み: `columns`/`column-count`/`column-width`/`column-rule`/`column-"
+"span`/`column-fill`"
+msgstr ""
+
+#: src/supports/properties.md:248
+msgid ""
+"視覚効果: `filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-"
+"mode`/`clip`/`clip-path`/`mask`/`isolation`"
+msgstr ""
+
+#: src/supports/properties.md:249
+msgid ""
+"3D/アニメーション: `perspective`/`transform-style`/`backface-visibility`/"
+"`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/"
+"`will-change`"
+msgstr ""
+
+#: src/supports/properties.md:250
+msgid ""
+"枠線・背景の拡張: `border-image-*`/`background-clip`/`background-origin`/"
+"`outline-offset`"
+msgstr ""
+
+#: src/supports/properties.md:251
+msgid ""
+"オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-"
+"behavior`"
+msgstr ""
+
+#: src/supports/properties.md:252
+msgid ""
+"UI/対話: `cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-"
+"color`/`appearance`"
+msgstr ""
+
+#: src/supports/properties.md:253
+msgid ""
+"その他: `all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/"
+"`speak`等の音声メディア系/`zoom`"
+msgstr ""
+
+#: src/supports/selectors.md:1
+msgid "セレクタ・値・at-rule対応表"
+msgstr ""
+
+#: src/supports/selectors.md:3
+msgid "[セレクタ](#セレクタ)"
+msgstr ""
+
+#: src/supports/selectors.md:4
+msgid "[擬似クラス](#擬似クラス)"
+msgstr ""
+
+#: src/supports/selectors.md:5
+msgid "[擬似要素](#擬似要素)"
+msgstr ""
+
+#: src/supports/selectors.md:6
+msgid "[値・単位・関数](#値単位関数)"
+msgstr ""
+
+#: src/supports/selectors.md:7
+msgid "[色](#色)"
+msgstr ""
+
+#: src/supports/selectors.md:8
+msgid "[at-rule](#at-rule)"
+msgstr ""
+
+#: src/supports/selectors.md:9
+msgid "[ストリーミングモード固有の制約](#ストリーミングモード固有の制約)"
+msgstr ""
+
+#: src/supports/selectors.md:11 src/supports/selectors.md:15
+msgid "セレクタ"
+msgstr ""
+
+#: src/supports/selectors.md:13
+msgid ""
+"マッチングはServo由来の[`selectors`](https://crates.io/crates/selectors)ク"
+"レートに委譲しているため、CSS3セレクタは概ねそのまま使える。"
+msgstr ""
+
+#: src/supports/selectors.md:17
+msgid "タイプ(`p`)・ユニバーサル(`*`)"
+msgstr ""
+
+#: src/supports/selectors.md:18
+msgid "クラス(`.foo`)・ID(`#foo`)"
+msgstr ""
+
+#: src/supports/selectors.md:19
+msgid "属性(`[a]`/`[a=v]`/`[a^=v]`/`[a$=v]`/`[a*=v]`/`[a~=v]`/`[a\\|=v]`)"
+msgstr ""
+
+#: src/supports/selectors.md:19
+msgid "大文字小文字を無視する`i`フラグも使える"
+msgstr ""
+
+#: src/supports/selectors.md:20
+msgid "子孫(空白)・子(`>`)"
+msgstr ""
+
+#: src/supports/selectors.md:21
+msgid "隣接兄弟(`+`)・一般兄弟(`~`)"
+msgstr ""
+
+#: src/supports/selectors.md:22
+msgid "セレクタリスト(`,`)"
+msgstr ""
+
+#: src/supports/selectors.md:23
+msgid "名前空間(`ns\\|E`)"
+msgstr ""
+
+#: src/supports/selectors.md:23
+msgid "`@namespace`自体が非対応"
+msgstr ""
+
+#: src/supports/selectors.md:25 src/supports/selectors.md:27
+msgid "擬似クラス"
+msgstr ""
+
+#: src/supports/selectors.md:29
+msgid "`:root`"
+msgstr ""
+
+#: src/supports/selectors.md:30
+msgid "`:first-child` / `:last-child` / `:only-child`"
+msgstr ""
+
+#: src/supports/selectors.md:30
+msgid "ストリーミングモードでは`:last-child`が常に非マッチ(下記参照)"
+msgstr ""
+
+#: src/supports/selectors.md:31
+msgid "`:nth-child()` / `:nth-last-child()`"
+msgstr ""
+
+#: src/supports/selectors.md:31
+msgid "同上(`:nth-last-child()`はストリーミングモードで非マッチ)"
+msgstr ""
+
+#: src/supports/selectors.md:32
+msgid ""
+"`:first-of-type` / `:last-of-type` / `:only-of-type` / `:nth-of-type()` / `:"
+"nth-last-of-type()`"
+msgstr ""
+
+#: src/supports/selectors.md:32 src/supports/selectors.md:33
+#: src/migration/wkhtmltopdf-options.md:70
+#: src/migration/wkhtmltopdf-options.md:71
+#: src/migration/wkhtmltopdf-options.md:84
+#: src/migration/wkhtmltopdf-options.md:93
+#: src/migration/wkhtmltopdf-options.md:124 src/migration/wicked-pdf.md:70
+msgid "同上"
+msgstr ""
+
+#: src/supports/selectors.md:33
+msgid "`:empty`"
+msgstr ""
+
+#: src/supports/selectors.md:34
+msgid "`:not()`"
+msgstr ""
+
+#: src/supports/selectors.md:35
+msgid "`:is()` / `:where()` / `:has()`"
+msgstr ""
+
+#: src/supports/selectors.md:35
+msgid "パースエラー(セレクタごと無視される)"
+msgstr ""
+
+#: src/supports/selectors.md:36
+msgid ""
+"`:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / `:"
+"target` / `:enabled` / `:disabled` / `:checked` / `:visited`"
+msgstr ""
+
+#: src/supports/selectors.md:36
+msgid ""
+"パースは通るが常に非マッチ。対話状態を持たない静的なPDF出力では意味を持たない"
+"ため"
+msgstr ""
+
+#: src/supports/selectors.md:37
+msgid "`:link` / `:any-link`"
+msgstr ""
+
+#: src/supports/selectors.md:37
+msgid "`href`を持つ`<a>`にマッチする"
+msgstr ""
+
+#: src/supports/selectors.md:39
+msgid ""
+"非対応の擬似クラスがセレクタに含まれるとルール全体が捨てられる(`:is()`等)。 "
+"一方`:hover`のようにパースが通るものは、ルールとしては生き残った上でマッチし"
+"ない。"
+msgstr ""
+
+#: src/supports/selectors.md:42 src/supports/selectors.md:44
+msgid "擬似要素"
+msgstr ""
+
+#: src/supports/selectors.md:46
+msgid "`::before` / `::after`"
+msgstr ""
+
+#: src/supports/selectors.md:46
+msgid ""
+"`content`による生成テキストのみ。ホスト要素の計算スタイルをそのまま流用して描"
+"画し、擬似要素専用のボックススタイル(margin/padding/display等)は持たない。ブ"
+"ロック子を持つ要素では生成されない"
+msgstr ""
+
+#: src/supports/selectors.md:47
+msgid "`::first-letter`"
+msgstr ""
+
+#: src/supports/selectors.md:47
+msgid ""
+"`font-family`/`font-size`/`font-weight`/`font-style`/`color`/`text-"
+"decoration-line`/`text-transform`のみ上書きできる(`float`・box model系は非対"
+"応)"
+msgstr ""
+
+#: src/supports/selectors.md:48
+msgid "`::first-line`"
+msgstr ""
+
+#: src/supports/selectors.md:48 src/supports/selectors.md:49
+msgid "パースエラー"
+msgstr ""
+
+#: src/supports/selectors.md:49
+msgid "`::marker` / `::selection` / `::placeholder`"
+msgstr ""
+
+#: src/supports/selectors.md:51
+msgid "値・単位・関数"
+msgstr ""
+
+#: src/supports/selectors.md:53
+msgid "長さ"
+msgstr ""
+
+#: src/supports/selectors.md:55
+msgid "単位"
+msgstr ""
+
+#: src/supports/selectors.md:57
+msgid "`px` / `em` / `rem`"
+msgstr ""
+
+#: src/supports/selectors.md:58
+msgid "`mm` / `cm` / `in` / `pt` / `pc` / `Q`"
+msgstr ""
+
+#: src/supports/selectors.md:59
+msgid "`%`(パーセンテージを取るプロパティで)"
+msgstr ""
+
+#: src/supports/selectors.md:60
+msgid "単位なしの`0`"
+msgstr ""
+
+#: src/supports/selectors.md:61
+msgid "`ex` / `ch` / `vw` / `vh` / `vmin` / `vmax` / `lh`"
+msgstr ""
+
+#: src/supports/selectors.md:63
+msgid ""
+"絶対単位は1インチ = 96pxとして解釈する(`10mm`は37.795px)。 印刷向けに寸法を実"
+"寸で書けるので、`@page { size: 210mm 297mm; margin: 15mm; }`のような指定がそ"
+"のまま通る。"
+msgstr ""
+
+#: src/supports/selectors.md:66
+msgid ""
+"`@page`の`size`だけは例外的にページサイズのキーワード(`a4`/`letter`等)と"
+"`landscape`/`portrait`を受け付ける。"
+msgstr ""
+
+#: src/supports/selectors.md:68
+msgid "角度(`transform`専用)"
+msgstr ""
+
+#: src/supports/selectors.md:70
+msgid "`deg` / `rad` / `grad` / `turn`、および単位なしの`0`に対応 ✅。"
+msgstr ""
+
+#: src/supports/selectors.md:72 src/supports/selectors.md:74
+msgid "関数"
+msgstr ""
+
+#: src/supports/selectors.md:76
+msgid "`calc()`"
+msgstr ""
+
+#: src/supports/selectors.md:76
+msgid ""
+"`+`/`-`/`*`/`/`と括弧のネスト。項に使えるのは長さ(絶対単位・`em`/`rem`)・"
+"`%`・数値のみ。長さ・パーセンテージを取るプロパティ全般で使える"
+msgstr ""
+
+#: src/supports/selectors.md:77
+msgid "`min()` / `max()` / `clamp()`"
+msgstr ""
+
+#: src/supports/selectors.md:78
+msgid "`var()`"
+msgstr ""
+
+#: src/supports/selectors.md:78
+msgid ""
+"カスタムプロパティ(`--foo`)をパース前のテキスト置換で解決する。フォールバック"
+"(`var(--x, 10px)`)・カスタムプロパティ同士の参照に対応。カスケードや継承には"
+"従わず、文書全体で「最後に書かれた宣言が勝つ」単純な解決になる点が本来の仕様"
+"と異なる"
+msgstr ""
+
+#: src/supports/selectors.md:79
+msgid "`url()`"
+msgstr ""
+
+#: src/supports/selectors.md:79
+msgid ""
+"`background-image`/`list-style-image`/`@font-face`の`src`/`@import`。相対URL"
+"は`<base href>`または入力元を基準に解決する"
+msgstr ""
+
+#: src/supports/selectors.md:80
+msgid "`attr()`"
+msgstr ""
+
+#: src/supports/selectors.md:80
+msgid "`content`の中でのみ使える"
+msgstr ""
+
+#: src/supports/selectors.md:81
+msgid "`counter()` / `counters()`"
+msgstr ""
+
+#: src/supports/selectors.md:81
+msgid "`content`の中。第2引数のスタイルは`list-style-type`の値集合"
+msgstr ""
+
+#: src/supports/selectors.md:82
+msgid "`linear-gradient()`等のグラデーション"
+msgstr ""
+
+#: src/supports/selectors.md:83
+msgid "`env()` / `image-set()` / `element()`"
+msgstr ""
+
+#: src/supports/selectors.md:85
+msgid "色"
+msgstr ""
+
+#: src/supports/selectors.md:87
+msgid "記法"
+msgstr ""
+
+#: src/supports/selectors.md:89
+msgid "名前付き色(`red`等のCSS色キーワード)"
+msgstr ""
+
+#: src/supports/selectors.md:90
+msgid "`#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`"
+msgstr ""
+
+#: src/supports/selectors.md:91
+msgid "`rgb()` / `rgba()`(カンマ区切り・スペース区切りとも)"
+msgstr ""
+
+#: src/supports/selectors.md:92
+msgid "`hsl()` / `hsla()` / `hwb()`"
+msgstr ""
+
+#: src/supports/selectors.md:93
+msgid "`lab()` / `lch()` / `oklab()` / `oklch()`"
+msgstr ""
+
+#: src/supports/selectors.md:93
+msgid "✅ (sRGBへ変換して描画)"
+msgstr ""
+
+#: src/supports/selectors.md:94
+msgid "`currentcolor` / `transparent`"
+msgstr ""
+
+#: src/supports/selectors.md:95
+msgid "`color()`(`color(display-p3 ...)`等)"
+msgstr ""
+
+#: src/supports/selectors.md:96
+msgid "`color-mix()` / 相対色構文(`rgb(from ...)`)"
+msgstr ""
+
+#: src/supports/selectors.md:98
+msgid "アルファ付きの色は塗り・背景ともPDFのExtGStateで透過描画する。"
+msgstr ""
+
+#: src/supports/selectors.md:100 src/supports/selectors.md:102
+msgid "at-rule"
+msgstr ""
+
+#: src/supports/selectors.md:104
+msgid "`@media`"
+msgstr ""
+
+#: src/supports/selectors.md:104
+msgid ""
+"メディアタイプのみを評価する。`screen`(および`not screen`以外の否定)はブロッ"
+"クごと無視し、`print`/`all`/タイプ省略は適用する。`(min-width: ...)`のような"
+"特性クエリは評価せず読み飛ばす(=タイプさえ合致すれば中身が適用される)"
+msgstr ""
+
+#: src/supports/selectors.md:105
+msgid "`@page`"
+msgstr ""
+
+#: src/supports/selectors.md:105
+msgid ""
+"`size`(キーワード/`<length>{1,2}`/`landscape`/`portrait`)と`margin`系に対応。"
+"`:first`/`:left`/`:right`擬似クラス単体に対応し、名前付きページ(`@page "
+"intro`)・`:blank`・複合擬似クラス(`:first:left`)は非対応"
+msgstr ""
+
+#: src/supports/selectors.md:106
+msgid "`@page`内のmargin box"
+msgstr ""
+
+#: src/supports/selectors.md:106
+msgid ""
+"`@top-left-corner`/`@top-left`/`@top-center`/`@top-right`…の16種すべて。"
+"`content`のテキスト描画のみで、背景色・枠線等の装飾は非対応。`counter(page)`/"
+"`counter(pages)`でページ番号を出力できる(`counter(pages)`はストリーミングモー"
+"ドでは非対応)"
+msgstr ""
+
+#: src/supports/selectors.md:107 src/supports/fonts.md:43
+msgid "`@font-face`"
+msgstr ""
+
+#: src/supports/selectors.md:107
+msgid ""
+"`font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタ"
+"に対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-"
+"display`等その他のディスクリプタは無視。フォントファイルはTTF/OTFのみで、"
+"WOFF/WOFF2は非対応"
+msgstr ""
+
+#: src/supports/selectors.md:108
+msgid "`@import`"
+msgstr ""
+
+#: src/supports/selectors.md:108
+msgid ""
+"ネスト(深さ上限16、超過分はその1件だけ無視)・循環参照の検出に対応。`@import "
+"url(...) screen;`のようなメディアクエリ条件は評価せず常に取り込む"
+msgstr ""
+
+#: src/supports/selectors.md:109
+msgid "`@charset`"
+msgstr ""
+
+#: src/supports/selectors.md:109
+msgid "入力はUTF-8前提"
+msgstr ""
+
+#: src/supports/selectors.md:110
+msgid ""
+"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
+"`@container` / `@property`"
+msgstr ""
+
+#: src/supports/selectors.md:110
+msgid "ブロックごと無視される"
+msgstr ""
+
+#: src/supports/selectors.md:112
+msgid "ストリーミングモード固有の制約"
+msgstr ""
+
+#: src/supports/selectors.md:114
+msgid ""
+"`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::"
+"Streaming`でのみ以下が適用される。"
+msgstr ""
+
+#: src/supports/selectors.md:117
+msgid ""
+"後方参照セレクタは常に非マッチ: `:last-child`/`:last-of-type`/`:nth-last-"
+"child()`/`:nth-last-of-type()`/`:empty`(対象要素の親の子リストが完結するまで"
+"原理的に判定できないため)"
+msgstr ""
+
+#: src/supports/selectors.md:118
+msgid ""
+"`<body>`開始後の`<style>`タグはエラー: `EngineError::"
+"UnsupportedInStreamingMode`を返す。 黙って見た目が崩れるのを避けるため、"
+"`<style>`は`<head>`に集約する"
+msgstr ""
+
+#: src/supports/selectors.md:120
+msgid "`position: absolute`/`fixed`は無視される"
+msgstr ""
+
+#: src/supports/selectors.md:121
+msgid "`counter(pages)`(総ページ数)は使えない"
+msgstr ""
+
+#: src/supports/fonts.md:3
+msgid ""
+"PDFは文書の中にフォントを埋め込みます。 ブラウザと違って「見る人の環境にある"
+"フォントで表示する」ということができないため、どのフォントを使うかは変換時に"
+"決まります\\*"
+msgstr ""
+
+#: src/supports/fonts.md:6
+msgid "フォントが決まる順番"
+msgstr ""
+
+#: src/supports/fonts.md:8
+msgid "CLIの`--font`(および`--gothic-font`/`--serif-font`/`--mono-font`)"
+msgstr ""
+
+#: src/supports/fonts.md:9
+msgid "CSSの`@font-face`"
+msgstr ""
+
+#: src/supports/fonts.md:10
+msgid "`font-family`に書かれた名前でのシステムフォント探索"
+msgstr ""
+
+#: src/supports/fonts.md:11
+msgid "文書中の文字を描画できるフォントのシステム探索"
+msgstr ""
+
+#: src/supports/fonts.md:13
+msgid ""
+"どれでも1つも見つからなかった場合だけ、システムの`sans-serif`候補が既定フォン"
+"トになります。"
+msgstr ""
+
+#: src/supports/fonts.md:15
+msgid ""
+"4番目は、`font-family`をどこにも書いていない日本語文書のように、名前が手掛か"
+"りにならない場合の網です。 1〜3で集めたフォントで描画できない文字が文書に含ま"
+"れていれば、その文字を持つシステムフォント(日本語ならNoto Sans CJK JPなど)を"
+"探して追加します。 それでも描画できない文字が残る場合は、豆腐(□)になる前に警"
+"告を出します。"
+msgstr ""
+
+#: src/supports/fonts.md:19
+msgid ""
+"```\n"
+"警告: 文字 \"ไ\" を描画できるフォントがありません(豆腐になります)。\n"
+"  --font/--gothic-font か @font-face でフォントを明示してください\n"
+"```"
+msgstr ""
+
+#: src/supports/fonts.md:24
+msgid ""
+"サーバやCIでは`--font`を明示してください。 指定しないと出力が実行環境のフォン"
+"ト構成に依存します。 同じHTMLが開発機と本番で違う見た目になる、という事故はこ"
+"こから起きます。"
+msgstr ""
+
+#: src/supports/fonts.md:28
+msgid "汎用ファミリー名"
+msgstr ""
+
+#: src/supports/fonts.md:30
+msgid ""
+"`serif` / `sans-serif` / `monospace`はシステムフォントから解決されます"
+"(`cursive` / `fantasy`は解決しません)。"
+msgstr ""
+
+#: src/supports/fonts.md:32
+msgid ""
+"日本語では、この解決を環境任せにすると本文の書体が変わってしまうので、CLIから"
+"決定的に指定できます。"
+msgstr ""
+
+#: src/supports/fonts.md:41
+msgid ""
+"TrueType Collection(`.ttc`)を使う場合は、直前の`--font`系オプションに対して"
+"`--font-index`でフェイス番号を指定します。"
+msgstr ""
+
+#: src/supports/fonts.md:47 src/supports/fonts.md:53
+msgid "\"MyFont\""
+msgstr ""
+
+#: src/supports/fonts.md:48
+msgid "\"fonts/MyFont-Regular.ttf\""
+msgstr ""
+
+#: src/supports/fonts.md:56
+msgid ""
+"対応するディスクリプタは`font-family` / `src` / `unicode-range` / `font-"
+"weight` / `font-style`です。 `src`の`local()`と、`format()`/`tech()`付きの"
+"`url()`も受け付けます。 `font-display`などその他のディスクリプタは無視されま"
+"す。"
+msgstr ""
+
+#: src/supports/fonts.md:60
+msgid ""
+"フォントファイルはTTF/OTFのみです。WOFF/WOFF2は非対応なので、Webで配信してい"
+"るwebfontをそのまま指すとエラーになります。 元のTTF/OTFを使ってください。"
+msgstr ""
+
+#: src/supports/fonts.md:63
+msgid ""
+"読み込みの待ち合わせはありません。 headless Chromeで必要だった`document."
+"fonts.ready`待ちのような処理は不要で、フォントが未解決のままPDF化されることは"
+"ありません。"
+msgstr ""
+
+#: src/supports/fonts.md:66
+msgid "`unicode-range`"
+msgstr ""
+
+#: src/supports/fonts.md:68
+msgid ""
+"文字の範囲ごとにフォントを切り替えられます。 英数字は欧文フォント、日本語は和"
+"文フォント、という典型的な構成がそのまま書けます。"
+msgstr ""
+
+#: src/supports/fonts.md:73 src/supports/fonts.md:78
+msgid "\"Mixed\""
+msgstr ""
+
+#: src/supports/fonts.md:74
+msgid "\"fonts/Latin.ttf\""
+msgstr ""
+
+#: src/supports/fonts.md:79
+msgid "\"fonts/JP.ttf\""
+msgstr ""
+
+#: src/supports/fonts.md:79
+msgid "/* 上の範囲外はこちら */"
+msgstr ""
+
+#: src/supports/fonts.md:83
+msgid ""
+"単一コードポイント・範囲・ワイルドカード(`U+4??`)・カンマ区切りの複数指定に対"
+"応します"
+msgstr ""
+
+#: src/supports/fonts.md:84
+msgid ""
+"宣言された範囲はハードフィルタとして働きます。範囲外の文字には、そのフォント"
+"が実際にグリフを持っていても使いません"
+msgstr ""
+
+#: src/supports/fonts.md:85
+msgid ""
+"`unicode-range`を書かなかったフォント(`local()`・`--font`・システム探索を含"
+"む)は全域をカバーします"
+msgstr ""
+
+#: src/supports/fonts.md:86
+msgid "範囲が重なった場合は、CSSの中で先に宣言されたほうが優先されます"
+msgstr ""
+
+#: src/supports/fonts.md:88
+msgid "太字と斜体"
+msgstr ""
+
+#: src/supports/fonts.md:90
+msgid "指定"
+msgstr ""
+
+#: src/supports/fonts.md:92
+msgid ""
+"`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字のフォ"
+"ントが無い場合は、塗りに縁取りを足した疑似ボールドで描画します"
+msgstr ""
+
+#: src/supports/fonts.md:93
+msgid ""
+"`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視)。イタリック字形が無"
+"い場合は、テキスト行列のせん断による疑似イタリックになります"
+msgstr ""
+
+#: src/supports/fonts.md:95
+msgid ""
+"`font`ショートハンドは非対応です。 `font-size`・`font-family`などのロングハン"
+"ドを個別に書いてください。"
+msgstr ""
+
+#: src/supports/fonts.md:98
+msgid "サブセット化"
+msgstr ""
+
+#: src/supports/fonts.md:100
+msgid ""
+"埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定して"
+"も、PDFのサイズは文書に出てくる文字の分にしかなりません。"
+msgstr ""
+
+#: src/supports/fonts.md:103
+msgid "ストリーミングモードでの注意"
+msgstr ""
+
+#: src/supports/fonts.md:105
+msgid ""
+"[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たな"
+"いため 上の3・4のシステムフォント探索が行われません(警告を出して既定フォント"
+"で描画します)。 `--font`系オプションか`@font-face`で明示すれば、ストリーミン"
+"グでも意図どおりのフォントになります。"
+msgstr ""
+
+#: src/supports/fonts.md:109
+msgid ""
+"例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加"
+"えてCJKを描画できるフォントを1本先回りで読み込みます。 日本語の文書を何も指定"
+"せずストリーミングで変換しても豆腐にならないのはこのためです。 CJK以外のスク"
+"リプトは警告の対象になります。"
+msgstr ""
+
+#: src/supports/images.md:1
+msgid "画像"
+msgstr ""
+
+#: src/supports/images.md:3
+msgid "`<img>`とCSSの`background-image`で画像を埋め込めます。"
+msgstr ""
+
+#: src/supports/images.md:5
+msgid "対応フォーマット"
+msgstr ""
+
+#: src/supports/images.md:5
+msgid "PNG / JPEG / WebP"
+msgstr ""
+
+#: src/supports/images.md:7
+msgid "`src`に書けるもの"
+msgstr ""
+
+#: src/supports/images.md:7
+msgid "ローカルの相対パス・絶対パス、`http(s)`のURL、`data:` URI"
+msgstr ""
+
+#: src/supports/images.md:9
+msgid "SVGとGIFは非対応です。"
+msgstr ""
+
+#: src/supports/images.md:11
+msgid "`<img>`"
+msgstr ""
+
+#: src/supports/images.md:14
+msgid "\"120\""
+msgstr ""
+
+#: src/supports/images.md:15
+msgid "\"https://example.com/chart.png\""
+msgstr ""
+
+#: src/supports/images.md:15
+msgid "\"売上推移\""
+msgstr ""
+
+#: src/supports/images.md:16
+msgid "\"data:image/png;base64,iVBORw0…\""
+msgstr ""
+
+#: src/supports/images.md:19
+msgid ""
+"`<img>`はインラインの置換要素として行に載ります。独立した行にしたい場合は"
+"`display: block`を指定してください"
+msgstr ""
+
+#: src/supports/images.md:20
+msgid ""
+"`width`/`height`属性とCSSの`width`/`height`に対応します。どちらも無指定なら画"
+"像の内在サイズを使い、片方だけ指定すればアスペクト比を保って他方を導出します"
+msgstr ""
+
+#: src/supports/images.md:21
+msgid ""
+"取得やデコードに失敗した画像は、その要素だけ空として扱い、文書全体の生成は止"
+"めません(`--load-media-error-handling abort`で中断させることもできます)"
+msgstr ""
+
+#: src/supports/images.md:22
+msgid ""
+"同じ画像を何度使っても、取得・デコード・PDFへの埋め込みは初回の1回だけです"
+msgstr ""
+
+#: src/supports/images.md:24
+msgid "`object-fit` / `object-position`"
+msgstr ""
+
+#: src/supports/images.md:26
+msgid "指定した枠に対して画像をどう収めるかを制御します。"
+msgstr ""
+
+#: src/supports/images.md:32
+msgid "/* fill | contain | cover | none | scale-down */"
+msgstr ""
+
+#: src/supports/images.md:37
+msgid "背景画像"
+msgstr ""
+
+#: src/supports/images.md:41
+msgid "\"stamp.png\""
+msgstr ""
+
+#: src/supports/images.md:48
+msgid ""
+"`background-image`に書けるのは`url()`だけです。 `linear-gradient()`などのグラ"
+"デーション関数と、カンマ区切りの複数背景は非対応です。 既定では画像の内在サイ"
+"ズでタイル配置されます。"
+msgstr ""
+
+#: src/supports/images.md:52
+msgid ""
+"`border-radius`と背景画像を併用した場合、角丸によるクリップは行われません(角"
+"丸は背景色の塗りにのみ効きます)。"
+msgstr ""
+
+#: src/supports/images.md:54
+msgid "リモート画像の取得"
+msgstr ""
+
+#: src/supports/images.md:56
+msgid "既定では無効です。 `--allow-remote-assets`で明示的に有効化します。"
+msgstr ""
+
+#: src/supports/images.md:63
+msgid ""
+"有効にした場合も、プライベートIP・ループバック・リンクローカル(クラウドのメタ"
+"データエンドポイント`169.254.169.254`を含む)宛のリクエストは 常にブロックされ"
+"ます。 DNSリバインディングやリダイレクト経由の迂回も同じ仕組みで防いでいま"
+"す。"
+msgstr ""
+
+#: src/supports/images.md:67
+msgid ""
+"信頼できないHTMLを変換する場合は、`--allow`でローカル参照の範囲も併せて絞って"
+"ください。"
+msgstr ""
+
+#: src/supports/images.md:73
+msgid "JPEGはそのまま埋め込まれる"
+msgstr ""
+
+#: src/supports/images.md:75
+msgid ""
+"JPEGはデコードせず、サイズ情報だけを読んでPDFへそのまま(DCTDecodeとして)埋め"
+"込みます。 再エンコードしないので画質は落ちず、変換も速くなります。"
+msgstr ""
+
+#: src/supports/images.md:78
+msgid ""
+"その代わり、`--grayscale`を指定してもJPEGとCMYK画像はカラーのまま残ります(デ"
+"コーダを持たないため)。 グレースケール化が必要な場合は、変換前の画像をグレー"
+"スケールにしておいてください。"
+msgstr ""
+
+#: src/supports/images.md:81
+msgid ""
+"PNGとWebPはフルデコードし、アルファチャンネルがあれば透過画像として埋め込みま"
+"す。"
+msgstr ""
+
+#: src/supports/images.md:83
+msgid "画像を一切読み込まない"
+msgstr ""
+
+#: src/supports/images.md:89
+msgid "`<img>`とCSSの`background-image`の両方を読み込まなくなります。"
+msgstr ""
+
+#: src/supports/pagination.md:3
+msgid "sghtmltopdfはCSS Fragmentationのプロパティでページ分割を制御します。"
+msgstr ""
+
+#: src/supports/pagination.md:5
+msgid "明示的な改ページ"
+msgstr ""
+
+#: src/supports/pagination.md:8
+msgid "/* この要素の前で改ページ */"
+msgstr ""
+
+#: src/supports/pagination.md:9
+msgid "/* この要素の後で改ページ */"
+msgstr ""
+
+#: src/supports/pagination.md:10
+msgid "/* この要素をページ境界で割らない */"
+msgstr ""
+
+#: src/supports/pagination.md:13
+msgid "受け付ける値"
+msgstr ""
+
+#: src/supports/pagination.md:15
+msgid ""
+"`auto` / `avoid`(`avoid-page`・`avoid-column`も同義) / `always`(`page`も同義)"
+msgstr ""
+
+#: src/supports/pagination.md:16
+msgid "`auto` / `avoid`(同上)"
+msgstr ""
+
+#: src/supports/pagination.md:18
+msgid ""
+"古い`page-break-before` / `page-break-after` / `page-break-inside`もエイリア"
+"スとして受け付けます。 wkhtmltopdfやwicked_pdf向けに書いた資産をそのまま持ち"
+"込めます。"
+msgstr ""
+
+#: src/supports/pagination.md:21
+msgid ""
+"`left`/`right`/`recto`/`verso`(見開き制御)と多段組み関連の値は非対応です。"
+msgstr ""
+
+#: src/supports/pagination.md:23
+msgid "CSSを書かずに指定する"
+msgstr ""
+
+#: src/supports/pagination.md:25
+msgid "HTML属性でも書けます。"
+msgstr ""
+
+#: src/supports/pagination.md:28
+msgid "\"before\""
+msgstr ""
+
+#: src/supports/pagination.md:29
+msgid "\"after\""
+msgstr ""
+
+#: src/supports/pagination.md:30
+msgid "\"avoid\""
+msgstr ""
+
+#: src/supports/pagination.md:33
+msgid ""
+"こちらは弱い優先度のヒントとして扱われるので、スタイルシートのルールで個別に"
+"上書きできます。"
+msgstr ""
+
+#: src/supports/pagination.md:35
+msgid "段落が泣き別れないようにする"
+msgstr ""
+
+#: src/supports/pagination.md:39
+msgid "/* ページ末尾に最低3行は残す */"
+msgstr ""
+
+#: src/supports/pagination.md:40
+msgid "/* 次ページの先頭に最低3行は送る */"
+msgstr ""
+
+#: src/supports/pagination.md:44
+msgid ""
+"1以上の整数で、初期値はどちらも2です。 指定を満たせない場合は段落ごと次のペー"
+"ジへ送られます。"
+msgstr ""
+
+#: src/supports/pagination.md:47
+msgid "`@page` — 用紙とページ余白"
+msgstr ""
+
+#: src/supports/pagination.md:54
+msgid "\"請求書\""
+msgstr ""
+
+#: src/supports/pagination.md:55
+msgid "page"
+msgstr ""
+
+#: src/supports/pagination.md:55
+msgid "\" / \""
+msgstr ""
+
+#: src/supports/pagination.md:55
+msgid "pages"
+msgstr ""
+
+#: src/supports/pagination.md:59
+msgid "\"表紙\""
+msgstr ""
+
+#: src/supports/pagination.md:63
+msgid ""
+"`size`はページサイズのキーワード(`A4`/`Letter`等)・`<length>{1,2}`・"
+"`landscape`/`portrait`を受け付けます"
+msgstr ""
+
+#: src/supports/pagination.md:64
+msgid "CLIのページ設定オプションより`@page`が優先されます(CLI側は初期値)"
+msgstr ""
+
+#: src/supports/pagination.md:65
+msgid ""
+"margin box(`@top-left-corner`〜`@bottom-right-corner`の16種)には`content`でテ"
+"キストを置けます。背景色や枠線などの装飾は非対応です"
+msgstr ""
+
+#: src/supports/pagination.md:66
+msgid "`counter(page)`は現在のページ番号、`counter(pages)`は総ページ数です"
+msgstr ""
+
+#: src/supports/pagination.md:68
+msgid "`@page`の制約"
+msgstr ""
+
+#: src/supports/pagination.md:70
+msgid ""
+"`size`/`margin`はページごとに変えられません。`:first`/`:left`/`:right`付きの"
+"`size`/`margin`宣言はパースされますが適用されず、これらの擬似クラスは margin "
+"boxの 内容の出し分けにだけ使えます"
+msgstr ""
+
+#: src/supports/pagination.md:71
+msgid "名前付きページ(`@page intro`と`page: intro`)は非対応です"
+msgstr ""
+
+#: src/supports/pagination.md:72
+msgid ""
+"margin boxの寸法は簡略化しています。4隅は縦横マージンの交差部分で固定、残り12"
+"個は各辺を3等分した均等割りです(`width`指定は無視されます)"
+msgstr ""
+
+#: src/supports/pagination.md:73
+msgid ""
+"`counter(pages)`は[ストリーミングモード](../usage/cli/streaming.md)では使えま"
+"せん(総ページ数が1パスでは決まらないため)"
+msgstr ""
+
+#: src/supports/pagination.md:75
+msgid ""
+"CLIの`--header-center`などのオプションは、内部的にこの`@page`のmargin boxへ"
+"マップされます。 両方書いた場合はCSSが勝ちます。"
+msgstr ""
+
+#: src/supports/pagination.md:78
+msgid "テーブルのページ分割"
+msgstr ""
+
+#: src/supports/pagination.md:80
+msgid "1ページに収まらないテーブルは行単位で分割され、複数ページへ流れます。"
+msgstr ""
+
+#: src/supports/pagination.md:82
+msgid ""
+"`<thead>`の行は2ページ目以降の先頭に繰り返されます。複数行の見出しにも対応"
+"し、1ページに収まる表では複製しません"
+msgstr ""
+
+#: src/supports/pagination.md:83
+msgid ""
+"`<tfoot>`はソース順に関わらずテーブル末尾へ移動しますが、各ページ下端への繰り"
+"返しは行いません(最終ページに1回だけ出ます)"
+msgstr ""
+
+#: src/supports/pagination.md:84
+msgid ""
+"`caption`は`caption-side`に従って、最初(`top`)または最後(`bottom`)の断片に付"
+"きます"
+msgstr ""
+
+#: src/supports/pagination.md:85
+msgid ""
+"各断片はテーブル自身の背景・枠線を引き継ぎ、`border-collapse: collapse`の枠線"
+"統合もページ内でそのまま効きます"
+msgstr ""
+
+#: src/supports/pagination.md:87
+msgid ""
+"既知の限界として、`rowspan`が分割点をまたぐセルは開始行の断片に属し、下部が"
+"ページからはみ出します(クリップされません)。 行単位の`break-inside: avoid`と"
+"orphans/widows相当も未対応です。"
+msgstr ""
+
+#: src/supports/pagination.md:90
+msgid "FlexboxとGridの扱い"
+msgstr ""
+
+#: src/supports/pagination.md:92
+msgid "レイアウト"
+msgstr ""
+
+#: src/supports/pagination.md:94
+msgid "`display: flex`"
+msgstr ""
+
+#: src/supports/pagination.md:94
+msgid "アトミック。途中で分割せず、収まらなければ次ページへ送る"
+msgstr ""
+
+#: src/supports/pagination.md:95
+msgid "`display: grid`"
+msgstr ""
+
+#: src/supports/pagination.md:95
+msgid "行単位で分割する(複数行にまたがるアイテムがある境界では分割しない)"
+msgstr ""
+
+#: src/supports/pagination.md:96
+msgid "`display: table`"
+msgstr ""
+
+#: src/supports/pagination.md:96
+msgid "行単位で分割する(上記)"
+msgstr ""
+
+#: src/supports/pagination.md:98
+msgid ""
+"大きなカードを並べる用途では、flexコンテナが丸ごと次ページへ飛ぶことがありま"
+"す。 分割してほしい場合はGridかテーブルを使ってください。"
+msgstr ""
+
+#: src/supports/pagination.md:101
+msgid "よく使う書き方"
+msgstr ""
+
+#: src/supports/pagination.md:103
+msgid "見出しが単独でページ末尾に残らないようにする:"
+msgstr ""
+
+#: src/supports/pagination.md:107
+msgid "/* 見出しの直後で改ページしない */"
+msgstr ""
+
+#: src/supports/pagination.md:112
+msgid "明細の1件が2ページに割れないようにする:"
+msgstr ""
+
+#: src/supports/pagination.md:118
+msgid "章ごとに必ず改ページする:"
+msgstr ""
+
+#: src/supports/pagination.md:126
+msgid ""
+"[ストリーミングモード](../usage/cli/streaming.md)では`:last-child`などの後方"
+"参照セレクタが常に非マッチになります。 上の例の`+`(隣接兄弟)は使えます。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:3
+msgid ""
+"オプション名の多くはwkhtmltopdfと同じです。 ただし同じ名前でも結果が違うもの"
+"がいくつかあるので、確認してください。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:6
+msgid ""
+"全オプションの対応状況は[wkhtmltopdfオプション対応表](wkhtmltopdf-options.md)"
+"にあります。 Railsでwicked_pdf経由で使っている場合は[wicked_pdfからの移行]"
+"(wicked-pdf.md)を参照してください。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:9
+msgid "挙動が違うところ"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:13
+msgid "CLIオプションとCSSの`@page`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:13
+msgid "CLIが勝つ"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:13
+msgid "`@page`が勝つ(CLIは初期値)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:14 src/migration/wkhtmltopdf.md:33
+msgid "マージンの既定値"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:14
+msgid "左右10mm"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:14
+msgid "四辺1in(96px)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:15
+msgid "表紙・目次の指定"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:15
+msgid "位置引数(`cover a.html toc`)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:15
+msgid "`--cover <PATH>` / `--toc`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:16
+msgid "複数HTMLの結合"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:16
+msgid "できる"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:16
+msgid "できない(入力は1つ)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:17
+msgid "ヘッダー/フッターのページ変数"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:17
+msgid "JavaScriptで差し込み"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:17
+msgid "プレースホルダ置換(JSは実行しない)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:18
+msgid "システムフォント"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:18
+msgid "同じ(`--font`で明示もできる)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:19
+msgid "非対応オプション"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:19
+msgid "黙って無視されることがある"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:19
+msgid "理由を示してexit 1で止まる"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:21
+msgid "`@page`が勝つ"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:23
+msgid ""
+"もっとも引っかかりやすい違いです。 CSSに`@page { margin: 0 }`と書いてあると、"
+"`--margin-top 20mm`は無視されます。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:27
+msgid "/* こちらが勝つ */"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:30
+msgid ""
+"CLIオプションは「CSSに書かれていなかったときの初期値」として働きます。 CLIで"
+"制御したい場合は、HTMLから`@page`の該当プロパティを外してください。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:35
+msgid ""
+"wkhtmltopdfは左右10mm、sghtmltopdfは四辺1インチ(96px = 25.4mm)です。 指定なし"
+"で変換すると余白が変わるので、既存の見た目を保つには明示します。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:46
+msgid "# wkhtmltopdf\n"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:47
+msgid "# sghtmltopdf\n"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:50
+msgid ""
+"目次の見た目はwkhtmltopdfの既定TOC XSLの出力に合わせてあります。 XSLTは非対応"
+"なので、変更は`--user-style-sheet`のCSSで行います。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:53
+msgid "ヘッダー/フッターのページ番号"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:55
+msgid ""
+"wkhtmltopdfは`--header-html`のURLにクエリ(`?page=1&topage=5`)を付け、ページ側"
+"のJavaScriptで差し込む方式でした。 JSを実行しないので、sghtmltopdfはプレース"
+"ホルダの文字列置換に置き換えています。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:59
+msgid "\"[page] / [topage]\""
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:62
+msgid ""
+"HTMLでヘッダーを作る場合も、HTMLのテキストとして`[page]`が置換されます。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:64
+msgid "非対応のオプションは黙って無視しない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:66
+msgid ""
+"指定すると理由と代替手段を示して`exit 1`で終了します。 移行時に「オプションが"
+"効いていないことに気づかない」事故を避けるためです。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:69
+msgid "主なものは以下です。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:71
+msgid ""
+"JavaScript関連: `--enable-javascript`・`--javascript-delay`・`--run-script`・"
+"`--window-status`・`--debug-javascript`・`--stop-slow-scripts`(JS実行は設計上"
+"の非目標)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:72
+msgid "PDFアウトライン: `--outline`・`--outline-depth`・`--dump-outline`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:73
+msgid ""
+"XSLT: `--xsl-style-sheet`・`--dump-default-toc-xsl`(目次は内蔵テンプレート + "
+"CSSで代替)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:74
+msgid "画像の再エンコード: `--image-quality`・`--image-dpi`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:75
+msgid ""
+"ネットワーク: `--proxy`・`--cookie`・`--custom-header`・`--username`/`--"
+"password`・`--ssl-*`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:76
+msgid ""
+"WebKit固有: `--disable-smart-shrinking`・`--viewport-size`・`--lowquality`・"
+"`--print-media-type`(常に印刷メディア扱い)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:77
+msgid "PDFフォーム: `--enable-forms`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:79
+msgid "HTML/CSS側で必要になる調整"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:81
+msgid ""
+"エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の3つ"
+"です。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:84
+msgid "`!important`が使えません。付いた宣言は無視されます"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:85
+msgid ""
+"CSSの中で使える長さの単位は`px`/`em`/`rem`/`%`だけです(`pt`や`mm`はCLIオプ"
+"ションでは使えますが、CSSでは使えません)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:86
+msgid "`inherit`/`initial`/`unset`が使えません"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:88
+msgid ""
+"詳しくは[先に読んでほしい規則](../supports/rules.md)を参照してください。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:90
+msgid "移行できたか確かめる"
+msgstr ""
+
+#: src/migration/wkhtmltopdf.md:92
+msgid ""
+"まずは`--log-level info`(既定)のまま変換し、警告が出ないことを確認します。 非"
+"対応オプションはexit 1で止まるので、変換が通った時点でオプションはすべて解釈"
+"されています。 あとは出力を目視で比べて、余白・改ページ位置・フォントを確認し"
+"てください。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:1
+msgid "wkhtmltopdfオプション対応表"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:3
+msgid ""
+"wkhtmltopdf 0.12.6の`--extended-help`(公式マニュアル<https://wkhtmltopdf.org/"
+"usage/wkhtmltopdf.txt>)に載る全オプションの対応状況です。 セクション区切りと"
+"並びは公式マニュアルに合わせてあります。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:6
+msgid "記号"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:8
+#: src/migration/wkhtmltopdf-options.md:34
+#: src/migration/wkhtmltopdf-options.md:36
+#: src/migration/wkhtmltopdf-options.md:37
+#: src/migration/wkhtmltopdf-options.md:41
+#: src/migration/wkhtmltopdf-options.md:43
+#: src/migration/wkhtmltopdf-options.md:44
+#: src/migration/wkhtmltopdf-options.md:45
+#: src/migration/wkhtmltopdf-options.md:46
+#: src/migration/wkhtmltopdf-options.md:47
+#: src/migration/wkhtmltopdf-options.md:48
+#: src/migration/wkhtmltopdf-options.md:49
+#: src/migration/wkhtmltopdf-options.md:50
+#: src/migration/wkhtmltopdf-options.md:51
+#: src/migration/wkhtmltopdf-options.md:52
+#: src/migration/wkhtmltopdf-options.md:54
+#: src/migration/wkhtmltopdf-options.md:56
+#: src/migration/wkhtmltopdf-options.md:78
+#: src/migration/wkhtmltopdf-options.md:79
+#: src/migration/wkhtmltopdf-options.md:86
+#: src/migration/wkhtmltopdf-options.md:87
+#: src/migration/wkhtmltopdf-options.md:88
+#: src/migration/wkhtmltopdf-options.md:90
+#: src/migration/wkhtmltopdf-options.md:91
+#: src/migration/wkhtmltopdf-options.md:94
+#: src/migration/wkhtmltopdf-options.md:95
+#: src/migration/wkhtmltopdf-options.md:96
+#: src/migration/wkhtmltopdf-options.md:97
+#: src/migration/wkhtmltopdf-options.md:98
+#: src/migration/wkhtmltopdf-options.md:100
+#: src/migration/wkhtmltopdf-options.md:110
+#: src/migration/wkhtmltopdf-options.md:111
+#: src/migration/wkhtmltopdf-options.md:114
+#: src/migration/wkhtmltopdf-options.md:123
+#: src/migration/wkhtmltopdf-options.md:124
+#: src/migration/wkhtmltopdf-options.md:125
+#: src/migration/wkhtmltopdf-options.md:126
+#: src/migration/wkhtmltopdf-options.md:127
+#: src/migration/wkhtmltopdf-options.md:128
+#: src/migration/wkhtmltopdf-options.md:129
+#: src/migration/wkhtmltopdf-options.md:130
+#: src/migration/wkhtmltopdf-options.md:131
+#: src/migration/wkhtmltopdf-options.md:144
+#: src/migration/wkhtmltopdf-options.md:145
+#: src/migration/wkhtmltopdf-options.md:146
+#: src/migration/wkhtmltopdf-options.md:147
+#: src/migration/wkhtmltopdf-options.md:148
+msgid "✅ 対応"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:8
+msgid "wkhtmltopdfと同じ名前・同じ意味で使える"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:9
+#: src/migration/wkhtmltopdf-options.md:31
+#: src/migration/wkhtmltopdf-options.md:32
+#: src/migration/wkhtmltopdf-options.md:33
+#: src/migration/wkhtmltopdf-options.md:35
+#: src/migration/wkhtmltopdf-options.md:38
+#: src/migration/wkhtmltopdf-options.md:39
+#: src/migration/wkhtmltopdf-options.md:40
+#: src/migration/wkhtmltopdf-options.md:42
+#: src/migration/wkhtmltopdf-options.md:53
+#: src/migration/wkhtmltopdf-options.md:55
+#: src/migration/wkhtmltopdf-options.md:69
+#: src/migration/wkhtmltopdf-options.md:70
+#: src/migration/wkhtmltopdf-options.md:71
+#: src/migration/wkhtmltopdf-options.md:72
+#: src/migration/wkhtmltopdf-options.md:80
+#: src/migration/wkhtmltopdf-options.md:81
+#: src/migration/wkhtmltopdf-options.md:82
+#: src/migration/wkhtmltopdf-options.md:83
+#: src/migration/wkhtmltopdf-options.md:84
+#: src/migration/wkhtmltopdf-options.md:85
+#: src/migration/wkhtmltopdf-options.md:89
+#: src/migration/wkhtmltopdf-options.md:92
+#: src/migration/wkhtmltopdf-options.md:93
+#: src/migration/wkhtmltopdf-options.md:99
+#: src/migration/wkhtmltopdf-options.md:101
+#: src/migration/wkhtmltopdf-options.md:102
+#: src/migration/wkhtmltopdf-options.md:103
+#: src/migration/wkhtmltopdf-options.md:104
+#: src/migration/wkhtmltopdf-options.md:105
+#: src/migration/wkhtmltopdf-options.md:106
+#: src/migration/wkhtmltopdf-options.md:107
+#: src/migration/wkhtmltopdf-options.md:108
+#: src/migration/wkhtmltopdf-options.md:109
+#: src/migration/wkhtmltopdf-options.md:112
+#: src/migration/wkhtmltopdf-options.md:113
+#: src/migration/wkhtmltopdf-options.md:149
+msgid "❌ 非対応"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:9
+msgid ""
+"実装しない。指定するとと代替メッセージを出力してexit 1で終了する(黙って無視し"
+"ない)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:11
+msgid ""
+"移行時に引っかかりやすい挙動の違いは[wkhtmltopdfからの移行](wkhtmltopdf.md)に"
+"まとめてあります。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:13
+msgid "コマンドライン形式の違い"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:15
+msgid "wkhtmltopdfは表紙と目次を位置引数で指定します。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:22
+msgid ""
+"sghtmltopdfは入力を1つのHTMLに限定し、表紙・目次は`--cover <path>`・`--toc`オ"
+"プションで指定します。 複数HTMLの結合(wkhtmltopdfが位置引数を並べてできるこ"
+"と)には対応していません。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:25
+msgid ""
+"そのため、位置引数由来の`--exclude-from-outline`/`--include-in-outline`(入力"
+"ページ単位で目次から除外する)も対象外です。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:27
+msgid "Global Options"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:29
+#: src/migration/wkhtmltopdf-options.md:67
+#: src/migration/wkhtmltopdf-options.md:76
+#: src/migration/wkhtmltopdf-options.md:121
+#: src/migration/wkhtmltopdf-options.md:142
+msgid "方針"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:31
+msgid "`--collate` / `--no-collate`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:31
+msgid "印刷時の丁合。PDF生成に意味を持たない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:32
+msgid "`--cookie-jar <path>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:32
+#: src/migration/wkhtmltopdf-options.md:83
+msgid "認証付きフェッチはスコープ外"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:33
+msgid "`--copies <number>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:33
+msgid "同上（印刷用）"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:34
+msgid "`-d, --dpi <dpi>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:34
+msgid "既定96"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:35
+msgid "`-H, --extended-help`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:35
+msgid "`--help`に一本化する"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:36
+msgid "`-g, --grayscale`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:37
+msgid "`-h, --help`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:37
+msgid "clapが生成"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:38
+msgid "`--htmldoc` / `--manpage` / `--readme` / `--license`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:38
+msgid "ドキュメントは`docs/`とREADMEで提供する"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:39
+msgid "`--image-dpi <integer>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:39
+msgid "画像のリサンプリングを行わないため"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:40
+msgid "`--image-quality <integer>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:40
+msgid "JPEGデコーダ/エンコーダを持たず、そのまま埋め込むため"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:41
+msgid "`--log-level <level>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:41
+msgid "`none`/`error`/`warn`/`info`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:42
+msgid "`-l, --lowquality`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:42
+msgid "WebKitのラスタライズ品質設定に相当するものが無い"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:43
+msgid "`-B, --margin-bottom <unitreal>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:44
+msgid "`-L, --margin-left <unitreal>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:44
+#: src/migration/wkhtmltopdf-options.md:45
+msgid "既定値が違う(下記)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:45
+msgid "`-R, --margin-right <unitreal>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:46
+msgid "`-T, --margin-top <unitreal>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:47
+msgid "`-O, --orientation <orientation>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:47
+msgid "`Portrait`/`Landscape`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:48
+msgid "`--page-height <unitreal>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:49
+msgid "`-s, --page-size <Size>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:49
+msgid "A4/A3/A5/Letter/Legal"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:50
+msgid "`--page-width <unitreal>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:51
+msgid "現状は常時Flate圧縮"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:52
+msgid "`-q, --quiet`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:52
+msgid "`--log-level none`と同義"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:53
+msgid "`--read-args-from-stdin`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:53
+msgid "stdinはHTML入力に使うため衝突する"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:54
+msgid "`--title <text>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:54
+msgid "PDF Info辞書。未指定時は`<title>`を採用"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:55
+msgid "`--use-xserver`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:55
+msgid "Xサーバに依存しない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:56
+msgid "`-V, --version`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:58
+msgid ""
+"マージンの既定値: wkhtmltopdfは左右10mm・上下未指定だが、sghtmltopdfの現在の"
+"既定は四辺96px(＝1in＝25.4mm)。 既存の出力を変えないため既定値は変更しない。 "
+"移行時は`--margin-*`を明示すること。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:62
+msgid "Outline Options"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:64
+msgid ""
+"PDFのアウトライン(ブックマーク)自体が非対応のため、このセクションはすべて非対"
+"応です。 文書内の目次は`--toc`で作れます。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:69
+msgid "`--outline` / `--no-outline`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:69
+msgid "PDFブックマーク未実装"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:70
+msgid "`--outline-depth <level>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:71
+msgid "`--dump-outline <file>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:72
+msgid "`--dump-default-toc-xsl`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:72
+msgid "XSLTを使わない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:74
+msgid "Page Options"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:78
+msgid "`--allow <path>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:78
+msgid "ローカル読み込みを許可するディレクトリ。サーバモードでは特に重要"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:79
+msgid "`--background` / `--no-background`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:80
+msgid "`--bypass-proxy-for <value>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:80
+#: src/migration/wkhtmltopdf-options.md:105
+msgid "プロキシ非対応"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:81
+msgid "`--cache-dir <path>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:81
+msgid "フェッチキャッシュは持たない(必要になれば別途)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:82
+msgid ""
+"`--checkbox-checked-svg` / `--checkbox-svg` / `--radiobutton-checked-svg` / "
+"`--radiobutton-svg`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:82
+msgid "SVG描画が非対応。フォーム要素の見た目は内蔵の描画で再現する"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:83
+msgid "`--cookie <name> <value>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:84
+msgid "`--custom-header <name> <value>` / `--custom-header-propagation`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:85
+msgid "`--debug-javascript` / `--no-debug-javascript`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:85
+#: src/migration/wkhtmltopdf-options.md:106
+#: src/migration/wkhtmltopdf-options.md:109
+#: src/migration/wkhtmltopdf-options.md:113
+msgid "JS非対応"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:86
+msgid "ページ名+番号の既定ヘッダ。簡易オプションのショートカット"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:87
+msgid "`--encoding <encoding>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:87
+msgid "判定順は BOM > `--encoding` > `<meta charset>` > UTF-8"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:88
+msgid "`--disable-external-links` / `--enable-external-links`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:88
+msgid "リンク注釈"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:89
+msgid "`--disable-forms` / `--enable-forms`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:89
+msgid "入力可能なPDFフォーム(AcroForm)は作らない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:90
+msgid "`--images` / `--no-images`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:91
+msgid "`--disable-internal-links` / `--enable-internal-links`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:92
+msgid "`-n, --disable-javascript` / `--enable-javascript`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:92
+msgid "JS実行は設計上の非目標"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:93
+msgid "`--javascript-delay <msec>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:94
+msgid "`--keep-relative-links` / `--resolve-relative-links`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:94
+msgid "リンク注釈のURL解決。`<base href>`と併せて実装"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:95
+msgid "`--load-error-handling <handler>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:95
+msgid "`abort`/`ignore`。`skip`は入力が1つなので無し"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:96
+msgid "`--load-media-error-handling <handler>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:96
+msgid "画像・フォント・CSSの取得失敗"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:97
+msgid "`--disable-local-file-access` / `--enable-local-file-access`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:97
+msgid "既存`--allow-remote-assets`と整理"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:98
+msgid "`--minimum-font-size <int>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:99
+msgid "`--exclude-from-outline` / `--include-in-outline`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:99
+msgid "入力が1つなので意味を持たない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:100
+msgid "`--page-offset <offset>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:100
+msgid "ページ番号の起点"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:101
+msgid "`--password` / `--username`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:101
+msgid "HTTP認証はスコープ外"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:102
+msgid "`--disable-plugins` / `--enable-plugins`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:102
+msgid "プラグイン機構が無い"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:103
+msgid "`--post <name> <value>` / `--post-file <name> <path>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:103
+msgid "URL入力時のPOSTはスコープ外"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:104
+msgid "`--print-media-type` / `--no-print-media-type`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:104
+msgid "常に印刷メディア扱い"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:105
+msgid "`-p, --proxy <proxy>` / `--proxy-hostname-lookup`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:106
+msgid "`--run-script <js>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:107
+msgid "`--disable-smart-shrinking` / `--enable-smart-shrinking`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:107
+msgid "WebKit固有の縮小戦略"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:108
+msgid "`--ssl-crt-path` / `--ssl-key-password` / `--ssl-key-path`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:108
+msgid "クライアント証明書はスコープ外"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:109
+msgid "`--stop-slow-scripts` / `--no-stop-slow-scripts`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:110
+msgid "`--disable-toc-back-links` / `--enable-toc-back-links`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:110
+msgid "見出し→目次への逆リンク"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:111
+msgid "`--user-style-sheet <path>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:111
+msgid "ユーザーオリジンのCSS"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:112
+msgid "`--viewport-size <size>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:112
+msgid "ビューポート概念が無い"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:113
+msgid "`--window-status <status>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:114
+msgid "`--zoom <float>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:116
+msgid "Headers And Footer Options"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:118
+msgid ""
+"このセクションはすべて対応しています。 JSを実行しないため、wkhtmltopdfが`--"
+"header-html`のURLにクエリ(`?page=1&topage=5`)を付けてJSで差し込んでいたページ"
+"変数は、プレースホルダの文字列置換で実現します。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:123
+msgid "`--header-left` / `--header-center` / `--header-right`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:123
+msgid "`@page`のmargin boxへマップ"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:124
+msgid "`--footer-left` / `--footer-center` / `--footer-right`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:125
+msgid "`--header-html <url>` / `--footer-html <url>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:125
+msgid "別のHTMLをレンダリングして余白へ合成する"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:126
+msgid "`--header-line` / `--no-header-line`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:127
+msgid "`--footer-line` / `--no-footer-line`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:128
+msgid "`--header-spacing <real>` / `--footer-spacing <real>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:128
+msgid "mm"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:130
+msgid "`--footer-font-name` / `--footer-font-size`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:131
+msgid "`--replace <name> <value>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:131
+msgid ""
+"ヘッダ/フッタ内の`[name]`を置換。sghtmltopdfのプレースホルダ方式と直接対応す"
+"る"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:133
+msgid ""
+"wkhtmltopdfの組み込みプレースホルダのうち、使えるのは`[page]`・`[frompage]`・"
+"`[topage]`・`[date]`・`[time]`・`[title]`/`[doctitle]`です。 `[section]`/"
+"`[subsection]`(直近の見出し)と`[webpage]`/`[sitepage]`/`[sitepages]`(複数入力"
+"向け)は非対応です。 `--replace`で任意の名前を定義できます。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:137
+msgid "TOC Options"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:139
+msgid ""
+"生成される目次のHTML構造と既定スタイルは、wkhtmltopdfの既定TOC XSLの出力に合"
+"わせてあります。 階層は入れ子の`<ul>`、各項目は`<li><div><a>見出し</a><span>"
+"ページ番号</span></div></li>`です。"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:144
+msgid "`--toc-header-text <text>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:144
+msgid "既定\"Table of Contents\"。`<h1>`のテキスト"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:145
+msgid "`--toc-level-indentation <width>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:145
+msgid "既定1em。`ul { padding-left }`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:146
+msgid "`--toc-text-size-shrink <real>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:146
+msgid "既定0.8。`ul ul { font-size: 80% }`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:147
+msgid "`div`の`border-bottom: dashed`を出さない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:148
+msgid "目次→見出しのリンク(`<a href>`)を出さない"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:149
+msgid "`--xsl-style-sheet <file>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:149
+msgid "XSLT非対応。見た目の変更は`--user-style-sheet`で行う"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:151
+msgid "sghtmltopdf独自のオプション(wkhtmltopdfに無い)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:153
+msgid "内容"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:155
+msgid "`--font <path>` / `--font-index <N>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:155
+msgid "フォントの明示指定(複数可、任意)。省略時はシステムフォントを使う"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:156
+msgid "`--gothic-font` / `--mono-font` / `--serif-font`(+`-index`)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:156
+msgid "汎用family名(`sans-serif`/`monospace`/`serif`)の実体指定"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:157
+msgid "http(s)絶対URLのフェッチ許可"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:158
+msgid "[ストリーミングモード](../usage/cli/streaming.md)で処理する"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:159
+msgid "`--base-url <url\\|dir>`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:159
+msgid "stdin入力時などの相対解決の基準"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:160
+msgid "`--author` / `--subject` / `--keywords`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:160
+msgid "PDF Info辞書(wkhtmltopdfは`--title`のみ)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:161
+msgid "`--cover <path>` / `--toc`"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:161
+msgid "表紙・目次(wkhtmltopdfは位置引数)"
+msgstr ""
+
+#: src/migration/wkhtmltopdf-options.md:162
+msgid "`server` サブコマンド"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:1
+msgid "wicked_pdfからの移行ガイド"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:3
+msgid ""
+"[wicked_pdf](https://github.com/mileszs/wicked_pdf)(+ wkhtmltopdf)を使ってい"
+"るRailsアプリを、sghtmltopdfのgemへ移すための対応表と注意点。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:5
+msgid ""
+"wkhtmltopdfのオプションの対応状況は[wkhtmltopdfオプション対応表](wkhtmltopdf-"
+"options.md)と[wkhtmltopdfからの移行](wkhtmltopdf.md)を参照してください。 ここ"
+"では「Rails/Rubyから見た違い」だけを扱います。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:8
+msgid "最小の置き換え"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:12
+msgid "\"wicked_pdf\""
+msgstr ""
+
+#: src/migration/wicked-pdf.md:13
+msgid "\"wkhtmltopdf-binary\""
+msgstr ""
+
+#: src/migration/wicked-pdf.md:17
+msgid "コントローラはそのまま動くはずです。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:27
+msgid ""
+"外部プロセスの起動が無くなるので、`wicked_pdf`の`exe_path`(wkhtmltopdfのバイ"
+"ナリの場所)の設定は不要になる。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:29
+msgid "設定の置き場所"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:32
+msgid "# config/initializers/sghtmltopdf.rb\n"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:40
+msgid ""
+"wicked_pdfの`WickedPdf.config = {...}`に相当する。 マージ順は グローバル設定 "
+"→ `render`の引数で、後者が勝ちます。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:44
+msgid "オプション名の対応"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:46
+msgid ""
+"wicked_pdfはネストしたHash(`margin: {top: 10}`)を使うが、sghtmltopdfは CLIの"
+"フラグ名をそのままキーにした平坦なHashを使う(`_`が`-`に対応する。`page_size:"
+"` → `--page-size`)。 オプションの定義はRust側の1箇所に集約されていて、Ruby側"
+"はホワイトリストを持ちません。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:50 src/migration/wicked-pdf.md:100
+msgid "wicked_pdf"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:52
+msgid "`pdf: \"name\"`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:52 src/migration/wicked-pdf.md:53
+#: src/migration/wicked-pdf.md:54 src/migration/wicked-pdf.md:55
+#: src/migration/wicked-pdf.md:57 src/migration/wicked-pdf.md:58
+#: src/migration/wicked-pdf.md:60 src/migration/wicked-pdf.md:61
+#: src/migration/wicked-pdf.md:63 src/migration/wicked-pdf.md:64
+#: src/migration/wicked-pdf.md:65 src/migration/wicked-pdf.md:66
+msgid "同じ"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:52
+msgid "ファイル名(`.pdf`は自動で付く)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:53
+msgid "`template:` / `layout:` / `locals:` / `formats:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:53
+msgid "Railsのビュー描画へそのまま渡る"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:54
+msgid "`disposition:` / `filename:` / `status:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:54
+msgid "既定の`disposition`は`inline`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:55
+msgid "`show_as_html: true`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:55
+msgid "PDFにせずHTMLを返すデバッグ用"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:57
+msgid "`page_height:` / `page_width:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:57
+msgid "単位付きの文字列(`\"210mm\"`)で渡す"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:58
+msgid "`orientation: \"Landscape\"`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:59
+msgid "`margin: {top: 10, bottom: 10}`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:59
+msgid "`margin_top: \"10mm\"`, `margin_bottom: \"10mm\"`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:59
+msgid "wicked_pdfの数値はmm。単位を明示する"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:60
+msgid "`dpi:` / `zoom:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:62
+msgid "`background: false`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:62
+msgid "`no_background: true`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:63
+msgid "`encoding: \"UTF-8\"`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:64
+msgid "`title:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:64
+msgid "PDFのメタデータ"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:65
+msgid "`user_style_sheet:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:65
+msgid "パスの配列も可"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:66
+msgid "`no_pdf_compression: true`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:67
+msgid "`cover: \"shared/cover\"`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:67
+msgid "`cover: <ファイルパス>`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:67
+msgid "テンプレート名ではなくHTMLファイルのパス(後述)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:68
+msgid "`toc: {}`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:68
+msgid "`toc: true`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:68
+msgid "見た目は`toc_header_text:`などで調整"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:69
+msgid "`header: {left:, center:, right:}`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:69
+msgid "`header_left:` / `header_center:` / `header_right:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:70
+msgid "`header: {html: {template: \"...\"}}`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:70
+msgid "`header_html: <ファイルパス>`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:71
+msgid "`header: {line: true, spacing: 5, font_name:, font_size:}`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:71
+msgid ""
+"`header_line: true`, `header_spacing: 5`, `header_font_name:`, "
+"`header_font_size:`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:71
+msgid "footerも同様"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:72
+msgid "`outline: {}`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:72
+msgid "PDFアウトラインは非対応"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:73
+msgid "`disable_javascript` / `javascript_delay` / `window_status`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:73
+msgid "JSは実行しない(設計上の非目標)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:74
+msgid "`print_media_type`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:74
+msgid "常に`print`メディア扱い"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:75
+msgid "`lowquality` / `viewport_size` / `disable_smart_shrinking`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:75
+msgid "WebKit固有"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:76
+msgid "`exe_path` / `wkhtmltopdf`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:76
+msgid "外部プロセスを使わない"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:77
+msgid "`extra`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:77
+msgid "生のコマンドライン文字列は受けない。個別のキーで指定する"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:79
+msgid ""
+"対応していないキーを渡すと、レンダリング時に`Sghtmltopdf::UsageError`が理由付"
+"きで上がる(黙って無視はしない)。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:81
+msgid "表紙・ヘッダー・フッターのHTML"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:83
+msgid ""
+"wicked_pdfはRailsのテンプレート名を受け取って内部で描画するが、sghtmltopdfの"
+"`--cover`/`--header-html`/`--footer-html`はファイルのパスを取ります(CLIと同じ"
+"経路に合流させるため)。 Railsのテンプレートを使いたい場合は、自分で描画して一"
+"時ファイルへ書き出してください。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:88
+msgid "\"header\""
+msgstr ""
+
+#: src/migration/wicked-pdf.md:88
+msgid "\".html\""
+msgstr ""
+
+#: src/migration/wicked-pdf.md:89
+msgid "\"invoices/header\""
+msgstr ""
+
+#: src/migration/wicked-pdf.md:98
+msgid "ビューヘルパ"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:102
+msgid "`wicked_pdf_stylesheet_link_tag`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:102
+msgid "`sghtmltopdf_stylesheet_link_tag`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:103
+msgid "`wicked_pdf_image_tag`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:103
+msgid "`sghtmltopdf_image_tag`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:104
+msgid "`wicked_pdf_asset_path`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:104
+msgid "`sghtmltopdf_asset_path`(見つからなければ`nil`)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:105
+msgid "`wicked_pdf_javascript_include_tag`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:105
+msgid "— (JSを実行しないので不要)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:106
+msgid "`wicked_pdf_asset_base64`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:106
+msgid "— (ローカルファイルを直接読めるので不要)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:108
+msgid ""
+"素の`stylesheet_link_tag`/`image_tag`も、アセットが`public/`配下へprecompile"
+"されていればそのまま動きます。 PDFのレンダリングはHTTPサーバを介さないので、"
+"`/assets/…`のようなURLは`--base-url`(Railsでの既定は`Rails.root/public`)を基"
+"準にローカルファイルとして解決される。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:111
+msgid ""
+"開発環境のようにアセットがまだ`public/`に無い場合は、CSSの中身を`<style>`へ展"
+"開する`sghtmltopdf_stylesheet_link_tag`を使う。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:117
+msgid "既定値の違い"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:119
+msgid ""
+"マージン: wkhtmltopdfは左右10mm。sghtmltopdfは四辺1in(96px)。 同じ見た目にし"
+"たければ`margin_*`を明示する"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:121
+msgid ""
+"CLIオプションとCSSの`@page`: wkhtmltopdfはCLIが勝つが、sghtmltopdfは `@page` "
+"が勝つ(オプションは初期値)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:122
+msgid ""
+"ローカルファイルの参照範囲: Railsでは`--allow`の既定が`Rails.root`になる。ア"
+"プリの外(例: `/usr/share/fonts`)のファイルを`<img>`や`@font-face`の`url()`で"
+"参照している場合は、`Sghtmltopdf.configure { |c| c.allow = [Rails.root.to_s, "
+"\"/usr/share/fonts\"] }`のように明示する。`--font`系(`gothic_font`など)で渡す"
+"フォントはこの制限を受けない"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:123
+msgid ""
+"リモート取得: `http(s)`のアセット取得は既定で無効。必要なら"
+"`allow_remote_assets: true`"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:127
+msgid ""
+"wkhtmltopdfはシステムのフォント設定に依存するが、sghtmltopdfは`gothic_font`/"
+"`serif_font`/`mono_font`で指定できる。 日本語を出す場合は、コンテナのフォント"
+"事情に左右されないよう明示するのが安全。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:136
+msgid "別プロセスへ逃がす(wicked_pdfには無い選択肢)"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:138
+msgid ""
+"wicked_pdfはリクエストごとにwkhtmltopdfのプロセスを起動するが、sghtmltopdfの"
+"gemはアプリのプロセス内で変換する(重い処理の間はGVLを解放するのでPumaの他ス"
+"レッドは止まらない)。 それでもアプリのCPUを使いたくない場合は、`server_url`で"
+"別プロセス(`sghtmltopdf server`)へ委譲できる。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:145
+msgid ""
+"負荷分散はLB(nginx・k8s Service)を前段に置く前提で、URLは1つだけ受ける。 到達"
+"できないときは`Sghtmltopdf::ServerError`になり、ローカル変換へはフォールバッ"
+"クしない。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:148
+msgid ""
+"サーバモードでは`base_url`・`allow`・フォント指定などローカルパスを取るオプ"
+"ションはリクエストから指定できない(サーバ起動時にだけ設定できる)。 Railtieが"
+"入れる既定値は自動的に外れるが、`configure`で明示的に設定している場合は"
+"400(`UsageError`)になるので、サーバ側の起動オプションへ移す。"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:151
+msgid "まだ無いもの"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:153
+msgid "PDFの結合・アウトライン: 非対応"
+msgstr ""
+
+#: src/migration/wicked-pdf.md:155
+msgid ""
+"なお逐次出力(ストリーミング)はwicked_pdfには無い機能で、ブロック付きの"
+"`render`で使える。 `ActionController::Live`と組み合わせれば、確定したページか"
+"ら順にレスポンスへ流せます → [Ruby / Rails](../usage/ruby_rails.md#railsで逐"
+"次返却する)"
+msgstr ""
+
+#: src/appendix/limitations.md:3
+msgid ""
+"個別のCSSプロパティの可否は[プロパティ対応表](../supports/properties.md)を、"
+"wkhtmltopdfのオプション単位の可否は[オプション対応表](../migration/"
+"wkhtmltopdf-options.md)を参照してください。"
+msgstr ""
+
+#: src/appendix/limitations.md:5
+msgid "JavaScriptを実行しない"
+msgstr ""
+
+#: src/appendix/limitations.md:7
+msgid "`<script>`は読み飛ばされます。"
+msgstr ""
+
+#: src/appendix/limitations.md:9
+msgid "そのため次のような使い方はできません。"
+msgstr ""
+
+#: src/appendix/limitations.md:11
+msgid "JSでDOMを組み立ててからPDF化する(SPAのページをそのまま出す等)"
+msgstr ""
+
+#: src/appendix/limitations.md:12
+msgid "Chart.jsなどでクライアント描画したグラフを含める"
+msgstr ""
+
+#: src/appendix/limitations.md:13
+msgid ""
+"JSでページ番号やヘッダーを差し込む(→ [プレースホルダ](../usage/cli/reference."
+"md#ヘッダーフッター)を使ってください)"
+msgstr ""
+
+#: src/appendix/limitations.md:15
+msgid ""
+"グラフを載せたい場合は、サーバ側で画像(PNG)を生成して`<img>`で埋め込むか、CSS"
+"で描ける範囲の表現に置き換えてください。"
+msgstr ""
+
+#: src/appendix/limitations.md:17
+msgid "入力は1つのHTML"
+msgstr ""
+
+#: src/appendix/limitations.md:19
+msgid ""
+"複数のHTMLファイルを並べて1つのPDFへ結合することはできません(wkhtmltopdfの位"
+"置引数に相当する機能がありません)。 表紙は`--cover`、目次は`--toc`で個別に指"
+"定します。"
+msgstr ""
+
+#: src/appendix/limitations.md:22
+msgid "既存のPDF同士の結合・分割・ページ抽出も対象外です。"
+msgstr ""
+
+#: src/appendix/limitations.md:24
+msgid "PDFの機能"
+msgstr ""
+
+#: src/appendix/limitations.md:26
+msgid "機能"
+msgstr ""
+
+#: src/appendix/limitations.md:28
+msgid "アウトライン(しおり・ブックマーク)"
+msgstr ""
+
+#: src/appendix/limitations.md:28
+msgid "非対応。文書内の目次は`--toc`で作れます"
+msgstr ""
+
+#: src/appendix/limitations.md:29
+msgid "入力可能なフォーム(AcroForm)"
+msgstr ""
+
+#: src/appendix/limitations.md:29
+msgid "非対応。`<input>`等は見た目だけ描画します"
+msgstr ""
+
+#: src/appendix/limitations.md:30
+msgid "暗号化・パスワード・電子署名"
+msgstr ""
+
+#: src/appendix/limitations.md:30 src/appendix/limitations.md:31
+#: src/appendix/limitations.md:32
+msgid "非対応"
+msgstr ""
+
+#: src/appendix/limitations.md:31
+msgid "PDF/A・PDF/X などの規格準拠"
+msgstr ""
+
+#: src/appendix/limitations.md:32
+msgid "タグ付きPDF(アクセシビリティ)"
+msgstr ""
+
+#: src/appendix/limitations.md:33
+msgid "添付ファイル・注釈(リンク以外)"
+msgstr ""
+
+#: src/appendix/limitations.md:33
+msgid "非対応。リンク注釈のみ対応"
+msgstr ""
+
+#: src/appendix/limitations.md:35
+msgid "リンク(`<a href>`)は、外部URL・文書内の`#id`ともPDFの注釈になります。"
+msgstr ""
+
+#: src/appendix/limitations.md:37
+msgid "画像・フォントの形式"
+msgstr ""
+
+#: src/appendix/limitations.md:39
+msgid "画像はPNG / JPEG / WebPのみ。SVGとGIFは非対応です"
+msgstr ""
+
+#: src/appendix/limitations.md:40
+msgid "フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です"
+msgstr ""
+
+#: src/appendix/limitations.md:41
+msgid "`--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります"
+msgstr ""
+
+#: src/appendix/limitations.md:43
+msgid "CSSの主な制限"
+msgstr ""
+
+#: src/appendix/limitations.md:45
+msgid "機能単位では以下が非対応です。"
+msgstr ""
+
+#: src/appendix/limitations.md:47
+msgid ""
+"縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`"
+"等)、`direction`による右横書き"
+msgstr ""
+
+#: src/appendix/limitations.md:48
+msgid "多段組み(`columns`/`column-count`)"
+msgstr ""
+
+#: src/appendix/limitations.md:49
+msgid "グラデーション(`linear-gradient()`等)と複数背景"
+msgstr ""
+
+#: src/appendix/limitations.md:50
+msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
+msgstr ""
+
+#: src/appendix/limitations.md:51
+msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
+msgstr ""
+
+#: src/appendix/limitations.md:52
+msgid "`:is()`/`:where()`/`:has()`、`::first-line`、`::marker`"
+msgstr ""
+
+#: src/appendix/limitations.md:54
+msgid "ストリーミングモード固有の制限"
+msgstr ""
+
+#: src/appendix/limitations.md:56
+msgid ""
+"`--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--"
+"toc`)などが使えなくなります。 詳細は[ストリーミングモード](../usage/cli/"
+"streaming.md)を参照してください。"
+msgstr ""
+
+#: src/appendix/limitations.md:59
+msgid "今後について"
+msgstr ""
+
+#: src/appendix/limitations.md:61
+msgid ""
+"JavaScriptエンジンの組み込みは、必要性が出てきた段階での検討事項として残して"
+"あります。 上記のうちPDFのアウトラインなど、設計上の非目標ではないものは将来"
+"対応する可能性があります。"
+msgstr ""
