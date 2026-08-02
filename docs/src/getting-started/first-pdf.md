@@ -1,7 +1,6 @@
 # はじめてのPDF
 
-[インストール](install.md)が済んでいる前提で、1枚出すところから改ページまでを
-順に試します。
+[インストール](install.md)が済んでいる前提で、1枚出すところから改ページまでを順に試します。
 
 ## 1. 変換する
 
@@ -48,9 +47,9 @@ sghtmltopdf hello.html -o hello.pdf \
 
 単位は`mm`/`cm`/`in`/`pt`/`px`が使え、省略すると`mm`です。
 
-同じことはCSSの`@page`でも書けます。**両方書いた場合はCSSが勝ちます**
-(CLIオプションは初期値として扱われます)。wkhtmltopdfと逆なので、移行時は
-[wkhtmltopdfからの移行](../migration/wkhtmltopdf.md)を確認してください。
+同じことはCSSの`@page`でも書けます。
+両方書いた場合はCSSが勝ちます(CLIオプションは初期値として扱われます)。
+wkhtmltopdfと逆なので、移行時は[wkhtmltopdfからの移行](../migration/wkhtmltopdf.md)を確認してください。
 
 ```css
 @page {
@@ -77,9 +76,9 @@ sghtmltopdf hello.html -o hello.pdf \
 </div>
 ```
 
-`break-after`(この要素の後で改ページ)、`break-inside: avoid`(この要素を
-分割しない)も使えます。見出しだけが行末に取り残されるのを防ぐ`orphans`/
-`widows`もあります。詳しくは[ページ分割](../css/pagination.md)を参照してください。
+`break-after`(この要素の後で改ページ)、`break-inside: avoid`(この要素を分割しない)も使えます。
+見出しだけが行末に取り残されるのを防ぐ`orphans`/`widows`もあります。
+詳しくは[ページ分割](../supports/pagination.md)を参照してください。
 
 ## 4. ヘッダーとフッターを付ける
 
@@ -91,23 +90,16 @@ sghtmltopdf hello.html -o hello.pdf \
 ```
 
 `[page]`は現在のページ番号、`[topage]`は総ページ数に置き換わります。
-JavaScriptは実行しないため、この置換で表現します。HTMLでヘッダーを
-作りたい場合は`--header-html`が使えます。
+JavaScriptは実行しないため、この置換で表現します。
+HTMLでヘッダーを作りたい場合は`--header-html`が使えます。
 
 ## 5. フォントを固定する
 
-ここまでの例はシステムのフォントを使っています。サーバやCIで**出力を環境に
-依存させたくない場合は、フォントファイルを明示します**。
+ここまでの例はシステムのフォントを使っています。
+サーバやCIで出力を環境に依存させたくない場合は、フォントファイルを明示してください。
 
 ```sh
 sghtmltopdf hello.html -o hello.pdf \
   --font NotoSansJP-Regular.ttf \
   --gothic-font NotoSansJP-Regular.ttf
 ```
-
-## 次に読むもの
-
-* オプションの全体像は[CLIリファレンス](../cli/reference.md)
-* サーバとして常駐させるなら[サーバモード](../server/index.md)
-* Railsから使うなら[Ruby / Rails](../ruby/index.md)
-* どこまでCSSが効くかは[先に読んでほしい規則](../css/rules.md)

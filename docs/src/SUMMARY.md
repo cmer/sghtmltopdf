@@ -1,6 +1,6 @@
 # 目次
 
-[sghtmltopdfとは](index.md)
+[sghtmltopdfについて](index.md)
 
 # はじめに
 
@@ -8,27 +8,20 @@
 - [Docker](getting-started/docker.md)
 - [はじめてのPDF](getting-started/first-pdf.md)
 
-# CLI
+# 使い方
 
-- [CLIリファレンス](cli/reference.md)
-- [ストリーミングモード](cli/streaming.md)
+- [CLIから](usage/cli/reference.md)
+  - [ストリーミングモード](usage/cli/streaming.md)
+- [HTTPサーバから](usage/server.md)
+- [Ruby / Railsから](usage/ruby_rails.md)
 
-# HTTPサーバ
+# サポート状況
 
-- [サーバモード](server/index.md)
-
-# Ruby / Rails
-
-- [Ruby / Rails](ruby/index.md)
-
-# HTML / CSS
-
-- [先に読んでほしい規則](css/rules.md)
-- [ページ分割](css/pagination.md)
-- [フォント](css/fonts.md)
-- [画像](css/images.md)
-- [プロパティ対応表](css/properties.md)
-- [セレクタ・値・at-rule](css/selectors.md)
+- [CSSプロパティ](supports/properties.md)
+  - [セレクタ・値・at-rule](supports/selectors.md)
+- [フォント](supports/fonts.md)
+- [画像フォーマット](supports/images.md)
+- [ページ分割](supports/pagination.md)
 
 # 移行ガイド
 

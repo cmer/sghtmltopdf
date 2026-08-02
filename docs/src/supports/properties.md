@@ -1,12 +1,5 @@
 # CSSプロパティ対応表
 
-レンダリングエンジンが解釈するCSSプロパティの一覧です。実装
-(`core/src/style/`・`core/src/layout/`・`core/src/pdf/`)から起こしています。
-
-凡例(✅/⚠️/❌)と、対応表を読む前に知っておきたい全体の規則は
-[先に読んでほしい規則](rules.md)にあります。`⚠️`は「受け付ける値が仕様の一部に
-限られる」か「挙動が簡略化されている」のいずれかです。
-
 - [表示・可視性](#表示可視性)
 - [ボックスモデル](#ボックスモデル)
 - [枠線・角丸・アウトライン・影](#枠線角丸アウトライン影)
@@ -30,7 +23,7 @@
 | `visibility` | ⚠️ | `visible`/`hidden`/`collapse`。`collapse`は`hidden`と同一視(テーブル行/列の高さ再計算はしない)。継承プロパティ |
 | `overflow` | ⚠️ | `visible`以外(`hidden`/`scroll`/`auto`)は区別せず一律クリップ。スクロールバーの概念は無い。`overflow-x`/`overflow-y`は非対応 |
 | `opacity` | ⚠️ | `<number>`/`<percentage>`を0〜1にクランプ。PDFの透明グループ+ExtGStateで実装。要素単位の合成で、`mix-blend-mode`等のブレンドは非対応 |
-| `z-index` | ⚠️ | `auto`/`<integer>`。**`position: relative`の要素にのみ効く**(仕様では他のpositioned要素にも効く)。同じ親を持つ兄弟間の描画順のみを制御し、スタッキングコンテキストの分離は非対応。絶対配置要素は常に通常フローの上に描かれる |
+| `z-index` | ⚠️ | `auto`/`<integer>`。`position: relative`の要素にのみ効く(仕様では他のpositioned要素にも効く)。同じ親を持つ兄弟間の描画順のみを制御し、スタッキングコンテキストの分離は非対応。絶対配置要素は常に通常フローの上に描かれる |
 | `box-sizing` | ⚠️ | `content-box`/`border-box`。標準外の`padding-box`は非対応 |
 
 ## ボックスモデル
@@ -78,9 +71,8 @@
 `position: absolute`/`fixed`の既知の制約:
 
 * 絶対配置要素は「通常フローから外し、確定したページへ後付けするオーバーレイ」として配置する
-* containing blockになれるのは、**単一ページに収まっているpositioned祖先**(またはページ領域)
-* インラインフォーマッティングコンテキストの内側(テキストの途中)にある`absolute`、
-  テーブルセル内・flexアイテム内の`absolute`は非対応
+* containing blockになれるのは、単一ページに収まっているpositioned祖先(またはページ領域)
+* インラインフォーマッティングコンテキストの内側(テキストの途中)にある`absolute`、テーブルセル内・flexアイテム内の`absolute`は非対応
 * 絶対配置要素自身がページを跨ぐ分割は非対応(1ページにbest-effortで置く)
 * ストリーミングモード(`Mode::Streaming`)では絶対配置を無視する
 
@@ -100,10 +92,10 @@
 | `text-transform` | ⚠️ | `none`/`uppercase`/`lowercase`/`capitalize`(語頭のみ変換)。`full-width`/`full-size-kana`は非対応 |
 | `text-decoration` / `text-decoration-line` | ⚠️ | `none`/`underline`/`line-through`(併記可)。`overline`/`blink`は非対応。ショートハンドの`text-decoration-color`/`-style`/`-thickness`部分も非対応。祖先から子孫への伝播は「継承プロパティとして扱う」簡略実装 |
 | `text-shadow` | ⚠️ | `none \| <shadow>#`(`<offset-x> <offset-y> <blur>? <color>?`)。PDFにぼかしフィルタが無いため、blurはアルファを下げた多重描画による近似。継承プロパティ |
-| `text-overflow` | ⚠️ | `clip`/`ellipsis`。`overflow`が`visible`以外のときのみ有効。**幅方向にはみ出した行**のみが対象(ブロック全体のオーバーフローは扱わない)。`<string>`指定は非対応 |
+| `text-overflow` | ⚠️ | `clip`/`ellipsis`。`overflow`が`visible`以外のときのみ有効。幅方向にはみ出した行のみが対象(ブロック全体のオーバーフローは扱わない)。`<string>`指定は非対応 |
 | `word-break` | ✅ | `normal`(CJK文字が隣接する境界のみ改行可)/`break-all`/`keep-all`。非推奨値`break-word`は非対応 |
 | `overflow-wrap` / `word-wrap` | ⚠️ | `normal`/`break-word`/`anywhere`(`anywhere`は`break-word`と同一視)。改行機会は増やさず、行頭に置いても収まらない語だけを文字単位で割る |
-| `hyphens` | ⚠️ | `none`/`manual`/`auto`。soft hyphen(U+00AD)でのみ分割し、分割時に行末へハイフンを表示する。**`auto`は辞書を持たないため`manual`と同じ挙動**(自動ハイフネーションはしない) |
+| `hyphens` | ⚠️ | `none`/`manual`/`auto`。soft hyphen(U+00AD)でのみ分割し、分割時に行末へハイフンを表示する。`auto`は辞書を持たないため`manual`と同じ挙動(自動ハイフネーションはしない) |
 | `text-emphasis` / `-style` / `-color` / `-position` | ⚠️ | `dot`/`circle`/`double-circle`/`triangle`/`sesame`(`filled`/`open`)と`<string>`。キーワードのマークはPDFのパスで描くためフォントの字形に依存しない(`<string>`はグリフ描画で、字形が無ければ描かれない)。`position`は`over`/`under`のみ(`right`/`left`は読み飛ばし)。マーク分だけ行の高さが広がる。句読点をスキップする`text-emphasis-skip`は非対応 |
 | `letter-spacing` | ⚠️ | `normal`/`<length>`。パーセンテージは非対応 |
 | `word-spacing` | ⚠️ | `normal`/`<length>` |
@@ -124,8 +116,7 @@
 | `background-attachment` | ⚠️ | `scroll`/`fixed`(スクロールの概念が無いため`fixed`は`scroll`と同一視) |
 | `background-clip` / `background-origin` / `background-blend-mode` | ❌ | 未実装。背景はborder-box基準で描画する |
 
-`border-radius`と`background-image`を併用した場合、角丸によるクリップは行わない
-(角丸は背景色の塗りにのみ効く)。
+`border-radius`と`background-image`を併用した場合、角丸によるクリップは行わない(角丸は背景色の塗りにのみ効く)。
 
 ## テーブル
 
@@ -138,13 +129,12 @@
 | `empty-cells` | ✅ | `show`/`hide`。`border-collapse: separate`でのみ意味を持つ。継承プロパティ |
 | `vertical-align`(セル) | ✅ | 上記[フォント・テキスト](#フォントテキスト)を参照 |
 
-`<colgroup>`/`<col>`の`width`属性・CSS`width`による列幅指定、`rowspan`/`colspan`、
-`<thead>`のページまたぎ繰り返しに対応。`rowspan="0"`は1として扱う。
+`<colgroup>`/`<col>`の`width`属性・CSS`width`による列幅指定、`rowspan`/`colspan`、`<thead>`のページまたぎ繰り返しに対応。
+`rowspan="0"`は1として扱う。
 
 セルの`min-width`/`max-width`は列幅アルゴリズムに反映される。
-`table-layout: auto`では列の自然幅をクランプする形で効くため、**表を紙幅に収める
-比例縮尺の後は`min-width`が保証されない**。`table-layout: fixed`では1行目のセルの
-指定幅をクランプし、`width: auto`かつ`min-width`のみの指定はその値を列幅として使う。
+`table-layout: auto`では列の自然幅をクランプする形で効くため、表を紙幅に収める比例縮尺の後は`min-width`が保証されない。
+`table-layout: fixed`では1行目のセルの指定幅をクランプし、`width: auto`かつ`min-width`のみの指定はその値を列幅として使う。
 
 ## リスト
 
@@ -153,7 +143,7 @@
 | `list-style`(ショートハンド) | ✅ | `type`/`position`/`image`を任意順・任意省略で受け付ける |
 | `list-style-type` | ⚠️ | `disc`/`circle`/`square`/`decimal`/`decimal-leading-zero`/`lower-roman`/`upper-roman`/`lower-alpha`(`lower-latin`)/`upper-alpha`(`upper-latin`)/`none`。`cjk-*`/`hiragana`/`katakana`等は非対応。継承プロパティ |
 | `list-style-position` | ✅ | `outside`/`inside`。継承プロパティ |
-| `list-style-image` | ⚠️ | `none \| url(...)`をパースするが**描画には使わない**(常に`list-style-type`のテキストマーカーへフォールバック) |
+| `list-style-image` | ⚠️ | `none \| url(...)`をパースするが描画には使わない(常に`list-style-type`のテキストマーカーへフォールバック) |
 
 ## 生成コンテンツ・カウンタ
 
@@ -164,8 +154,7 @@
 | `counter-increment` | ✅ | `none`または`name [<integer>]`の繰り返し(値省略時は1) |
 | `counter-set` | ❌ | 未実装 |
 
-`counter(page)`/`counter(pages)`によるページ番号は`@page`のmargin box内で使える
-(`counter(pages)`はストリーミングモードでは総ページ数が確定しないためエラーになる)。
+`counter(page)`/`counter(pages)`によるページ番号は`@page`のmargin box内で使える(`counter(pages)`はストリーミングモードでは総ページ数が確定しないためエラーになる)。
 
 ## ページ分割(CSS Fragmentation)
 
@@ -198,19 +187,16 @@ flexコンテナはページ分割上アトミック(`display: table`と同じ�
 | `gap` / `row-gap` / `column-gap` | ⚠️ | flexコンテナでのみ有効(多段組みの`column-gap`としては機能しない) |
 | `order` | ❌ | taffy 0.12系が未対応のため |
 | `place-content` / `place-items` / `place-self`(ショートハンド) | ❌ | 未実装。個別のロングハンドを使う |
-| `justify-items` / `justify-self` | — | **flexアイテムには適用されない**(下記) |
+| `justify-items` / `justify-self` | — | flexアイテムには適用されない(下記) |
 
 ### `justify-items`/`justify-self`がflexで効かないのは仕様
 
-CSS Box Alignmentでは`justify-items`/`justify-self`は**Grid・ブロックレイアウト用**の
-プロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は
-`justify-content`と`margin: auto`で表現する、という設計)。ブラウザも無視する。
-レイアウトを委譲しているtaffyでも、これらを参照するのはGridのアルゴリズムだけで、
-flexboxのアルゴリズムは一切参照しない。
+CSS Box Alignmentでは`justify-items`/`justify-self`はGrid・ブロックレイアウト用のプロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は`justify-content`と`margin: auto`で表現する、という設計)。
+ブラウザも無視する。
+レイアウトを委譲しているtaffyでも、これらを参照するのはGridのアルゴリズムだけで、flexboxのアルゴリズムは一切参照しない。
 
-したがって**このエンジンでパースに対応しても見た目は変わらない**ため、意図的に
-実装していない。flexで特定のアイテムだけを寄せたい場合は`margin: auto`を使う
-(こちらは対応済み):
+したがってこのエンジンでパースに対応しても見た目は変わらないため、意図的に実装していない。
+flexで特定のアイテムだけを寄せたい場合は`margin: auto`を使う(こちらは対応済み):
 
 ```css
 .item { margin-left: auto; }            /* justify-self: end 相当(主軸の終端へ) */
@@ -220,8 +206,7 @@ flexboxのアルゴリズムは一切参照しない。
 ## Grid
 
 `display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。
-Flexboxと違い、**1ページに収まらないグリッドは行単位でページ分割される**
-(テーブルと同じ方針。複数行にまたがるアイテムがある境界では分割しない)。
+Flexboxと違い、1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複数行にまたがるアイテムがある境界では分割しない)。
 
 | プロパティ | 対応 | 備考 |
 | - | - | - |
@@ -245,24 +230,24 @@ Flexboxと違い、**1ページに収まらないグリッドは行単位でペ�
 | `object-position` | ✅ | `background-position`と同じ値文法。初期値`50% 50%` |
 
 `<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。
-対応フォーマットはPNG/JPEG/WebP。CSSで`width`/`height`の片方だけを
-指定した場合は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、
-)。
+対応フォーマットはPNG/JPEG/WebP。
+CSSで`width`/`height`の片方だけを指定した場合は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、)。
 
 ## 非対応プロパティ一覧
 
-以下は宣言ごと無視される(パースエラー)。実装が無いだけで、意図的に永久除外と
-決めたものだけではない。カテゴリ表の`❌`行も参照。
+以下は宣言ごと無視される(パースエラー)。
+実装が無いだけで、意図的に永久除外と決めたものだけではない。
+カテゴリ表の`❌`行も参照。
 
-* **ショートハンド**: `font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分
-* **論理プロパティ**: `inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて
-* **書字方向**: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`
-* **テキスト詳細**: `text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`
-* **フォント詳細**: `font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`
-* **多段組み**: `columns`/`column-count`/`column-width`/`column-rule`/`column-span`/`column-fill`
-* **視覚効果**: `filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-mode`/`clip`/`clip-path`/`mask`/`isolation`
-* **3D/アニメーション**: `perspective`/`transform-style`/`backface-visibility`/`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/`will-change`
-* **枠線・背景の拡張**: `border-image-*`/`background-clip`/`background-origin`/`outline-offset`
-* **オーバーフロー**: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-behavior`
-* **UI/対話**: `cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-color`/`appearance`
-* **その他**: `all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/`speak`等の音声メディア系/`zoom`
+* ショートハンド: `font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分
+* 論理プロパティ: `inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて
+* 書字方向: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`
+* テキスト詳細: `text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`
+* フォント詳細: `font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`
+* 多段組み: `columns`/`column-count`/`column-width`/`column-rule`/`column-span`/`column-fill`
+* 視覚効果: `filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-mode`/`clip`/`clip-path`/`mask`/`isolation`
+* 3D/アニメーション: `perspective`/`transform-style`/`backface-visibility`/`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/`will-change`
+* 枠線・背景の拡張: `border-image-*`/`background-clip`/`background-origin`/`outline-offset`
+* オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-behavior`
+* UI/対話: `cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-color`/`appearance`
+* その他: `all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/`speak`等の音声メディア系/`zoom`

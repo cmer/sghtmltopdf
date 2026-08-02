@@ -4,18 +4,13 @@
 
 | 使い方 | 入れるもの |
 |---|---|
-| [HTTPサーバ](../server/index.md)を常駐させる | Dockerイメージ`ghcr.io/waka/sghtmltopdf` |
+| [HTTPサーバ](../usage/server.md)を常駐させる | Dockerイメージ`ghcr.io/waka/sghtmltopdf` |
 | Ruby・Railsから使う | gem `sghtmltopdf` |
 | 手元のコマンドラインで変換する | 実行ファイル`sghtmltopdf`(ソースからビルド) |
 
 素の実行ファイル(GitHub Releasesのtarballやhomebrew)は配布していません。
-サーバはイメージの中に、FFIから使う場合はgemの中にそれぞれ実行ファイル相当が
-入っているためです。CLIを手元で試したい場合は下のソースビルドを使ってください。
-
-> **Note**
-> 最初のリリース(v0.1.0)前のため、**rubygems.orgへのgem公開と、
-> `latest`/`0.1.0`タグのイメージ配布はまだ行われていません**。
-> イメージは`main`の最新が`edge`タグで出ています。
+サーバはイメージの中に、FFIから使う場合はgemの中にそれぞれ実行ファイル相当が入っているためです。
+CLIを手元で試したい場合は下のソースビルドを使ってください。
 
 ## Docker
 
@@ -24,13 +19,13 @@ docker pull ghcr.io/waka/sghtmltopdf:latest
 docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf
 ```
 
-日本語フォント(BIZ UDPGothic / BIZ UDPMincho)を同梱しているので、フォントを
-用意しなくても日本語のPDFが出ます。詳しくは[Docker](docker.md)を参照してください。
+日本語フォント(BIZ UDPGothic / BIZ UDPMincho)を同梱しているので、フォントを用意しなくても日本語のPDFが出ます。
+詳しくは[Docker](docker.md)を参照してください。
 
 ## ソースからビルド
 
-必要なのは[Rustのstableツールチェイン](https://rustup.rs/)だけです。C言語の
-ライブラリやシステムパッケージへの依存はありません。
+必要なのは[Rustのstableツールチェイン](https://rustup.rs/)だけです。
+C言語のライブラリやシステムパッケージへの依存はありません。
 
 ```sh
 git clone https://github.com/waka/sghtmltopdf.git
@@ -38,8 +33,8 @@ cd sghtmltopdf
 cargo build --release
 ```
 
-実行ファイルは`target/release/sghtmltopdf`にできます。パスの通った場所へ
-置くか、そのまま呼び出してください。
+実行ファイルは`target/release/sghtmltopdf`にできます。
+パスの通った場所へ置くか、そのまま呼び出してください。
 
 ```sh
 ./target/release/sghtmltopdf --version
@@ -58,22 +53,18 @@ cargo build --release --no-default-features --features cli
 gem "sghtmltopdf"
 ```
 
-ビルド済み(precompiled)のgemを配布する方針のため、**利用側にRustの
-ツールチェインは要りません**。対応は`x86_64-linux`・`aarch64-linux`・
-`arm64-darwin`(glibc)と、Ruby 3.2以上です。
+ビルド済み(precompiled)のgemを配布する方針のため、利用側にRustのツールチェインは要りません。
+対応は`x86_64-linux`・`aarch64-linux`・`arm64-darwin`(glibc)と、Ruby 3.2以上です。
 
-外部プロセスは起動せず、ネイティブ拡張(magnus + rb-sys)として**同じプロセスの
-中で**変換します。重い処理の間はGVLを解放するので、Pumaの他のスレッドは
-止まりません。
+外部プロセスは起動せず、ネイティブ拡張(magnus + rb-sys)として同じプロセスの中で変換します。
+重い処理の間はGVLを解放するので、Pumaの他のスレッドは止まりません。
 
-使い方は[Ruby / Rails](../ruby/index.md)を参照してください。
+使い方は[Ruby / Rails](../usage/ruby_rails.md)を参照してください。
 
 ## フォントについて
 
-`--font`を指定しない場合、システムにインストールされたフォントが使われます。
-手元で試すぶんには問題ありませんが、**サーバやCIでは出力が実行環境の
-フォント構成に依存します**。日本語を含む文書では、フォントファイルを明示するか、
-フォントを同梱した[Dockerイメージ](docker.md)を使うことを推奨します。
+`--font`を指定しない場合、システムにインストールされているフォントが使われます。
+日本語を含む文書では、フォントファイルを明示するか、フォントを同梱した[Dockerイメージ](docker.md)を使うことを推奨します。
 
 ```sh
 sghtmltopdf invoice.html \
@@ -81,4 +72,4 @@ sghtmltopdf invoice.html \
   --gothic-font NotoSansJP-Regular.ttf
 ```
 
-詳しくは[フォント](../css/fonts.md)を参照してください。
+詳しくは[フォント](../supports/fonts.md)を参照してください。

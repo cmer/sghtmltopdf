@@ -1,8 +1,5 @@
 # セレクタ・値・at-rule対応表
 
-凡例(✅/⚠️/❌)と全体の規則は[先に読んでほしい規則](rules.md)を、プロパティ別の
-対応は[プロパティ対応表](properties.md)を参照してください。
-
 - [セレクタ](#セレクタ)
 - [擬似クラス](#擬似クラス)
 - [擬似要素](#擬似要素)
@@ -13,8 +10,7 @@
 
 ## セレクタ
 
-マッチングはServo由来の[`selectors`](https://crates.io/crates/selectors)クレートに
-委譲しているため、CSS3セレクタは概ねそのまま使える。
+マッチングはServo由来の[`selectors`](https://crates.io/crates/selectors)クレートに委譲しているため、CSS3セレクタは概ねそのまま使える。
 
 | セレクタ | 対応 | 備考 |
 | - | - | - |
@@ -37,7 +33,7 @@
 | `:empty` | ✅ | 同上 |
 | `:not()` | ✅ | |
 | `:is()` / `:where()` / `:has()` | ❌ | パースエラー(セレクタごと無視される) |
-| `:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / `:target` / `:enabled` / `:disabled` / `:checked` / `:visited` | ⚠️ | パースは通るが**常に非マッチ**。対話状態を持たない静的なPDF出力では意味を持たないため |
+| `:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / `:target` / `:enabled` / `:disabled` / `:checked` / `:visited` | ⚠️ | パースは通るが常に非マッチ。対話状態を持たない静的なPDF出力では意味を持たないため |
 | `:link` / `:any-link` | ✅ | `href`を持つ`<a>`にマッチする |
 
 非対応の擬似クラスがセレクタに含まれるとルール全体が捨てられる(`:is()`等)。
@@ -64,8 +60,7 @@
 | `pt` / `pc` / `cm` / `mm` / `in` / `Q` | ❌ |
 | `ex` / `ch` / `vw` / `vh` / `vmin` / `vmax` / `lh` | ❌ |
 
-`@page`の`size`だけは例外的にページサイズのキーワード(`a4`/`letter`等)と
-`landscape`/`portrait`を受け付ける。
+`@page`の`size`だけは例外的にページサイズのキーワード(`a4`/`letter`等)と`landscape`/`portrait`を受け付ける。
 
 ### 角度(`transform`専用)
 
@@ -77,7 +72,7 @@
 | - | - | - |
 | `calc()` | ⚠️ | `+`/`-`/`*`/`/`と括弧のネスト。項に使えるのは`px`/`em`/`rem`/`%`/数値のみ。長さ・パーセンテージを取るプロパティ全般で使える |
 | `min()` / `max()` / `clamp()` | ❌ | |
-| `var()` | ⚠️ | カスタムプロパティ(`--foo`)をパース前のテキスト置換で解決する。フォールバック(`var(--x, 10px)`)・カスタムプロパティ同士の参照に対応。**カスケードや継承には従わず、文書全体で「最後に書かれた宣言が勝つ」**単純な解決になる点が本来の仕様と異なる |
+| `var()` | ⚠️ | カスタムプロパティ(`--foo`)をパース前のテキスト置換で解決する。フォールバック(`var(--x, 10px)`)・カスタムプロパティ同士の参照に対応。カスケードや継承には従わず、文書全体で「最後に書かれた宣言が勝つ」単純な解決になる点が本来の仕様と異なる |
 | `url()` | ✅ | `background-image`/`list-style-image`/`@font-face`の`src`/`@import`。相対URLは`<base href>`または入力元を基準に解決する |
 | `attr()` | ⚠️ | `content`の中でのみ使える |
 | `counter()` / `counters()` | ✅ | `content`の中。第2引数のスタイルは`list-style-type`の値集合 |
@@ -103,10 +98,10 @@
 
 | at-rule | 対応 | 備考 |
 | - | - | - |
-| `@media` | ⚠️ | **メディアタイプのみ**を評価する。`screen`(および`not screen`以外の否定)はブロックごと無視し、`print`/`all`/タイプ省略は適用する。`(min-width: ...)`のような特性クエリは評価せず読み飛ばす(=タイプさえ合致すれば中身が適用される) |
+| `@media` | ⚠️ | メディアタイプのみを評価する。`screen`(および`not screen`以外の否定)はブロックごと無視し、`print`/`all`/タイプ省略は適用する。`(min-width: ...)`のような特性クエリは評価せず読み飛ばす(=タイプさえ合致すれば中身が適用される) |
 | `@page` | ⚠️ | `size`(キーワード/`<length>{1,2}`/`landscape`/`portrait`)と`margin`系に対応。`:first`/`:left`/`:right`擬似クラス単体に対応し、名前付きページ(`@page intro`)・`:blank`・複合擬似クラス(`:first:left`)は非対応 |
 | `@page`内のmargin box | ⚠️ | `@top-left-corner`/`@top-left`/`@top-center`/`@top-right`…の16種すべて。`content`のテキスト描画のみで、背景色・枠線等の装飾は非対応。`counter(page)`/`counter(pages)`でページ番号を出力できる(`counter(pages)`はストリーミングモードでは非対応) |
-| `@font-face` | ⚠️ | `font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタに対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-display`等その他のディスクリプタは無視。フォントファイルはTTF/OTFのみで、**WOFF/WOFF2は非対応** |
+| `@font-face` | ⚠️ | `font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタに対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-display`等その他のディスクリプタは無視。フォントファイルはTTF/OTFのみで、WOFF/WOFF2は非対応 |
 | `@import` | ✅ | ネスト(深さ上限16、超過分はその1件だけ無視)・循環参照の検出に対応。`@import url(...) screen;`のようなメディアクエリ条件は評価せず常に取り込む |
 | `@charset` | ❌ | 入力はUTF-8前提 |
 | `@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / `@container` / `@property` | ❌ | ブロックごと無視される |
@@ -116,10 +111,8 @@
 `Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。
 `Mode::Streaming`でのみ以下が適用される。
 
-* **後方参照セレクタは常に非マッチ**: `:last-child`/`:last-of-type`/
-  `:nth-last-child()`/`:nth-last-of-type()`/`:empty`
-  (対象要素の親の子リストが完結するまで原理的に判定できないため)
-* **`<body>`開始後の`<style>`タグはエラー**: `EngineError::UnsupportedInStreamingMode`を返す。
+* 後方参照セレクタは常に非マッチ: `:last-child`/`:last-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:empty`(対象要素の親の子リストが完結するまで原理的に判定できないため)
+* `<body>`開始後の`<style>`タグはエラー: `EngineError::UnsupportedInStreamingMode`を返す。
   黙って見た目が崩れるのを避けるため、`<style>`は`<head>`に集約する
 * `position: absolute`/`fixed`は無視される
 * `counter(pages)`(総ページ数)は使えない

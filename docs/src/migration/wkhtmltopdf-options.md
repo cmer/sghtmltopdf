@@ -1,32 +1,28 @@
 # wkhtmltopdfオプション対応表
 
-wkhtmltopdf 0.12.6の`--extended-help`(公式マニュアル
-<https://wkhtmltopdf.org/usage/wkhtmltopdf.txt>)に載る**全オプション**の
-対応状況です。セクション区切りと並びは公式マニュアルに合わせてあります。
+wkhtmltopdf 0.12.6の`--extended-help`(公式マニュアル<https://wkhtmltopdf.org/usage/wkhtmltopdf.txt>)に載る全オプションの対応状況です。
+セクション区切りと並びは公式マニュアルに合わせてあります。
 
 | 記号 | 意味 |
 |---|---|
 | ✅ 対応 | wkhtmltopdfと同じ名前・同じ意味で使える |
-| ❌ 非対応 | 実装しない。指定すると**理由と代替手段を示してexit 1**で終了する(黙って無視しない) |
+| ❌ 非対応 | 実装しない。指定するとと代替メッセージを出力してexit 1で終了する(黙って無視しない) |
 
-移行時に引っかかりやすい挙動の違いは
-[wkhtmltopdfからの移行](wkhtmltopdf.md)にまとめてあります。
+移行時に引っかかりやすい挙動の違いは[wkhtmltopdfからの移行](wkhtmltopdf.md)にまとめてあります。
 
 ## コマンドライン形式の違い
 
-wkhtmltopdfは表紙と目次を**位置引数**で指定します。
+wkhtmltopdfは表紙と目次を位置引数で指定します。
 
 ```
 wkhtmltopdf cover cover.html toc page.html out.pdf          # wkhtmltopdf
 sghtmltopdf --cover cover.html --toc page.html -o out.pdf   # sghtmltopdf
 ```
 
-sghtmltopdfは入力を1つのHTMLに限定し、表紙・目次は`--cover <path>`・`--toc`
-オプションで指定します。複数HTMLの結合(wkhtmltopdfが位置引数を並べてできる
-こと)には対応していません。
+sghtmltopdfは入力を1つのHTMLに限定し、表紙・目次は`--cover <path>`・`--toc`オプションで指定します。
+複数HTMLの結合(wkhtmltopdfが位置引数を並べてできること)には対応していません。
 
-そのため、位置引数由来の`--exclude-from-outline`/`--include-in-outline`
-(入力ページ単位で目次から除外する)も対象外です。
+そのため、位置引数由来の`--exclude-from-outline`/`--include-in-outline`(入力ページ単位で目次から除外する)も対象外です。
 
 ## Global Options
 
@@ -45,8 +41,8 @@ sghtmltopdfは入力を1つのHTMLに限定し、表紙・目次は`--cover <pat
 | `--log-level <level>` | ✅ 対応 | `none`/`error`/`warn`/`info` |
 | `-l, --lowquality` | ❌ 非対応 | WebKitのラスタライズ品質設定に相当するものが無い |
 | `-B, --margin-bottom <unitreal>` | ✅ 対応 | |
-| `-L, --margin-left <unitreal>` | ✅ 対応 | **既定値が違う**(下記) |
-| `-R, --margin-right <unitreal>` | ✅ 対応 | **既定値が違う**(下記) |
+| `-L, --margin-left <unitreal>` | ✅ 対応 | 既定値が違う(下記) |
+| `-R, --margin-right <unitreal>` | ✅ 対応 | 既定値が違う(下記) |
 | `-T, --margin-top <unitreal>` | ✅ 対応 | |
 | `-O, --orientation <orientation>` | ✅ 対応 | `Portrait`/`Landscape` |
 | `--page-height <unitreal>` | ✅ 対応 | |
@@ -59,14 +55,14 @@ sghtmltopdfは入力を1つのHTMLに限定し、表紙・目次は`--cover <pat
 | `--use-xserver` | ❌ 非対応 | Xサーバに依存しない |
 | `-V, --version` | ✅ 対応 | |
 
-**マージンの既定値**: wkhtmltopdfは左右10mm・上下未指定だが、sghtmltopdfの
-現在の既定は四辺96px(＝1in＝25.4mm)。既存の出力を変えないため**既定値は
-変更しない**。移行時は`--margin-*`を明示すること。
+マージンの既定値: wkhtmltopdfは左右10mm・上下未指定だが、sghtmltopdfの現在の既定は四辺96px(＝1in＝25.4mm)。
+既存の出力を変えないため既定値は変更しない。
+移行時は`--margin-*`を明示すること。
 
 ## Outline Options
 
-PDFのアウトライン(ブックマーク)自体が非対応のため、このセクションはすべて
-非対応です。文書内の目次は`--toc`で作れます。
+PDFのアウトライン(ブックマーク)自体が非対応のため、このセクションはすべて非対応です。
+文書内の目次は`--toc`で作れます。
 
 | オプション | 方針 | 備考 |
 |---|---|---|
@@ -119,9 +115,8 @@ PDFのアウトライン(ブックマーク)自体が非対応のため、この
 
 ## Headers And Footer Options
 
-このセクションは**すべて対応**しています。JSを実行しないため、wkhtmltopdfが
-`--header-html`のURLにクエリ(`?page=1&topage=5`)を付けてJSで差し込んでいた
-ページ変数は、**プレースホルダの文字列置換**で実現します。
+このセクションはすべて対応しています。
+JSを実行しないため、wkhtmltopdfが`--header-html`のURLにクエリ(`?page=1&topage=5`)を付けてJSで差し込んでいたページ変数は、プレースホルダの文字列置換で実現します。
 
 | オプション | 方針 | 備考 |
 |---|---|---|
@@ -135,16 +130,14 @@ PDFのアウトライン(ブックマーク)自体が非対応のため、この
 | `--footer-font-name` / `--footer-font-size` | ✅ 対応 | |
 | `--replace <name> <value>` | ✅ 対応 | ヘッダ/フッタ内の`[name]`を置換。sghtmltopdfのプレースホルダ方式と直接対応する |
 
-wkhtmltopdfの組み込みプレースホルダのうち、使えるのは`[page]`・`[frompage]`・
-`[topage]`・`[date]`・`[time]`・`[title]`/`[doctitle]`です。`[section]`/
-`[subsection]`(直近の見出し)と`[webpage]`/`[sitepage]`/`[sitepages]`
-(複数入力向け)は非対応です。`--replace`で任意の名前を定義できます。
+wkhtmltopdfの組み込みプレースホルダのうち、使えるのは`[page]`・`[frompage]`・`[topage]`・`[date]`・`[time]`・`[title]`/`[doctitle]`です。
+`[section]`/`[subsection]`(直近の見出し)と`[webpage]`/`[sitepage]`/`[sitepages]`(複数入力向け)は非対応です。
+`--replace`で任意の名前を定義できます。
 
 ## TOC Options
 
-生成される目次のHTML構造と既定スタイルは、wkhtmltopdfの既定TOC XSLの出力に
-合わせてあります。階層は入れ子の`<ul>`、各項目は
-`<li><div><a>見出し</a><span>ページ番号</span></div></li>`です。
+生成される目次のHTML構造と既定スタイルは、wkhtmltopdfの既定TOC XSLの出力に合わせてあります。
+階層は入れ子の`<ul>`、各項目は`<li><div><a>見出し</a><span>ページ番号</span></div></li>`です。
 
 | オプション | 方針 | 備考 |
 |---|---|---|
@@ -159,10 +152,10 @@ wkhtmltopdfの組み込みプレースホルダのうち、使えるのは`[page
 
 | オプション | 内容 |
 |---|---|
-| `--font <path>` / `--font-index <N>` | フォントの明示指定(複数可、**任意**)。省略時はシステムフォントを使う |
+| `--font <path>` / `--font-index <N>` | フォントの明示指定(複数可、任意)。省略時はシステムフォントを使う |
 | `--gothic-font` / `--mono-font` / `--serif-font`(+`-index`) | 汎用family名(`sans-serif`/`monospace`/`serif`)の実体指定 |
 | `--allow-remote-assets` | http(s)絶対URLのフェッチ許可 |
-| `--streaming` | [ストリーミングモード](../cli/streaming.md)で処理する |
+| `--streaming` | [ストリーミングモード](../usage/cli/streaming.md)で処理する |
 | `--base-url <url\|dir>` | stdin入力時などの相対解決の基準 |
 | `--author` / `--subject` / `--keywords` | PDF Info辞書(wkhtmltopdfは`--title`のみ) |
 | `--cover <path>` / `--toc` | 表紙・目次(wkhtmltopdfは位置引数) |
