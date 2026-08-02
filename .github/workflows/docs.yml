@@ -49,7 +49,7 @@ jobs:
       - name: Install mdbook toolchain
         if: steps.cache-tools.outputs.cache-hit != 'true'
         run: |
-          cargo binstall -y --no-confirm \
+          cargo binstall --no-confirm \
             mdbook@${MDBOOK_VERSION} \
             mdbook-mermaid@${MDBOOK_MERMAID_VERSION} \
             mdbook-i18n-helpers@${MDBOOK_I18N_HELPERS_VERSION}
