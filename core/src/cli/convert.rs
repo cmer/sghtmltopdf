@@ -81,10 +81,9 @@ pub fn render_to_memory<S: Sink<Output = Vec<u8>, Error = io::Error>>(
 
 /// HTMLバイト列を変換して`sink`へ書き出す。
 ///
-/// CLI(`run`)とHTTPサーバ([`super::server`])の**共通の実行経路**
-/// ([0060](../../../docs/decisions/0060-http-server-mode.md))。
-/// フォントは呼び出し側が解決して渡す(CLIは`--font`の出現順、サーバは
-/// 起動時オプションから作る)。
+/// CLI(`run`)とHTTPサーバ([`super::server`])の共通の実行経路。フォントは
+/// 呼び出し側が解決して渡す(CLIは`--font`の
+/// 出現順、サーバは起動時オプションから作る)。
 pub fn render<S: Sink<Output = (), Error = io::Error>>(
     args: &ConvertArgs,
     fonts: &[FontArg],
@@ -99,7 +98,7 @@ const FEED_CHUNK: usize = 64 * 1024;
 
 /// [`render`]/[`render_to_memory`]の実体。
 ///
-/// **入力を読み切らずにチャンク単位で`Engine::feed`へ渡す**。
+/// 入力を読み切らずにチャンク単位で`Engine::feed`へ渡す。
 /// エンコーディングの判定に必要な先頭だけは
 /// [`crate::html::StreamingDecoder`]が内部でバッファする。
 fn render_from_reader<S: Sink<Error = io::Error>>(
@@ -111,15 +110,15 @@ fn render_from_reader<S: Sink<Error = io::Error>>(
     let (base_dir, base_href) = resolve_base(args)?;
 
     // CLIのページ設定は「初期値」であり、著者CSSの`@page`宣言があれば
-    // プロパティ単位でそちらが優先される([0055]決定2)。合成は
+    // プロパティ単位でそちらが優先される。合成は
     // `engine::apply_page_rule_settings_override`が行う。
     let settings = args.page_settings().map_err(CliError::Usage)?;
     args.validate_scaling().map_err(CliError::Usage)?;
     let content_options = args.content_options().map_err(CliError::Input)?;
 
-    // ヘッダー/フッターの簡易オプションを`@page`ルールへ合成する([0058]決定1)。
-    // `[title]`の解決にはPDFタイトルが要るので、`--title`優先・未指定なら
-    // ここでは空(エンジンが`<title>`で埋めるのは`/Title`だけ)。
+    // ヘッダー/フッターの簡易オプションを`@page`ルールへ合成する。`[title]`の
+    // 解決にはPDFタイトルが要るので、`--title`優先・未指定ならここでは空
+    // (エンジンが`<title>`で埋めるのは`/Title`だけ)。
     let replacements = args.replacements().map_err(CliError::Usage)?;
     let placeholders =
         crate::cli::header_footer::PlaceholderValues::new(args.title.clone(), replacements);
@@ -129,14 +128,14 @@ fn render_from_reader<S: Sink<Error = io::Error>>(
     };
 
     // `--header-html`/`--footer-html`は読み込み時点でページ番号以外の
-    // プレースホルダを展開しておく([0058]決定2)。残った`[page]`/`[topage]`は
-    // エンジンがページごとに差し込む。
-    // 表紙([0059]決定3)。ページ番号以外のプレースホルダは展開しておく。
+    // プレースホルダを展開しておく。残った`[page]`/`[topage]`はエンジンが
+    // ページごとに差し込む。表紙。ページ
+    // 番号以外のプレースホルダは展開しておく。
     let cover_html = read_optional_html(args.cover.as_deref(), &placeholders)?
         .map(|html| placeholders.expand_all(&html, 1, None));
 
-    // 目次([0059]決定2)。HTMLの組み立てはCLI層(`cli::toc`)が持ち、
-    // エンジンは「見出し一覧 → HTML」の関数として受け取る。
+    // 目次。HTMLの組み立てはCLI層(`cli::toc`)が持ち、エンジンは「見出し一覧
+    // → HTML」の関数として受け取る。
     let toc_options = args.toc_options();
     let back_links = args.enable_toc_back_links;
     let toc_settings = TocSettings {
@@ -230,9 +229,8 @@ fn render_from_reader<S: Sink<Error = io::Error>>(
     engine.finish().map_err(engine_error)
 }
 
-/// `EngineError`をexit code([0055]決定4)へ対応付ける。
-/// 書き込み失敗・フォント読み込み失敗はリソースエラー(2)、エンジン自身の
-/// 制約違反はレンダリングエラー(3)。
+/// `EngineError`をexit codeへ対応付ける。書き込み失敗・フォント読み込み失敗は
+/// リソースエラー(2)、エンジン自身の制約違反はレンダリングエラー(3)。
 fn engine_error(e: EngineError<io::Error>) -> CliError {
     match e {
         EngineError::Io(e) => CliError::Input(format!("PDFの書き込みに失敗しました: {e}")),

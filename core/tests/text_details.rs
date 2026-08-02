@@ -3,7 +3,6 @@
 //!
 //! `typography.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
 //! カスケード→レイアウト→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0053](../../docs/decisions/0053-text-details-design.md)参照。
 
 use std::collections::HashMap;
 
@@ -101,7 +100,7 @@ fn decompressed_stream_bytes(pdf_bytes: &[u8]) -> Vec<u8> {
     }
 
     // `endstream`の内側にも"stream"が現れるため、走査位置は`endstream`の
-    // **後ろ**まで進める(そうしないとストリームを1つおきに取りこぼす)。
+    // 後ろまで進める(そうしないとストリームを1つおきに取りこぼす)。
     let mut out = Vec::new();
     let mut i = 0;
     while let Some(pos) = find_subslice(&pdf_bytes[i..], b"stream\n") {

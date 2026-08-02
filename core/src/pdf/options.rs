@@ -1,7 +1,6 @@
 //! PDF書き出しの振る舞いを変えるオプション。
 //!
-//! 設計は[0057](../../../docs/decisions/0057-pdf-output-options-design.md)。
-//! **レイアウト結果は変えず、PDFの書き出し方だけを変える**設定をまとめて
+//! レイアウト結果は変えず、PDFの書き出し方だけを変える設定をまとめて
 //! 持ち回るための型。CLIの`--title`/`--no-pdf-compression`/`--grayscale`/
 //! `--dpi`/`--zoom`がここへ集約される。
 
@@ -32,14 +31,13 @@ pub const DEFAULT_SCALE: f32 = 72.0 / 96.0;
 pub struct PdfOutputOptions {
     pub metadata: DocumentMetadata,
     /// PDFオブジェクト(content stream・フォント・CMap)のFlate圧縮。
-    /// 画像データはこのフラグの対象外([0057]決定5)。
+    /// 画像データはこのフラグの対象外。
     pub compress: bool,
-    /// CSS px → PDF ptの係数([0057]決定2・決定3)。
+    /// CSS px → PDF ptの係数。
     pub scale: f32,
-    /// 塗り・線の色をグレースケール化する([0057]決定4)。
+    /// 塗り・線の色をグレースケール化する。
     pub grayscale: bool,
-    /// ヘッダーの下に罫線を引く(`--header-line`、[0058](
-    /// ../../../docs/decisions/0058-header-footer-design.md)決定6)。
+    /// ヘッダーの下に罫線を引く(`--header-line`)。
     pub header_line: bool,
     /// フッターの上に罫線を引く(`--footer-line`)。
     pub footer_line: bool,
@@ -59,7 +57,7 @@ impl Default for PdfOutputOptions {
 }
 
 impl PdfOutputOptions {
-    /// `--dpi`と`--zoom`から換算係数を求める([0057]決定3)。
+    /// `--dpi`と`--zoom`から換算係数を求める。
     ///
     /// `dpi`は「CSS pxを何dpiとして解釈するか」。既定の96dpiで0.75になり、
     /// 72を渡すと1 CSS px = 1 pt(M12以前と同じ紙サイズ)になる。
@@ -72,7 +70,7 @@ impl PdfOutputOptions {
         px * self.scale
     }
 
-    /// [0057]決定4の輝度式。`grayscale`が無効ならそのまま返す。
+    /// 輝度式。`grayscale`が無効ならそのまま返す。
     pub fn map_rgb(&self, rgb: (f32, f32, f32)) -> (f32, f32, f32) {
         if !self.grayscale {
             return rgb;

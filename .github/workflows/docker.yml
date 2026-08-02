@@ -1,12 +1,10 @@
 name: docker
 
-# 公式Dockerイメージ(ghcr.io/waka/sghtmltopdf)のビルド・スモークテスト・push。
-# 方針は .claude/plans/decisions/0061-distribution.md 決定2〜5を参照。
-#
-# * 対象は linux/amd64 と linux/arm64。**ビルドはどちらもamd64ランナー上で行い**、
-#   arm64はDockerfileの中でクロスコンパイルする(QEMUの中でrustcを動かすと
-#   数十分かかるため)。QEMUは出来上がったarm64イメージを**動かす**ためだけに使う
-# * pushするのは main とタグのときだけ。PRではビルドとスモークまで
+# 公式Dockerイメージ(ghcr.io/waka/sghtmltopdf)のビルド・スモークテスト・push
+# 対象は linux/amd64 と linux/arm64
+#   ビルドはどちらもamd64ランナー上で行い、arm64はDockerfileの中でクロスコンパイルする
+#   - QEMUの中でrustcを動かすと数十分かかるため
+#   - QEMUは出来上がったarm64イメージを動かすためだけに使う
 on:
   push:
     branches: [main]
@@ -17,7 +15,6 @@ on:
       - .dockerignore
       - docker/**
       - .github/workflows/docker.yml
-      # 実行ファイルの中身が変わるものはイメージも壊れうる。
       - core/**
       - Cargo.toml
       - Cargo.lock
@@ -33,7 +30,7 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
-      # arm64のイメージを実行するためのbinfmt登録(ビルドには要らない)。
+      # arm64のイメージを実行するためのbinfmt登録(ビルドには要らない)
       - uses: docker/setup-qemu-action@v3
         if: matrix.arch == 'arm64'
         with:
@@ -61,7 +58,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      # バージョンは全配布物で揃える([0061]決定6)。gem側(gem.yml)と同じ検証。
+      # バージョンは全配布物で揃える
       - name: タグとcoreのバージョンが一致することを確かめる
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -78,8 +75,8 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # タグは 0.1.0 / 0.1 / latest / sha-<short> の4つ([0061]決定6)。
-      # `latest`はsemverタグのときだけ付く(mainへのpushでは`edge`になる)。
+      # タグは 0.1.0 / 0.1 / latest / sha-<short> の4つ
+      # `latest`はsemverタグのときだけ付く(mainへのpushでは`edge`になる)
       - uses: docker/metadata-action@v5
         id: meta
         with:
@@ -89,7 +86,6 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=edge,branch=main
             type=sha
-      # スモークで使ったキャッシュがそのまま効くので、ここでのビルドは実質再利用。
       - name: マルチアーキのイメージをpushする
         uses: docker/build-push-action@v6
         with:

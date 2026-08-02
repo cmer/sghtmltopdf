@@ -4,8 +4,7 @@
 //! ストリーミング両モードを検証する(`opacity`はPDFの透明グループ
 //! (Form XObject + `/Group /S /Transparency`)として実装しているため、
 //! 生成されたPDFバイト列に`/Subtype /Form`・`/Transparency`が実際に
-//! 現れることを確認する)。詳細設計は
-//! [0035](../../docs/decisions/0035-opacity-transform-design.md)参照。
+//! 現れることを確認する)。
 
 use sghtmltopdf_core::engine::{Engine, EngineOptions, FontSpec, Mode};
 use sghtmltopdf_core::sink::MemorySink;
@@ -104,9 +103,9 @@ fn transform_emits_a_cm_operator_but_a_plain_box_does_not() {
     );
     let with_transform_content = decompressed_stream_bytes(&with_transform);
     let plain_content = decompressed_stream_bytes(&plain);
-    // 各ページの先頭にはCSS px → ptの換算CTMが1つ積まれる([0057]決定2)ため、
-    // `transform`を使わないページでも`cm`は1つ出る。`transform`はその上に
-    // さらに`cm`を積む。
+    // 各ページの先頭にはCSS px → ptの換算CTMが1つ積まれるため、`transform`を
+    // 使わないページでも`cm`は1つ出る。
+    // `transform`はその上にさらに`cm`を積む。
     let plain_cm = count_occurrences(&plain_content, b" cm\n");
     assert_eq!(plain_cm, 1, "only the page scale CTM should be present");
     assert!(

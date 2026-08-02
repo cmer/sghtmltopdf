@@ -10,13 +10,12 @@
 //! 平坦化する(要素そのものを畳み込みはするが、どの計算スタイルが適用される
 //! テキストかという情報は失わない)。
 //!
-//! `<img>`(マイルストーン5)は`build_box_tree`/`build_box_for_element`の時点
-//! では他のブロック要素と同様に組み込むだけで、実際のフェッチ・デコード
+//! `<img>`(マイルストーン5)は`build_box_tree`/`build_box_for_element`の
+//! 時点では他のブロック要素と同様に組み込むだけで、実際のフェッチ・デコード
 //! (I/Oを伴う)は行わない。[`resolve_images`]がbox tree構築後に別パスとして
-//! 呼ばれ、`<img>`要素に対応するボックスの中身を[`BoxContent::Image`]に
-//! 差し替える。構築と分離しているのは、`build_box_tree`/
-//! `build_box_for_element`を「DOM+スタイルのみから決まる純粋な処理」の
-//! ままに保ちたいため([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
+//! 呼ばれ、`<img>`要素に対応するボックスの中身を[`BoxContent::Image`]に差し
+//! 替える。構築と分離しているのは、`build_box_tree`/`build_box_for_element`を
+//! 「DOM+スタイルのみから決まる純粋な処理」のままに保ちたいため。
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -35,10 +34,10 @@ pub struct LayoutBox {
     pub content: BoxContent,
     /// `display: list-item`のマーカー(箇条書きの記号・番号)テキスト。
     /// `list-style-position: inside`かつ内容が`BoxContent::Inline`の場合は
-    /// 代わりに`content`の先頭`InlineSpan`へ直接埋め込むため、この場合は`None`の
-    /// まま(二重描画を避ける、[0022](../../../docs/decisions/0022-list-style-design.md)
-    /// 決定4)。それ以外(`outside`、またはブロック子を持つ`inside`)は
-    /// レイアウト層(`block.rs`)がこのフィールドを見て別途配置する。
+    /// 代わりに`content`の先頭`InlineSpan`へ直接埋め込むため、この場合は
+    /// `None`のまま(二重描画を避ける)。それ以外(`outside`、またはブロック子を
+    /// 持つ`inside`)はレイアウト層(`block.rs`)
+    /// がこのフィールドを見て別途配置する。
     pub marker: Option<String>,
 }
 
@@ -56,17 +55,16 @@ pub enum BoxContent {
     Image(ImageBoxContent),
 }
 
-/// `display: flex`要素から集めたflexアイテムの並び([0034](
-/// ../../../docs/decisions/0034-flexbox-design.md)決定1)。各アイテムは
-/// 通常のブロック子と同じ`LayoutBox`(子要素ごとに1個、`build_children_boxes`の
-/// 無名ボックス生成規則は適用しない)。
+/// `display: flex`要素から集めたflexアイテムの並び。各アイテムは通常の
+/// ブロック子と同じ`LayoutBox`(子要素ごとに1個、`build_children_boxes`の無名
+/// ボックス生成規則は適用しない)。
 #[derive(Debug, Clone)]
 pub struct FlexBox {
     pub items: Vec<LayoutBox>,
 }
 
-/// `display: grid`のコンテナ([0054](../../../docs/decisions/0054-grid-design.md)決定1)。
-/// 構造は[`FlexBox`]と同じで、レイアウト時に渡すtaffyの`Style`だけが異なる。
+/// `display: grid`のコンテナ。構造は[`FlexBox`]と同じで、レイアウト時に渡す
+/// taffyの`Style`だけが異なる。
 #[derive(Debug, Clone)]
 pub struct GridBox {
     pub items: Vec<LayoutBox>,
@@ -76,9 +74,8 @@ pub struct GridBox {
 #[derive(Debug, Clone)]
 pub struct ImageBoxContent {
     /// フェッチ・デコードに成功した場合の画像データ。失敗
-    /// (ネットワークエラー・SSRFブロック・デコード不能等、いずれも同列)
-    /// した場合は`None`になり、レイアウト(T53)はこれを空の置換要素として
-    /// 扱う([0014]の方針)。
+    /// (ネットワークエラー・SSRFブロック・デコード不能等、いずれも同列)した
+    /// 場合は`None`になり、レイアウト(T53)はこれを空の置換要素として扱う。
     pub image: Option<std::rc::Rc<crate::pdf::PreparedImage>>,
     /// `width`/`height`属性の値(px、HTML属性由来)。CSSの`width`/`height`
     /// より弱い優先度のヒントとしてレイアウト(T53)が使う。
@@ -90,26 +87,21 @@ pub struct ImageBoxContent {
 #[derive(Debug, Clone)]
 pub struct TableBox {
     /// `display: table-caption`の子要素(`<caption>`)。複数ある場合は最初の
-    /// 1つのみ採用する(既知の簡略化、[0021](
-    /// ../../../docs/decisions/0021-table-layout-design.md)決定4)。
-    /// `Box`は`LayoutBox`→`BoxContent::Table`→`TableBox`の再帰を間接参照で
-    /// 断ち切るために必要(サイズが無限になるコンパイルエラーの回避)。
+    /// 1つのみ採用する(既知の簡略化)。`Box`は`LayoutBox`→`BoxContent::Table`
+    /// →`TableBox`の再帰を間接参照で断ち切るために必要(サイズが無限になる
+    /// コンパイルエラーの回避)。
     pub caption: Option<Box<LayoutBox>>,
     /// captionの計算スタイルから読んだ`caption-side`(captionが無ければ初期値`Top`)。
     pub caption_side: CaptionSide,
     pub rows: Vec<TableRow>,
     /// `<colgroup>`/`<col>`由来の列幅ヒント(列インデックス順、`None`は指定なし)。
-    /// `<col>`要素の計算スタイルの`width`をそのまま持つ([0038](
-    /// ../../../docs/decisions/0038-colgroup-col-design.md)決定1・決定3)。
-    /// 実際の列数より多い分は`layout::table`側で切り捨て、少ない分は指定なし
-    /// として扱う。
+    /// `<col>`要素の計算スタイルの`width`をそのまま持つ。実際の列数より多い
+    /// 分は`layout::table`側で切り捨て、少ない分は指定なしとして扱う。
     pub column_widths: Vec<Option<LengthPercentage>>,
 }
 
-/// テーブル行が属するセクション([0045](
-/// ../../../docs/decisions/0045-table-header-repetition-design.md)決定1)。
-/// `<thead>`/`<tbody>`/`<tfoot>`は専用の`display`値を持たない「透明な入れ物」
-/// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定4関連)なので、
+/// テーブル行が属するセクション。`<thead>`/`<tbody>`/`<tfoot>`は専用の
+/// `display`値を持たない「透明な入れ物」なので、
 /// 入れ物の要素名から判定してここに残す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TableSection {
@@ -124,8 +116,8 @@ pub enum TableSection {
 pub struct TableRow {
     pub node: NodeId,
     pub cells: Vec<TableCell>,
-    /// この行が属するセクション([0045]決定1)。ページ分割層が`<thead>`の
-    /// 行を各ページの先頭に複製するために使う。
+    /// この行が属するセクション。ページ分割層が`<thead>`の行を各ページの
+    /// 先頭に複製するために使う。
     pub section: TableSection,
 }
 
@@ -135,9 +127,8 @@ pub struct TableCell {
     pub node: NodeId,
     /// `colspan`属性の値(未指定または不正な値は1)。
     pub colspan: usize,
-    /// `rowspan`属性の値(未指定または不正な値は1)。`rowspan="0"`
-    /// (HTML5の「以降の行末まで拡張」特殊値)は非対応、1として扱う
-    /// ([0021](../../../docs/decisions/0021-table-layout-design.md)既知の簡略化4)。
+    /// `rowspan`属性の値(未指定または不正な値は1)。`rowspan="0"`(HTML5の
+    /// 「以降の行末まで拡張」特殊値)は非対応、1として扱う(既知の簡略化)。
     pub rowspan: usize,
     /// セル自身の内容(通常のブロック/インラインボックスと同じ構造)。
     pub content: LayoutBox,
@@ -153,23 +144,18 @@ pub struct InlineSpan {
     pub text: String,
     /// `::first-letter`用に分離された先頭1文字かどうか。`true`の場合、
     /// `node`の計算スタイルの`first_letter_style`(あれば)で一部プロパティが
-    /// 上書きされる([0024](../../../docs/decisions/0024-generated-content-design.md)
-    /// 決定4、`layout::inline::flatten_spans`が適用する)。
+    /// 上書きされる(`layout::inline::flatten_spans`が適用する)。
     pub is_first_letter: bool,
-    /// `<br>`由来の強制改行かどうか([0037](
-    /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
-    /// `true`のとき`text`は`"\n"`で、`node`は`<br>`要素自身(空行の高さを
-    /// その計算スタイルから求めるため)。
+    /// `<br>`由来の強制改行かどうか。`true`のとき`text`は`"\n"`で、`node`は
+    /// `<br>`要素自身(空行の高さをその計算スタイルから求めるため)。
     pub is_forced_break: bool,
-    /// `display: inline-block`のアトミックボックス([0043](
-    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
-    /// `Some`のとき`text`は空で、このスパンは「テキストではなく1つの箱」を表す。
+    /// `display: inline-block`のアトミックボックス。`Some`のとき`text`は
+    /// 空で、このスパンは「テキストではなく1つの箱」を表す。
     pub atomic: Option<Box<LayoutBox>>,
-    /// このテキストを囲む`<a href>`のhref値([0042](
-    /// ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
-    /// 同じリンク配下に多数のランが生成されるため`Rc`で共有する。
+    /// このテキストを囲む`<a href>`のhref値。同じリンク配下に多数のランが
+    /// 生成されるため`Rc`で共有する。
     pub link: Option<Rc<str>>,
-    /// このテキストを囲む**インライン要素**(`<mark>`/`<span>`等)の
+    /// このテキストを囲むインライン要素(`<mark>`/`<span>`等)の
     /// `background-color`。無ければ透明。
     ///
     /// テキストノードの計算スタイルは親の非継承プロパティ(背景色を含む)まで
@@ -199,7 +185,7 @@ impl InlineSpan {
         }
     }
 
-    /// `display: inline-block`のアトミックボックス([0043]決定1)。
+    /// `display: inline-block`のアトミックボックス。
     fn atomic(node: NodeId, atomic: LayoutBox) -> Self {
         Self {
             node,
@@ -212,11 +198,9 @@ impl InlineSpan {
         }
     }
 
-    /// `<br>`由来の強制改行([0037](
-    /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
-    /// `text`を`"\n"`にしておくことで、`white-space: pre`の経路
-    /// (`layout::inline::layout_pre_content`は`'\n'`で行を分割する)が
-    /// 改修なしで強制改行を処理できる。
+    /// `<br>`由来の強制改行。`text`を`"\n"`にしておくことで、
+    /// `white-space: pre`の経路(`layout::inline::layout_pre_content`は
+    /// `'\n'`で行を分割する)が改修なしで強制改行を処理できる。
     fn forced_break(node: NodeId) -> Self {
         Self {
             node,
@@ -235,9 +219,9 @@ impl InlineSpan {
 /// 復元できないもの)。
 #[derive(Debug, Clone)]
 struct InlineContext {
-    /// 直近の`<a href>`のhref([0042]決定1)。
+    /// 直近の`<a href>`のhref。
     link: Option<Rc<str>>,
-    /// 直近のインライン要素が指定した背景色([0041])。
+    /// 直近のインライン要素が指定した背景色。
     background_color: RgbaColor,
 }
 
@@ -346,7 +330,7 @@ pub(crate) fn build_box_for_element(
 ///
 /// `image_cache`がフェッチ・デコードを行う(I/Oを伴う)。同じ`src`は
 /// `image_cache`内でメモ化されるため、同一画像が繰り返し参照されても
-/// 実際のフェッチ・デコードは初回のみ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
+/// 実際のフェッチ・デコードは初回のみ。
 pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetCache) {
     if let Some(node) = tree.node {
         if let NodeData::Element { name, .. } = &dom.node(node).data {
@@ -384,9 +368,8 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
             }
         }
         // 行に参加するアトミックボックス(インラインの`<img>`・
-        // `display: inline-block`)の中も辿る([0046](
-        // ../../../docs/decisions/0046-inline-image-design.md)決定4)。
-        // 辿らないとインライン画像が常に「取得失敗」扱いになる。
+        // `display: inline-block`)の中も辿る。辿らないとインライン画像が常に
+        // 「取得失敗」扱いになる。
         BoxContent::Inline(spans) => {
             for span in spans {
                 if let Some(atomic) = span.atomic.as_deref_mut() {
@@ -399,11 +382,10 @@ pub fn resolve_images(tree: &mut LayoutBox, dom: &Dom, image_cache: &ImageAssetC
 }
 
 /// `background-image`が指定された要素の、デコード済み画像を`NodeId`キーで
-/// 引けるようにする側マップを構築する。[0017](../../../docs/decisions/0017-background-image-design.md)
-/// 決定2により、`<img>`の[`resolve_images`]と異なりbox tree(`LayoutBox`)の
-/// 中身は一切変更しない(背景画像はレイアウトのサイズ計算に影響しない、
-/// 描画専用の情報のため)。DOM木の再走査も不要で、カスケード計算済みの
-/// `styles`を`background_image.is_some()`でフィルタするだけで済む。
+/// 引けるようにする側マップを構築する。`<img>`の[`resolve_images`]と異なり
+/// box tree(`LayoutBox`)の中身は一切変更しない(背景画像はレイアウトのサイズ
+/// 計算に影響しない、描画専用の情報のため)。DOM木の再走査も不要で、カスケード
+/// 計算済みの`styles`を`background_image.is_some()`でフィルタするだけで済む。
 ///
 /// フェッチ・デコードに失敗した要素は、その要素だけ背景画像なし扱いにして
 /// マップに含めない(0014と同じフォールバック方針、文書全体は止めない)。
@@ -442,8 +424,8 @@ fn build_image_box_content(
 /// `list_item_start`は、この子ボックス列の中で`display: list-item`の子を
 /// 数える際の初期値(`<ol start="N">`のHTML属性、未指定は1)。この関数の呼び出し
 /// 単位(=1つのコンテナの直接の子)がそのままカウンタのスコープになる
-/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定3: 入れ子の
-/// `<ol>`/`<ul>`はそれぞれ独立した呼び出しになるため、副作用的に1から数え直す)。
+/// (入れ子の`<ol>`/`<ul>`はそれぞれ独立した呼び出しになるため、副作用的に
+/// 1から数え直す)。
 fn build_children_boxes(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -474,10 +456,9 @@ fn build_children_boxes(
 
 /// `node`の計算スタイルが`::first-letter`にマッチしていれば(`first_letter_style`
 /// が`Some`)、`spans`のうち最初の非空白文字を含むspanから先頭1文字を分離し、
-/// `is_first_letter: true`のspanとして直前に挿入する([0024](
-/// ../../../docs/decisions/0024-generated-content-design.md)決定4)。
+/// `is_first_letter: true`のspanとして直前に挿入する。
 ///
-/// **既知の簡略化**: 先頭の空白・約物のスキップは行わない(単純にテキストの
+/// 既知の簡略化: 先頭の空白・約物のスキップは行わない(単純にテキストの
 /// 最初の1文字を対象にする)。`spans`はホストの直接のテキスト内容のみを見るため、
 /// ネストしたインライン要素の中から始まる内容には適用されない。
 fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<InlineSpan>) {
@@ -509,11 +490,11 @@ fn apply_first_letter(node: NodeId, style: &ComputedStyle, spans: &mut Vec<Inlin
 }
 
 /// `node`(`b`に対応する要素)が`display: list-item`であれば、カウンタを1つ
-/// 進めた上でマーカーテキストを`b`に反映する。`list-style-position: inside`かつ
-/// `b`の内容が`BoxContent::Inline`の場合は、`::before`と同じ要領で先頭に
+/// 進めた上でマーカーテキストを`b`に反映する。`list-style-position: inside`か
+/// つ`b`の内容が`BoxContent::Inline`の場合は、`::before`と同じ要領で先頭に
 /// `InlineSpan`として埋め込む(この場合`b.marker`は`None`のまま)。それ以外は
-/// `b.marker`にテキストを持たせ、実際の配置はレイアウト層(`block.rs`)に委ねる
-/// ([0022]決定4)。
+/// `b.marker`にテキストを持たせ、実際の
+/// 配置はレイアウト層(`block.rs`)に委ねる。
 fn apply_list_item_marker(
     styles: &HashMap<NodeId, ComputedStyle>,
     node: NodeId,
@@ -603,8 +584,7 @@ fn build_table_box(
     }
 }
 
-/// `<colgroup>`/`<col>`から列幅ヒントを列インデックス順に集める([0038](
-/// ../../../docs/decisions/0038-colgroup-col-design.md)決定2)。
+/// `<colgroup>`/`<col>`から列幅ヒントを列インデックス順に集める。
 ///
 /// `<colgroup>`が`<col>`を子に持てばその`<col>`群を、持たなければ
 /// `<colgroup>`自身を`span`属性の回数だけ列として展開する。テーブル直下の
@@ -658,8 +638,7 @@ fn collect_column_widths(
     widths
 }
 
-/// フォームコントロールの表示テキストを生成する([0043](
-/// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定4)。
+/// フォームコントロールの表示テキストを生成する。
 ///
 /// `<input>`はvoid要素でテキストノードを持たないため、`value`/`placeholder`
 /// 属性から生成する必要がある。`<select>`は選択中の`<option>`のテキストを
@@ -684,7 +663,7 @@ fn push_form_control_content(
         "input" => {
             let input_type = attr("type").unwrap_or_else(|| "text".to_string());
             match input_type.trim().to_ascii_lowercase().as_str() {
-                // チェックボックス・ラジオは枠と塗りだけで表す(決定4)。
+                // チェックボックス・ラジオは枠と塗りだけで表す。
                 "checkbox" | "radio" | "hidden" | "file" | "color" | "range" => None,
                 "submit" => Some(attr("value").unwrap_or_else(|| "Submit".to_string())),
                 "reset" => Some(attr("value").unwrap_or_else(|| "Reset".to_string())),
@@ -754,8 +733,8 @@ fn collect_text_content(dom: &Dom, node: NodeId) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// `display: inline-block`要素の中身を、通常のブロックと同じ規則で組み立てる
-/// ([0043](../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+/// `display: inline-block`要素の中身を、
+/// 通常のブロックと同じ規則で組み立てる。
 fn build_inline_block_box(
     dom: &Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -790,9 +769,8 @@ fn build_inline_block_box(
     })
 }
 
-/// `node`が`href`を持つ`<a>`要素であれば、その値([0042](
-/// ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
-/// `javascript:`スキームはリンクとして扱わない(決定6)。
+/// `node`が`href`を持つ`<a>`要素であれば、その値。
+/// `javascript:`スキームはリンクとして扱わない。
 fn link_href(dom: &Dom, node: NodeId) -> Option<Rc<str>> {
     let NodeData::Element { name, attrs, .. } = &dom.node(node).data else {
         return None;
@@ -819,7 +797,7 @@ fn element_local_name(dom: &Dom, node: NodeId) -> Option<String> {
 }
 
 /// `<col span>`/`<colgroup span>`を読む(未指定・0以下・非数値は1、`colspan`と
-/// 同じ寛容さ、[0038]決定2)。
+/// 同じ寛容さ)。
 fn read_span(dom: &Dom, node: NodeId) -> usize {
     let NodeData::Element { attrs, .. } = &dom.node(node).data else {
         return 1;
@@ -835,12 +813,12 @@ fn read_span(dom: &Dom, node: NodeId) -> usize {
 /// flexコンテナ(`node`)の子要素ごとに1個ずつflexアイテムを構築する。CSS仕様上
 /// flexアイテムは各子要素ごとに独立して生成され、隣接するinline-level要素を
 /// 1つの無名ボックスへまとめる規則(`build_children_boxes`)はflexコンテナの
-/// 子には適用されないため、`build_box_for_element`を子要素ごとに直接呼ぶ
-/// (決定1)。子要素自身の`display`値(`block`/`table`/入れ子の`flex`等)は
-/// そのまま尊重され、そのアイテムの中身のレイアウトに使われる(ネスト無制限)。
+/// 子には適用されないため、`build_box_for_element`を子要素ごとに直接呼ぶ。
+/// 子要素自身の`display`値(`block`/`table`/入れ子の`flex`等)はそのまま
+/// 尊重され、そのアイテムの中身のレイアウトに使われる(ネスト無制限)。
 /// `display: none`の子・裸のテキストノード(要素で包まれていないもの)は
-/// 無視する(後者は既知の簡略化、実務上flexコンテナの子は要素でラップされる
-/// ことがほとんどのため)。
+/// 無視する(後者は既知の簡略化、実務上flexコンテナの子は要素で
+/// ラップされることがほとんどのため)。
 fn build_flex_box(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) -> FlexBox {
     let items = dom
         .children(node)
@@ -868,8 +846,8 @@ fn collect_table_rows(
 ) {
     collect_table_rows_in_section(dom, styles, node, TableSection::Body, out, out_caption);
     // `<tfoot>`はHTML4では`<tbody>`より前に書く決まりだった。セクションが
-    // 分かるようになったので、ソース順に関わらず末尾へ寄せる([0045]決定2)。
-    // 安定ソートなのでセクション内の順序は保たれる。
+    // 分かるようになったので、ソース順に関わらず末尾へ寄せる。安定
+    // ソートなのでセクション内の順序は保たれる。
     out.sort_by_key(|row| match row.section {
         TableSection::Head => 0,
         TableSection::Body => 1,
@@ -898,8 +876,8 @@ fn collect_table_rows_in_section(
             }
             Some(Display::Table) | Some(Display::None) | None => {}
             _ => {
-                // `<thead>`/`<tfoot>`に入ったらそこから下の行のセクションが決まる
-                // ([0045]決定1)。入れ子の`<tbody>`等は現れない前提。
+                // `<thead>`/`<tfoot>`に入ったらそこから下の行のセクションが
+                // 決まる。入れ子の`<tbody>`等は現れない前提。
                 let child_section = match element_local_name(dom, child).as_deref() {
                     Some("thead") => TableSection::Head,
                     Some("tfoot") => TableSection::Foot,
@@ -970,8 +948,7 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
     // 空白のみのテキストからは無名ブロックを作らない(CSS2.1 9.2.2.1)。
     // ただしアトミックボックス(インラインの`<img>`・`display: inline-block`)は
     // `text`が空でも意味のある内容なので、1つでもあれば無名ブロックを作る
-    // ([0046](../../../docs/decisions/0046-inline-image-design.md)決定2で
-    // インライン画像が消えていた原因)。
+    // (インライン画像が消えていた原因)。
     let has_meaningful_content = pending
         .iter()
         .any(|span| span.atomic.is_some() || !span.text.trim().is_empty());
@@ -993,8 +970,8 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, ComputedStyle>, node: NodeId) 
                 return ChildKind::None;
             }
             match display {
-                // `inline-block`は親の行に参加する(中身はブロックとして
-                // レイアウトされる、[0043]決定1)。
+                // `inline-block`は親の行に参加する(中身は
+                // ブロックとしてレイアウトされる)。
                 Some(Display::InlineBlock) => ChildKind::Inline,
                 Some(Display::Block)
                 | Some(Display::Table)
@@ -1057,19 +1034,16 @@ fn collect_spans_in_context(
             // ブロック/インラインの振り分け時にしか呼ばれないため、ここで見ないと
             // 「インライン要素の中にある非表示要素」(例:
             // `<p>a <select><option>x</option></select> b</p>`)の子孫テキストが
-            // 本文へ漏れる([0036](
-            // ../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
-            // 決定2・決定7の前提)。
+            // 本文へ漏れる(UAスタイルシートによる非表示化の前提)。
             if styles.get(&node).map(|s| s.display) == Some(Display::None) {
                 return;
             }
-            // `<br>`は子を持たない強制改行マーカー([0037]決定1)。
+            // `<br>`は子を持たない強制改行マーカー。
             if &*name.local == "br" {
                 out.push(InlineSpan::forced_break(node));
                 return;
             }
-            // インラインの`<img>`(置換要素)も1つの箱として行に参加する
-            // ([0046](../../../docs/decisions/0046-inline-image-design.md)決定2)。
+            // インラインの`<img>`(置換要素)も1つの箱として行に参加する。
             // 中身は`resolve_images`が後から`BoxContent::Image`へ差し替える。
             if &*name.local == "img" {
                 out.push(InlineSpan::atomic(
@@ -1082,8 +1056,8 @@ fn collect_spans_in_context(
                 ));
                 return;
             }
-            // `display: inline-block`は1つの箱として行に参加する([0043]決定1)。
-            // 中身は通常のブロックと同じ規則で構築する。
+            // `display: inline-block`は1つの箱として行に参加する。中身は
+            // 通常のブロックと同じ規則で構築する。
             if styles.get(&node).map(|s| s.display) == Some(Display::InlineBlock) {
                 if let Some(mut atomic) = build_inline_block_box(dom, styles, node) {
                     atomic.marker = None;
@@ -1185,7 +1159,7 @@ mod tests {
 
     #[test]
     fn an_inline_img_becomes_an_atomic_span_inside_the_text() {
-        // [0046]決定1・2: `<img>`の既定displayはinlineなので、テキストと同じ
+        // `<img>`の既定displayはinlineなので、テキストと同じ
         // インラインボックスにアトミックボックスとして載る。
         let dom = html::parse(br#"<p>before <img src="a.png"> after</p>"#);
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
@@ -1204,7 +1178,7 @@ mod tests {
     #[test]
     fn a_lone_inline_img_between_blocks_is_not_dropped() {
         // 回帰テスト: `flush_pending_spans`が「テキストが空白のみ」で無名ブロックを
-        // 捨てていたため、`<p>`兄弟の間の裸の`<img>`が消えていた([0046])。
+        // 捨てていたため、`<p>`兄弟の間の裸の`<img>`が消えていた。
         let dom = html::parse(br#"<p>a</p><img src="x.png"><p>b</p>"#);
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
         let tree = build_box_tree(&dom, &styles);
@@ -1555,8 +1529,8 @@ mod tests {
 
     #[test]
     fn resolve_background_images_decodes_only_nodes_with_background_image_set() {
-        // [0017]決定2: `resolve_background_images`はDOM木の再走査をせず、
-        // カスケード計算済みの`styles`を`background_image.is_some()`で
+        // `resolve_background_images`はDOM木の再走査をせず、カスケード
+        // 計算済みの`styles`を`background_image.is_some()`で
         // フィルタするだけで側マップを構築できるはず。
         let dom = html::parse(br#"<div><p>text</p></div>"#);
         let div = find(&dom, dom.document(), "div").expect("div not found");

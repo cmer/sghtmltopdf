@@ -2,7 +2,6 @@
 //!
 //! `flexbox.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイルカスケード→
 //! レイアウト→ページ分割→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0054](../../docs/decisions/0054-grid-design.md)参照。
 
 use std::collections::HashMap;
 
@@ -263,7 +262,7 @@ fn justify_self_overrides_justify_items_for_one_item() {
     assert_eq!(boxes[1].width, 100.0, "justify-selfが個別に上書きする");
 }
 
-// ===== ページ分割(決定6) =====
+// ===== ページ分割 =====
 
 /// レイアウト済みツリーからテキストを収集する。
 fn collect_texts(b: &LaidOutBox, out: &mut Vec<String>) {

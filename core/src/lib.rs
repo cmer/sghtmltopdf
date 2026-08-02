@@ -1,13 +1,4 @@
-//! sg-core: HTML → PDF レンダリングエンジンのコア実装。
-//!
-//! Ruby/Railsに一切依存しない独立したクレート。
-//! マイルストーン1: 静的HTML一括変換(ストリーミングなし)で
-//! 基本的なブロック/インラインレイアウト + PDF出力ができる状態を目指す。
-//! マイルストーン3で、これらを1つのAPIとして統合する[`engine::Engine`]を
-//! 追加した。
-
-/// CLI実装。`cli` feature(既定ON)でのみ有効
-/// ([0055](../docs/decisions/0055-cli-design.md)決定1)。
+/// CLI実装。`cli` feature(既定ON)でのみ有効。
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod engine;

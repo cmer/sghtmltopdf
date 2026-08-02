@@ -64,14 +64,14 @@ pub enum NodeData {
     /// 他の`NodeId`が指す先を壊してしまうため、ノードのスロット自体は
     /// 削除せず中身だけを空にする「タブストーン化」方式を採る。
     ///
-    /// 既存の`NodeData`パターンマッチ(`if let NodeData::Element {..}`等)は
-    /// いずれも網羅的ではなく`Released`をワイルドカード側で自然に扱うため、
+    /// 既存の`NodeData`パターンマッチ(`if let NodeData::Element {..}`等)
+    /// はいずれも網羅的ではなく`Released`をワイルドカード側で自然に扱うため、
     /// 「要素でもテキストでもない」として黙って無視される。これは安全側
     /// (誤ってマッチしない)に倒れるが、逆に「本来解放してはいけないノードを
     /// 誤って解放してしまった」というバグはサイレントな不具合として現れうる。
-    /// 解放を呼び出すタイミングの安全性([0006](../../docs/decisions/0006-css-non-locality-scope.md)
-    /// が定めた「兄弟・子孫セレクタの参照範囲を跨がない」制約)は呼び出し側の
-    /// 責務であり、この型自体はそれを強制しない。
+    /// 解放を呼び出すタイミングの安全性(「兄弟・子孫セレクタの参照範囲を
+    /// 跨がない」制約)は呼び出し側の責務であり、
+    /// この型自体はそれを強制しない。
     Released,
 }
 
@@ -92,9 +92,8 @@ pub fn is_stylesheet_link(attrs: &[Attribute]) -> bool {
         })
 }
 
-/// 文書内の最初の`<title>`のテキスト(PDF Info辞書の`/Title`用、
-/// [0057](../../../docs/decisions/0057-pdf-output-options-design.md)決定6)。
-/// `--title`が指定されていない場合のフォールバックとして使う。
+/// 文書内の最初の`<title>`のテキスト(PDF Info辞書の`/Title`用)。`--title`が
+/// 指定されていない場合のフォールバックとして使う。
 pub fn find_document_title(dom: &Dom) -> Option<String> {
     fn walk(dom: &Dom, node: NodeId) -> Option<String> {
         if let NodeData::Element { name, .. } = &dom.node(node).data {
@@ -121,10 +120,9 @@ pub fn find_document_title(dom: &Dom) -> Option<String> {
     walk(dom, dom.document())
 }
 
-/// 文書内の最初の`<base href>`の値([0040](
-/// ../../../docs/decisions/0040-base-href-design.md)決定3)。`<body>`より後に
-/// 現れた`<base>`は無視する(`Mode::Streaming`では原理的に反映できないため、
-/// 両モードで同じ挙動に揃える)。
+/// 文書内の最初の`<base href>`の値。`<body>`より後に現れた`<base>`は無視する
+/// (`Mode::Streaming`では原理的に
+/// 反映できないため、両モードで同じ挙動に揃える)。
 pub fn find_base_href(dom: &Dom) -> Option<String> {
     fn walk(dom: &Dom, node: NodeId, seen_body: &mut bool) -> Option<String> {
         if let NodeData::Element { name, attrs, .. } = &dom.node(node).data {
@@ -155,8 +153,7 @@ pub fn find_base_href(dom: &Dom) -> Option<String> {
 }
 
 /// アンカーの対象になりうる要素(`id`属性を持つ要素、および`<a name>`)を
-/// `NodeId` → 名前(`id`/`name`の値)として集める([0042](
-/// ../../../docs/decisions/0042-link-annotations-design.md)決定4)。
+/// `NodeId` → 名前(`id`/`name`の値)として集める。
 ///
 /// 同じ名前が複数回現れた場合はドキュメント順で最初のものを採用する
 /// (HTML仕様どおり)。
@@ -222,8 +219,7 @@ impl Dom {
     ///
     /// 安全に呼べるのは、`root`以下がスタイル計算・レイアウトともに完了し、
     /// かつ以後どの要素のセレクタマッチングからも参照されないことが確定した
-    /// 場合のみ([0006](../../docs/decisions/0006-css-non-locality-scope.md)
-    /// が定める「兄弟・子孫セレクタの参照範囲を跨がない」制約)。この判定は
+    /// 場合のみ(「兄弟・子孫セレクタの参照範囲を跨がない」制約)。この判定は
     /// 呼び出し側の責務で、`Dom`自体はそれを強制しない。
     pub fn release_subtree(&mut self, root: NodeId) {
         let mut stack = vec![root];
@@ -402,8 +398,7 @@ mod tests {
 
     #[test]
     fn find_base_href_ignores_a_base_that_appears_after_body_starts() {
-        // `Mode::Streaming`では原理的に反映できないため、両モードで無視する
-        // ([0040]決定3)。
+        // `Mode::Streaming`では原理的に反映できないため、両モードで無視する。
         let dom = crate::html::parse(
             br#"<html><body><base href="https://example.com/"><p>x</p></body></html>"#,
         );

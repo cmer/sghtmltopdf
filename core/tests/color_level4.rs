@@ -1,8 +1,7 @@
 //! Color Level 4(`lab()`/`lch()`/`oklab()`/`oklch()`)のE2Eテスト(M9 Phase 2)。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイルカスケード
-//! →ページ分割→PDFエンコード)を通して回帰を検知する。詳細設計は
-//! [0029](../../docs/decisions/0029-color-level4-design.md)参照。
+//! →ページ分割→PDFエンコード)を通して回帰を検知する。
 
 use std::collections::HashMap;
 

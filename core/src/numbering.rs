@@ -1,7 +1,6 @@
-//! ローマ数字・アルファベット表記への変換。`layout::box_tree`(`list-style-type`の
-//! マーカー、[0022](../../docs/decisions/0022-list-style-design.md))と
-//! `style::computed`(`content: counter()`、[0024](../../docs/decisions/0024-generated-content-design.md))
-//! の両方から使われる共通ロジック。
+//! ローマ数字・アルファベット表記への変換。
+//! `layout::box_tree`(`list-style-type`のマーカー)と
+//! `style::computed`(`content: counter`)の両方から使われる共通ロジック。
 
 /// アラビア数字からローマ数字(大文字)へ変換する。CSS2.1の慣習上意味を持つ
 /// 1〜3999の範囲外はアラビア数字のまま返す(既知の簡略化)。

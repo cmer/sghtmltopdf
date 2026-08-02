@@ -70,12 +70,11 @@ use super::font::{deflate, embed_font, FontIds, FontUsage};
 use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, PreparedImage};
 use super::options::{current_datetime, producer_string, DocumentMetadata, PdfOutputOptions};
 
-/// `Content`に色変換を挟むラッパー([0057](
-/// ../../../docs/decisions/0057-pdf-output-options-design.md)決定4)。
+/// `Content`に色変換を挟むラッパー。
 ///
 /// `--grayscale`のために描画関数すべてへ`PdfOutputOptions`を配るのは
 /// 影響が大きい(`settings`は244箇所で参照されている)ため、
-/// **色を書く経路だけ**をこの型で包む。`Deref`/`DerefMut`により
+/// 色を書く経路だけをこの型で包む。`Deref`/`DerefMut`により
 /// `Content`のメソッドはそのまま使え、`set_fill_rgb`/`set_stroke_rgb`だけが
 /// ここの実装で上書きされる。
 pub(super) struct RenderTarget<'a> {
@@ -147,9 +146,8 @@ pub fn encode_pdf(
 /// [`encode_pdf`]に、内部アンカー(`<a href="#id">`)の対応表を渡せるようにした版。
 ///
 /// `links`は内部アンカーの対応表と`<base href>`([`LinkSettings`])。
-/// 既定値を渡した場合は外部リンクの注釈だけが生成される([0042](
-/// ../../../docs/decisions/0042-link-annotations-design.md)決定5。既存の
-/// `encode_pdf`のシグネチャを変えずに済ませるための分割)。
+/// 既定値を渡した場合は外部リンクの注釈だけが生成される(既存の`encode_pdf`の
+/// シグネチャを変えずに済ませるための分割)。
 pub fn encode_pdf_with_anchors(
     pages: &[Page],
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -169,9 +167,8 @@ pub fn encode_pdf_with_anchors(
     )
 }
 
-/// [`encode_pdf_with_anchors`]に、PDF書き出しオプション
-/// (メタデータ・圧縮・スケール・グレースケール)を渡せるようにした版
-/// ([0057](../../../docs/decisions/0057-pdf-output-options-design.md)決定1)。
+/// [`encode_pdf_with_anchors`]に、PDF書き出しオプション(メタデータ・
+/// 圧縮・スケール・グレースケール)を渡せるようにした版。
 pub fn encode_pdf_with_options(
     pages: &[Page],
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -202,10 +199,9 @@ pub fn encode_pdf_with_options(
         .collect();
     let font_resource_names: Vec<String> = (0..fonts.len()).map(|i| format!("F{i}")).collect();
 
-    // `background-color`/`box-shadow`の半透明描画用ExtGState([0031](
-    // ../../../docs/decisions/0031-fill-alpha-design.md)決定1)。使用状況に
-    // 関わらず0.05刻み・21段階を文書全体で1回だけ確保し、フォントと同じく
-    // 全ページのResourcesへ無条件で列挙する。
+    // `background-color`/`box-shadow`の半透明描画用ExtGState。使用状況に
+    // 関わらず0.05刻み・21段階を文書全体で1回だけ確保し、フォントと同じく全
+    // ページのResourcesへ無条件で列挙する。
     let alpha_gs_ids: Vec<Ref> = (0..=ALPHA_STEPS).map(|_| alloc.next()).collect();
     let alpha_gs_names: Vec<String> = (0..=ALPHA_STEPS).map(alpha_gs_resource_name).collect();
     for (step, &id) in alpha_gs_ids.iter().enumerate() {
@@ -236,11 +232,10 @@ pub fn encode_pdf_with_options(
 
     // Pass 2: 実際にページのコンテンツストリームを書く。画像XObjectは、
     // フォントと違ってページ間で使い回すための事前サブセット化情報が
-    // 不要なため、ページごとに「初出なら書き出す」形で済ませる
-    // ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)参照)。
+    // 不要なため、ページごとに「初出なら書き出す」形で済ませる。
     let mut image_ids: HashMap<usize, ImageIds> = HashMap::new();
     let mut page_ids = Vec::with_capacity(pages.len());
-    // 名前付き宛先(`/Dests`)は全ページを書き終えてから解決する([0042]決定3-1)。
+    // 名前付き宛先(`/Dests`)は全ページを書き終えてから解決する。
     let mut destinations: Vec<(String, Ref, f32, f32)> = Vec::new();
     let mut link_annotations: Vec<(Ref, LinkArea)> = Vec::new();
     for page in pages {
@@ -262,8 +257,7 @@ pub fn encode_pdf_with_options(
         }
 
         // `opacity < 1`の要素を先に集めてRefを払い出す(画像・フォントと同じ
-        // 構造、[0035](../../../docs/decisions/0035-opacity-transform-design.md)
-        // 決定2)。実際のForm XObject化(サブツリーの描画・埋め込み)は
+        // 構造)。実際のForm XObject化(サブツリーの描画・埋め込み)は
         // `render_box`の中で行われ、その結果は`pending_forms`に積まれる。
         let mut opacity_nodes = Vec::new();
         for b in &page.boxes {
@@ -274,9 +268,9 @@ pub fn encode_pdf_with_options(
         let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
 
         let mut content = Content::new();
-        // CSS px → PDF ptの換算はページ全体のCTMで行う([0057]決定2)。
+        // CSS px → PDF ptの換算はページ全体のCTMで行う。
         content.transform([output.scale, 0.0, 0.0, output.scale, 0.0, 0.0]);
-        // 色変換([0057]決定4)を挟むラッパー。
+        // 色変換を挟むラッパー。
         let mut target = RenderTarget::new(&mut content, output.grayscale);
         for b in &page.boxes {
             render_box(
@@ -296,7 +290,7 @@ pub fn encode_pdf_with_options(
         }
         let content_bytes = content.finish();
 
-        // `<a href>`の注釈と、このページに落ちたアンカーの位置を集める([0042])。
+        // `<a href>`の注釈と、このページに落ちたアンカーの位置を集める。
         let mut page_links = Vec::new();
         let mut page_anchors = Vec::new();
         for b in &page.boxes {
@@ -354,11 +348,11 @@ pub fn encode_pdf_with_options(
         }
         content_stream.finish();
 
-        // opacityグループのForm XObjectを実際に書き出す(決定2)。`/BBox`は
-        // ページのcontent area全体(box-shadowのにじみ出し・`overflow:
-        // visible`・transformとの組み合わせでborder-boxを超える描画がある
-        // 可能性を考慮し、安全側に倒す、既知の簡略化)。`/Resources`はページと
-        // 同じ内容(全ての名前は文書全体で一意なため絞り込みはしない)。
+        // opacityグループのForm XObjectを実際に書き出す。`/BBox`はページの
+        // content area全体(box-shadowのにじみ出し・`overflow: visible`・
+        // transformとの組み合わせでborder-boxを超える描画がある可能性を
+        // 考慮し、安全側に倒す、既知の簡略化)。`/Resources`はページと同じ内容
+        // (全ての名前は文書全体で一意なため絞り込みはしない)。
         for (form_ref, bytes) in &pending_forms {
             let mut form = pdf.form_xobject(*form_ref, bytes);
             form.bbox(PdfRect::new(
@@ -381,7 +375,7 @@ pub fn encode_pdf_with_options(
     }
 
     // 注釈本体を書く。内部アンカーは名前付き宛先を参照するだけなので、
-    // 対象がどのページにあるか(前方参照かどうか)を気にしなくてよい([0042]決定3-1)。
+    // 対象がどのページにあるか(前方参照かどうか)を気にしなくてよい。
     for (id, area) in &link_annotations {
         write_link_annotation(
             pdf.annotation(*id),
@@ -419,10 +413,8 @@ pub fn encode_pdf_with_options(
     pdf.finish()
 }
 
-/// `/Link`注釈1つを書く([0042](
-/// ../../../docs/decisions/0042-link-annotations-design.md)決定3)。
-/// 内部アンカー(`#id`)は名前付き宛先(`/Dest`)を、外部リンクは
-/// `/URI`アクションを書く。
+/// `/Link`注釈1つを書く。内部アンカー(`#id`)は名前付き宛先(`/Dest`)を、外部
+/// リンクは`/URI`アクションを書く。
 pub(super) fn write_link_annotation(
     mut annotation: pdf_writer::writers::Annotation<'_>,
     area: &LinkArea,
@@ -431,7 +423,7 @@ pub(super) fn write_link_annotation(
 ) {
     annotation.subtype(AnnotationType::Link);
     // 注釈の`/Rect`はページ座標系(content streamのCTMの影響を受けない)なので、
-    // ここでCSS px → ptへ換算する([0057]決定2)。
+    // ここでCSS px → ptへ換算する。
     annotation.rect(PdfRect::new(
         area.x0 * scale,
         area.y0 * scale,
@@ -443,15 +435,15 @@ pub(super) fn write_link_annotation(
 
     match internal_anchor_target(&area.href) {
         // 名前を書くだけなので、対象がまだ書き出していない後方のページに
-        // あっても構わない([0042]決定3-1)。対象が存在しない場合は
-        // `/Dests`に名前が現れず、ビューアはクリックしても何もしない。
+        // あっても構わない。対象が存在しない場合は`/Dests`に名前が現れず、
+        // ビューアはクリックしても何もしない。
         Some(id) => {
             let name = anchor_destination_name(id);
             annotation.pair(Name(b"Dest"), Name(name.as_bytes()));
         }
         None => {
             // 相対URLのままではPDFビューアが解決できないため、`<base href>`が
-            // 絶対URLなら解決してから書く([0042]決定3)。
+            // 絶対URLなら解決してから書く。
             let uri = resolve_against_base_href(base_href, &area.href);
             annotation
                 .action()
@@ -526,8 +518,8 @@ pub fn write_document_with_options<S: Sink>(
     sink.finish()
 }
 
-/// PDF Info辞書を書く([0057]決定6)。`/Producer`と`/CreationDate`は常時、
-/// 残りは指定されたものだけを書く。
+/// PDF Info辞書を書く。`/Producer`と`/CreationDate`は常時、残りは
+/// 指定されたものだけを書く。
 pub(super) fn write_document_info(
     mut info: pdf_writer::writers::DocumentInfo<'_>,
     metadata: &DocumentMetadata,
@@ -560,9 +552,7 @@ pub(super) fn write_document_info(
 }
 
 /// ページの`/Resources`辞書、および各opacityグループForm XObjectの
-/// `/Resources`辞書(ページと同じ内容、[0035](
-/// ../../../docs/decisions/0035-opacity-transform-design.md)決定2)を
-/// 組み立てる共有ロジック。
+/// `/Resources`辞書(ページと同じ内容)を組み立てる共有ロジック。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_resources(
     mut resources: pdf_writer::writers::Resources<'_>,
@@ -620,9 +610,8 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
         LaidOutContent::Inline(lines) => {
             for line in lines {
                 collect_line_usage(line, fonts, usages);
-                // 行内の`display: inline-block`([0043](
-                // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))
-                // の中身も同じ文書のグリフを使う。
+                // 行内の`display: inline-block`の
+                // 中身も同じ文書のグリフを使う。
                 for atomic in &line.atomics {
                     collect_usage(&atomic.content, fonts, usages);
                 }
@@ -643,8 +632,7 @@ pub(super) fn collect_usage(b: &LaidOutBox, fonts: &FontCollection, usages: &mut
 }
 
 /// `line`(通常の行、または`display: list-item`のマーカーを表す1ラン限りの
-/// 合成`LineBox`、[0022](../../../docs/decisions/0022-list-style-design.md)決定4)
-/// が実際に使うグリフを集める。
+/// 合成`LineBox`)が実際に使うグリフを集める。
 fn collect_line_usage(line: &LineBox, fonts: &FontCollection, usages: &mut [FontUsage]) {
     for run in &line.runs {
         let Some(font) = fonts.get(run.font_index) else {
@@ -659,8 +647,7 @@ fn collect_line_usage(line: &LineBox, fonts: &FontCollection, usages: &mut [Font
         }
         // `text-emphasis-style: <string>`のマークはテキストに現れない文字を
         // グリフとして描くため、サブセットから落ちないようここで記録する
-        // ([0053](../../../docs/decisions/0053-text-details-design.md)決定6。
-        // キーワード指定のマークはパスで描くので収集は不要)。
+        // (キーワード指定のマークはパスで描くので収集は不要)。
         if let Some(EmphasisStyle::String(ch)) = run.emphasis.as_ref().map(|mark| &mark.style) {
             if let Some(glyph_id) = font.glyph_id(*ch) {
                 usages[run.font_index].record(font, glyph_id, *ch);
@@ -672,8 +659,8 @@ fn collect_line_usage(line: &LineBox, fonts: &FontCollection, usages: &mut [Font
 /// ページ(群)を再帰的に走査し、実際に使われている画像(`<img>`本体と
 /// `background-image`の両方)を`Rc`のポインタアイデンティティで重複排除して
 /// 集める。フォントの`collect_usage`と同じ「使用状況を先に集めてから
-/// Refを払い出す」構造。`background_images`は[0017](../../../docs/decisions/0017-background-image-design.md)
-/// 決定2の`NodeId → Rc<PreparedImage>`側マップ。
+/// Refを払い出す」構造。`background_images`は`NodeId → Rc<PreparedImage>`
+/// 側マップ。
 pub(super) fn collect_image_uses(
     b: &LaidOutBox,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
@@ -716,15 +703,14 @@ pub(super) fn collect_image_uses(
     }
 }
 
-/// リンク注釈の生成に必要な文書単位の設定([0042](
-/// ../../../docs/decisions/0042-link-annotations-design.md))。
+/// リンク注釈の生成に必要な文書単位の設定。
 #[derive(Debug, Clone)]
 pub struct LinkSettings {
-    /// アンカー対象要素の`NodeId` → 名前付き宛先の名前(決定4・5)。
-    /// 空なら内部アンカーの宛先は生成されない(リンク自体は書かれるが、
+    /// アンカー対象要素の`NodeId` → 名前付き宛先の名前。空なら内部アンカーの
+    /// 宛先は生成されない(リンク自体は書かれるが、
     /// ビューアがクリックしても何も起きない)。
     pub anchor_names: HashMap<NodeId, String>,
-    /// `<base href>`(決定3)。外部リンクの相対URLをこれに対して解決する。
+    /// `<base href>`。外部リンクの相対URLをこれに対して解決する。
     pub base_href: Option<String>,
     /// 外部リンク(http(s))の注釈を出すか(`--disable-external-links`)。
     pub external: bool,
@@ -783,10 +769,8 @@ pub(super) struct LinkArea {
 }
 
 /// ページ内のボックスを走査し、`<a href>`に属するテキストランから
-/// `/Link`注釈の矩形を集める([0042](
-/// ../../../docs/decisions/0042-link-annotations-design.md)決定2)。
-/// 行内で同じリンクが連続するランは1つの矩形にまとめ、折り返しで別の行に
-/// なった分は別の矩形にする。
+/// `/Link`注釈の矩形を集める。行内で同じリンクが連続するランは1つの
+/// 矩形にまとめ、折り返しで別の行になった分は別の矩形にする。
 pub(super) fn collect_link_areas(b: &LaidOutBox, settings: &PageSettings, out: &mut Vec<LinkArea>) {
     match &b.content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
@@ -832,8 +816,8 @@ fn push_line_link_areas(line: &LineBox, settings: &PageSettings, out: &mut Vec<L
         };
         let x0 = settings.margin.left + line.rect.x + run.x_offset;
         let x1 = x0 + run.width;
-        // ランのベースライン(`vertical-align`のずれ込み)を基準に、
-        // ascent〜descentの範囲を注釈の高さにする([0042]決定2)。
+        // ランのベースライン(`vertical-align`のずれ込み)を基準に、ascent〜
+        // descentの範囲を注釈の高さにする。
         let baseline_y = to_pdf_y(settings, line.rect.y + line.baseline) + run.baseline_shift;
         let y0 = baseline_y - run.descent;
         let y1 = baseline_y + run.ascent;
@@ -865,8 +849,7 @@ fn push_line_link_areas(line: &LineBox, settings: &PageSettings, out: &mut Vec<L
 }
 
 /// ページ内のボックスを走査し、アンカー対象(`anchor_names`に含まれる
-/// `NodeId`)が最初に現れた位置(border box上端のPDF y座標)を集める
-/// ([0042]決定4)。
+/// `NodeId`)が最初に現れた位置(border box上端のPDF y座標)を集める。
 pub(super) fn collect_anchor_positions(
     b: &LaidOutBox,
     anchor_names: &HashMap<NodeId, String>,
@@ -916,14 +899,13 @@ pub(super) fn collect_anchor_positions(
     }
 }
 
-/// `href`が内部アンカー(`#id`)なら、その`id`部分を返す([0042]決定3)。
+/// `href`が内部アンカー(`#id`)なら、その`id`部分を返す。
 pub(super) fn internal_anchor_target(href: &str) -> Option<&str> {
     href.strip_prefix('#').filter(|id| !id.is_empty())
 }
 
 /// ページ(群)を再帰的に走査し、`opacity < 1`の要素の`NodeId`を集める。
-/// フォント・画像と同じ「使用状況を先に集めてからRefを払い出す」構造
-/// ([0035](../../../docs/decisions/0035-opacity-transform-design.md)決定2)。
+/// フォント・画像と同じ「使用状況を先に集めてからRefを払い出す」構造。
 /// `opacity`要素は必ず実DOM要素に対応する(無名ボックスには`style`が
 /// 付かないため`opacity`を持ちようがない)ので`b.node`は常に`Some`のはず。
 pub(super) fn collect_opacity_uses(
@@ -1023,9 +1005,8 @@ pub(super) fn render_box(
 /// `style`を引数として分離してある。
 ///
 /// `transform`が指定されている場合、実際の描画([`render_box_with_style_inner`])
-/// をコンテンツストリームの`q cm ... Q`(CTM操作)で包む([0035](
-/// ../../../docs/decisions/0035-opacity-transform-design.md)決定1)。
-/// レイアウトには一切影響しない(視覚効果のみ、CSS仕様通り)。
+/// をコンテンツストリームの`q cm ... Q`(CTM操作)で包む。レイアウトには
+/// 一切影響しない(視覚効果のみ、CSS仕様通り)。
 #[allow(clippy::too_many_arguments)]
 fn render_box_with_style(
     content: &mut RenderTarget<'_>,
@@ -1085,10 +1066,8 @@ fn render_box_with_style(
 /// `opacity < 1`の場合、実際の描画([`render_box_with_style_inner`])を別の
 /// `Content`へ書いてPDFの透明グループ(Form XObject + `/Group /S
 /// /Transparency`)として`pending_forms`へ積み、元の`content`側には
-/// `q /GSn gs /FoN Do Q`だけを書く([0035](
-/// ../../../docs/decisions/0035-opacity-transform-design.md)決定2)。
-/// `transform`のCTM包み(決定4)より内側で呼ぶ必要があるため、
-/// `render_box_with_style`から分離してある。
+/// `q /GSn gs /FoN Do Q`だけを書く。`transform`のCTM包みより内側で呼ぶ
+/// 必要があるため、`render_box_with_style`から分離してある。
 #[allow(clippy::too_many_arguments)]
 fn render_box_opacity_wrapped(
     content: &mut RenderTarget<'_>,
@@ -1125,7 +1104,7 @@ fn render_box_opacity_wrapped(
     }
 
     // `collect_opacity_uses`が事前にこのノードのRefを払い出し済みのはず
-    // (`b.node`は必ず実DOM要素、決定2)。
+    // (`b.node`は必ず実DOM要素)。
     let form_ref = *b
         .node
         .and_then(|n| opacity_form_ids.get(&n))
@@ -1156,15 +1135,14 @@ fn render_box_opacity_wrapped(
     content.restore_state();
 }
 
-/// `b`の`transform`/`transform-origin`から、PDFの`cm`オペランドを組み立てる
-/// ([0035]決定1-3)。CSS座標系(Y下向き)で関数を合成してから、まずPDF座標系
-/// (Y上向き)へ変換し(この時点の平行移動成分は`translate()`由来の相対量の
-/// ままなので、Y成分の符号反転だけで正しく変換できる)、最後に
-/// `transform-origin`をPDF座標(ページ絶対座標)へ変換した上で基準点として
-/// 適用する。原点の平行移動を先にCSS座標側で行ってしまうと、ページ高さの
-/// オフセットが変形行列の回転・拡大成分と混ざり込み誤った結果になるため、
-/// 「原点調整はPDF座標に変換した後で行う」という順序が重要
-/// (スパイクで検算済み)。
+/// `b`の`transform`/`transform-origin`から、PDFの`cm`オペランドを組み立てる。
+/// CSS座標系(Y下向き)で関数を合成してから、まずPDF座標系(Y上向き)へ変換し
+/// (この時点の平行移動成分は`translate`由来の相対量のままなので、Y成分の
+/// 符号反転だけで正しく変換できる)、最後に`transform-origin`をPDF座標(ページ
+/// 絶対座標)へ変換した上で基準点として適用する。原点の平行移動を先にCSS
+/// 座標側で行ってしまうと、ページ高さのオフセットが変形行列の回転・拡大成分と
+/// 混ざり込み誤った結果になるため、「原点調整はPDF座標に変換した後で行う」
+/// という順序が重要(スパイクで検算済み)。
 fn transform_matrix_pdf_space(
     b: &LaidOutBox,
     style: &ComputedStyle,
@@ -1173,9 +1151,8 @@ fn transform_matrix_pdf_space(
     let border_box = b.layout.border_box();
     let css_matrix = compose_transform(&style.transform, border_box.width, border_box.height);
     let [a, b_, c, d, e, f] = css_matrix;
-    // Y軸反転の共役変換(決定1-3)。`translate()`/`matrix()`のe/fは常に相対量
-    // (ページ絶対座標ではない)なので、符号反転だけで正しくPDF座標系の
-    // 相対量になる。
+    // Y軸反転の共役変換。`translate`/`matrix`のe/fは常に相対量(ページ
+    // 絶対座標ではない)なので、符号反転だけで正しくPDF座標系の相対量になる。
     let pdf_matrix_no_origin = [a, -b_, -c, d, e, -f];
 
     let origin_x = settings.margin.left
@@ -1198,9 +1175,8 @@ fn resolve_length_percentage(lp: LengthPercentage, basis: f32) -> f32 {
 }
 
 /// `transform-origin`(基準点`(ox, oy)`)を基準に`m`を適用できるよう、
-/// `Translate(ox,oy) ∘ m ∘ Translate(-ox,-oy)`へ調整する([0035]決定1-1)。
-/// `m`と`(ox, oy)`は同じ座標系(このプロジェクトでは常にPDF座標系)で
-/// 揃っている必要がある。
+/// `Translate(ox,oy) ∘ m ∘ Translate(-ox,-oy)`へ調整する。`m`と`(ox, oy)`は
+/// 同じ座標系(このプロジェクトでは常にPDF座標系)で揃っている必要がある。
 fn apply_transform_origin(m: [f32; 6], ox: f32, oy: f32) -> [f32; 6] {
     let [a, b, c, d, e, f] = m;
     [
@@ -1231,14 +1207,13 @@ fn render_box_with_style_inner(
     opacity_form_ids: &HashMap<NodeId, Ref>,
     pending_forms: &mut Vec<(Ref, Vec<u8>)>,
 ) {
-    // `visibility: hidden`(`collapse`も同一視、[0023](
-    // ../../../docs/decisions/0023-box-model-details-design.md)決定4)。
-    // このボックス自身の装飾・内容は描画しないが、`Blocks`/`Table`の子要素へは
-    // 引き続き再帰する(子孫が`visibility: visible`で上書きしていれば、
-    // `render_box`が子自身の計算スタイルを個別に評価し直すため正しく再描画
-    // される、仕様通り)。テーブルの場合は`border-collapse`統合描画の簡略化として
-    // 通常の`render_box`で再帰する(隠れたテーブル内で特定セルだけ`visible`に
-    // 上書きする、という稀なケースでは隣接セルとの枠線統合は行われない)。
+    // `visibility: hidden`(`collapse`も同一視)。このボックス自身の装飾・
+    // 内容は描画しないが、`Blocks`/`Table`の子要素へは引き続き再帰する(子孫が
+    // `visibility: visible`で上書きしていれば、`render_box`が子自身の計算
+    // スタイルを個別に評価し直すため正しく再描画される、仕様通り)。テーブルの
+    // 場合は`border-collapse`統合描画の簡略化として通常の`render_box`で
+    // 再帰する(隠れたテーブル内で特定セルだけ`visible`に上書きする、という
+    // 稀なケースでは隣接セルとの枠線統合は行われない)。
     if style.visibility.is_hidden() {
         match &b.content {
             LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
@@ -1319,7 +1294,7 @@ fn render_box_with_style_inner(
     }
 
     // `background-image`は`<img>`と異なりboxの中身ではなく装飾なので、
-    // `b.node`から側マップを引いて`Ref`とintrinsicサイズを解決する([0017]決定2)。
+    // `b.node`から側マップを引いて`Ref`とintrinsicサイズを解決する。
     let background_image_paint = b
         .node
         .and_then(|n| background_images.get(&n))
@@ -1344,7 +1319,7 @@ fn render_box_with_style_inner(
     render_outline(content, &b.layout, style, settings);
 
     // `display: list-item`のマーカー。通常のテキスト行と同じ`render_line`を
-    // 再利用する([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
+    // 再利用する。
     if let Some(marker) = &b.marker {
         render_line(
             content,
@@ -1357,10 +1332,10 @@ fn render_box_with_style_inner(
         );
     }
 
-    // `overflow: hidden`/`scroll`/`auto`(区別せず同じクリップとして扱う、
-    // [0023]決定1)。装飾(背景・枠線・outline・マーカー)は上で描画済みで
-    // クリップの影響を受けない。クリップ境界は常に直線のpadding-box
-    // (`border-radius`には沿わせない、決定1)。
+    // `overflow: hidden`/`scroll`/`auto`(区別せず同じクリップとして扱う)。
+    // 装飾(背景・枠線・outline・マーカー)は上で描画済みでクリップの影響を
+    // 受けない。クリップ境界は常に直線の
+    // padding-box (`border-radius`には沿わせない)。
     if style.overflow.clips() {
         let padding_box = b.layout.padding_box();
         let x = settings.margin.left + padding_box.x;
@@ -1419,9 +1394,8 @@ fn render_box_with_style_inner(
                     font_resource_names,
                     alpha_gs_names,
                 );
-                // 行内の`display: inline-block`([0043](
-                // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))は
-                // 通常のブロックと同じ描画経路を通す(枠線・背景・中身のテキスト)。
+                // 行内の`display: inline-block`は通常のブロックと同じ
+                // 描画経路を通す(枠線・背景・中身のテキスト)。
                 for atomic in &line.atomics {
                     render_box(
                         content,
@@ -1480,8 +1454,8 @@ fn render_box_with_style_inner(
             // `render_box`呼び出し自体をスキップしてよい。
             let collapse = style.border_collapse == BorderCollapse::Collapse;
             // `border-collapse: collapse`時、隣接セル間の枠線を統合するために
-            // 全セルのフラットな一覧が要る(隣接判定は矩形の接触で幾何的に行う、
-            // [0021]決定1・2)。
+            // 全セルのフラットな一覧が要る
+            // (隣接判定は矩形の接触で幾何的に行う)。
             let all_cells: Vec<&LaidOutBox> = if collapse {
                 table.rows.iter().flat_map(|row| &row.cells).collect()
             } else {
@@ -1552,10 +1526,9 @@ fn render_box_with_style_inner(
 }
 
 /// `children`を`z-index`に従って描画する順序へ並べ替える(`(z-index, 文書順)`
-/// で安定ソート、[0023](../../../docs/decisions/0023-box-model-details-design.md)
-/// 決定2)。`position: static`の要素には`z-index`が効果を持たない(仕様通り)
-/// ため実効値は常に`0`として扱う。`sort_by_key`は安定ソートなので、同じ
-/// 実効`z-index`の要素同士は文書順が保たれる。スタッキングコンテキストの
+/// で安定ソート)。`position: static`の要素には`z-index`が効果を持たない
+/// (仕様通り)ため実効値は常に`0`として扱う。`sort_by_key`は安定ソートなので、
+/// 同じ実効`z-index`の要素同士は文書順が保たれる。スタッキングコンテキストの
 /// 分離は非対応(同一の直接の親を持つ兄弟間の描画順のみを制御する)。
 fn paint_order<'a>(
     children: &'a [LaidOutBox],
@@ -1601,18 +1574,17 @@ fn laid_content_is_empty(content: &LaidOutContent) -> bool {
 /// `EdgeSizes`)を作る(枠線以外は`cell_style`のまま)。
 ///
 /// レイアウト自体は`border-collapse`の値に関わらずseparateモデルと同一に
-/// 保っている([0021](../../../docs/decisions/0021-table-layout-design.md)決定1)ため、collapse時は
-/// `h_spacing`/`v_spacing`が0になり、隣接セルの矩形は座標が一致するまで接する。
-/// これを利用して、矩形の接触を幾何的に判定するだけでrowspan/colspanの
-/// グリッド情報を別途持たずに隣接セルを見つけられる。
+/// 保っているため、collapse時は`h_spacing`/`v_spacing`が0になり、隣接セルの
+/// 矩形は座標が一致するまで接する。これを利用して、矩形の接触を幾何的に
+/// 判定するだけでrowspan/colspanのグリッド
+/// 情報を別途持たずに隣接セルを見つけられる。
 ///
 /// 同じ境界が両側から二重に描画されるのを防ぐため、常に「左隣が見つかれば
 /// 自分の左辺は描画しない(右隣側が統合済みの枠線を右辺として描画する)」
 /// という向きで統一する(上/下も同様)。cellとtable自体の境界は対象外
-/// ([0021]決定2、テーブル自身の枠線はborder-box外側の帯として描画され
-/// セルの矩形と重ならないため、二重描画の問題が生じない)。1つの辺に複数の
-/// 隣接セルが接する場合(rowspanが絡む場合等)は、先に見つかったものを使う
-/// (既知の簡略化)。
+/// (テーブル自身の枠線はborder-box外側の帯として描画されセルの矩形と
+/// 重ならないため、二重描画の問題が生じない)。1つの辺に複数の隣接セルが接する
+/// 場合(rowspanが絡む場合等)は、先に見つかったものを使う(既知の簡略化)。
 ///
 /// 枠線の実際の描画太さは(`ComputedStyle`ではなく)レイアウト確定時に計算
 /// 済みの`layout.border`(`EdgeSizes`)を見る([`render_border`]参照)ため、
@@ -1725,8 +1697,8 @@ fn border_edge(width: f32, style: BorderStyle, color: RgbaColor) -> (f32, Border
 /// CSS2.1 §17.6.2の枠線競合解決の簡略版: 幅が太い方が勝ち、幅が同じなら
 /// スタイルの優先順位(仕様通りの強さの見た目順: double > solid > dashed >
 /// dotted > ridge > outset > groove > inset > none)で決める。`hidden`は
-/// [`BorderStyle`]に無いため非対応([0021]決定2)。幅・スタイルとも
-/// 同着の場合は`a`を採用する(既知の簡略化、見た目には影響しない)。
+/// [`BorderStyle`]に無いため非対応。幅・スタイルとも同着の場合は`a`を採用する
+/// (既知の簡略化、見た目には影響しない)。
 fn resolve_border_conflict(
     a: (f32, BorderStyle, RgbaColor),
     b: (f32, BorderStyle, RgbaColor),
@@ -1760,9 +1732,8 @@ fn resolve_border_conflict(
 /// 背景・枠線を描画する。角丸(`border-radius`)が指定されていなければ従来通り
 /// 直線の矩形/4辺独立ストロークで描き、指定されていれば[`render_rounded_decoration`]
 /// に委譲する。`background_image_ref`はborder-boxいっぱいにストレッチ表示する
-/// 背景画像のXObject Ref([0017](../../../docs/decisions/0017-background-image-design.md)
-/// 決定3、`border-radius`によるクリップは非対応)。背景色→背景画像→枠線の順で
-/// 描画する。
+/// 背景画像のXObject Ref(`border-radius`によるクリップは非対応)。背景色→
+/// 背景画像→枠線の順で描画する。
 #[allow(clippy::too_many_arguments)]
 fn render_box_decoration(
     content: &mut RenderTarget<'_>,
@@ -1807,12 +1778,11 @@ fn render_box_decoration(
     render_border(content, layout, style, settings);
 }
 
-/// ぼかし近似の段階数([0032](../../../docs/decisions/0032-box-shadow-design.md)決定3)。
+/// ぼかし近似の段階数。
 const BOX_SHADOW_BLUR_STEPS: u32 = 4;
 
-/// `box-shadow`を描画する(要素本体の背景・枠線より前に呼ぶこと、決定2)。
-/// リストの先頭が最前面になるよう後ろから塗る。`inset`は非対応
-/// (決定1、既知の簡略化)。
+/// `box-shadow`を描画する(要素本体の背景・枠線より前に呼ぶこと)。リストの
+/// 先頭が最前面になるよう後ろから塗る。`inset`は非対応(既知の簡略化)。
 fn render_box_shadows(
     content: &mut RenderTarget<'_>,
     layout: &Layout,
@@ -1841,8 +1811,8 @@ fn render_box_shadows(
 /// 1つの影を描く。ぼかしは真のガウスぼかしではなく、`spread-radius`分だけ
 /// 広げたコア矩形の外側に、`blur-radius`まで均等`BOX_SHADOW_BLUR_STEPS`段階で
 /// 広がる半透明の同心矩形を外側(最も広く・最も薄い)から内側(コアに近く・
-/// 最も濃い)の順に重ね塗りして近似する(決定3)。角丸は要素本体の半径
-/// (`radii`)をそのまま使い、拡大に応じて広げない。
+/// 最も濃い)の順に重ね塗りして近似する。角丸は要素本体の半径(`radii`)
+/// をそのまま使い、拡大に応じて広げない。
 fn render_single_box_shadow(
     content: &mut RenderTarget<'_>,
     border_box: Rect,
@@ -1868,8 +1838,8 @@ fn render_single_box_shadow(
             settings,
             border_box.y + border_box.height + shadow.offset_y + expand,
         );
-        // 決定3外の既知の簡略化: `spread-radius`が負で矩形が縮退する場合は
-        // そのリングを描画しない(ゼロ・負サイズの矩形は無意味なため)。
+        // 既知の簡略化: `spread-radius`が負で矩形が縮退する場合はそのリングを
+        // 描画しない(ゼロ・負サイズの矩形は無意味なため)。
         if x1 <= x0 || y_top <= y_bottom {
             return;
         }
@@ -1907,8 +1877,7 @@ fn render_single_box_shadow(
     draw(content, shadow.spread_radius, shadow.color.alpha);
 }
 
-/// 1コーナー分の実効半径(水平, 垂直)のpx値。真円は水平=垂直
-/// ([0023](../../../docs/decisions/0023-box-model-details-design.md)決定6)。
+/// 1コーナー分の実効半径(水平, 垂直)のpx値。真円は水平=垂直。
 type CornerRadiusPx = (f32, f32);
 
 /// スタイル上の`border-radius`を、そのボックスがページ分割された断片の
@@ -1957,8 +1926,7 @@ fn effective_radii(
     )
 }
 
-/// アルファ量子化の段階数(0.05刻み・21段階、[0031](
-/// ../../../docs/decisions/0031-fill-alpha-design.md)決定1)。
+/// アルファ量子化の段階数(0.05刻み・21段階)。
 pub(super) const ALPHA_STEPS: usize = 20;
 
 /// アルファ値を`0..=ALPHA_STEPS`の段階(0.05刻み)へ丸める。
@@ -1973,8 +1941,8 @@ pub(super) fn alpha_gs_resource_name(step: usize) -> String {
 }
 
 /// アルファ値に応じて`gs`演算子(`/ca`・`/CA`)を発行する。1.0(完全不透明)は
-/// 何もしない(PDFの既定状態のため、[0031]決定1)。呼び出し側が
-/// `save_state`/`restore_state`でスコープを囲むこと([0031]決定3)。
+/// 何もしない(PDFの既定状態のため)。呼び出し側が
+/// `save_state`/`restore_state`でスコープを囲むこと。
 fn apply_fill_alpha(content: &mut RenderTarget<'_>, alpha: f32, alpha_gs_names: &[String]) {
     let step = quantize_alpha_step(alpha);
     if step >= ALPHA_STEPS {
@@ -2029,9 +1997,8 @@ fn render_image(
     content.restore_state();
 }
 
-/// `<img>`(置換要素)を`object-fit`/`object-position`に従って描画する
-/// ([0030](../../../docs/decisions/0030-object-fit-position-design.md)決定2・3)。
-/// `object-fit`の値によらず常にcontent-boxへクリップする(決定3)。
+/// `<img>`(置換要素)を`object-fit`/`object-position`に従って描画する。
+/// `object-fit`の値によらず常にcontent-boxへクリップする。
 fn render_replaced_image(
     content: &mut RenderTarget<'_>,
     content_box: Rect,
@@ -2057,8 +2024,8 @@ fn render_replaced_image(
 }
 
 /// `object-fit`/`object-position`から実際に描画すべき画像の矩形(content-box
-/// 基準の座標系、レイアウト空間)を計算する([0030]決定2)。intrinsicサイズが
-/// 縮退している場合はcontent-box全体への単純な描画にフォールバックする
+/// 基準の座標系、レイアウト空間)を計算する。intrinsicサイズが縮退している
+/// 場合はcontent-box全体への単純な描画にフォールバックする
 /// (`background_tile_rects`と同じゼロ除算回避)。
 fn object_fit_rect(content_box: Rect, style: &ComputedStyle, intrinsic: (f32, f32)) -> Rect {
     let (iw, ih) = intrinsic;
@@ -2077,7 +2044,7 @@ fn object_fit_rect(content_box: Rect, style: &ComputedStyle, intrinsic: (f32, f3
             (iw * scale, ih * scale)
         }
         ObjectFit::None => (iw, ih),
-        // 仕様通り`none`と`contain`のうち小さい方(決定2)。
+        // 仕様通り`none`と`contain`のうち小さい方。
         ObjectFit::ScaleDown => {
             if iw <= content_box.width && ih <= content_box.height {
                 (iw, ih)
@@ -2110,7 +2077,7 @@ fn object_fit_rect(content_box: Rect, style: &ComputedStyle, intrinsic: (f32, f3
 }
 
 /// `background-image`の描画に必要な情報。`render_box`が`b.node`から
-/// 側マップ(`background_images`)経由で解決する([0017]決定2)。
+/// 側マップ(`background_images`)経由で解決する。
 #[derive(Debug, Clone, Copy)]
 struct BackgroundImagePaint {
     resource: Ref,
@@ -2119,10 +2086,9 @@ struct BackgroundImagePaint {
 }
 
 /// `background-size`/`-position`/`-repeat`から、実際に描画すべき画像タイルの
-/// 矩形群(border-box基準の座標系、レイアウト空間)を計算する
-/// ([0025](../../../docs/decisions/0025-background-details-design.md)決定3)。
-/// intrinsicサイズが縮退している(0を含む)場合はborder-box全体への単純な
-/// 1枚描画にフォールバックする(ゼロ除算回避)。
+/// 矩形群(border-box基準の座標系、レイアウト空間)を計算する。intrinsic
+/// サイズが縮退している(0を含む)場合はborder-box全体への単純な1枚描画に
+/// フォールバックする(ゼロ除算回避)。
 fn background_tile_rects(
     border_box: Rect,
     style: &ComputedStyle,
@@ -2227,8 +2193,7 @@ fn resolve_background_position_offset(value: LengthPercentage, container: f32, t
 /// 1軸分のタイル開始座標を列挙する。`repeat`が偽、またはタイル幅が0以下なら
 /// `origin`の1枚のみ。それ以外は`[min, max)`(border-boxの範囲)を覆うのに
 /// 必要な分だけ`origin`から`tile`間隔で並べる。防御的に1軸あたり200枚を
-/// 超えたら打ち切る([0025]決定4、病的な小さい`background-size`に対する
-/// フェイルセーフ)。
+/// 超えたら打ち切る(病的な小さい`background-size`に対するフェイルセーフ)。
 fn tile_starts(origin: f32, tile: f32, min: f32, max: f32, repeat: bool) -> Vec<f32> {
     if !repeat || tile <= 0.0 {
         return vec![origin];
@@ -2298,11 +2263,10 @@ fn render_background_image(
 /// border boxの和集合を行の矩形とみなす(`border-spacing`がある場合、セル間の
 /// 隙間も行の背景で塗られる。これはCSS2.1 17.5.1の描画順=行の背景がセルの
 /// 背景の下に敷かれる、という規定と同じ見え方になる)。CSSの
-/// `tr { background-color: ... }`とレガシー表示属性の`<tr bgcolor>`
-/// ([0039](../../../docs/decisions/0039-presentational-attributes-design.md))の
-/// どちらもこの経路で描画される。`<thead>`/`<tbody>`は透過的な入れ物として
-/// ボックスを持たない([`crate::style::user_agent_stylesheet`])ため、
-/// それらへの背景指定は引き続き効かない(既知の制約)。
+/// `tr { background-color: ... }`とレガシー表示属性の`<tr bgcolor>`のどちらも
+/// この経路で描画される。`<thead>`/`<tbody>`は透過的な入れ物としてボックスを
+/// 持たない([`crate::style::user_agent_stylesheet`])ため、それらへの
+/// 背景指定は引き続き効かない(既知の制約)。
 fn render_row_background(
     content: &mut RenderTarget<'_>,
     row: &LaidOutTableRow,
@@ -2397,14 +2361,14 @@ fn render_rounded_decoration(
         }
     }
     // 角丸パスへのクリップは行わず、常に直線の矩形として描画する
-    // (border-radiusとの組み合わせは非対応、[0025]決定7、0017決定3から継続)。
+    // (border-radiusとの組み合わせは非対応)。
     if let Some(paint) = background_image_paint {
         render_background_image(content, border_box, style, settings, &paint);
     }
 
     // groove/ridge/inset/outsetは辺ごとの陰影が必要で、角丸パスの単純な
     // ストロークでは表現できないため、常に直線4辺へフォールバックする
-    // ([0023]決定5、既存の「4辺不揃い+角丸」フォールバックと同じパターン)。
+    // (既存の「4辺不揃い+角丸」フォールバックと同じパターン)。
     let is_shaded_style = matches!(
         style.border_top_style,
         BorderStyle::Groove | BorderStyle::Ridge | BorderStyle::Inset | BorderStyle::Outset
@@ -2481,8 +2445,7 @@ const BEZIER_KAPPA: f32 = 0.552_284_8;
 /// PDF空間(Y-up、`y_top` > `y_bottom`)で角丸矩形のパスを構築して閉じる
 /// (塗り/ストロークは呼び出し側が行う)。半径は`(top_left, top_right,
 /// bottom_right, bottom_left)`の順(CSSの`border-radius`と同じ並び)、各コーナー
-/// は`(水平半径, 垂直半径)`のペア([0023](../../../docs/decisions/0023-box-model-details-design.md)
-/// 決定6、楕円コーナー対応)。
+/// は`(水平半径, 垂直半径)`のペア(楕円コーナー対応)。
 fn rounded_rect_path(
     content: &mut RenderTarget<'_>,
     x0: f32,
@@ -2585,10 +2548,9 @@ fn shrink_radii(
 }
 
 /// `outline`を描く。`border`と違いレイアウトに一切影響しないため、`layout`は
-/// 参照するだけで書き換えない。border-boxの**外側**にoutline-widthの太さで
+/// 参照するだけで書き換えない。border-boxの外側にoutline-widthの太さで
 /// 描画する点だけが`render_border`と異なり、それ以外(4辺の頂点構成・
-/// `render_border_side`への委譲)は全く同じ仕組みを再利用する
-/// ([0023](../../../docs/decisions/0023-box-model-details-design.md)決定3)。
+/// `render_border_side`への委譲)は全く同じ仕組みを再利用する。
 /// `outline-offset`(outlineとborder-boxの間隔)は非対応、常に0固定。
 fn render_outline(
     content: &mut RenderTarget<'_>,
@@ -2717,8 +2679,8 @@ fn render_border(
     );
 }
 
-/// 辺の識別子。`groove`/`ridge`/`inset`/`outset`の陰影([0023]決定5)が
-/// 上・左辺と下・右辺で異なる色になるため必要。
+/// 辺の識別子。`groove`/`ridge`/`inset`/`outset`の陰影が上・左辺と下・右辺で
+/// 異なる色になるため必要。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BorderSideKind {
     Top,
@@ -2728,7 +2690,7 @@ enum BorderSideKind {
 }
 
 /// RGB各成分をwhiteへ`amount`だけブレンドして明るくする(簡易実装、正確な色
-/// 再現は目指さない、[0023]決定5)。
+/// 再現は目指さない)。
 fn lighten(color: RgbaColor, amount: f32) -> RgbaColor {
     let mix = |c: u8| (c as f32 + (255.0 - c as f32) * amount).round() as u8;
     RgbaColor {
@@ -2739,7 +2701,7 @@ fn lighten(color: RgbaColor, amount: f32) -> RgbaColor {
     }
 }
 
-/// RGB各成分をblackへ`amount`だけブレンドして暗くする(決定5)。
+/// RGB各成分をblackへ`amount`だけブレンドして暗くする。
 fn darken(color: RgbaColor, amount: f32) -> RgbaColor {
     let mix = |c: u8| (c as f32 * (1.0 - amount)).round() as u8;
     RgbaColor {
@@ -2760,11 +2722,11 @@ struct BorderSideColors {
     inner: RgbaColor,
 }
 
-/// `border_style`/`side`から実効描画色を決める。光源は左上からと仮定する
-/// (CSS仕様の一般的な慣習、[0023]決定5): `inset`は上・左辺が暗色、下・右辺が
-/// 明色(押し込まれた凹み)。`outset`はその逆(浮き出た凸み)。`groove`/`ridge`は
-/// 各辺の太さを2等分し、外側帯・内側帯に異なる色を割り当てることで溝/稜線の
-/// 視覚効果を出す。
+/// `border_style`/`side`から実効描画色を決める。光源は左上からと仮定する(CSS
+/// 仕様の一般的な慣習): `inset`は上・左辺が暗色、下・右辺が明色(押し込まれた
+/// 凹み)。`outset`はその逆(浮き出た凸み)。`groove`/`ridge`は各辺の太さを2
+/// 等分し、外側帯・内側帯に異なる色を割り
+/// 当てることで溝/稜線の視覚効果を出す。
 fn border_side_colors(
     border_style: BorderStyle,
     side: BorderSideKind,
@@ -2872,7 +2834,7 @@ fn render_border_side(
         BorderStyle::Groove | BorderStyle::Ridge | BorderStyle::Inset | BorderStyle::Outset => {
             // 太さを2等分し、外側帯・内側帯をそれぞれ`border_side_colors`が
             // 決めた色で塗る(`inset`/`outset`は外側=内側で同色になり、結果的に
-            // 1色の`Solid`と同じ見た目になる、[0023]決定5)。
+            // 1色の`Solid`と同じ見た目になる)。
             let colors = border_side_colors(border_style, side, color);
             for (t0, t1, band_color) in [(0.0, 0.5, colors.outer), (0.5, 1.0, colors.inner)] {
                 content.set_fill_rgb(
@@ -2978,8 +2940,8 @@ fn fill_quad(
 /// `border-style`に応じたダッシュパターン/線キャップを設定する。
 /// `Double`は2本ストロークする専用処理(呼び出し側)で扱うためここには来ない。
 /// `Groove`/`Ridge`/`Inset`/`Outset`は角丸パスのストロークでは表現できず
-/// 常に直線4辺へフォールバックする([0023]決定5)ためここには来ないが、
-/// `match`を網羅するため`Solid`と同じ扱いにしておく。
+/// 常に直線4辺へフォールバックするためここには来ないが、`match`を網羅するため
+/// `Solid`と同じ扱いにしておく。
 fn apply_border_style_dash(
     content: &mut RenderTarget<'_>,
     border_style: BorderStyle,
@@ -3027,9 +2989,8 @@ fn render_line(
         return;
     }
 
-    // 行のベースライン位置はレイアウト時に確定済み([0041](
-    // ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
-    // 各ランは`vertical-align`由来の`baseline_shift`(正=上)だけそこからずれる。
+    // 行のベースライン位置はレイアウト時に確定済み。各ランは`vertical-align`
+    // 由来の`baseline_shift`(正=上)だけそこからずれる。
     let baseline_y = to_pdf_y(settings, line.rect.y + line.baseline);
 
     // インライン要素の背景(`<mark>`等)は、ランのascent〜descentの矩形として
@@ -3062,8 +3023,7 @@ fn render_line(
         }
     }
 
-    // `text-shadow`はテキスト本体より先に描く([0053](
-    // ../../../docs/decisions/0053-text-details-design.md)決定5)。
+    // `text-shadow`はテキスト本体より先に描く。
     render_text_shadows(
         content,
         line,
@@ -3152,10 +3112,9 @@ fn render_line(
         content.set_text_matrix([1.0, 0.0, shear, 1.0, x, baseline_y + run.baseline_shift]);
         // `letter-spacing`はグリフ幅そのもの(フォントの`/Widths`)には反映
         // できないため、PDFの`Tc`(character spacing)を使う。`Tw`(word
-        // spacing)と異なり複合フォント(2バイトCID)にも適用される
-        // ([0020](../../../docs/decisions/0020-typography-details-design.md)
-        // 決定2)。0でも明示的に設定し、前のランの値がグラフィックステートに
-        // 残らないようにする。
+        // spacing)と異なり複合フォント(2バイトCID)にも適用される。0でも
+        // 明示的に設定し、前のランの値が
+        // グラフィックステートに残らないようにする。
         content.set_char_spacing(run.letter_spacing);
         content.show(pdf_writer::Str(&glyph_bytes));
     }
@@ -3197,8 +3156,7 @@ fn render_line(
         }
     }
 
-    // `text-emphasis`のマークは装飾線と同じくテキスト本体の後に描く
-    // ([0053](../../../docs/decisions/0053-text-details-design.md)決定6)。
+    // `text-emphasis`のマークは装飾線と同じくテキスト本体の後に描く。
     render_emphasis_marks(
         content,
         line,
@@ -3210,11 +3168,10 @@ fn render_line(
     );
 }
 
-/// `text-emphasis`のマークを描く([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定6)。
-/// `dot`/`circle`/`double-circle`/`triangle`/`sesame`はフォントの字形に依存しない
-/// ようパスで描き、`<string>`指定だけはグリフとして描く。
-/// マークは空白でない文字1つごとに1個置く(`text-emphasis-skip`は非対応)。
+/// `text-emphasis`のマークを描く。
+/// `dot`/`circle`/`double-circle`/`triangle`/`sesame`はフォントの字形に
+/// 依存しないようパスで描き、`<string>`指定だけはグリフとして描く。マークは
+/// 空白でない文字1つごとに1個置く(`text-emphasis-skip`は非対応)。
 #[allow(clippy::too_many_arguments)]
 fn render_emphasis_marks(
     content: &mut RenderTarget<'_>,
@@ -3230,8 +3187,8 @@ fn render_emphasis_marks(
             continue;
         };
         let run_baseline_y = baseline_y + run.baseline_shift;
-        // マーク分の高さは`ascent`/`descent`に加算済み([0053]決定6)。
-        // その帯の中央にマークを置く。
+        // マーク分の高さは`ascent`/`descent`に
+        // 加算済み。その帯の中央にマークを置く。
         let center_y = match mark.position {
             EmphasisPosition::Over => run_baseline_y + run.ascent - mark.size / 2.0,
             EmphasisPosition::Under => run_baseline_y - run.descent + mark.size / 2.0,
@@ -3351,7 +3308,7 @@ fn render_emphasis_mark(
 }
 
 /// `text-emphasis-style: <string>`のマークを、そのランのフォントのグリフとして描く。
-/// 字形を持たないフォントでは何も描かれない(既知の限界、[0053]決定6)。
+/// 字形を持たないフォントでは何も描かれない(既知の限界)。
 #[allow(clippy::too_many_arguments)]
 fn render_emphasis_glyph(
     content: &mut RenderTarget<'_>,
@@ -3428,14 +3385,12 @@ fn ellipse_path(content: &mut RenderTarget<'_>, cx: f32, cy: f32, rx: f32, ry: f
     content.close_path();
 }
 
-/// `text-shadow`のぼかし近似の段階数([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定5)。中心+この段階数×
-/// 4方向を重ね描きする。
+/// `text-shadow`のぼかし近似の段階数。中心+この段階数×4方向を重ね描きする。
 const TEXT_SHADOW_BLUR_STEPS: usize = 2;
 
-/// `text-shadow`を描く(テキスト本体より先に呼ぶこと、[0053]決定5)。
-/// PDFにはぼかしフィルタが無いため、アルファを下げた同じグリフ列を微小オフセットで
-/// 重ね描きして近似する。カンマ区切りの複数指定は後ろに書いたものほど奥に描く。
+/// `text-shadow`を描く(テキスト本体より先に呼ぶこと)。PDFにはぼかしフィルタが
+/// 無いため、アルファを下げた同じグリフ列を微小オフセットで重ね描きして
+/// 近似する。カンマ区切りの複数指定は後ろに書いたものほど奥に描く。
 #[allow(clippy::too_many_arguments)]
 fn render_text_shadows(
     content: &mut RenderTarget<'_>,
@@ -3509,8 +3464,8 @@ fn render_text_shadows(
     }
 }
 
-/// ぼかし近似のオフセット列(`(dx, dy, アルファ倍率)`、[0053]決定5)。
-/// `blur_radius`が0なら中心1回だけ。それ以外は中心+各段階の4方向を、
+/// ぼかし近似のオフセット列(`(dx, dy, アルファ倍率)`)。`blur_radius`が0なら
+/// 中心1回だけ。それ以外は中心+各段階の4方向を、
 /// 合計のアルファが概ね1になるよう分配する。
 fn shadow_blur_offsets(blur_radius: f32) -> Vec<(f32, f32, f32)> {
     if blur_radius <= 0.0 {
@@ -3561,8 +3516,7 @@ fn to_pdf_y(settings: &PageSettings, y_from_content_top: f32) -> f32 {
     settings.size.height - settings.margin.top - y_from_content_top
 }
 
-/// `@page`のmargin box(`@top-left`等、16個)の水平/垂直方向の内容配置
-/// ([0028](../../../docs/decisions/0028-paged-media-design.md)決定5)。
+/// `@page`のmargin box(`@top-left`等、16個)の水平/垂直方向の内容配置。
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum HAlign {
     Left,
@@ -3583,11 +3537,11 @@ enum VAlign {
 /// 内側ではなく、ページの余白の内側=`settings.margin`の内側)基準の相対座標」
 /// (`render_line`が`settings.margin.left + line.rect.x`・`to_pdf_y`が
 /// `settings.size.height - settings.margin.top - y`という式でPDF座標へ変換する
-/// 前提に合わせる必要がある)。margin boxはこのcontent areaの**外側**にあるため、
+/// 前提に合わせる必要がある)。margin boxはこのcontent areaの外側にあるため、
 /// x/yが負の値やcontent_width/content_heightを超える値になるのが正しい。
 ///
 /// 角の4boxは固定サイズ、残り12boxは辺のマージン幅を3等分する簡易配分
-/// ([0028]決定5、著者の`width`指定は無視する既知の簡略化)。
+/// (著者の`width`指定は無視する既知の簡略化)。
 fn margin_box_area_rect(area: MarginBoxArea, settings: &PageSettings) -> (Rect, HAlign, VAlign) {
     let m = settings.margin;
     let content_width = settings.content_width();
@@ -3693,9 +3647,8 @@ fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
 }
 
 /// margin boxの宣言リストから、シェイピングに必要な最小限のスタイルを
-/// 組み立てる(`font-*`/`color`のみ、`ComputedStyle::default()`を基点に
-/// 上書きする)。margin boxはDOM要素を持たないためカスケード・継承は行わない
-/// ([0028]決定7)。
+/// 組み立てる(`font-*`/`color`のみ、`ComputedStyle::default`を基点に
+/// 上書きする)。margin boxはDOM要素を持たないためカスケード・継承は行わない。
 fn margin_box_style(decls: &[PropertyDeclaration]) -> ComputedStyle {
     let mut style = ComputedStyle::default();
     for decl in decls {
@@ -3733,8 +3686,7 @@ struct ShapedMarginBox {
 }
 
 /// ページの余白領域へ重ねて描くサブドキュメント(`--header-html`/
-/// `--footer-html`、[0058](../../../docs/decisions/0058-header-footer-design.md)
-/// 決定3)。
+/// `--footer-html`)。
 ///
 /// レイアウト済みのボックス列と、その描画基準となる`PageSettings`を持つ。
 /// 基準を余白領域に合わせた専用の`PageSettings`にすることで、既存の
@@ -3766,7 +3718,7 @@ pub(super) fn render_page_overlay(
     let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
 
     content.save_state();
-    // 余白からはみ出した分は切る(マージンの自動拡張はしない、[0058]決定3)。
+    // 余白からはみ出した分は切る(マージンの自動拡張はしない)。
     let y = overlay.settings.size.height - overlay.clip.y - overlay.clip.height;
     content.rect(overlay.clip.x, y, overlay.clip.width, overlay.clip.height);
     content.clip_nonzero();
@@ -3791,7 +3743,7 @@ pub(super) fn render_page_overlay(
     content.restore_state();
 }
 
-/// `--header-line`/`--footer-line`の罫線を引く([0058]決定6)。
+/// `--header-line`/`--footer-line`の罫線を引く。
 ///
 /// margin boxは装飾(枠線)非対応のため、ページ描画時に水平線として直接引く。
 /// 位置はコンテンツ領域の上端(ヘッダー)と下端(フッター)。
@@ -4215,7 +4167,7 @@ mod tests {
         };
         let rects = background_tile_rects(border_box, &style, (1.0, 10.0));
         // 1px幅のタイルで100,000pxを覆おうとすると本来10万枚必要だが、
-        // 1軸あたり200枚で打ち切られる([0025]決定4)。
+        // 1軸あたり200枚で打ち切られる。
         assert_eq!(rects.len(), 200);
     }
 
@@ -4917,7 +4869,7 @@ mod tests {
         // 隣接する2セルが同じ枠線を指定している場合、separateモデルでは
         // 各セルが独立に4辺とも描画する(2+2セル分=8回)。collapseモデルでは
         // 内部で接する1辺の描画が抑制されて1回に統合されるため、合計は1回
-        // 減った7回になるはず([0021]決定1・2)。
+        // 減った7回になるはず。
         let html_src = r#"<table><tr><td>a</td><td>b</td></tr></table>"#;
         let base_css = "body { margin: 0; } td { border: 1px solid black; }";
 
@@ -5092,7 +5044,7 @@ mod tests {
     #[test]
     fn letter_spacing_emits_a_tc_operator_with_the_resolved_value() {
         // `letter-spacing`はグリフ幅そのものには反映できないため、PDFの`Tc`
-        // (character spacing)演算子として出力される必要がある([0020]決定2)。
+        // (character spacing)演算子として出力される必要がある。
         let ua = user_agent_stylesheet();
         let fonts = test_fonts();
         let settings = PageSettings::default();
@@ -5138,12 +5090,11 @@ mod tests {
 
     #[test]
     fn list_item_marker_glyphs_are_embedded_in_the_font_subset() {
-        // 回帰テスト: 実装当初`collect_usage`が`LaidOutBox.marker`を素通り
-        // していたため、マーカー専用の文字(ここでは`decimal`マーカー"1."の
-        // '1')が使用グリフ収集に含まれず、`/ToUnicode`CMapに載らない
-        // (結果としてCID 0=notdefへ丸められ豆腐(tofu)描画になる)不具合が
-        // あった([0022](../../../docs/decisions/0022-list-style-design.md)
-        // 決定4関連)。本文中に一切数字が登場しない文書でも、マーカーの
+        // 回帰テスト: 実装当初`collect_usage`が`LaidOutBox.marker`を
+        // 素通りしていたため、マーカー専用の文字(ここでは`decimal`マーカー
+        // "1."の'1')が使用グリフ収集に含まれず、`/ToUnicode`CMapに載らない
+        // (結果としてCID 0=notdefへ丸められ豆腐(tofu)描画になる)
+        // 不具合があった。本文中に一切数字が登場しない文書でも、マーカーの
         // '1'(U+0031)が`/ToUnicode`CMapに実際に埋め込まれることを確認する。
         let dom = html::parse(br#"<ol><li>apple</li></ol>"#);
         let ua = user_agent_stylesheet();
@@ -5165,11 +5116,11 @@ mod tests {
 
     #[test]
     fn generated_content_glyphs_are_embedded_in_the_font_subset() {
-        // ::before/::afterのcontent(attr()/counter())が生成する文字も、通常の
+        // ::before/::afterのcontent(attr/counter)が生成する文字も、通常の
         // テキストスパンと同じ`BoxContent::Inline`経路(collect_line_usage)を
-        // 通るため、マーカー([0022](../../../docs/decisions/0022-list-style-design.md))
-        // の時とは異なり専用の収集漏れは生じないはずだが、本文中に一切登場しない
-        // 数字(counter()由来の'1')が実際に埋め込まれることを回帰確認する。
+        // 通るため、マーカーの時とは異なり専用の収集漏れは生じないはずだが、
+        // 本文中に一切登場しない数字(counter由来の'1')が実際に埋め
+        // 込まれることを回帰確認する。
         let dom = html::parse(br#"<div><h2>intro</h2></div>"#);
         let ua = user_agent_stylesheet();
         let author = parse_stylesheet(
@@ -5355,7 +5306,7 @@ mod tests {
         let settings = PageSettings::default();
 
         // 親が`visibility: hidden`でも、子が明示的に`visible`を指定していれば
-        // 描画される(仕様通り、[0023]決定4)。
+        // 描画される(仕様通り)。
         let dom = html::parse(br#"<div class="outer"><p class="inner">shown</p></div>"#);
         let author = parse_stylesheet(
             ".outer { visibility: hidden; background-color: rgb(255, 0, 0); } \
@@ -5414,7 +5365,7 @@ mod tests {
         assert_eq!(order, vec!["b", "c", "d", "a"]);
     }
 
-    // ===== `<a href>`のリンク注釈([0042]) =====
+    // ===== `<a href>`のリンク注釈 =====
 
     fn link_areas_of(html_src: &str, css: &str) -> Vec<LinkArea> {
         let dom = html::parse(html_src.as_bytes());

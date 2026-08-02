@@ -27,8 +27,8 @@ fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
         .count()
 }
 
-/// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ。
-/// PDFへはpt(既定で0.75倍、[0057])で書かれるため、ここで換算する。
+/// `/MediaBox`の期待値をCSS pxで書けるようにするヘルパ。PDFへはpt(既定で
+/// 0.75倍)で書かれるため、ここで換算する。
 fn media_box(width_px: f32, height_px: f32) -> String {
     format!(
         "/MediaBox [0 0 {} {}]",
@@ -304,7 +304,7 @@ fn version_and_help_exit_successfully() {
 fn a_failing_run_leaves_no_output_file_behind() {
     // --fontにフォントではないファイル(HTML自身)を渡して失敗させる。
     // FileSinkは一時ファイルへ書いてからrenameするため、失敗しても
-    // 出力先には何も残らない([0055]決定4)。
+    // 出力先には何も残らない。
     let output = temp_output_path("no-leftover");
     let out = Command::new(BIN)
         .arg(SAMPLE_HTML)
@@ -422,8 +422,7 @@ fn a_bad_base_url_is_reported_as_an_input_error() {
     assert_eq!(out.status.code(), Some(2));
 }
 
-// `server`サブコマンドは`server` feature(既定ON)でのみ存在する
-// ([0062](../../docs/decisions/0062-ruby-binding.md)決定4)。
+// `server`サブコマンドは`server` feature(既定ON)でのみ存在する。
 #[cfg(feature = "server")]
 #[test]
 fn the_server_subcommand_reports_a_bad_listen_address() {
@@ -541,7 +540,7 @@ fn margin_options_change_how_much_content_fits_on_a_page() {
 
 #[test]
 fn an_author_at_page_size_wins_over_the_cli_option() {
-    // [0055]決定2: CLIは初期値で、著者CSSの`@page`宣言が優先される。
+    // CLIは初期値で、著者CSSの`@page`宣言が優先される。
     let html = r#"<html><head><style>@page { size: 300px 400px; }</style></head>
                   <body><p>hello</p></body></html>"#;
     let bytes = run_cli_with(html, &["--page-size", "A4"], "at-page-wins");
@@ -685,7 +684,7 @@ fn the_default_output_uses_real_paper_dimensions_in_points() {
 
 #[test]
 fn dpi_72_keeps_one_css_px_as_one_pt() {
-    // M12以前の挙動(1px=1pt)に戻す逃げ道([0057]決定3)。
+    // M12以前の挙動(1px=1pt)に戻す逃げ道。
     let bytes = run_cli_with(PLAIN_HTML, &["--dpi", "72"], "dpi72");
     assert!(count_occurrences(&bytes, b"/MediaBox [0 0 793.7 1122.5]") > 0);
 }
@@ -984,7 +983,7 @@ fn page_placeholders_become_page_counters() {
 
 #[test]
 fn an_author_at_page_margin_box_wins_over_the_cli_option() {
-    // [0058]決定1: CLI由来のルールは著者ルールより前に置かれる。
+    // CLI由来のルールは著者ルールより前に置かれる。
     let html = r#"<html><head><style>
             @page { @top-center { content: "FROM CSS"; } }
         </style></head><body><p>x</p></body></html>"#;
@@ -1074,7 +1073,7 @@ fn header_html_takes_precedence_over_the_simple_option() {
     )
     .unwrap();
 
-    // 同じ「上側」に両方指定した場合、HTMLだけが描かれる([0058]決定1)。
+    // 同じ「上側」に両方指定した場合、HTMLだけが描かれる。
     let bytes = run_cli_with(
         PLAIN_HTML,
         &[
@@ -1093,7 +1092,7 @@ fn header_html_takes_precedence_over_the_simple_option() {
 
 #[test]
 fn topage_is_rejected_in_streaming_mode() {
-    // [0058]決定7 / [0028]決定6: 総ページ数はストリーミングでは決まらない。
+    // 総ページ数はストリーミングでは決まらない。
     let out = Command::new(BIN)
         .arg(SAMPLE_HTML)
         .arg("--font")
@@ -1174,7 +1173,7 @@ fn toc_adds_pages_and_links_to_every_heading() {
     );
     // 見出し3つ分のリンク注釈が目次に張られる。
     assert_eq!(count_occurrences(&with, b"/Subtype /Link"), 3);
-    // 名前付き宛先も作られる([0042]、id無しの見出しには自動命名)。
+    // 名前付き宛先も作られる(id無しの見出しには自動命名)。
     assert!(count_occurrences(&with, b"/Dests") > 0);
 }
 
@@ -1217,7 +1216,7 @@ fn a_cover_page_is_not_counted_and_has_no_header_or_footer() {
     );
 
     // テキストを持たない表紙なので、描画されたテキストの数が増えていなければ
-    // 「表紙にフッターが描かれていない」ことになる([0059]決定1)。
+    // 「表紙にフッターが描かれていない」ことになる。
     let text_ops = |pdf: &[u8]| count_occurrences(pdf, b"Tj") + count_occurrences(pdf, b"TJ");
     assert_eq!(
         text_ops(&with),
@@ -1327,7 +1326,7 @@ fn toc_appearance_options_are_accepted() {
 
 #[test]
 fn unsupported_wkhtmltopdf_options_explain_why() {
-    // [0055]決定5: 黙って無視せず、理由と代替手段を示してexit 1。
+    // 黙って無視せず、理由と代替手段を示してexit 1。
     for (option, expected) in [
         ("--enable-javascript", "JavaScript"),
         ("--outline", "--toc"),
@@ -1364,7 +1363,7 @@ fn a_supported_option_is_not_mistaken_for_an_unsupported_one() {
 }
 
 // ---------------------------------------------------------------------------
-// ストリーミングモードで「黙って結果が変わる」箇所の警告([0006]の積み残し)
+// ストリーミングモードで「黙って結果が変わる」箇所の警告
 // ---------------------------------------------------------------------------
 
 /// 警告を確認するため、stderrを取れる形でCLIを走らせる。
@@ -1416,7 +1415,7 @@ fn streaming_warns_when_a_font_family_cannot_be_resolved() {
 
 #[test]
 fn streaming_warns_about_backward_looking_selectors() {
-    // [0006]分類3のセレクタはストリーミングでは常に非マッチになる。
+    // 後方参照が必要なセレクタはストリーミングでは常に非マッチになる。
     let html = r#"<html><head><style>
             li:last-child { color: red }
             p:nth-last-child(2) { color: blue }

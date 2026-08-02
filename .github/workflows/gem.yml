@@ -1,14 +1,7 @@
 name: gem
 
-# precompiled gemのクロスビルド(T348)・`gem install`しての動作確認(T349)・
-# rubygems.orgへのpublish(T361)。対象プラットフォームは
-# docs/decisions/0061-distribution.md 決定3、publishの方式は決定7。
-#
-# 毎PRで回すには重い(3プラットフォーム×複数Ruby ABI)ので、タグを打ったときと
-# 手動実行のときだけ動かす。日々の検証はci.ymlの`ruby`ジョブが担当する。
-#
-# **このファイル名(gem.yml)はrubygems.orgのtrusted publisher設定と
-# 結び付いている**ので、変えるときはrubygems.org側も直すこと。
+# 毎PRで回すには重い(3プラットフォーム×複数Ruby ABI)ので、タグを打ったときと手動実行のときだけ動かす
+
 on:
   workflow_dispatch:
     inputs:
@@ -34,15 +27,13 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.4"
-      # rb-sys-dockのコンテナへ**リポジトリルートごと**マウントされるので、
-      # extクレートの`../../../../core`へのpath依存も解決できる。
+      # rb-sys-dockのコンテナへリポジトリルートごとマウントされるので、extクレートの`../../../../core`へのpath依存も解決できる
       - uses: oxidize-rb/actions/cross-gem@v1
         id: cross-gem
         with:
           platform: ${{ matrix.platform }}
           working-directory: bindings/ruby
           # 焼き込むRuby ABIはrb-sysのイメージが対応する既定の集合に任せる
-          # (明示すると、Rubyの新バージョンが出るたびここを直すことになる)。
           ruby-versions: default
       - name: 同梱されたRuby ABIを表示する
         run: |
@@ -61,16 +52,13 @@ jobs:
           path: bindings/ruby/pkg/*-${{ matrix.platform }}.gem
           if-no-files-found: error
 
-  # x86_64-linux: ランナー上でそのままインストールして動かす。
+  # x86_64-linux: ランナー上でそのままインストール
   smoke-linux:
     needs: cross-gem
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 対応の下限(決定8)と、開発で使っている最新。ここで落ちる場合は
-        # precompiled gemにそのRuby ABIが入っていない(rb-sysのイメージが
-        # 追いついていない)ので、rb-sysを上げるか対応範囲を見直すこと。
         ruby: ["3.2", "4.0"]
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +74,7 @@ jobs:
           gem install --no-document ./pkg/*.gem
           ruby bindings/ruby/script/smoke.rb
 
-  # aarch64-linux: QEMUでarm64のコンテナを動かして確認する。
+  # aarch64-linux: QEMUでarm64のコンテナを動かす
   smoke-linux-arm64:
     needs: cross-gem
     runs-on: ubuntu-latest
@@ -105,7 +93,7 @@ jobs:
             -v "$PWD:/work" -w /work ruby:3.4-slim \
             bash -c 'gem install --no-document ./pkg/*.gem && ruby bindings/ruby/script/smoke.rb'
 
-  # arm64-darwin: macOSランナーはApple Silicon。
+  # arm64-darwin: macOSランナーはApple Silicon
   smoke-macos-arm64:
     needs: cross-gem
     runs-on: macos-latest
@@ -123,15 +111,13 @@ jobs:
           gem install --no-document ./pkg/*.gem
           ruby bindings/ruby/script/smoke.rb
 
-  # rubygems.orgへのpublish(T361、[0061]決定7)。
-  # **スモークが全部通ったものだけを出す**。認証はtrusted publishing(OIDC)で、
-  # APIキーはリポジトリに置かない。
+  # rubygems.orgへのpublish
+  # 認証はtrusted publishing(OIDC)で、APIキーはリポジトリに置かない
   publish:
     needs: [cross-gem, smoke-linux, smoke-linux-arm64, smoke-macos-arm64]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    # rubygems.orgのtrusted publisher設定でenvironmentを指定する場合はこの名前。
-    # GitHub側でreviewerを付ければ、publish前に承認を挟める。
+    # rubygems.orgのtrusted publisher設定でenvironmentを指定する
     environment: rubygems
     permissions:
       id-token: write # trusted publishing(OIDC)
@@ -139,17 +125,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # release-gemはgit操作に自前のtokenを使う。
+          # release-gemはgit操作に自前のtokenを使う
           persist-credentials: false
-      # Rakefileの読み込みに`cargo metadata`が要る(RbSys::ExtensionTask)ので、
-      # Rubyだけでなくcargoも要る。
       - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
         with:
           ruby-version: "3.4"
           bundler-cache: true
           cargo-cache: "false"
           working-directory: bindings/ruby
-      # クロスビルドした3プラットフォーム分を`pkg/`へ集める。
+      # クロスビルドした3プラットフォーム分を`pkg/`へ集める
       - uses: actions/download-artifact@v4
         with:
           pattern: gem-*
@@ -164,9 +148,7 @@ jobs:
             echo "::error::タグ($tag)とSghtmltopdf::VERSION($version)が一致しません" >&2
             exit 1
           fi
-      # プラットフォームが合わない環境向けのフォールバック。ソースgemには
-      # Rustコアが入らずビルドできないが([0061]決定7)、publishしておくと
-      # 「解決できないgem」ではなく**extconf.rbの説明付きエラー**になる。
+      # プラットフォームが合わない環境向けのフォールバック
       - name: ソースgemも作る
         working-directory: bindings/ruby
         run: bundle exec rake build
@@ -178,12 +160,8 @@ jobs:
             ls -l bindings/ruby/pkg/*.gem
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      # 公式のリリースアクション。trusted publishing(OIDC)の設定・
-      # sigstore attestations・rubygems.orgへの反映待ちをやってくれる。
-      # 実体は`bundle exec rake release`で、**その`release`タスクは
-      # Rakefileで差し替えてある**(bundler既定の「1つbuildしてgitタグを作って
-      # push」ではなく、`pkg/`配下のgemを全部pushする)。
-      # attestationsは`RUBYOPT`で挿し込まれるため、4つすべてに効く。
+      # Ruby公式のリリースアクション
+      # trusted publishing(OIDC)の設定・sigstore attestations・rubygems.orgへの反映をやる
       - uses: rubygems/release-gem@v1
         if: github.event.inputs.dry_run != 'true'
         with:

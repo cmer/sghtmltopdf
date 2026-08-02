@@ -1,13 +1,12 @@
 //! レガシーHTML表示属性(presentational hints)を、対応するCSS宣言へ変換する。
 //!
-//! 設計は[0039](../../../docs/decisions/0039-presentational-attributes-design.md)。
-//! カスケード上は「UAスタイルシートより強く、作者CSSより弱い」位置に入る
-//! (決定1)ため、作者CSSで常に上書きできる。
+//! カスケード上は「UAスタイルシートより強く、作者CSSより弱い」位置に
+//! 入るため、作者CSSで常に上書きできる。
 //!
-//! 属性値は専用のパーサを持たず、**CSS宣言テキストへ組み立ててから
-//! [`parse_inline_style`]へ渡す**(決定2)。色・長さ・パーセンテージの解釈が
-//! `style`属性と完全に同じ実装で行われ、不正な値は既存の「不正な宣言は無視」
-//! 挙動でそのまま落ちる。
+//! 属性値は専用のパーサを持たず、CSS宣言テキストへ組み立ててから
+//! [`parse_inline_style`]へ渡す。色・長さ・パーセンテージの解釈が`style`
+//! 属性と完全に同じ実装で行われ、不正な値は既存の
+//! 「不正な宣言は無視」挙動でそのまま落ちる。
 
 use html5ever::Attribute;
 
@@ -16,8 +15,7 @@ use crate::html::{Dom, NodeData, NodeId};
 use super::properties::PropertyDeclaration;
 use super::stylesheet::parse_inline_style;
 
-/// `<font size>`の1〜7に対応するフォントサイズ(px)。既定16pxが`size="3"`
-/// ([0039]決定3-1)。
+/// `<font size>`の1〜7に対応するフォントサイズ(px)。既定16pxが`size="3"`。
 const FONT_SIZE_TABLE: [f32; 7] = [10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
 
 /// `element`のレガシー表示属性から導かれるCSS宣言を返す。
@@ -67,7 +65,7 @@ pub(super) fn presentational_hint_declarations(
                 css.push_str("white-space: nowrap;");
             }
             // `<table border/cellpadding>`は「テーブルの属性なのに効き目は
-            // セルに出る」([0039]決定3-2)。祖先方向の最も近い`<table>`を探す。
+            // セルに出る」。祖先方向の最も近い`<table>`を探す。
             if let Some(table) = nearest_table(dom, element) {
                 let NodeData::Element {
                     attrs: table_attrs, ..
@@ -197,8 +195,8 @@ fn push_length(css: &mut String, property: &str, value: Option<&str>) {
     }
 }
 
-/// legacy color(`#`の無い16進表記`bgcolor="ffffff"`も許す)をCSSの色として
-/// 書き出す([0039]決定2)。
+/// legacy color(`#`の無い16進表記
+/// `bgcolor="ffffff"`も許す)をCSSの色として書き出す。
 fn push_color(css: &mut String, property: &str, value: Option<&str>) {
     let Some(value) = value else { return };
     let value = value.trim();
@@ -223,7 +221,7 @@ fn parse_pixels(value: &str) -> Option<f32> {
     value.trim().parse::<f32>().ok().filter(|v| *v >= 0.0)
 }
 
-/// `<font size>`([0039]決定3-1)。`1`〜`7`の絶対値と`+N`/`-N`の相対値。
+/// `<font size>`。`1`〜`7`の絶対値と`+N`/`-N`の相対値。
 fn parse_font_size(value: &str) -> Option<f32> {
     let value = value.trim();
     let (base_index, rest) = match value.strip_prefix('+') {
@@ -265,7 +263,7 @@ fn legacy_list_type(tag: &str, value: &str) -> Option<&'static str> {
     }
 }
 
-/// `node`から祖先方向へ最も近い`<table>`要素([0039]決定3-2)。
+/// `node`から祖先方向へ最も近い`<table>`要素。
 fn nearest_table(dom: &Dom, node: NodeId) -> Option<NodeId> {
     let mut current = dom.parent(node);
     while let Some(id) = current {
@@ -598,7 +596,7 @@ mod tests {
         assert!(hints_for(r#"<p class="x">text</p>"#, "p").is_empty());
     }
 
-    // ===== カスケード上の位置([0039]決定1) =====
+    // ===== カスケード上の位置 =====
 
     #[test]
     fn author_css_overrides_a_presentational_attribute() {

@@ -2,8 +2,7 @@
 #
 # rb_sysの`ExtensionTask`はgemのルートで`cargo metadata`を実行してクレートを
 # 探すため、ここにworkspaceを置く必要がある。リポジトリルートのworkspaceからは
-# `exclude`されている(rb-sysのビルドがlibrubyを要求するため。
-# docs/decisions/0062-ruby-binding.md 決定5)。
+# `exclude`されている(rb-sysのビルドがlibrubyを要求するため)。
 [workspace]
 resolver = "2"
 members = ["ext/sghtmltopdf"]

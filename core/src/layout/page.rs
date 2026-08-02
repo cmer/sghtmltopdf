@@ -28,8 +28,7 @@ impl PageSize {
         width: 559.4,
         height: 793.7,
     };
-    /// 8.5in × 11in(96dpi換算、`@page`の`size: letter`用、
-    /// [0028](../../../docs/decisions/0028-paged-media-design.md))。
+    /// 8.5in × 11in(96dpi換算、`@page`の`size: letter`用)。
     pub const LETTER: PageSize = PageSize {
         width: 816.0,
         height: 1056.0,

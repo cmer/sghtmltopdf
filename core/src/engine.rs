@@ -1,13 +1,9 @@
 //! `Engine`: HTMLチャンク投入からPDFバイト列書き出しまでを1つのAPIとして
 //! 統合するコアのエントリポイント。
 //!
-//! [0005](../docs/decisions/0005-engine-streaming-api.md)で決めたSinkベースの
-//! `new`/`feed`/`finish`という粗粒度APIを実装する。CLAUDE.mdのFFI境界
-//! (`Engine.new(options)` / `feed(html_chunk)` /
-//! `each_pdf_chunk { |bytes| ... }` / `finish`)にほぼ1:1で対応する。
-//!
-//! `Mode::Batch`/`Mode::Streaming`の使い分けは
-//! [0006](../docs/decisions/0006-css-non-locality-scope.md)参照。
+//! Sinkベースの`new`/`feed`/`finish`という粗粒度APIを実装する。Ruby側のFFI
+//! 境界(`Engine.new(options)` / `feed(html_chunk)`
+//! /`each_pdf_chunk { |bytes| ... }` / `finish`)にほぼ1:1で対応する。
 //!
 //! ## `Mode::Batch`と`Mode::Streaming`でパイプラインが異なる
 //!
@@ -17,29 +13,10 @@
 //!
 //! `Mode::Streaming`は、`<body>`直下のトップレベルブロック要素が確定する
 //! たびに、そのサブツリーだけをスタイル計算・レイアウト・ページ分割・
-//! PDF書き出し・DOM解放まで処理する「真のストリーミング処理」を行う
-//! (詳細は[0010](../docs/decisions/0010-true-streaming-input.md)参照)。
+//! PDF書き出し・DOM解放まで処理する「真のストリーミング処理」を行う。
 //! `<html>`/`<body>`自身のスタイルは、最初のトップレベル要素が確定する
 //! までに一度だけ計算し、以後の各トップレベル要素のスタイル計算の起点
 //! (継承元)として使う。
-//!
-//! ### 既知の限界
-//!
-//! * フォントセット(`--font`明示指定+`@font-face`)は、最初のトップレベル
-//!   要素を処理する前に確定させる。以後のトップレベル要素処理で新しい
-//!   `font-family`が現れても、システムフォントの自動探索
-//!   (`load_missing_system_fonts`)は行わない
-//!   ([`crate::pdf::StreamingPdfWriter`]が`new`時点でフォント数を固定する
-//!   ため、後から動的にフォントを追加できない)。`Mode::Streaming`を選ぶ
-//!   場合は`--font`または`@font-face`で使用する全フォントを明示すること
-//! * `<html>`/`<body>`自身に背景色・枠線がある場合、複数ページにまたがる
-//!   装飾フラグメントの再現(`place_split`)をトップレベル要素単位の
-//!   ストリーミングに対応させる必要があり複雑になるため非サポートとし、
-//!   `Mode::Streaming`ではエラーを返す
-//! * `nth-last-child`等の非局所セレクタ([0006]の分類3)は、各トップレベル
-//!   要素のスタイル計算がそのサブツリー内で完結するため、`Mode::Streaming`
-//!   では最初から構造的に評価できない(常に非マッチになる)
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -76,8 +53,7 @@ use crate::style::{FontStyle, FontWeight};
 /// 一括処理かストリーミング処理かを選択する。
 ///
 /// `Batch`はDOM全体が揃ってから処理する前提を明示する選択であり、
-/// [0006](../docs/decisions/0006-css-non-locality-scope.md)が挙げた
-/// 非局所性の制約を一切課さない。`Streaming`は同ADRの制約
+/// CSSの非局所性の制約を一切課さない。`Streaming`は非局所性の制約
 /// (`<body>`より後の`<style>`タグをエラーにする、非局所セレクタが常に
 /// 非マッチになる)を適用し、モジュールdocに挙げた既知の限界も伴う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -87,8 +63,8 @@ pub enum Mode {
     Streaming,
 }
 
-/// CSSの汎用family名のうち、実体を明示指定できるもの。
-/// `cursive`/`fantasy`は対象外(M12決定6)。
+/// CSSの汎用family名のうち、実体を
+/// 明示指定できるもの。`cursive`/`fantasy`は対象外。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GenericFamily {
     SansSerif,
@@ -114,7 +90,7 @@ pub struct FontSpec {
     pub index: u32,
 }
 
-/// レンダリング内容の挙動を変えるオプション(M12 Phase 4)。
+/// レンダリング内容の挙動を変えるオプション
 ///
 /// PDFの書き出し方だけを変える[`crate::pdf::PdfOutputOptions`]と対になる、
 /// 「何を描くか」側の設定。
@@ -175,19 +151,16 @@ pub struct EngineOptions {
     /// 相対パス解決にも同じ基準ディレクトリを使う。
     pub base_dir: Option<PathBuf>,
     /// 相対参照の解決基準URL(`--base-url`相当)。HTMLに`<base href>`が
-    /// あればそちらが優先される([0040](../docs/decisions/0040-base-href-design.md)
-    /// が定めるのは文書内の指定であり、この値はその既定を外から与えるもの)。
+    /// あればそちらが優先される(この値はその既定を外から与えるもの)。
     /// http(s)のURLを想定し、ローカルディレクトリを基準にしたい場合は
     /// `base_dir`を使う。
     pub base_href: Option<String>,
     /// `<img src>`・`<link rel=stylesheet href>`のhttp(s)絶対URLフェッチを
-    /// 許可するか。既定`false`([0013](../docs/decisions/0013-image-fetch-security.md)
-    /// の「既定無効・明示オプトイン」方針。[0015](../docs/decisions/0015-external-stylesheet-fetch-design.md)
-    /// 決定2により、画像・外部スタイルシート双方をこの1つのフラグで
-    /// 統括する)。ローカル相対パス・`data:`URIはこの値に関わらず常に許可する。
+    /// 許可するか。既定`false`(「既定無効・明示オプトイン」方針。画像・外部
+    /// スタイルシート双方をこの1つのフラグで統括する)。ローカル相対パス・
+    /// `data:`URIはこの値に関わらず常に許可する。
     pub allow_remote_assets: bool,
-    /// PDF書き出しオプション(メタデータ・圧縮・スケール・グレースケール、
-    /// [0057](../docs/decisions/0057-pdf-output-options-design.md))。
+    /// PDF書き出しオプション(メタデータ・圧縮・スケール・グレースケール)。
     pub output: PdfOutputOptions,
     /// 描画内容の挙動([`ContentOptions`])。
     pub content: ContentOptions,
@@ -195,19 +168,17 @@ pub struct EngineOptions {
     /// (`--enable/disable-local-file-access`・`--allow`)。
     /// 既定はCLIの従来挙動どおり「許可・ディレクトリ制限なし」。
     pub local_access: LocalAccess,
-    /// `--header-html`/`--footer-html`のテンプレート([0058](
-    /// ../docs/decisions/0058-header-footer-design.md)決定3)。
+    /// `--header-html`/`--footer-html`のテンプレート。
     pub header_footer_html: HeaderFooterHtml,
     /// `--cover`のHTML(プレースホルダ展開済み)。
     pub cover_html: Option<String>,
-    /// 目次の設定([0059](../docs/decisions/0059-cover-and-toc-design.md))。
+    /// 目次の設定。
     pub toc: TocSettings,
-    /// `--page-offset`。TOC・本文のページ番号の起点をずらす(決定1)。
+    /// `--page-offset`。TOC・本文のページ番号の起点をずらす。
     pub page_offset: usize,
-    /// CLIのヘッダー/フッター簡易オプションから合成した`@page`ルール
-    /// ([0058](../docs/decisions/0058-header-footer-design.md)決定1)。
-    /// **著者CSSのページルールより前**に置かれるため、同じmargin boxを
-    /// 著者が宣言していればそちらが勝つ。
+    /// CLIのヘッダー/フッター簡易オプションから合成した`@page`ルール。著者
+    /// CSSのページルールより前に置かれるため、同じmargin boxを著者が
+    /// 宣言していればそちらが勝つ。
     pub extra_page_rules: Vec<PageRule>,
 }
 
@@ -228,10 +199,10 @@ impl Default for LocalAccess {
     }
 }
 
-/// `--header-html`/`--footer-html`のテンプレート([0058]決定3)。
+/// `--header-html`/`--footer-html`のテンプレート。
 ///
-/// 中身は**プレースホルダ展開前**のHTMLテキスト。ページ番号を含む場合は
-/// ページごとに展開してレイアウトし直す(決定5)。
+/// 中身はプレースホルダ展開前のHTMLテキスト。ページ番号を含む場合は
+/// ページごとに展開してレイアウトし直す。
 #[derive(Debug, Clone, Default)]
 pub struct HeaderFooterHtml {
     pub header: Option<String>,
@@ -258,7 +229,7 @@ impl HeaderFooterHtml {
     }
 
     /// ページ番号のプレースホルダを含むか(含まなければレイアウト結果を
-    /// ページ間で使い回せる、[0058]決定5)。
+    /// ページ間で使い回せる)。
     pub fn depends_on_page(&self) -> bool {
         [self.header.as_deref(), self.footer.as_deref()]
             .into_iter()
@@ -269,8 +240,8 @@ impl HeaderFooterHtml {
             })
     }
 
-    /// `[topage]`(総ページ数)を使っているか。`Mode::Streaming`では
-    /// 値が定まらないためエラーにする([0058]決定7)。
+    /// `[topage]`(総ページ数)を使っているか。`Mode::Streaming`では値が
+    /// 定まらないためエラーにする。
     pub fn uses_total_pages(&self) -> bool {
         [self.header.as_deref(), self.footer.as_deref()]
             .into_iter()
@@ -287,7 +258,7 @@ impl HeaderFooterHtml {
 }
 
 /// ヘッダー(`top = true`)またはフッター用に、余白領域を基準とした
-/// `PageSettings`とクリップ矩形を作る([0058]決定3)。
+/// `PageSettings`とクリップ矩形を作る。
 fn overlay_area(settings: &PageSettings, top: bool) -> (PageSettings, Rect) {
     let size = settings.size;
     let (margin, clip) = if top {
@@ -361,7 +332,7 @@ fn layout_overlay(
     })
 }
 
-/// ヘッダー/フッターHTML用のフェッチャ。**外部リソースは取得しない**
+/// ヘッダー/フッターHTML用のフェッチャ。外部リソースは取得しない
 /// (インラインの`<style>`とテキストだけを対象にする。既知の限界)。
 fn overlay_fetcher() -> ImageFetcher {
     ImageFetcher::new(PathBuf::from("."), false).with_local_access(false, Vec::new())
@@ -379,7 +350,7 @@ fn build_page_overlays(
     cache: &DocumentImageCache,
     cached: &mut Option<Vec<PageOverlay>>,
 ) -> Vec<PageOverlay> {
-    // ページ番号を含まないなら初回のレイアウトを使い回す([0058]決定5)。
+    // ページ番号を含まないなら初回のレイアウトを使い回す。
     if !html.depends_on_page() {
         if let Some(overlays) = cached.as_ref() {
             return overlays.clone();
@@ -400,19 +371,18 @@ fn build_page_overlays(
     overlays
 }
 
-/// 見出しの一覧から目次のHTMLを組み立てる関数([0059]決定2の構造を
-/// CLI層(`cli::toc`)が実装して渡す)。
+/// 見出しの一覧から目次のHTMLを組み立てる関数(CLI層(`cli::toc`)が
+/// 実装して渡す)。
 pub type TocHtmlBuilder = Rc<dyn Fn(&[TocHeading]) -> String>;
 
-/// 目次(`--toc`)の設定([0059](../docs/decisions/0059-cover-and-toc-design.md))。
+/// 目次(`--toc`)の設定。
 ///
 /// 見た目に関わる値はCLI層(`cli::toc::TocOptions`)が組み立てたCSS/HTMLへ
 /// 反映されるため、コア側は「有効かどうか」と「HTML組み立て関数」だけを持つ。
 #[derive(Clone)]
 pub struct TocSettings {
     pub enabled: bool,
-    /// 見出しの一覧からTOCのHTMLを組み立てる関数。
-    /// CLI層が[0059]決定2の構造で実装したものを渡す。
+    /// 見出しの一覧からTOCのHTMLを組み立てる関数。CLI層が実装したものを渡す。
     pub build_html: TocHtmlBuilder,
     /// 見出しから目次へ戻るリンクを張るか(`--enable-toc-back-links`)。
     pub back_links: bool,
@@ -437,7 +407,7 @@ impl std::fmt::Debug for TocSettings {
     }
 }
 
-/// 目次に載せる見出し1件([0059]決定5)。
+/// 目次に載せる見出し1件。
 #[derive(Debug, Clone, PartialEq)]
 pub struct TocHeading {
     /// `h1`=1 … `h6`=6。
@@ -446,14 +416,14 @@ pub struct TocHeading {
     /// 本文内での0始まりのページ番号。表示番号は
     /// `body_page + 1 + TOCページ数 + page_offset`。
     pub body_page: usize,
-    /// リンク先の名前付き宛先([0042])。
+    /// リンク先の名前付き宛先。
     pub anchor: String,
 }
 
 /// 本文のページ列から`h1`〜`h6`を拾い、そのページ番号とアンカー名を集める。
 ///
-/// `id`を持たない見出しには`__sgtoc_<連番>`を自動で振り、`anchor_names`へ
-/// 追加する(決定5)。
+/// `id`を持たない見出しには`__sgtoc_<連番>`を
+/// 自動で振り、`anchor_names`へ追加する。
 fn collect_headings(
     dom: &Dom,
     pages: &[crate::layout::Page],
@@ -549,7 +519,7 @@ fn collect_headings(
             let anchor = match anchor_names.get(&node) {
                 Some(existing) => existing.clone(),
                 None => {
-                    // `id`が無い見出しには自動で宛先名を振る(決定5)。
+                    // `id`が無い見出しには自動で宛先名を振る。
                     let name = anchor_destination_name(&format!("__sgtoc_{i}"));
                     anchor_names.insert(node, name.clone());
                     name
@@ -567,8 +537,8 @@ fn collect_headings(
         .collect()
 }
 
-/// 独立したHTMLドキュメント(cover/TOC)をレイアウトしてページ列にする
-/// ([0059]決定3)。外部リソースは取得しない([0058]決定3-1と同じ制約)。
+/// 独立したHTMLドキュメント(cover/TOC)をレイアウトしてページ列にする。
+/// 外部リソースは取得しない(ヘッダー/フッターと同じ制約)。
 fn render_standalone_document(
     html: &str,
     fonts: &FontCollection,
@@ -581,7 +551,7 @@ fn render_standalone_document(
     paginate_document(&dom, &styles, fonts, settings)
 }
 
-/// 目次のページ列を、ページ数が収束するまで組み立て直す([0059]決定4)。
+/// 目次のページ列を、ページ数が収束するまで組み立て直す。
 ///
 /// 戻り値は(TOCのページ列, TOCドキュメントのスタイル)。TOCは独立ドキュメント
 /// なので、描画にはそのスタイルマップが要る。
@@ -642,15 +612,14 @@ fn load_explicit_fonts<E>(specs: &[FontSpec]) -> Result<Vec<Font>, EngineError<E
 }
 
 /// `--font`・`@font-face`・システムフォント探索をすべて終えてもフォントが
-/// 1つも無い場合に、システムの`sans-serif`候補を**既定フォント**として補う。
+/// 1つも無い場合に、システムの`sans-serif`候補を既定フォントとして補う。
 ///
 /// フォントが1つも無いと、`font-family`未指定のテキスト(既定`font-family`は
-/// 空、[0036](../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
-/// 決定3-1改訂)の描画先が無くなる。`--font`を必須にせず**システムフォントで
-/// 埋める**ことで、wkhtmltopdfと同じ使い心地にしている(その代わり、
-/// 何も指定しなかった場合の出力は実行環境に依存する)。
+/// 空)の描画先が無くなる。`--font`を必須にせずシステムフォントで埋める
+/// ことで、wkhtmltopdfと同じ使い心地にしている(その代わり、何も
+/// 指定しなかった場合の出力は実行環境に依存する)。
 ///
-/// `@font-face`でフォントが供給されている場合は**何もしない**。ここで
+/// `@font-face`でフォントが供給されている場合は何もしない。ここで
 /// 足してしまうとフェイスの並び順が変わってしまうため。
 fn ensure_default_font<E>(
     fonts: &mut FontCollection,
@@ -677,7 +646,7 @@ fn ensure_default_font<E>(
 /// ストリーミング処理では[`crate::pdf::StreamingPdfWriter`]が`new`の時点で
 /// フォント数を固定するため、後から`font-family`名でシステムフォントを
 /// 探して足すことができない(`load_missing_system_fonts`を呼べない)。
-/// 該当する指定は**黙って既定フォントで描画される**ので、一度だけ警告する。
+/// 該当する指定は黙って既定フォントで描画されるので、一度だけ警告する。
 fn warn_unresolved_font_families(
     styles: &HashMap<NodeId, ComputedStyle>,
     fonts: &FontCollection,
@@ -701,7 +670,7 @@ fn warn_unresolved_font_families(
     }
 }
 
-/// CLI由来の`@page`ルールを著者ルールの前に並べたものを返す([0058]決定1)。
+/// CLI由来の`@page`ルールを著者ルールの前に並べたものを返す。
 fn page_rules_with_cli(extra: &[PageRule], author: &[PageRule]) -> Vec<PageRule> {
     let mut rules = extra.to_vec();
     rules.extend_from_slice(author);
@@ -780,14 +749,14 @@ struct StreamingState<S: Sink> {
     styles: HashMap<NodeId, ComputedStyle>,
     /// `background-image`を持つ要素の、デコード済み画像を`NodeId`キーで
     /// 引けるようにする側マップ。`styles`と同じく処理済みトップレベル要素
-    /// ぶんを蓄積する([0017](../docs/decisions/0017-background-image-design.md)決定2)。
+    /// ぶんを蓄積する。
     background_images: HashMap<NodeId, Rc<PreparedImage>>,
     root_font_size: f32,
-    /// CSSカウンタの状態([0024](../docs/decisions/0024-generated-content-design.md)
-    /// 決定2)。ドキュメント順に依存するため、トップレベル要素をまたいで
-    /// 永続させる必要があり`root_font_size`と同じ位置づけで持つ。
+    /// CSSカウンタの状態。ドキュメント順に依存するため、トップレベル
+    /// 要素をまたいで永続させる必要があり
+    /// `root_font_size`と同じ位置づけで持つ。
     counters: HashMap<String, Vec<i32>>,
-    /// `quotes`のネスト深度(決定3、木構造とは無関係な単一のカウンタ)。
+    /// `quotes`のネスト深度(木構造とは無関係な単一のカウンタ)。
     quote_depth: i32,
     /// `<body>`要素自身の計算スタイル。各トップレベル要素のスタイル計算の
     /// 親スタイルとして使う。
@@ -801,15 +770,14 @@ struct StreamingState<S: Sink> {
     cursor_y: f32,
     /// ページのジオメトリ(オーバーレイの領域計算に使う)。
     page_settings: PageSettings,
-    /// ページ番号に依存しないヘッダー/フッターHTMLのレイアウト結果
-    /// ([0058]決定5)。
+    /// ページ番号に依存しないヘッダー/フッターHTMLのレイアウト結果。
     overlay_cache: Option<Vec<PageOverlay>>,
     /// 解決できない`font-family`について警告済みの名前(同じ警告を
     /// 何度も出さないため)。
     warned_font_families: Vec<String>,
-    /// どのフォントでも描画できず警告済みの文字([0065]決定4)。
-    /// ストリーミングではトップレベル要素ごとに判定するため、既に警告した
-    /// 文字を持ち回って重複を防ぐ。
+    /// どのフォントでも描画できず警告済みの文字。ストリーミングでは
+    /// トップレベル要素ごとに判定するため、
+    /// 既に警告した文字を持ち回って重複を防ぐ。
     warned_uncovered_chars: HashSet<char>,
     paginator: StreamingPaginator,
     writer: StreamingPdfWriter<S>,
@@ -817,15 +785,14 @@ struct StreamingState<S: Sink> {
     image_cache: ImageAssetCache,
 }
 
-/// HTMLチャンク投入からPDFバイト列書き出しまでを1つのAPIとして統合する
-/// コアのエントリポイント。
-/// `--gothic-font`を`font-family: sans-serif`の実体として登録する
-/// ([0036]決定3-1改訂)。`push_font_face`で宣言family名`"sans-serif"`として
-/// 追加するので、`select_for_char`の通常のfamily一致でそのまま拾える。
+/// HTMLチャンク投入からPDFバイト列書き出しまでを1つのAPIとして統合するコアの
+/// エントリポイント。`--gothic-font`を`font-family: sans-serif`の実体として
+/// 登録する。`push_font_face`で宣言family名`"sans-serif"`として追加するので、
+/// `select_for_char`の通常のfamily一致でそのまま拾える。
 /// `has_matching_face("sans-serif", ...)`が真になるため、後段の
-/// `load_missing_system_fonts`はシステムのゴシック探索をスキップする。
-/// CSSの汎用family名として明示指定されたフォントを、その汎用名で
-/// 引けるように登録する。
+/// `load_missing_system_fonts`はシステムのゴシック探索をスキップする。CSSの
+/// 汎用family名として明示指定されたフォントを、
+/// その汎用名で引けるように登録する。
 fn register_generic_fonts<E>(
     fonts: &mut FontCollection,
     generic_fonts: &[(GenericFamily, FontSpec)],
@@ -927,11 +894,8 @@ impl<S: Sink> Engine<S> {
             .unwrap_or_else(|| Path::new("."));
         // 外部スタイルシート(`<link>`)取得用のフェッチャー/キャッシュ。
         // 画像用の`ImageAssetCache`(下の`image_cache`)とは別インスタンスを
-        // 持つ([0015](../docs/decisions/0015-external-stylesheet-fetch-design.md)
-        // 決定3)。
-        // `<base href>`は`<head>`に現れるため、この時点(最初のトップレベル
-        // 要素が確定した時点)で既にパース済み([0040](
-        // ../docs/decisions/0040-base-href-design.md)決定3)。
+        // 持つ。`<base href>`は`<head>`に現れるため、この時点(最初の
+        // トップレベル要素が確定した時点)で既にパース済み。
         let base_href =
             find_base_href(&self.parser.dom()).or_else(|| self.options.base_href.clone());
         let css_fetcher =
@@ -949,28 +913,26 @@ impl<S: Sink> Engine<S> {
         let page_rules = page_rules_with_cli(&self.options.extra_page_rules, &author.page_rules);
         let page_settings = apply_page_rule_settings_override(self.options.settings, &page_rules);
         // `counter(pages)`は文書全体のページ分割完了まで値が定まらないため、
-        // 真のストリーミング処理とは原理的に相容れない([0028](
-        // ../docs/decisions/0028-paged-media-design.md)決定6、ユーザー確認済み)。
+        // 真のストリーミング処理とは原理的に相容れない(ユーザー確認済み)。
         if rules_use_page_count(&page_rules) {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "counter(pages) in @page margin boxes is not supported in streaming mode",
             ));
         }
-        // `--header-html`/`--footer-html`の`[topage]`も同じ理由で使えない
-        // ([0058]決定7)。
+        // `--header-html`/`--footer-html`の`[topage]`も同じ理由で使えない。
         if self.options.header_footer_html.uses_total_pages() {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "[topage] in --header-html/--footer-html is not supported in streaming mode",
             ));
         }
-        // 目次は本文全体のページ分割が終わらないと作れない([0059]決定6)。
+        // 目次は本文全体のページ分割が終わらないと作れない。
         if self.options.toc.enabled {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "--toc is not supported in streaming mode",
             ));
         }
-        // 後方参照セレクタ([0006]分類3)は常に非マッチになる。エラーには
-        // しないが、黙って結果が変わるのは避けたいので警告する。
+        // 後方参照セレクタは常に非マッチになる。エラーにはしないが、黙って
+        // 結果が変わるのは避けたいので警告する。
         let backward = backward_looking_selectors(&author);
         if !backward.is_empty() {
             eprintln!(
@@ -998,21 +960,19 @@ impl<S: Sink> Engine<S> {
         // 文書全体のスタイル(や文字)を必要とするが、真のストリーミング処理では
         // 文書全体を一度に持たないため、ここでは呼ばない(モジュールdocの
         // 既知の限界を参照)。代わりに、フォントが何も与えられていない場合は
-        // 既定フォント(ラテン)に加えてCJKカバー用のフォントを先回りで足す
-        // ([0065](../.claude/plans/decisions/0065-glyph-coverage-font-fallback.md)
-        // 決定3)。`--font`/`@font-face`でフォントが供給されている場合に
-        // 勝手に足さないのは、フェースの並び順([0011]の`unicode-range`先勝ち)と
-        // 「`--font`で渡したフォントが既定になる」原則([0036]決定3-1改訂)への
-        // 影響を避けるため。
+        // 既定フォント(ラテン)に加えてCJKカバー用のフォントを先回りで足す。
+        // `--font`/`@font-face`でフォントが供給されている場合に勝手に足さない
+        // のは、フェースの並び順(`unicode-range`先勝ち)と「`--font`で渡した
+        // フォントが既定になる」原則への影響を避けるため。
         let had_no_fonts = fonts.is_empty();
         ensure_default_font(&mut fonts, &system_fonts)?;
         if had_no_fonts {
             ensure_cjk_fallback_font(&mut fonts, &system_fonts);
         }
 
-        // CSSカウンタ・quote深度はドキュメント順に依存する状態([0024]決定2・3)
-        // なので、<html>から<body>直下の各トップレベル要素まで一貫して
-        // 同じ状態を引き継ぐ(以後`StreamingState`が永続させる)。
+        // CSSカウンタ・quote深度はドキュメント順に依存する状態なので、
+        // <html>から<body>直下の各トップレベル要素まで一貫して同じ状態を引き
+        // 継ぐ(以後`StreamingState`が永続させる)。
         let mut counters = HashMap::new();
         let mut quote_depth = 0;
         let (html_style, body_style, root_font_size) = {
@@ -1053,13 +1013,12 @@ impl<S: Sink> Engine<S> {
             ));
         }
 
-        // `<a href="#id">`の宛先候補([0042](
-        // ../docs/decisions/0042-link-annotations-design.md)決定4)。
-        // `Mode::Streaming`ではこの時点(最初のトップレベル要素が確定した
-        // 時点)までにパースできた範囲しか見えないが、宛先は「そのページを
-        // 書き出す時に見つかったボックス」から記録されるため、後から
-        // パースされる要素も対象になる(ここで集めるのは`id`の一覧ではなく、
-        // 「どのノードがどの名前か」の対応表であるため)。
+        // `<a href="#id">`の宛先候補。`Mode::Streaming`ではこの時点(最初の
+        // トップレベル要素が確定した時点)までにパースできた範囲しか
+        // 見えないが、宛先は「そのページを書き出す時に見つかったボックス」
+        // から記録されるため、後からパースされる要素も対象になる(ここで
+        // 集めるのは`id`の一覧ではなく、「どの
+        // ノードがどの名前か」の対応表であるため)。
         let anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&self.parser.dom())
             .into_iter()
             .map(|(node, id)| (node, anchor_destination_name(&id)))
@@ -1078,7 +1037,7 @@ impl<S: Sink> Engine<S> {
             + body_border.top
             + body_padding.top;
 
-        // `--title`未指定なら`<title>`をPDFの`/Title`に使う([0057]決定6)。
+        // `--title`未指定なら`<title>`をPDFの`/Title`に使う。
         let mut output = self.options.output.clone();
         output
             .metadata
@@ -1164,8 +1123,8 @@ impl<S: Sink> Engine<S> {
                 &state.fonts,
                 &mut state.warned_font_families,
             );
-            // ストリーミングでは文字ベースのフォント補完ができない
-            // ([0065]決定3)ので、描画できない文字が出たら都度警告する。
+            // ストリーミングでは文字ベースのフォント補完ができないので、
+            // 描画できない文字が出たら都度警告する。
             warn_uncovered_chars(
                 &state.fonts,
                 &dom,
@@ -1207,13 +1166,13 @@ impl<S: Sink> Engine<S> {
         // に別途保持済み)。
         parser.dom_mut().release_subtree(node);
 
-        // このトップレベル要素自体が装飾(背景・枠線・background-image、
-        // [0017]決定2により`has_visible_decoration`はbackground-imageも
-        // 見る)を持たない場合、`place_split`は装飾フラグメントを生成しない
-        // ため、このノード自体が`page.boxes`に現れることはない。つまり
-        // `node`自身の`ComputedStyle`/背景画像はこの後`write_page`から
-        // 一切参照されないため、ここで即座に削除してよい(装飾を持つ場合は、
-        // 装飾フラグメントが実際に配置されたページのflush時に、下の
+        // このトップレベル要素自体が装飾(背景・枠線・background-image。
+        // `has_visible_decoration`はbackground-imageも見る)を持たない場合、
+        // `place_split`は装飾フラグメントを生成しないため、このノード自体が
+        // `page.boxes`に現れることはない。つまり`node`自身の`ComputedStyle`/
+        // 背景画像はこの後`write_page`から一切参照されないため、ここで即座に
+        // 削除してよい(装飾を持つ場合は、装飾フラグメントが実際に配置された
+        // ページのflush時に、下の
         // `collect_completed_subtree_roots`経由で削除される)。
         if !laid_out.has_visible_decoration {
             state.styles.remove(&node);
@@ -1224,8 +1183,8 @@ impl<S: Sink> Engine<S> {
         for page in &pages {
             if !options.header_footer_html.is_empty() {
                 let page_number = state.writer.page_count() + 1;
-                // `Mode::Streaming`では総ページ数が不明なので`[topage]`は空になる
-                // ([0058]決定7)。
+                // `Mode::Streaming`では総ページ数が
+                // 不明なので`[topage]`は空になる。
                 let overlays = build_page_overlays(
                     &options.header_footer_html,
                     &state.fonts,
@@ -1367,7 +1326,7 @@ impl<S: Sink> Engine<S> {
         let author = extract_author_stylesheet(&dom, &css_fetcher, &css_cache);
         let mut styles = compute_styles(&dom, &ua, &author);
         apply_content_options(&mut styles, &options.content);
-        // `<a href="#id">`の宛先候補([0042]決定4)。
+        // `<a href="#id">`の宛先候補。
         let mut anchor_names: HashMap<NodeId, String> = collect_anchor_targets(&dom)
             .into_iter()
             .map(|(node, id)| (node, anchor_destination_name(&id)))
@@ -1386,13 +1345,13 @@ impl<S: Sink> Engine<S> {
             );
         }
         load_missing_system_fonts(&mut fonts, &styles, &system_fonts);
-        // family名では手掛かりにならない文字(`font-family`未指定の日本語など)を
-        // 文字カバレッジから補う([0065]決定2)。`ensure_default_font`より先に
-        // 呼ぶ必要はないが、既定フォントを足す前に文書由来のフォントを
-        // 揃えておく方がフェースの並びが読みやすい。
+        // family名では手掛かりにならない文字(`font-family`未指定の日本語など)
+        // を文字カバレッジから補う。`ensure_default_font`より先に呼ぶ
+        // 必要はないが、既定フォントを足す前に文書由来のフォントを揃えておく
+        // 方がフェースの並びが読みやすい。
         load_fonts_for_uncovered_chars(&mut fonts, &dom, &styles, &system_fonts);
         ensure_default_font(&mut fonts, &system_fonts)?;
-        // 補ってもなお描画できない文字が残っていれば警告する([0065]決定4)。
+        // 補ってもなお描画できない文字が残っていれば警告する。
         warn_uncovered_chars(&fonts, &dom, &styles, &mut HashSet::new());
 
         let mut output = options.output.clone();
@@ -1410,22 +1369,21 @@ impl<S: Sink> Engine<S> {
         );
         // `background-image`はレイアウトのサイズ計算に影響しない描画専用の
         // 情報なので、`resolve_images`(box tree構築)とは独立に、文書全体の
-        // `styles`から一度だけ構築できる([0017]決定2)。
+        // `styles`から一度だけ構築できる。
         let background_images = if options.content.load_images {
             resolve_background_images(&styles, &image_cache)
         } else {
             HashMap::new()
         };
 
-        // `Mode::Batch`は全ページを確定させてから絶対配置([0049](
-        // ../docs/decisions/0049-absolute-fixed-positioning-design.md))を
-        // オーバーレイし、順に書き出す。`fixed`の全ページ複製・`absolute`の
-        // 祖先ページ解決が全ページ確定後でないとできないため、
-        // `paginate_document_streaming`(逐次解放)ではなくこちらを使う。
+        // `Mode::Batch`は全ページを確定させてから絶対配置をオーバーレイし、
+        // 順に書き出す。`fixed`の全ページ複製・`absolute`の祖先ページ解決が全
+        // ページ確定後でないとできないため、`paginate_document_streaming`(逐
+        // 次解放)ではなくこちらを使う。
         //
-        // cover/TOC([0059](../docs/decisions/0059-cover-and-toc-design.md))の
-        // ために、**writerを作る前に**本文のページを確定させる。見出しへ
-        // 自動で振るアンカー名を`LinkSettings`へ載せる必要があるため。
+        // cover/TOCのために、writerを作る前に本文のページを確定させる。
+        // 見出しへ自動で振るアンカー名を
+        // `LinkSettings`へ載せる必要があるため。
         let pages = paginate_document_with_absolutes(
             &mut dom,
             &styles,
@@ -1434,22 +1392,22 @@ impl<S: Sink> Engine<S> {
             &image_cache,
         );
 
-        // 目次用の見出し収集([0059]決定5)。`id`が無い見出しには自動で
-        // 宛先名を振り、`anchor_names`へ足す。
+        // 目次用の見出し収集。`id`が無い見出しには
+        // 自動で宛先名を振り、`anchor_names`へ足す。
         let headings = if options.toc.enabled {
             collect_headings(&dom, &pages, &mut anchor_names)
         } else {
             Vec::new()
         };
 
-        // 表紙は独立したドキュメントとして先に組み立てる(決定3)。
+        // 表紙は独立したドキュメントとして先に組み立てる。
         let cover_pages = match &options.cover_html {
             Some(html) => render_standalone_document(html, &fonts, &page_settings),
             None => Vec::new(),
         };
 
-        // 目次は「自身のページ数が本文のページ番号をずらす」ため、
-        // ページ数が収束するまで最大3回組み立て直す(決定4)。
+        // 目次は「自身のページ数が本文のページ番号をずらす」ため、ページ数が
+        // 収束するまで最大3回組み立て直す。
         let (toc_pages, toc_styles) = if options.toc.enabled {
             build_toc_pages(
                 &headings,
@@ -1462,9 +1420,9 @@ impl<S: Sink> Engine<S> {
             (Vec::new(), HashMap::new())
         };
 
-        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」
-        // ([0059]決定1)。本文のページ分割はすでに済んでいるので、
-        // [0028]決定6の事前カウント用パスはもう要らない。
+        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」。本文の
+        // ページ分割はすでに済んでいるので、
+        // 事前カウント用パスはもう要らない。
         let total_pages = if rules_use_page_count(&page_rules) {
             Some(toc_pages.len() + pages.len())
         } else {
@@ -1487,8 +1445,8 @@ impl<S: Sink> Engine<S> {
         )
         .map_err(EngineError::Io)?;
 
-        // 書き出し順は cover → TOC → 本文(決定3)。ページ番号はcoverを
-        // 数えず、TOCから`1 + --page-offset`で始める(決定1)。
+        // 書き出し順は cover → TOC → 本文。ページ番号はcoverを数えず、
+        // TOCから`1 + --page-offset`で始める。
         let empty_styles: HashMap<NodeId, ComputedStyle> = HashMap::new();
         let empty_images: HashMap<NodeId, Rc<PreparedImage>> = HashMap::new();
 
@@ -1541,11 +1499,10 @@ impl<S: Sink> Engine<S> {
     }
 }
 
-/// `@page`ルールの`size`/`margin`宣言(無条件`@page{}`ルールのみ、
-/// [0028](../docs/decisions/0028-paged-media-design.md)決定4改訂)を
-/// `base`(CLIオプション/既定値)へ適用した`PageSettings`を返す。
-/// `:first`/`:left`/`:right`はmargin box(ヘッダー/フッター内容)の出し分け
-/// にのみ使うため、ここでは無条件ルールだけを見ればよい
+/// `@page`ルールの`size`/`margin`宣言(無条件`@page{}`ルールのみ)を`base`(CLI
+/// オプション/既定値)へ適用した`PageSettings`を返す。
+/// `:first`/`:left`/`:right`はmargin box(ヘッダー/フッター内容)の出し
+/// 分けにのみ使うため、ここでは無条件ルールだけを見ればよい
 /// (`is_first`/`is_left`はどちらの値でも`resolve_page_rules`が返す
 /// `size_px`/`margin_*`には影響しない)。
 fn apply_page_rule_settings_override(base: PageSettings, page_rules: &[PageRule]) -> PageSettings {
@@ -1626,7 +1583,7 @@ mod tests {
             .count()
     }
 
-    /// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ([0057])。
+    /// `/MediaBox`の期待値をCSS pxで書けるようにするヘルパ。
     fn media_box(width_px: f32, height_px: f32) -> String {
         format!(
             "/MediaBox [0 0 {} {}]",
@@ -2080,7 +2037,7 @@ mod tests {
     #[test]
     fn counter_page_alone_is_allowed_in_streaming_mode() {
         // `counter(page)`単体(`counter(pages)`を伴わない)は、ページ確定時点で
-        // 値が決まるためストリーミングでも問題なく動作するはず([0028]決定6)。
+        // 値が決まるためストリーミングでも問題なく動作するはず。
         let options = EngineOptions {
             mode: Mode::Streaming,
             fonts: vec![font_spec()],
@@ -2292,8 +2249,8 @@ mod tests {
         let bytes = engine.finish().unwrap();
 
         assert!(bytes.starts_with(b"%PDF-"));
-        // JPEGはデコードせずそのままDCTDecodeフィルタで埋め込む
-        // ([0012]の方針)ため、生のJPEGバイト列そのものが出現するはず。
+        // JPEGはデコードせずそのままDCTDecodeフィルタで埋め込むため、生のJPEG
+        // バイト列そのものが出現するはず。
         let jpeg_bytes = std::fs::read(JPEG_FIXTURE_PATH).unwrap();
         assert!(count_occurrences(&bytes, b"/DCTDecode") > 0);
         assert!(
@@ -2330,12 +2287,10 @@ mod tests {
         assert!(count_occurrences(&bytes, b"/Height 16") > 0);
     }
 
-    /// `object-fit`/`object-position`のE2Eテスト(M9 Phase 2)。詳細設計は
-    /// [0030](../../docs/decisions/0030-object-fit-position-design.md)参照。
+    /// `object-fit`/`object-position`のE2Eテスト(M9 Phase 2)。
     /// `object_fit_rect`自体の幾何計算は`pdf/document.rs`の単体テストで
-    /// 網羅済みのため、ここでは実際のパイプライン(data:URIデコード→
-    /// box tree→レイアウト→PDFエンコード)を通した疎通・クリップ発行の
-    /// 確認に絞る。
+    /// 網羅済みのため、ここでは実際のパイプライン(data:URIデコード→box tree
+    /// →レイアウト→PDFエンコード)を通した疎通・クリップ発行の確認に絞る。
     fn build_object_fit_pdf(object_fit_css: &str) -> Vec<u8> {
         let html = format!(
             r#"<html><body><img src="{}" style="width: 150px; height: 80px; {}"></body></html>"#,
@@ -2368,9 +2323,9 @@ mod tests {
 
     #[test]
     fn object_fit_always_clips_to_the_content_box_even_for_the_default_fill() {
-        // [0030]決定3: `object-fit`の値によらず常にcontent-boxへクリップする
-        // (`Fill`は元々ぴったり収まるがno-opとして同じ経路を通る)。クリップ
-        // パスの構築(`re` → `W n`)が実際に発行されていることを確認する。
+        // `object-fit`の値によらず常にcontent-boxへクリップする(`Fill`は
+        // 元々ぴったり収まるがno-opとして同じ経路を通る)。クリップパスの構築
+        // (`re` → `W n`)が実際に発行されていることを確認する。
         let bytes = build_object_fit_pdf("");
         let decompressed = decompressed_stream_bytes(&bytes);
         assert_eq!(count_occurrences(&decompressed, b" re\n"), 1);
@@ -2495,8 +2450,8 @@ mod tests {
 
     #[test]
     fn a_broken_background_image_url_degrades_gracefully_instead_of_failing_the_whole_document() {
-        // [0014]/[0017]の方針: 取得・デコード失敗はその要素の背景画像だけ
-        // 空扱いにして、文書生成全体は止めない。
+        // 取得・デコード失敗はその要素の背景画像だけ空扱いにして、
+        // 文書生成全体は止めない。
         let html = r#"<html><body><p>before</p>
             <div style="background-image: url('does-not-exist-anywhere.png'); width: 50px; height: 50px;"></div>
             <p>after</p></body></html>"#;
@@ -2521,8 +2476,8 @@ mod tests {
 
     #[test]
     fn a_broken_image_src_degrades_to_an_empty_box_instead_of_failing_the_whole_document() {
-        // [0014]の方針: 取得・デコード失敗はその要素だけ空扱いにして、
-        // 文書生成全体は止めない(壊れたURLがDoSベクタにならないように)。
+        // 取得・デコード失敗はその要素だけ空扱いにして、文書生成全体は
+        // 止めない(壊れたURLがDoSベクタにならないように)。
         let html = r#"<html><body><p>before</p>
             <img src="does-not-exist-anywhere.png" width="50" height="50">
             <p>after</p></body></html>"#;
@@ -2731,8 +2686,8 @@ mod tests {
 
     #[test]
     fn a_failed_external_stylesheet_does_not_fail_the_whole_document() {
-        // 0015/T66: 外部スタイルシートの取得失敗はそのスタイルシートだけを
-        // 無視し、文書生成全体は止めない(画像[0014]と同じ方針)。
+        // T66: 外部スタイルシートの取得失敗はそのスタイルシートだけを無視し、
+        // 文書生成全体は止めない(画像と同じ方針)。
         let html = r#"<html><head><link rel="stylesheet" href="does-not-exist.css"></head>
             <body><p>hello</p></body></html>"#;
         let options = EngineOptions {

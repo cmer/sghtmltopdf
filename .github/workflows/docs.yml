@@ -1,10 +1,9 @@
 name: Docs
 
-# ドキュメントサイト(docs/, mdbook)をビルドし、mainならGitHub Pagesへ出す。
-# 日本語版が `/`、英語版が `/en/`(docs/decisions 0064 決定4)。
+# ドキュメントサイト(docs/, mdbook)をビルドし、mainならGitHub Pagesへ出す
+# 日本語版が `/`、英語版が `/en/`
 #
-# 事前にリポジトリ設定で Settings > Pages > Source を "GitHub Actions" に
-# しておく必要がある。
+# 事前にリポジトリ設定で Settings > Pages > Source を "GitHub Actions" にしておくこと
 
 on:
   push:
@@ -21,7 +20,7 @@ on:
 permissions:
   contents: read
 
-# デプロイは同時に1つだけ。実行中のものは走り切らせる。
+# デプロイは同時に1つだけ。実行中のものは走り切らせる
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -37,8 +36,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ツールは3つともバージョン固定。キャッシュキーにバージョンを入れて
-      # あるので、上げたときだけ入れ直しになる。
       - name: Cache mdbook toolchain
         id: cache-tools
         uses: actions/cache@v4
@@ -57,8 +54,7 @@ jobs:
             mdbook-mermaid@${MDBOOK_MERMAID_VERSION} \
             mdbook-i18n-helpers@${MDBOOK_I18N_HELPERS_VERSION}
 
-      # 日本語版(原文) → 英語版の順。book/en は book/ の下に置くので、
-      # 逆順だと日本語版のビルドが英語版を消す(0064 spike)。
+      # 日本語版(原文) → 英語版の順。book/en は book/ の下に置くので、逆順だと日本語版のビルドが英語版を消してしまう
       - name: Build (ja)
         working-directory: docs
         run: mdbook build -d book

@@ -1,6 +1,4 @@
+/.claude
+/docs/book
 /target
 CLAUDE.md
-/.claude
-# mdbookのビルド成果物(GitHub Pagesへはactions/deploy-pagesで出すので、
-# 生成物はコミットしない)。
-/docs/book

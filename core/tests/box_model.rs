@@ -4,7 +4,6 @@
 //!
 //! `list_style.rs`/`typography.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0023](../../docs/decisions/0023-box-model-details-design.md)参照。
 
 use std::collections::HashMap;
 
@@ -182,7 +181,7 @@ fn border_radius_longhand_and_shorthand_render_a_valid_pdf() {
     assert_eq!(page_count, 1);
 }
 
-// ===== 親子間・空ブロックのマージン相殺(M11 Phase 2、T271、[0048]) =====
+// ===== 親子間・空ブロックのマージン相殺(M11 Phase 2、T271) =====
 
 #[test]
 fn a_child_top_margin_collapses_through_a_borderless_parent() {
@@ -251,7 +250,7 @@ fn a_document_using_margin_collapse_renders_a_valid_pdf() {
     assert!(bytes.starts_with(b"%PDF-"));
 }
 
-// ===== calc()(M11 Phase 2、T272、[0050]) =====
+// ===== calc(M11 Phase 2、T272) =====
 
 #[test]
 fn calc_width_mixes_percentage_and_pixels() {

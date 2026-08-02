@@ -1,17 +1,16 @@
 [book]
 title = "sghtmltopdf"
 authors = ["waka"]
-# 原文の言語。英語版は `MDBOOK_BOOK__LANGUAGE=en mdbook build -d book/en` で
-# po/en.po を当てて出す(docs/decisions 0064 決定3)。
+# 原文の言語。英語版は `MDBOOK_BOOK__LANGUAGE=en mdbook build -d book/en` で po/en.po を当てて出す
 language = "ja"
 src = "src"
 
 [build]
-# po を直すと `mdbook serve` が再ビルドするようにする。
+# po を直すと `mdbook serve` が再ビルドするようにする
 extra-watch-dirs = ["po"]
 
 [preprocessor.gettext]
-# links(={{#include}}等の展開)の後に翻訳を当てる。
+# links(={{#include}}等の展開)の後に翻訳を当てる
 after = ["links"]
 
 [preprocessor.mermaid]

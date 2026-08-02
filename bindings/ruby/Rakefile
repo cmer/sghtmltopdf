@@ -7,7 +7,6 @@ GEMSPEC = Gem::Specification.load("sghtmltopdf.gemspec")
 
 RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
   ext.lib_dir = "lib/sghtmltopdf"
-  # クロスビルドの対象は docs/decisions/0061-distribution.md 決定3。
   # 実際のビルドはoxidize-rb/cross-gem-actionがCIで行う(T348)。
   ext.cross_compile = true
   ext.cross_platform = %w[x86_64-linux aarch64-linux arm64-darwin]
@@ -25,12 +24,11 @@ rescue LoadError
 end
 
 # `bundler/gem_tasks`の`release`は「ソースgemを1つbuild → gitタグを作る →
-# push」という**純Rubyのgem向け**の手順で、このgemには合わない。
+# push」という純Rubyのgem向けの手順で、このgemには合わない。
 #
-# * 配布するのはprecompiled gem 3プラットフォーム + ソースgemの計4つ
-#   (docs/decisions/0061-distribution.md 決定3・決定7)。CIがクロスビルド
-#   したものを`pkg/`へ集めてから出す
-# * gitタグは人が打ち、**そのタグのpushがリリースのトリガ**なので、
+# * 配布するのはprecompiled gem 3プラットフォーム + ソースgemの計4つ。
+#   CIがクロスビルドしたものを`pkg/`へ集めてから出す
+# * gitタグは人が打ち、そのタグのpushがリリースのトリガなので、
 #   ここでタグを作ろうとすると「既にある」で失敗する
 #
 # `rubygems/release-gem`が実行するのはこの`rake release`なので、中身を

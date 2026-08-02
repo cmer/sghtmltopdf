@@ -121,6 +121,7 @@ h2, h3 {
 section.chapter + section.chapter { break-before: page; }
 ```
 
-> **Note**
+> Note
+>
 > [ストリーミングモード](../usage/cli/streaming.md)では`:last-child`などの後方参照セレクタが常に非マッチになります。
 > 上の例の`+`(隣接兄弟)は使えます。

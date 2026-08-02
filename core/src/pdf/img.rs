@@ -1,13 +1,12 @@
 //! 画像バイト列(JPEG/PNG/WebP)をPDF Image XObject埋め込み用データへ変換する。
 //!
 //! `core/src/img/`(URL解決・フェッチ・キャッシュ)が返す生バイト列を受け取り、
-//! フォーマットをマジックバイトで判別してデコードする。JPEGは
-//! [0012](../../../docs/decisions/0012-image-embedding-crates.md)の決定
-//! 通りデコードせず、SOFマーカーからwidth/height/コンポーネント数だけを
-//! 読んでDCTDecodeフィルタでそのまま埋め込む(`core/examples/
-//! spike_image_jpeg_passthrough.rs`で検証済みの方式)。PNG/WebPはそれぞれ
-//! `png`クレート/`image`クレート(webp機能のみ)でフルデコードし、
-//! アルファチャンネルがあれば色本体から分離して別XObjectの`/SMask`とする
+//! フォーマットをマジックバイトで判別してデコードする。JPEGはデコードせず、
+//! SOFマーカーからwidth/height/コンポーネント数だけを読んでDCTDecode
+//! フィルタでそのまま埋め込む(`core/examples/spike_image_jpeg_passthrough.rs`
+//! で検証済みの方式)。PNG/WebPはそれぞれ`png`クレート/`image`クレート(webp
+//! 機能のみ)でフルデコードし、アルファチャンネルがあれば色本体から分離して別
+//! XObjectの`/SMask`とする
 //! (`spike_image_png_decode.rs`/`spike_image_webp_decode.rs`で検証済み)。
 //!
 //! ここで作る[`PreparedImage`]は`pdf-writer`の`Ref`をまだ持たない
@@ -263,20 +262,18 @@ fn split_interleaved_alpha(buf: &[u8], stride: usize) -> (Vec<u8>, Vec<u8>) {
 // --- 文書内での「取得→デコード」結果の共有、およびPDF Image XObjectとしての
 // 書き出し(T51〜T54)。 ---
 //
-// [0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)は
-// 「文書内キャッシュはRef+内在サイズだけを持つ」設計を示していたが、実装を
+// 当初は「文書内キャッシュはRef+内在サイズだけを持つ」設計だったが、実装を
 // 進める過程で「デコード結果(`PreparedImage`)自体を`Rc`で共有し、Ref割当・
 // 実際のXObject書き出しはPDFエンコード時点(レイアウト後、フォントの
 // `embed_font`/`embed_font_streaming_chunks`と同じタイミング)まで遅延する」
-// 方式に変更した。理由: box tree構築(`layout::box_tree`)の時点でRefを
-// 払い出してPDFへ書き出そうとすると、box tree構築が`Sink`への書き込み権限を
-// 持つ必要が生じ、既存の「box tree構築は純粋にDOM+スタイルから決まる」
-// という設計(バッチ/ストリーミング両モードで共有)を壊してしまう。
-// `Rc<PreparedImage>`を文書内キャッシュ(このモジュールの
-// `ImageAssetCache`)で共有する方式なら、フェッチ・デコードは同じく
-// srcごとに1回で済み(要素数ではなく異なる画像の種類数にメモリが比例する
-// という0014の核心的な要件は満たされる)、かつRef割当・書き出しは
-// フォントと同じ既存のタイミング(レイアウト確定後)に置ける。
+// 方式に変更した。理由: box tree構築(`layout::box_tree`)の時点でRefを払い
+// 出してPDFへ書き出そうとすると、box tree構築が`Sink`への書き込み権限を持つ
+// 必要が生じ、既存の「box tree構築は純粋にDOM+スタイルから決まる」という設計
+// (バッチ/ストリーミング両モードで共有)を壊してしまう。`Rc<PreparedImage>`を
+// 文書内キャッシュ(このモジュールの`ImageAssetCache`)で共有する方式なら、
+// フェッチ・デコードは同じくsrcごとに1回で済み(要素数ではなく異なる画像の
+// 種類数にメモリが比例するという0014の核心的な要件は満たされる)、かつRef
+// 割当・書き出しはフォントと同じ既存のタイミング(レイアウト確定後)に置ける。
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -308,8 +305,7 @@ impl ImageAssetCache {
         Self::with_base_href(base_dir, allow_remote, None)
     }
 
-    /// `<base href>`(相対参照の基準、[0040](
-    /// ../../../docs/decisions/0040-base-href-design.md))を指定して構築する。
+    /// `<base href>`(相対参照の基準)を指定して構築する。
     pub fn with_base_href(
         base_dir: PathBuf,
         allow_remote: bool,
@@ -432,7 +428,7 @@ pub fn embed_image_streaming_chunks(
         let (plane, converted) = to_grayscale_plane(&image.color);
         if !converted {
             eprintln!(
-                "警告: この画像はグレースケール化できません(JPEG/CMYKはデコーダを持たないため、[0057]決定4)"
+                "警告: この画像はグレースケール化できません(JPEG/CMYKはデコーダを持たないため)"
             );
         }
         plane
@@ -462,12 +458,11 @@ pub fn embed_image_streaming_chunks(
     chunks
 }
 
-/// 画像のカラープレーンをグレースケール化する([0057](
-/// ../../../docs/decisions/0057-pdf-output-options-design.md)決定4)。
+/// 画像のカラープレーンをグレースケール化する。
 ///
 /// 変換できるのはピクセルデータを持てる`Rgb`プレーン(無圧縮または
 /// `/FlateDecode`)だけ。JPEGパススルー(`/DCTDecode`)とCMYKは
-/// **デコーダを持たないため変換できず、そのまま返す**(既知の限界)。
+/// デコーダを持たないため変換できず、そのまま返す(既知の限界)。
 /// 変換しなかった場合に`false`を返すので、呼び出し側が警告を出せる。
 pub fn to_grayscale_plane(plane: &ImagePlane) -> (ImagePlane, bool) {
     if plane.color_space != PlaneColorSpace::Rgb || plane.bits_per_component != 8 {

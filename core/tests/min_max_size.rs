@@ -2,7 +2,6 @@
 //!
 //! `box_model.rs`/`flexbox.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0051](../../docs/decisions/0051-min-max-size-design.md)参照。
 
 use std::collections::HashMap;
 
@@ -119,7 +118,7 @@ fn min_width_expands_a_narrower_block() {
 
 #[test]
 fn min_width_wins_when_it_exceeds_max_width() {
-    // CSS2.1 §10.4: max-width→min-widthの順に適用するのでminが勝つ([0051]決定2)。
+    // CSS2.1 §10.4: max-width→min-widthの順に適用するのでminが勝つ。
     let (dom, laid) = layout(
         "<div>min wins</div>",
         "body { margin: 0; } div { width: 400px; min-width: 300px; max-width: 100px; }",
@@ -129,8 +128,8 @@ fn min_width_wins_when_it_exceeds_max_width() {
 
 #[test]
 fn auto_width_clamped_by_max_width_is_centered_by_auto_margins() {
-    // [0051]決定3の肝: `width: auto`の枝でmargin autoが0に潰れたままだと
-    // 中央寄せされない。クランプ後に水平方向の等式を解き直すことで中央に来る。
+    // `width: auto`の枝でmargin autoが0に潰れたままだと中央寄せされない。
+    // クランプ後に水平方向の等式を解き直すことで中央に来る。
     let containing_width = PageSettings::default().content_width();
     let (dom, laid) = layout(
         "<div>centered</div>",
@@ -149,7 +148,7 @@ fn auto_width_clamped_by_max_width_is_centered_by_auto_margins() {
 #[test]
 fn min_and_max_width_are_border_box_relative_under_border_box_sizing() {
     // `box-sizing: border-box`では指定値がborder-box基準なので、content幅は
-    // padding+borderを引いた値になる([0027]決定2と同じ規則、[0051]決定2)。
+    // padding+borderを引いた値になる(`box-sizing`と同じ規則)。
     let (dom, laid) = layout(
         "<div>bb</div>",
         "body { margin: 0; } \
@@ -196,7 +195,7 @@ fn percentage_min_width_resolves_against_the_containing_block() {
 
 #[test]
 fn percentage_min_height_is_ignored() {
-    // containing blockの高さが不定なため無視する([0051]決定4、`height: %`と同じ)。
+    // containing blockの高さが不定なため無視する(`height: %`と同じ)。
     let (dom, laid) = layout(
         "<div>x</div>",
         "body { margin: 0; } div { min-height: 50%; }",
@@ -281,7 +280,7 @@ fn min_and_max_width_apply_to_flex_items() {
 
 #[test]
 fn cell_min_width_widens_its_column_in_auto_table_layout() {
-    // セルのmin-widthは列の自然幅を押し上げる([0051]決定6)。
+    // セルのmin-widthは列の自然幅を押し上げる。
     let narrow = table_first_row_widths(
         r#"<table><tr><td class="c">x</td><td>yyyyyyyyyyyyyyyy</td></tr></table>"#,
         "body { margin: 0; } table { width: 400px; }",

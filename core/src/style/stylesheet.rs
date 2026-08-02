@@ -31,8 +31,7 @@ pub struct Stylesheet {
 enum TopLevelRule {
     Style(StyleRule),
     FontFace(FontFaceRule),
-    /// `@media`の中身(マッチしなかった場合は空のVec、[0028](
-    /// ../../../docs/decisions/0028-paged-media-design.md)決定1)。
+    /// `@media`の中身(マッチしなかった場合は空のVec)。
     Media(Vec<TopLevelRule>),
     Page(PageRule),
 }
@@ -125,8 +124,7 @@ impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser {
 /// デフォルト実装により無視される。
 enum TopLevelAtRulePrelude {
     FontFace,
-    /// `applies`は[`media_query_list_matches`]による判定結果
-    /// ([0028](../../../docs/decisions/0028-paged-media-design.md)決定1)。
+    /// `applies`は[`media_query_list_matches`]による判定結果。
     Media {
         applies: bool,
     },
@@ -188,9 +186,7 @@ impl<'i> AtRuleParser<'i> for TopLevelRuleParser {
 /// `@media`のprelude(トークン列)から、印刷/PDF出力用の簡略化された
 /// メディアタイプ判定を行う。カンマ区切りのクエリリスト(=OR)を、それぞれ
 /// 「先頭の`not`/`only`修飾子+メディアタイプ識別子」だけ見て判定する。
-/// 特徴クエリ(`(min-width: ...)`等)は一切評価せず読み飛ばす
-/// ([0026](../../../docs/decisions/0026-m9-css3-scope-decisions.md)決定2、
-/// [0028](../../../docs/decisions/0028-paged-media-design.md)決定1)。
+/// 特徴クエリ(`(min-width: ...)`等)は一切評価せず読み飛ばす。
 fn media_query_list_matches<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<bool, ParseError<'i, ()>> {
@@ -282,13 +278,12 @@ impl<'i> RuleBodyItemParser<'i, Vec<PropertyDeclaration>, ()> for DeclarationBlo
     }
 }
 
-/// `Mode::Streaming`では評価できない「後方参照セレクタ」
-/// ([0006](../../../docs/decisions/0006-css-non-locality-scope.md)分類3)が
-/// 使われていれば、その名前を返す。
+/// `Mode::Streaming`では評価できない「後方参照セレクタ」が使われていれば、
+/// その名前を返す。
 ///
 /// これらは対象要素の親の子リストが完結するまで原理的に判定できないため、
-/// ストリーミング処理では**常に非マッチ**になる。黙って結果が変わるのを
-/// 避けるため、呼び出し側が警告を出すのに使う([0006]の積み残しへの対応)。
+/// ストリーミング処理では常に非マッチになる。黙って結果が変わるのを
+/// 避けるため、呼び出し側が警告を出すのに使う。
 pub fn backward_looking_selectors(sheet: &Stylesheet) -> Vec<String> {
     use cssparser::ToCss as _;
 
@@ -368,8 +363,8 @@ mod tests {
     #[test]
     fn media_with_only_a_feature_query_defaults_to_matching_all() {
         // 型を省略した特徴クエリ単体(`(min-width: 600px)`)は仕様上
-        // `all and (min-width: 600px)`と同義。特徴クエリ自体は評価しない
-        // ([0026]決定2)ため、常にマッチする。
+        // `all and (min-width: 600px)`と同義。特徴クエリ自体は
+        // 評価しないため、常にマッチする。
         let sheet = parse_stylesheet("@media (min-width: 600px) { div { color: rgb(1, 2, 3); } }");
         assert_eq!(sheet.rules.len(), 1);
     }
@@ -422,9 +417,9 @@ mod tests {
         // T59/T63の前提調査を実際に検証する)。
         //
         // M7(T73-76)で`@import`を実際にフェッチ・展開する機能を追加したが、
-        // それは`style::extract::extract_author_stylesheet`が`parse_stylesheet`
-        // を呼ぶ「前」にCSSテキストを展開する形で実装されている
-        // (`style::import::resolve_imports`、[0016](../../../docs/decisions/0016-at-import-resolution-design.md)参照)。
+        // それは`style::extract::extract_author_stylesheet`が
+        // `parse_stylesheet`を呼ぶ「前」にCSSテキストを展開する形で
+        // 実装されている(`style::import::resolve_imports`)。
         // `parse_stylesheet`自体は今も`@import`を知らないままであり、この
         // テストが検証する「安全に無視される」という挙動は変わらず正しい。
         let sheet = parse_stylesheet(

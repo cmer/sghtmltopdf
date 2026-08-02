@@ -63,12 +63,10 @@ impl StreamingParser {
     /// `<body>`より後にCSSソース(`<style>`または`rel="stylesheet"`の
     /// `<link>`)が出現したかどうか。
     ///
-    /// `Engine`の`Mode::Streaming`が
-    /// [0006](../../../docs/decisions/0006-css-non-locality-scope.md)・
-    /// [0015](../../../docs/decisions/0015-external-stylesheet-fetch-design.md)
-    /// の方針に従ってエラーを返すかどうかの判定に使う(`Mode::Batch`では
-    /// この値を無視してよい)。`<body>`の開始タグを見た時点以降に生成された
-    /// `<style>`/`<link rel=stylesheet>`要素が1つでもあれば`true`になる。
+    /// `Engine`の`Mode::Streaming`がエラーを返すかどうかの判定に使う
+    /// (`Mode::Batch`ではこの値を無視してよい)。`<body>`の開始タグを見た
+    /// 時点以降に生成された`<style>`/`<link rel=stylesheet>`要素が
+    /// 1つでもあれば`true`になる。
     pub fn has_late_css_source(&self) -> bool {
         self.sink().late_css_source_detected.get()
     }
@@ -100,7 +98,7 @@ impl StreamingParser {
     /// 要素が2回返されることはない。`<body>`がまだ存在しない、または
     /// 対象がなければ空のベクタを返す。
     ///
-    /// **安全性の前提**: 正しくネストされたHTML(不正なタグの入れ子や、
+    /// 安全性の前提: 正しくネストされたHTML(不正なタグの入れ子や、
     /// テーブル内の不正な要素がテーブルの外へ移動する「foster
     /// parenting」等のhtml5everのエラー回復動作が発生しないこと)を想定
     /// する。エラー回復によって`<body>`直下の要素構成が後から変わる
@@ -197,9 +195,8 @@ struct Sink {
 }
 
 /// `name`/`attrs`が「CSSソースとして扱う要素」(`<style>`または
-/// `rel="stylesheet"`の`<link>`)かどうかを判定する
-/// ([0015](../../../docs/decisions/0015-external-stylesheet-fetch-design.md)
-/// 決定5、`<body>`より後の出現を`<style>`と同様にエラーにするため)。
+/// `rel="stylesheet"`の`<link>`)かどうかを判定する(`<body>`より後の出現を
+/// `<style>`と同様にエラーにするため)。
 fn is_late_css_source(local_name: &str, attrs: &[Attribute]) -> bool {
     local_name == "style" || (local_name == "link" && super::dom::is_stylesheet_link(attrs))
 }

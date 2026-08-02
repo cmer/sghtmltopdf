@@ -2,7 +2,6 @@
 //!
 //! `min_max_size.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
 //! カスケード→レイアウト→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0052](../../docs/decisions/0052-aspect-ratio-design.md)参照。
 
 use std::collections::HashMap;
 
@@ -151,7 +150,7 @@ fn an_explicit_height_wins_over_the_ratio() {
 
 #[test]
 fn max_height_clamps_the_derived_height() {
-    // [0052]決定5: 「比から導出 → クランプ」の順(比を保つための再計算はしない)。
+    // 「比から導出 → クランプ」の順(比を保つための再計算はしない)。
     let (dom, laid) = layout(
         "<div>x</div>",
         "body { margin: 0; } div { width: 300px; aspect-ratio: 1 / 1; max-height: 50px; }",
@@ -164,7 +163,7 @@ fn max_height_clamps_the_derived_height() {
 #[test]
 fn a_block_level_auto_width_stays_stretched() {
     // CSS仕様どおり、通常フローのブロックの`width: auto`はstretchが優先され、
-    // 比から幅を導かない([0052]決定3)。
+    // 比から幅を導かない。
     let containing_width = PageSettings::default().content_width();
     let (dom, laid) = layout(
         "<div>x</div>",
@@ -287,7 +286,7 @@ fn an_explicit_ratio_overrides_the_intrinsic_ratio_of_an_image() {
 
 #[test]
 fn the_auto_keyword_makes_an_image_prefer_its_intrinsic_ratio() {
-    // `aspect-ratio: auto 1/1`は「内在比があればそちらを優先」([0052]決定2)。
+    // `aspect-ratio: auto 1/1`は「内在比があればそちらを優先」。
     let html_src = format!(r#"<img src="{}">"#, jpeg_data_uri());
     let (dom, laid) = layout(
         &html_src,

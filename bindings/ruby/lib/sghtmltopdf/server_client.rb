@@ -9,18 +9,17 @@ module Sghtmltopdf
   # `UsageError`になる。
   class ServerError < Error; end
 
-  # HTTPサーバモード(`sghtmltopdf server`)へ変換を委譲するクライアント
-  # (docs/decisions/0062-ruby-binding.md 決定10)。
+  # HTTPサーバモード(`sghtmltopdf server`)へ変換を委譲するクライアント。
   #
   #   Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
   #   pdf = Sghtmltopdf.render(html, page_size: "A4")
   #
   # オプションは`Options.to_query`でクエリ文字列になり、サーバ側で
-  # **CLIとまったく同じclapパーサ**へ通される。負荷分散は前段のLB
+  # CLIとまったく同じclapパーサへ通される。負荷分散は前段のLB
   # (nginx・k8s Serviceなど)に任せる前提で、URLは1つだけ受ける。
   #
-  # サーバへ到達できないときにローカルのネイティブ拡張へ**フォールバック
-  # しない**。サーバ起動時にだけ指定できるフォント(`--font`など)が効かず
+  # サーバへ到達できないときにローカルのネイティブ拡張へフォールバック
+  # しない。サーバ起動時にだけ指定できるフォント(`--font`など)が効かず
   # 出力が変わるうえ、障害に気づけなくなるため。
   class ServerClient
     DEFAULT_OPEN_TIMEOUT = 5
@@ -47,7 +46,7 @@ module Sghtmltopdf
       request = build_request(html, options, stream: !block.nil?)
       pdf = nil
       start do |http|
-        # `request`はブロック付きだと**レスポンスオブジェクト**を返すので、
+        # `request`はブロック付きだとレスポンスオブジェクトを返すので、
         # 結果は外の変数で受ける。
         http.request(request) do |response|
           ensure_success!(response)
@@ -119,7 +118,6 @@ module Sghtmltopdf
       raise ServerError, "#{base}への接続に失敗しました: #{e.message}"
     end
 
-    # ステータスコードの割り当ては docs/cli.md「HTTPサーバモード」を参照。
     # エラー応答の本文は`text/plain`の日本語メッセージ(CLIと同じ文言)。
     def ensure_success!(response)
       return if response.is_a?(Net::HTTPOK)

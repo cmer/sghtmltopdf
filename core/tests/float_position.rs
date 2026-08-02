@@ -5,8 +5,7 @@
 //! 回り込み・複数float配置・改ページ跨ぎといった座標の詳細な検証は
 //! `layout_document`(ページ分割前)の結果に対して行い、PDFエンコードまでの
 //! パイプライン全体がクラッシュせず妥当な出力になることは`build_pdf`で
-//! 別途確認する。詳細設計は
-//! [0019](../../docs/decisions/0019-float-clear-position-relative-design.md)参照。
+//! 別途確認する。
 
 use std::collections::HashMap;
 
@@ -260,7 +259,7 @@ fn float_taller_than_a_page_spans_multiple_pages_end_to_end() {
     assert!(
         page_count > 1,
         "a float containing 20 items of 100px should overflow a single page \
-         ([0019]決定5: floatのページ跨ぎを許容する)"
+         (floatのページ跨ぎを許容する)"
     );
     assert!(bytes.starts_with(b"%PDF-"));
 }
@@ -336,8 +335,8 @@ fn float_content_is_reachable_on_the_page_it_spans() {
 
 #[test]
 fn a_float_without_width_shrinks_to_its_content() {
-    // [0047]: `width: auto`のfloatは内容(短いテキスト)に合わせて縮む。
-    // containing widthいっぱいには広がらない。
+    // `width: auto`のfloatは内容(短いテキスト)に合わせて縮む。containing
+    // widthいっぱいには広がらない。
     let (dom, laid) = layout(
         r#"<div class="f">hi</div><p>body text that wraps beside the float</p>"#,
         "body { margin: 0; } .f { float: left; }",

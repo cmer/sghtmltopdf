@@ -2,8 +2,7 @@
 //!
 //! `generated_content.rs`/`box_sizing.rs`と同じ方針: 実際のパイプライン
 //! (HTMLパース→スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を
-//! 検知する。設計は[0036](
-//! ../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)参照。
+//! 検知する。
 
 use std::collections::HashMap;
 
@@ -137,7 +136,7 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
 #[test]
 fn option_text_does_not_leak_into_the_document() {
     // 回帰テスト: UA規則が無いとフォームコントロールはインライン扱いになり、
-    // <option>のテキストが本文に流れ込んでいた([0036]決定7)。
+    // <option>のテキストが本文に流れ込んでいた。
     assert_eq!(
         text_of(
             r#"<p>before</p><select><option>A</option><option>B</option></select><p>after</p>"#
@@ -149,9 +148,9 @@ fn option_text_does_not_leak_into_the_document() {
 #[test]
 fn a_form_control_inside_a_paragraph_does_not_leak_text_into_the_flow() {
     // 元は「`collect_spans`が`display: none`を見ていなかったためコントロールの
-    // 中身が本文に漏れる」回帰テスト。M10カテゴリI([0043])でフォーム要素は
-    // `display: inline-block`の箱になったため、選択肢のテキストは箱の中に入り、
-    // 本文の行(runs)には現れない。
+    // 中身が本文に漏れる」回帰テスト。M10カテゴリIでフォーム要素は
+    // `display: inline-block`の箱になったため、選択肢のテキストは箱の中に
+    // 入り、本文の行(runs)には現れない。
     let text = text_of(r#"<p>a <select><option>INSIDE</option></select> b</p>"#);
     assert!(
         !text.contains("INSIDE"),
@@ -162,7 +161,7 @@ fn a_form_control_inside_a_paragraph_does_not_leak_text_into_the_flow() {
 
 #[test]
 fn svg_subtree_is_not_rendered() {
-    // <svg>を1つ非表示にすればサブツリー全体が消えることの確認([0036]決定2)。
+    // <svg>を1つ非表示にすればサブツリー全体が消えることの確認。
     assert_eq!(
         text_of(r#"<p>x</p><svg width="10" height="10"><text>LEAK</text></svg><p>y</p>"#),
         "xy"
@@ -190,7 +189,7 @@ fn hidden_attribute_hides_an_element() {
 
 #[test]
 fn author_css_can_override_the_hidden_attribute() {
-    // UA originはAuthor originに必ず負ける([0036]決定5)。
+    // UA originはAuthor originに必ず負ける。
     let (_, laid) = layout(
         r#"<p>a</p><p hidden>shown</p>"#,
         "[hidden] { display: block; }",
@@ -274,7 +273,7 @@ fn q_gets_automatic_quotation_marks() {
 #[test]
 fn ruby_annotation_stays_readable_as_parenthesised_fallback() {
     // ルビのレイアウトは非対応。rt/rpをインラインのまま出すことで、
-    // 「漢字(かんじ)」というフォールバック表記になる([0036]決定1)。
+    // 「漢字(かんじ)」というフォールバック表記になる。
     assert_eq!(
         text_of(r#"<p><ruby>A<rp>(</rp><rt>B</rt><rp>)</rp></ruby></p>"#),
         "A(B)"

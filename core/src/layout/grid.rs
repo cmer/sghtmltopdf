@@ -1,10 +1,10 @@
 //! CSS Grid(`display: grid`)を、既存box treeのサブツリーとしてtaffyへ
-//! ブリッジする。設計判断は[0054](../../../docs/decisions/0054-grid-design.md)。
+//! ブリッジする。
 //!
 //! taffyへの橋渡し(採寸コールバック・座標変換の2パス方式)はFlexboxと完全に
-//! 共通で、[`super::flex::layout_taffy_subtree`]に集約してある(決定1)。
-//! このモジュールが持つのは「CSSのgrid固有プロパティをtaffyの`Style`へ写す」
-//! 部分と、「レイアウト結果を行帯(ページ分割の単位)へ分類する」部分(決定6)。
+//! 共通で、[`super::flex::layout_taffy_subtree`]に集約してある。この
+//! モジュールが持つのは「CSSのgrid固有プロパティをtaffyの`Style`へ写す」
+//! 部分と、「レイアウト結果を行帯(ページ分割の単位)へ分類する」部分。
 
 use std::collections::HashMap;
 
@@ -21,13 +21,13 @@ use super::block::LaidOutBox;
 use super::box_tree::GridBox;
 use super::flex::{layout_taffy_subtree, TaffyMode};
 
-/// レイアウト済みのグリッド。ページ分割の単位である「行帯」の列を持つ(決定6)。
+/// レイアウト済みのグリッド。ページ分割の単位である「行帯」の列を持つ。
 #[derive(Debug, Clone)]
 pub struct LaidOutGrid {
     pub rows: Vec<LaidOutGridRow>,
 }
 
-/// グリッド1行分の帯。`top`/`bottom`は**絶対y座標**(他のレイアウト結果と
+/// グリッド1行分の帯。`top`/`bottom`は絶対y座標(他のレイアウト結果と
 /// 同じ座標空間。`shift_box_y`が他の座標と一緒に平行移動する)。
 #[derive(Debug, Clone)]
 pub struct LaidOutGridRow {
@@ -35,7 +35,7 @@ pub struct LaidOutGridRow {
     pub top: f32,
     pub bottom: f32,
     /// この行帯の下端をまたぐアイテムがあるか。`true`ならここでページを
-    /// 分割できない(テーブルの`rowspan`と同じ扱い、決定6)。
+    /// 分割できない(テーブルの`rowspan`と同じ扱い)。
     pub spans_bottom: bool,
 }
 
@@ -65,11 +65,11 @@ pub(super) fn layout_grid(
     (LaidOutGrid { rows }, result.container_height)
 }
 
-/// レイアウト済みアイテムを行帯へ分類する(決定6)。
+/// レイアウト済みアイテムを行帯へ分類する。
 ///
 /// taffyの`DetailedGridInfo::items`はグリッドの配置アルゴリズム内部の順序で
-/// 並んでおり、リーフの順序と対応する保証が無い。そのため**行トラックの
-/// 使用サイズから求めた帯の範囲**と、各アイテムの実際のy座標を突き合わせて
+/// 並んでおり、リーフの順序と対応する保証が無い。そのため行トラックの
+/// 使用サイズから求めた帯の範囲と、各アイテムの実際のy座標を突き合わせて
 /// 幾何的に判定する(アイテムの上端が入る帯に属させ、下端が帯を越えていれば
 /// `spans_bottom`を立てる)。
 fn group_into_rows(
@@ -171,7 +171,7 @@ pub(super) fn container_taffy_style(style: &ComputedStyle, content_width: f32) -
         grid_template_row_names: map_line_names(&style.grid_template_rows),
         justify_content: Some(super::flex::map_justify_content(style.justify_content)),
         align_content: Some(super::flex::map_align_content(style.align_content)),
-        // Gridでは`justify-items`/`align-items`の両方が意味を持つ(決定7)。
+        // Gridでは`justify-items`/`align-items`の両方が意味を持つ。
         justify_items: Some(map_align_items(style.justify_items)),
         align_items: Some(super::flex::map_align_items(style.align_items)),
         gap: tf::Size {
@@ -323,7 +323,7 @@ fn map_grid_line(line: &GridLine) -> tf::GridPlacement<String> {
 }
 
 /// `justify-items`はGridのインライン軸方向のアイテム配置。値の集合は
-/// `align-items`と共有する(決定7)。
+/// `align-items`と共有する。
 fn map_align_items(items: AlignItems) -> tf::AlignItems {
     super::flex::map_align_items(items)
 }

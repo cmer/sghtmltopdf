@@ -1,6 +1,5 @@
 //! `<a href>`のPDFリンク注釈のE2Eテスト(M10 カテゴリH、T242〜T248)。
 //!
-//! 設計は[0042](../../docs/decisions/0042-link-annotations-design.md)。
 //! 生成したPDFのバイト列から`/Annots`・`/URI`・`/Dest`・`/Dests`を読み出して
 //! 検証する(注釈は辞書オブジェクトなので、Flate圧縮されるコンテンツ
 //! ストリームと違ってそのまま検索できる)。
@@ -132,7 +131,7 @@ fn an_a_name_anchor_is_also_a_destination() {
         Mode::Batch,
     );
     // `<a name>`自身はインライン要素でボックスを持たないため位置を特定できず、
-    // 宛先は生成されない([0042]決定4の既知の限界)。リンク側は書かれる。
+    // 宛先は生成されない(既知の限界)。リンク側は書かれる。
     assert!(count_occurrences(&bytes, b"/Dest /a_legacy") >= 1);
 }
 

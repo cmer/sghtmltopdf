@@ -3,8 +3,7 @@
 //!
 //! `typography.rs`/`box_model.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→背景画像デコード→ページ分割→PDFエンコード)を通して
-//! 回帰を検知する。詳細設計は
-//! [0025](../../docs/decisions/0025-background-details-design.md)参照。
+//! 回帰を検知する。
 
 use std::path::PathBuf;
 
@@ -170,8 +169,8 @@ fn background_size_percentage_and_position_percentage_render_a_valid_pdf_end_to_
 
 #[test]
 fn background_attachment_fixed_still_renders_like_scroll_end_to_end() {
-    // [0025]決定5: `fixed`は`scroll`と同一視するため、クラッシュせず
-    // 通常通り1枚描画されるはず。
+    // `fixed`は`scroll`と同一視するため、
+    // クラッシュせず通常通り1枚描画されるはず。
     let css = format!(
         r#"body {{ margin: 0; }}
            .box {{

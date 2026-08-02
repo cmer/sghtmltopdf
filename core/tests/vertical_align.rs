@@ -1,8 +1,7 @@
 //! インライン文脈の`vertical-align`のE2Eテスト(M10 カテゴリG、T236〜T241)。
 //!
-//! 設計は[0041](../../docs/decisions/0041-inline-vertical-align-design.md)。
-//! `H<sub>2</sub>O`・上付き注番号のように、実務で使われる形が
-//! レイアウト結果とPDF出力の両方で意図どおりになることを確認する。
+//! `H<sub>2</sub>O`・上付き注番号のように、実務で使われる形がレイアウト結果と
+//! PDF出力の両方で意図どおりになることを確認する。
 
 use std::collections::HashMap;
 
@@ -64,7 +63,7 @@ fn first_line(laid: &LaidOutBox) -> LineBox {
     walk(laid).expect("no line box found")
 }
 
-/// 行内の`text`に一致するランの、**PDF上のベースライン**(行の上端からの距離、
+/// 行内の`text`に一致するランの、PDF上のベースライン(行の上端からの距離、
 /// 下向きが正)を返す。`baseline_shift`は上向きが正なので符号を反転して足す。
 fn run_baseline(line: &LineBox, text: &str) -> f32 {
     let run = line
@@ -131,7 +130,7 @@ fn a_superscript_grows_the_line_box_like_a_browser_does() {
 #[test]
 fn a_document_without_vertical_align_keeps_its_line_geometry() {
     // 回帰確認: `vertical-align`を使わない文書の行の高さ・ベースラインは
-    // 従来と同じ([0041]決定2)。
+    // 従来と同じ。
     let (dom, laid) = layout("<p>plain text only</p>", "p { line-height: 24px; }");
     let p = find_tag(&dom, dom.document(), "p").expect("p not found");
     let _ = p;
@@ -160,7 +159,7 @@ fn a_document_using_vertical_align_encodes_to_a_valid_pdf() {
     assert!(bytes.windows(5).any(|w| w == b"%%EOF"));
 }
 
-// ===== インライン要素の背景([0041]でランのメトリクスを持たせたことで実装可能に) =====
+// ===== インライン要素の背景 =====
 
 #[test]
 fn mark_paints_an_inline_background_behind_its_text() {

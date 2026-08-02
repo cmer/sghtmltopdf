@@ -1,7 +1,6 @@
 //! テーブルの行単位ページ分割のE2Eテスト(M11 カテゴリA、T255〜T262)。
 //!
-//! 設計は[0044](../../docs/decisions/0044-table-pagination-design.md)。
-//! **回帰の本体**: 実装前は「テーブルはページ分割に対してアトミック」だったため、
+//! 回帰の本体: 実装前は「テーブルはページ分割に対してアトミック」だったため、
 //! ページに収まらない行が描画されずに出力から失われ、空ページも生まれていた。
 
 use std::collections::HashMap;
@@ -291,7 +290,7 @@ fn a_table_that_fits_on_one_page_does_not_duplicate_its_header() {
 
 #[test]
 fn tfoot_is_moved_to_the_end_of_the_table() {
-    // HTML4では`<tfoot>`を`<tbody>`より前に書く決まりだった([0045]決定2)。
+    // HTML4では`<tfoot>`を`<tbody>`より前に書く決まりだった。
     let html_src = "<table>\
           <thead><tr><td>H</td></tr></thead>\
           <tfoot><tr><td>F</td></tr></tfoot>\

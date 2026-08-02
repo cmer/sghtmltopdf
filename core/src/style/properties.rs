@@ -23,16 +23,14 @@ pub enum PropertyDeclaration {
     Display(Display),
     Width(SpecifiedLengthPercentageOrAuto),
     Height(SpecifiedLengthPercentageOrAuto),
-    /// `min-width`/`min-height`。初期値`0`([0051](
-    /// ../../../docs/decisions/0051-min-max-size-design.md)決定1)。
+    /// `min-width`/`min-height`。初期値`0`。
     /// `auto`/`min-content`/`max-content`/`fit-content`は非対応。
     MinWidth(SpecifiedLengthPercentage),
     MinHeight(SpecifiedLengthPercentage),
     /// `max-width`/`max-height`。初期値`none`(上限なし)。
     MaxWidth(SpecifiedMaxSize),
     MaxHeight(SpecifiedMaxSize),
-    /// `aspect-ratio: auto || <ratio>`([0052](
-    /// ../../../docs/decisions/0052-aspect-ratio-design.md)決定1)。
+    /// `aspect-ratio: auto || <ratio>`。
     AspectRatio(AspectRatio),
     MarginTop(SpecifiedLengthPercentageOrAuto),
     MarginRight(SpecifiedLengthPercentageOrAuto),
@@ -70,14 +68,12 @@ pub enum PropertyDeclaration {
     BackgroundPosition(SpecifiedBackgroundPosition),
     BackgroundSize(SpecifiedBackgroundSize),
     BackgroundRepeat(BackgroundRepeat),
-    /// `fixed`は`scroll`と同一視して描画する([0025](
-    /// ../../../docs/decisions/0025-background-details-design.md)決定5)。
+    /// `fixed`は`scroll`と同一視して描画する。
     BackgroundAttachment(BackgroundAttachment),
     TextDecorationLine(TextDecorationLine),
-    /// `::before`/`::after`/`::first-letter`用の`content`。`None`は`none`/
-    /// `normal`(生成ボックスなし)。文字列リテラル・`attr()`・`counter()`/
-    /// `counters()`・引用符キーワードの連結に対応する([0024](
-    /// ../../../docs/decisions/0024-generated-content-design.md)決定1)。
+    /// `::before`/`::after`/`::first-letter`用の`content`。`None`は
+    /// `none`/`normal`(生成ボックスなし)。文字列リテラル・`attr`・
+    /// `counter`/`counters`・引用符キーワードの連結に対応する。
     Content(Option<Vec<ContentPart>>),
     BreakBefore(BreakBetween),
     BreakAfter(BreakBetween),
@@ -86,8 +82,7 @@ pub enum PropertyDeclaration {
     Widows(u32),
     Float(Float),
     Clear(Clear),
-    /// `static`/`relative`/`absolute`/`fixed`([0049](
-    /// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
+    /// `static`/`relative`/`absolute`/`fixed`。
     Position(Position),
     Top(SpecifiedLengthPercentageOrAuto),
     Right(SpecifiedLengthPercentageOrAuto),
@@ -109,42 +104,37 @@ pub enum PropertyDeclaration {
     VerticalAlign(SpecifiedVerticalAlign),
     ListStyleType(ListStyleType),
     ListStylePosition(ListStylePosition),
-    /// `url(...)`(生の値、解決は呼び出し側任せ)。`None`は`none`。
-    /// 実際には常に`list-style-type`のテキストマーカーへフォールバックし、
-    /// 画像マーカー自体は描画しない([0022](
-    /// ../../../docs/decisions/0022-list-style-design.md)決定5)。
+    /// `url(...)`(生の値、解決は呼び出し側任せ)。`None`は`none`。実際には常に
+    /// `list-style-type`のテキストマーカーへ
+    /// フォールバックし、画像マーカー自体は描画しない。
     ListStyleImage(Option<String>),
-    /// `hidden`/`scroll`/`auto`は全て同じクリップ処理として扱う([0023](
-    /// ../../../docs/decisions/0023-box-model-details-design.md)決定1)。
+    /// `hidden`/`scroll`/`auto`は全て同じクリップ処理として扱う。
     Overflow(Overflow),
-    /// `padding-box`(標準外)は非対応([0027](
-    /// ../../../docs/decisions/0027-box-sizing-design.md))。
+    /// `padding-box`(標準外)は非対応。
     BoxSizing(BoxSizing),
-    /// `position: static`の要素には効果を持たない(仕様通り、決定2)。
+    /// `position: static`の要素には効果を持たない(仕様通り)。
     ZIndex(ZIndex),
-    /// `collapse`は`hidden`と同一視する(決定4)。
+    /// `collapse`は`hidden`と同一視する。
     Visibility(Visibility),
     OutlineWidth(SpecifiedLength),
     /// `outline-style`。`auto`(UA依存の既定フォーカスリング)は非対応、
-    /// `border-style`と同じ値集合+`none`のみ受け付ける(決定3)。
+    /// `border-style`と同じ値集合+`none`のみ受け付ける。
     OutlineStyle(BorderStyle),
     OutlineColor(Color),
-    /// `counter-reset: name [value]`(複数併記可)。空のVecは`none`。[0024]決定2。
+    /// `counter-reset: name [value]`(複数併記可)。空のVecは`none`。
     CounterReset(Vec<(String, i32)>),
     /// `counter-increment: name [value]`(複数併記可、値省略時は1)。
     CounterIncrement(Vec<(String, i32)>),
-    /// `quotes`。`None`は`none`(常に空文字列を生成する、決定3)。
+    /// `quotes`。`None`は`none`(常に空文字列を生成する)。
     Quotes(Option<Vec<QuotePair>>),
-    /// `object-fit`。`<img>`にのみ意味を持つ([0030](
-    /// ../../../docs/decisions/0030-object-fit-position-design.md))。
+    /// `object-fit`。`<img>`にのみ意味を持つ。
     ObjectFit(ObjectFit),
     /// `object-position`。値の文法は`background-position`と同じため
-    /// `SpecifiedBackgroundPosition`を再利用する(決定1)。
+    /// `SpecifiedBackgroundPosition`を再利用する。
     ObjectPosition(SpecifiedBackgroundPosition),
-    /// `box-shadow`。カンマ区切りの複数指定(決定1)。
+    /// `box-shadow`。カンマ区切りの複数指定。
     BoxShadow(Vec<SpecifiedBoxShadow>),
-    /// `flex-direction`。flexコンテナ専用([0034](
-    /// ../../../docs/decisions/0034-flexbox-design.md)決定4)。
+    /// `flex-direction`。flexコンテナ専用。
     FlexDirection(FlexDirection),
     FlexWrap(FlexWrap),
     JustifyContent(JustifyContent),
@@ -159,46 +149,44 @@ pub enum PropertyDeclaration {
     FlexBasis(SpecifiedFlexBasis),
     RowGap(SpecifiedLengthPercentage),
     ColumnGap(SpecifiedLengthPercentage),
-    /// `transform`。空のVecは`none`([0035](
-    /// ../../../docs/decisions/0035-opacity-transform-design.md)決定1-1)。
+    /// `transform`。空のVecは`none`。
     Transform(Vec<SpecifiedTransformFunction>),
     /// `transform-origin`。値の文法が`background-position`と同じため
     /// `SpecifiedBackgroundPosition`を再利用する(初期値は`50% 50%`、
-    /// `background-position`の`0% 0%`とは個別に指定、決定1-1)。
+    /// `background-position`の`0% 0%`とは個別に指定)。
     TransformOrigin(SpecifiedBackgroundPosition),
-    /// `opacity`。0〜1にクランプ済み(決定2)。
+    /// `opacity`。0〜1にクランプ済み。
     Opacity(f32),
-    /// `text-shadow`。空のVecは`none`([0053](
-    /// ../../../docs/decisions/0053-text-details-design.md)決定1)。
+    /// `text-shadow`。空のVecは`none`。
     TextShadow(Vec<SpecifiedTextShadow>),
-    /// `text-overflow`。`<string>`指定は非対応(決定4)。
+    /// `text-overflow`。`<string>`指定は非対応。
     TextOverflow(TextOverflow),
-    /// `word-break`(決定3)。
+    /// `word-break`。
     WordBreak(WordBreak),
-    /// `overflow-wrap`(別名`word-wrap`)。`anywhere`は`break-word`と同一視(決定3)。
+    /// `overflow-wrap`(別名`word-wrap`)。`anywhere`は`break-word`と同一視。
     OverflowWrap(OverflowWrap),
-    /// `hyphens`。`auto`は`manual`と同じ挙動(決定2)。
+    /// `hyphens`。`auto`は`manual`と同じ挙動。
     Hyphens(Hyphens),
-    /// `text-emphasis-style`(決定6)。
+    /// `text-emphasis-style`。
     TextEmphasisStyle(EmphasisStyle),
     TextEmphasisColor(Color),
     TextEmphasisPosition(EmphasisPosition),
-    /// `grid-template-columns`/`grid-template-rows`([0054](
-    /// ../../../docs/decisions/0054-grid-design.md)決定3)。空の`TrackList`は`none`。
+    /// `grid-template-columns`/`grid-template-rows`。
+    /// 空の`TrackList`は`none`。
     GridTemplateColumns(SpecifiedTrackList),
     GridTemplateRows(SpecifiedTrackList),
     /// `grid-auto-columns`/`grid-auto-rows`。空のVecは初期値`auto`。
     GridAutoColumns(Vec<SpecifiedTrackSize>),
     GridAutoRows(Vec<SpecifiedTrackSize>),
     GridAutoFlow(GridAutoFlow),
-    /// `grid-template-areas`(決定4)。空のVecは`none`。
+    /// `grid-template-areas`。空のVecは`none`。
     GridTemplateAreas(Vec<GridArea>),
-    /// `grid-row-start`等の配置(決定5)。
+    /// `grid-row-start`等の配置。
     GridRowStart(GridLine),
     GridRowEnd(GridLine),
     GridColumnStart(GridLine),
     GridColumnEnd(GridLine),
-    /// `justify-items`/`justify-self`(Grid専用、決定7)。値の集合は
+    /// `justify-items`/`justify-self`(Grid専用)。値の集合は
     /// `align-items`/`align-self`と共有する。
     JustifyItems(AlignItems),
     JustifySelf(AlignSelf),
@@ -587,17 +575,16 @@ fn parse_border_style_shorthand<'i>(
     ])
 }
 
-/// `border-radius`ショートハンドの簡易実装。CSSの角丸半径は4値展開でも
-/// 「上→右→下→左」ではなく「左上→右上→右下→左下」の順序だが、
-/// `parse_four_sides`は値の個数に応じた展開規則(1〜4値)のみを担う汎用ヘルパーで
-/// 各スロットの意味には関与しないため、そのまま再利用できる。
-/// 楕円形(`/`区切りの水平・垂直別半径)は非対応(常に真円)。
-/// `border-radius`ショートハンドの簡易実装。CSSの角丸半径は4値展開でも
-/// 「上→右→下→左」ではなく「左上→右上→右下→左下」の順序だが、
-/// `parse_four_sides`は値の個数に応じた展開規則(1〜4値)のみを担う汎用ヘルパーで
-/// 各スロットの意味には関与しないため、そのまま再利用できる。`/`区切りで
-/// 水平・垂直の半径を別々に指定する楕円構文に対応する([0023](
-/// ../../../docs/decisions/0023-box-model-details-design.md)決定6)。
+/// `border-radius`ショートハンドの簡易実装。CSSの角丸半径は4値展開でも「上→
+/// 右→下→左」ではなく「左上→右上→右下→左下」の順序だが、
+/// `parse_four_sides`は値の個数に応じた展開規則(1〜4値)のみを担う汎用
+/// ヘルパーで各スロットの意味には関与しないため、そのまま再利用できる。楕円形
+/// (`/`区切りの水平・垂直別半径)は非対応(常に真円)。`border-radius`
+/// ショートハンドの簡易実装。CSSの角丸半径は4値展開でも「上→右→下→左」
+/// ではなく「左上→右上→右下→左下」の順序だが、`parse_four_sides`は値の
+/// 個数に応じた展開規則(1〜4値)のみを担う汎用ヘルパーで各スロットの意味には
+/// 関与しないため、そのまま再利用できる。`/`区切りで水平・垂直の半径を別々に
+/// 指定する楕円構文に対応する。
 fn parse_border_radius_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
@@ -631,7 +618,7 @@ fn parse_border_radius_shorthand<'i>(
 }
 
 /// `border-top-left-radius`等のロングハンド。`<length>{1,2}`(水平, 垂直の順、
-/// 省略時は水平と同じ=真円)を受け付ける([0021]の`border-spacing`と同じパターン)。
+/// 省略時は水平と同じ=真円)を受け付ける(`border-spacing`と同じパターン)。
 fn parse_corner_radius<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedCornerRadius, ParseError<'i, ()>> {
@@ -644,8 +631,7 @@ fn parse_corner_radius<'i>(
 }
 
 /// `border-style`/`outline-style`共通のキーワード。`groove`/`ridge`/`inset`/
-/// `outset`(border-colorから2階調の疑似立体陰影を算出する)は[0023]決定5で対応
-/// (既存の非対応方針から変更、ユーザー確認済み)。
+/// `outset`(border-colorから2階調の疑似立体陰影を算出する)にも対応する。
 fn parse_border_style_keyword<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<BorderStyle, ParseError<'i, ()>> {
@@ -664,8 +650,7 @@ fn parse_border_style_keyword<'i>(
     })
 }
 
-/// `overflow`。`hidden`/`scroll`/`auto`は全て同じクリップ処理として扱う
-/// ([0023]決定1)。
+/// `overflow`。`hidden`/`scroll`/`auto`は全て同じクリップ処理として扱う。
 fn parse_overflow<'i>(input: &mut Parser<'i, '_>) -> Result<Overflow, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -677,7 +662,7 @@ fn parse_overflow<'i>(input: &mut Parser<'i, '_>) -> Result<Overflow, ParseError
     })
 }
 
-/// `box-sizing`。`padding-box`(標準外)は非対応([0027]決定1)。
+/// `box-sizing`。`padding-box`(標準外)は非対応。
 fn parse_box_sizing<'i>(input: &mut Parser<'i, '_>) -> Result<BoxSizing, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -698,7 +683,7 @@ fn parse_z_index<'i>(input: &mut Parser<'i, '_>) -> Result<ZIndex, ParseError<'i
     Ok(ZIndex::Value(input.expect_integer()?))
 }
 
-/// `visibility`。`collapse`は`hidden`と同一視する([0023]決定4)。
+/// `visibility`。`collapse`は`hidden`と同一視する。
 fn parse_visibility<'i>(input: &mut Parser<'i, '_>) -> Result<Visibility, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -711,7 +696,7 @@ fn parse_visibility<'i>(input: &mut Parser<'i, '_>) -> Result<Visibility, ParseE
 
 /// `outline`ショートハンドの簡易実装。`outline-width`/`outline-style`/
 /// `outline-color`を任意の順序・任意の省略で受け付ける(`border`ショートハンドと
-/// 同じパターン)。`outline-offset`は非対応、常に0固定([0023]決定3)。
+/// 同じパターン)。`outline-offset`は非対応、常に0固定。
 fn parse_outline_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
@@ -859,12 +844,10 @@ fn parse_empty_cells<'i>(input: &mut Parser<'i, '_>) -> Result<EmptyCells, Parse
     })
 }
 
-/// `vertical-align`。テーブルセル文脈専用と割り切る([0021]決定4)。
-/// `sub`/`super`/`text-top`/`text-bottom`/`<length>`/`<percentage>`
-/// (インライン文脈向けの値)は非対応。
-/// `vertical-align`。キーワード([0041](
-/// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定3)または
-/// 長さ・パーセンテージ。
+/// `vertical-align`。テーブルセル文脈専用と割り切る。
+/// `sub`/`super`/`text-top`/`text-bottom`/`<length>`/`<percentage>`(インライ
+/// ン文脈向けの値)は非対応。`vertical-align`。
+/// キーワードまたは長さ・パーセンテージ。
 fn parse_vertical_align<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedVerticalAlign, ParseError<'i, ()>> {
@@ -898,7 +881,7 @@ fn parse_display<'i>(input: &mut Parser<'i, '_>) -> Result<Display, ParseError<'
         "table-caption" => Display::TableCaption,
         "list-item" => Display::ListItem,
         "flex" => Display::Flex,
-        // `inline-grid`は非対応(`inline-flex`と同じ既知の簡略化、[0054]決定2)。
+        // `inline-grid`は非対応(`inline-flex`と同じ既知の簡略化)。
         "grid" => Display::Grid,
         "none" => Display::None,
         _ => return Err(input.new_custom_error(())),
@@ -936,21 +919,21 @@ fn parse_list_style_position<'i>(
 }
 
 /// `list-style-image`。`background-image`と同じ`url(...) | none`の形。
-/// 実際には常に`list-style-type`へフォールバックし描画には使わない
-/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定5)。
+/// 実際には常に`list-style-type`へフォールバックし描画には使わない。
 fn parse_list_style_image<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Option<String>, ParseError<'i, ()>> {
     parse_background_image(input)
 }
 
-/// `list-style`ショートハンドの簡易実装。`list-style-type`/
-/// `list-style-position`/`list-style-image`を任意の順序・任意の省略で受け付ける
-/// (`border`ショートハンドと同じパターン、[0022]決定6)。`none`は`list-style-type`/
-/// `list-style-image`のどちらの値としても妥当なため、まだ確定していない方の
-/// スロットから順に埋める(`type`未確定なら`type: none`、確定済みなら
-/// `image: none`)。これにより`list-style: square none`(type=square,
-/// image=none)と`list-style: none`(両方none)のどちらも正しく解決できる。
+/// `list-style`ショートハンドの簡易実装。
+/// `list-style-type`/`list-style-position`/`list-style-image`を任意の順序・
+/// 任意の省略で受け付ける(`border`ショートハンドと同じパターン)。`none`は
+/// `list-style-type`/`list-style-image`のどちらの値としても妥当なため、まだ
+/// 確定していない方のスロットから順に埋める(`type`未確定なら`type: none`、
+/// 確定済みなら`image: none`)。これにより
+/// `list-style: square none`(type=square, image=none)と
+/// `list-style: none`(両方none)のどちらも正しく解決できる。
 fn parse_list_style_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
@@ -1119,7 +1102,7 @@ fn parse_text_decoration_line<'i>(
 fn parse_length_percentage<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedLengthPercentage, ParseError<'i, ()>> {
-    // `calc(...)`([0050](../../../docs/decisions/0050-calc-design.md))。
+    // `calc(...)`。
     if let Ok(calc) = input.try_parse(parse_calc) {
         return Ok(SpecifiedLengthPercentage::Calc(calc));
     }
@@ -1140,7 +1123,7 @@ fn parse_length_percentage<'i>(
     }
 }
 
-/// `calc()`の計算途中値([0050]決定3)。長さ次元(px/em/rem)・パーセンテージ・
+/// `calc`の計算途中値。長さ次元(px/em/rem)・パーセンテージ・
 /// 純粋な数値の線形結合を保持する。
 #[derive(Debug, Clone, Copy, Default)]
 struct CalcValue {
@@ -1184,8 +1167,8 @@ impl CalcValue {
     }
 }
 
-/// `calc(...)`を[`SpecifiedCalc`]へパースする([0050]決定3)。裸の数値が
-/// 残る式(長さとして無効)はエラーにする。`min()`/`max()`/`clamp()`は非対応。
+/// `calc(...)`を[`SpecifiedCalc`]へパースする。裸の数値が残る式(長さとして
+/// 無効)はエラーにする。`min`/`max`/`clamp`は非対応。
 fn parse_calc<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedCalc, ParseError<'i, ()>> {
     input.expect_function_matching("calc")?;
     let value = input.parse_nested_block(parse_calc_sum)?;
@@ -1297,10 +1280,9 @@ fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseEr
     }
 }
 
-/// `aspect-ratio: auto || <ratio>`([0052](
-/// ../../../docs/decisions/0052-aspect-ratio-design.md)決定1)。`auto`と`<ratio>`は
-/// 順序を問わず併記できる。`<ratio>`は`<number> [ / <number> ]?`(分母省略時は1)で、
-/// 0や負の数を含む比(degenerate ratio)は無効=宣言ごと無視する(CSS仕様通り)。
+/// `aspect-ratio: auto || <ratio>`。`auto`と`<ratio>`は順序を問わず
+/// 併記できる。`<ratio>`は`<number> [ / <number> ]?`(分母省略時は1)で、0や
+/// 負の数を含む比(degenerate ratio)は無効=宣言ごと無視する(CSS仕様通り)。
 fn parse_aspect_ratio<'i>(input: &mut Parser<'i, '_>) -> Result<AspectRatio, ParseError<'i, ()>> {
     let mut auto = false;
     let mut ratio = None;
@@ -1344,8 +1326,7 @@ fn parse_ratio<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>
     Ok(width / height)
 }
 
-/// `max-width`/`max-height`。`none | <length-percentage>`([0051](
-/// ../../../docs/decisions/0051-min-max-size-design.md)決定1)。
+/// `max-width`/`max-height`。`none | <length-percentage>`。
 /// `min-content`/`max-content`/`fit-content`は非対応。
 fn parse_max_size<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedMaxSize, ParseError<'i, ()>> {
     if input
@@ -1402,9 +1383,8 @@ fn parse_length_unit<'i>(
     }
 }
 
-/// `lab()`/`lch()`/`oklab()`/`oklch()`は`cssparser-color`がsRGB変換関数を
-/// 公開していないため、`palette`クレートで変換する
-/// ([0029](../../../../docs/decisions/0029-color-level4-design.md)参照)。
+/// `lab`/`lch`/`oklab`/`oklch`は`cssparser-color`がsRGB変換関数を
+/// 公開していないため、`palette`クレートで変換する。
 fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
     let color = cssparser_color::Color::parse(input).map_err(|_| input.new_custom_error(()))?;
     match color {
@@ -1498,7 +1478,7 @@ fn rgba_from_unit_floats(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
     }
 }
 
-/// `object-fit`。[0030](../../../docs/decisions/0030-object-fit-position-design.md)決定1。
+/// `object-fit`。
 fn parse_object_fit<'i>(input: &mut Parser<'i, '_>) -> Result<ObjectFit, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -1511,8 +1491,7 @@ fn parse_object_fit<'i>(input: &mut Parser<'i, '_>) -> Result<ObjectFit, ParseEr
     })
 }
 
-/// `box-shadow: none | <shadow>#`([0032](
-/// ../../../docs/decisions/0032-box-shadow-design.md)決定1)。
+/// `box-shadow: none | <shadow>#`。
 fn parse_box_shadow<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<SpecifiedBoxShadow>, ParseError<'i, ()>> {
@@ -1597,10 +1576,9 @@ fn parse_box_shadow_lengths<'i>(
     Ok((offset_x, offset_y, blur_radius, spread_radius))
 }
 
-/// `content`。文字列リテラル・`attr()`・`counter()`/`counters()`・引用符
-/// キーワードの列を受け付け、任意個連結できる([0024](
-/// ../../../docs/decisions/0024-generated-content-design.md)決定1)。
-/// `none`/`normal`は「生成ボックスなし」を表す`None`として扱う。
+/// `content`。文字列リテラル・`attr`・`counter`/`counters`・引用符
+/// キーワードの列を受け付け、任意個連結できる。`none`/`normal`は「生成
+/// ボックスなし」を表す`None`として扱う。
 fn parse_content<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Option<Vec<ContentPart>>, ParseError<'i, ()>> {
@@ -1718,7 +1696,7 @@ fn parse_counter_list<'i>(
     Ok(result)
 }
 
-/// `quotes`。`none`は`None`(常に空文字列を生成する、[0024]決定3)、それ以外は
+/// `quotes`。`none`は`None`(常に空文字列を生成する)、それ以外は
 /// `"開き" "閉じ"`のペアの繰り返し(ネスト深度が浅い順)。
 fn parse_quotes<'i>(
     input: &mut Parser<'i, '_>,
@@ -1766,8 +1744,7 @@ fn parse_background_image<'i>(
 
 /// `background-position`の1コンポーネント。`left`/`right`は水平軸、
 /// `top`/`bottom`は垂直軸を確定させる。`center`・長さ・パーセンテージは
-/// どちらの軸にもなり得る([0025](../../../docs/decisions/0025-background-details-design.md)
-/// 決定2)。
+/// どちらの軸にもなり得る。
 enum BackgroundPositionComponent {
     Horizontal(SpecifiedLengthPercentage),
     Vertical(SpecifiedLengthPercentage),
@@ -1792,7 +1769,7 @@ fn parse_background_position_component<'i>(
 }
 
 /// `background-position`。1〜2値、キーワード(`left`/`center`/`right`/`top`/
-/// `bottom`)と長さ・パーセンテージの組み合わせを受け付ける(決定2)。
+/// `bottom`)と長さ・パーセンテージの組み合わせを受け付ける。
 fn parse_background_position<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedBackgroundPosition, ParseError<'i, ()>> {
@@ -1872,7 +1849,7 @@ fn parse_background_repeat<'i>(
     })
 }
 
-/// `background-attachment`。`fixed`は`scroll`と同一視して描画する(決定5)。
+/// `background-attachment`。`fixed`は`scroll`と同一視して描画する。
 fn parse_background_attachment<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<BackgroundAttachment, ParseError<'i, ()>> {
@@ -1884,12 +1861,12 @@ fn parse_background_attachment<'i>(
     })
 }
 
-/// `background`ショートハンドの簡易実装。`color`/`image`/`repeat`/
-/// `attachment`/`position`(`/`区切りで直後に`size`)を任意の順序で受け付ける
-/// (`border`ショートハンドと同じ「ループでどの種類の値か`try_parse`で判定」
-/// 方式)。仕様通り、指定されなかったロングハンドは全て初期値へリセットする
-/// (決定6。`border`/`list-style`ショートハンドとは異なり、以前の宣言を
-/// 引きずらない)。
+/// `background`ショートハンドの簡易実装。
+/// `color`/`image`/`repeat`/`attachment`/`position`(`/`区切りで直後に`size`)
+/// を任意の順序で受け付ける(`border`ショートハンドと同じ「ループでどの種類の
+/// 値か`try_parse`で判定」方式)。仕様通り、指定されなかったロングハンドは全て
+/// 初期値へリセットする(`border`/`list-style`
+/// ショートハンドとは異なり、以前の宣言を引きずらない)。
 fn parse_background_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
@@ -2004,8 +1981,7 @@ fn parse_flex_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<FlexWrap, ParseErro
 }
 
 /// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフロー
-/// キーワードは非対応(既知の簡略化、[0034](
-/// ../../../docs/decisions/0034-flexbox-design.md)決定4)。
+/// キーワードは非対応(既知の簡略化)。
 fn parse_justify_content<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<JustifyContent, ParseError<'i, ()>> {
@@ -2072,7 +2048,7 @@ fn parse_non_negative_number<'i>(input: &mut Parser<'i, '_>) -> Result<f32, Pars
 }
 
 /// `flex-basis: auto | content | <length-percentage>`。`content`は`auto`と
-/// 同一視する(既知の簡略化、[0034]決定)。
+/// 同一視する(既知の簡略化)。
 fn parse_flex_basis<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedFlexBasis, ParseError<'i, ()>> {
@@ -2160,8 +2136,7 @@ fn parse_gap_shorthand<'i>(
     Ok(vec![D::RowGap(row), D::ColumnGap(column)])
 }
 
-/// `transform: none | <transform-function>+`([0035](
-/// ../../../docs/decisions/0035-opacity-transform-design.md)決定1-1)。
+/// `transform: none | <transform-function>+`。
 fn parse_transform<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<SpecifiedTransformFunction>, ParseError<'i, ()>> {
@@ -2273,8 +2248,7 @@ fn parse_angle_radians<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError
     }
 }
 
-/// `grid-template-columns`/`grid-template-rows`([0054](
-/// ../../../docs/decisions/0054-grid-design.md)決定3)。
+/// `grid-template-columns`/`grid-template-rows`。
 /// `none | [ <line-names>? <track-size> | <repeat> ]+ <line-names>?`
 fn parse_track_list<'i>(
     input: &mut Parser<'i, '_>,
@@ -2326,7 +2300,7 @@ fn parse_line_names(input: &mut Parser<'_, '_>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `repeat( [ <integer> | auto-fill | auto-fit ] , <track-list> )`(決定3)。
+/// `repeat( [ <integer> | auto-fill | auto-fit ] , <track-list> )`。
 fn parse_track_repeat<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedTrackComponent, ParseError<'i, ()>> {
@@ -2365,7 +2339,7 @@ fn parse_track_repeat<'i>(
 }
 
 /// `<track-size> = <track-breadth> | minmax(<inflexible>, <track-breadth>) |
-/// fit-content(<length-percentage>)`(決定3)。
+/// fit-content(<length-percentage>)`。
 fn parse_track_size<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedTrackSize, ParseError<'i, ()>> {
@@ -2478,7 +2452,7 @@ fn parse_grid_auto_flow<'i>(
     })
 }
 
-/// `grid-row-start`等([0054]決定5)。
+/// `grid-row-start`等。
 /// `auto | <integer> | span <integer> | <custom-ident> | span <custom-ident>`
 fn parse_grid_line<'i>(input: &mut Parser<'i, '_>) -> Result<GridLine, ParseError<'i, ()>> {
     if input
@@ -2588,9 +2562,8 @@ fn parse_grid_area_shorthand<'i>(
     ])
 }
 
-/// `grid-template-areas: none | <string>+`([0054]決定4)。
-/// 各行の列数が揃っていること・同じ名前のセルが矩形を成すことを検証し、
-/// 違反したら宣言ごと無視する(`Err`)。
+/// `grid-template-areas: none | <string>+`。各行の列数が揃っていること・同じ
+/// 名前のセルが矩形を成すことを検証し、違反したら宣言ごと無視する(`Err`)。
 fn parse_grid_template_areas<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<GridArea>, ParseError<'i, ()>> {
@@ -2651,7 +2624,7 @@ fn parse_grid_template_areas<'i>(
         .map(
             |(name, row_start, row_end, column_start, column_end)| GridArea {
                 name,
-                // taffyの`GridTemplateArea`は**1-indexedのグリッドライン番号**で
+                // taffyの`GridTemplateArea`は1-indexedのグリッドライン番号で
                 // 持つ(エリアの`-start`/`-end`暗黙ライン名がこの番号で登録される)。
                 // 0-indexedのセル座標から、開始は+1、終端は+2(終端セルの次の
                 // ライン)へ変換する。
@@ -2664,9 +2637,8 @@ fn parse_grid_template_areas<'i>(
         .collect())
 }
 
-/// `text-shadow: none | <shadow>#`([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定1)。`box-shadow`と
-/// 違いspread・insetを持たない。
+/// `text-shadow: none | <shadow>#`。
+/// `box-shadow`と違いspread・insetを持たない。
 fn parse_text_shadow<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<SpecifiedTextShadow>, ParseError<'i, ()>> {
@@ -2725,7 +2697,7 @@ fn parse_text_shadow_lengths<'i>(
     Ok((offset_x, offset_y, blur_radius))
 }
 
-/// `text-overflow: clip | ellipsis`([0053]決定4)。
+/// `text-overflow: clip | ellipsis`。
 fn parse_text_overflow<'i>(input: &mut Parser<'i, '_>) -> Result<TextOverflow, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -2735,9 +2707,9 @@ fn parse_text_overflow<'i>(input: &mut Parser<'i, '_>) -> Result<TextOverflow, P
     })
 }
 
-/// `word-break: normal | break-all | keep-all`([0053]決定3)。
-/// `break-word`(非推奨値)は`overflow-wrap: break-word`相当だが、
-/// プロパティをまたぐ変換になるため受け付けない(既知の簡略化)。
+/// `word-break: normal | break-all | keep-all`。`break-word`(非推奨値)は
+/// `overflow-wrap: break-word`相当だが、プロパティをまたぐ変換になるため受け
+/// 付けない(既知の簡略化)。
 fn parse_word_break<'i>(input: &mut Parser<'i, '_>) -> Result<WordBreak, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -2748,7 +2720,7 @@ fn parse_word_break<'i>(input: &mut Parser<'i, '_>) -> Result<WordBreak, ParseEr
     })
 }
 
-/// `overflow-wrap: normal | break-word | anywhere`([0053]決定3)。
+/// `overflow-wrap: normal | break-word | anywhere`。
 fn parse_overflow_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<OverflowWrap, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -2759,8 +2731,8 @@ fn parse_overflow_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<OverflowWrap, P
     })
 }
 
-/// `hyphens: none | manual | auto`([0053]決定2)。`auto`は辞書を持たないため
-/// `manual`と同じ挙動になる。
+/// `hyphens: none | manual | auto`。`auto`は
+/// 辞書を持たないため`manual`と同じ挙動になる。
 fn parse_hyphens<'i>(input: &mut Parser<'i, '_>) -> Result<Hyphens, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
@@ -2770,9 +2742,8 @@ fn parse_hyphens<'i>(input: &mut Parser<'i, '_>) -> Result<Hyphens, ParseError<'
     })
 }
 
-/// `text-emphasis-style`([0053]決定6)。
-/// `none | [ filled | open ] || [ dot | circle | double-circle | triangle |
-/// sesame ] | <string>`。
+/// `text-emphasis-style`。
+/// `none | [ filled | open ] || [ dot | circle | double-circle | triangle | sesame ] | <string>`。
 fn parse_text_emphasis_style<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<EmphasisStyle, ParseError<'i, ()>> {
@@ -2835,7 +2806,7 @@ fn parse_text_emphasis_style<'i>(
 }
 
 /// `text-emphasis-position`。横書きでは`over`/`under`のみが意味を持つため、
-/// `right`/`left`は受理した上で読み飛ばす([0053]決定1)。
+/// `right`/`left`は受理した上で読み飛ばす。
 fn parse_text_emphasis_position<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<EmphasisPosition, ParseError<'i, ()>> {
@@ -2888,7 +2859,7 @@ fn parse_text_emphasis_shorthand<'i>(
     ])
 }
 
-/// `opacity: <number> | <percentage>`。0〜1にクランプする(決定2)。
+/// `opacity: <number> | <percentage>`。0〜1にクランプする。
 fn parse_opacity<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
     let token = input.next()?.clone();
     let value = match token {

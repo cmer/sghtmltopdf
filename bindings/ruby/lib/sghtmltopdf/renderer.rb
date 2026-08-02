@@ -7,12 +7,12 @@ module Sghtmltopdf
   # * レスポンスの組み立て(`send_data`)へ渡すもの
   # * PDF変換(`Sghtmltopdf.render`)へ渡すもの
   #
-  # の3つに振り分ける(docs/decisions/0062-ruby-binding.md 決定7)。
+  # の3つに振り分ける。
   #
-  # 振り分けは「Railsのキーとレスポンスのキーだけを列挙し、**残りは全部変換
-  # オプション**とみなす」方式にしている。変換オプションのホワイトリストを
+  # 振り分けは「Railsのキーとレスポンスのキーだけを列挙し、残りは全部変換
+  # オプションとみなす」方式にしている。変換オプションのホワイトリストを
   # 持たないのは、オプション定義をRust側(`cli/options.rs`)の1箇所に集約する
-  # 方針(決定2)のため。未知のキーはclapが`UsageError`として報告する。
+  # 方針のため。未知のキーはclapが`UsageError`として報告する。
   #
   # Railsに依存しないpure Rubyのクラスなので、Rails無しでも単体テストできる。
   class Renderer

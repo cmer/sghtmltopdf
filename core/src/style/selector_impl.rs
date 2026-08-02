@@ -70,8 +70,8 @@ impl<'i> parser::Parser<'i> for SelectorParser {
     }
 
     /// `::before`/`::after`/`::first-letter`に対応する。`::first-line`は
-    /// 非対応([0024](../../../docs/decisions/0024-generated-content-design.md)、
-    /// 行分割結果に依存するスタイル適用の実装コストが突出するため見送り)。
+    /// 非対応(行分割結果に依存するスタイル
+    /// 適用の実装コストが突出するため見送り)。
     fn parse_pseudo_element(
         &self,
         location: SourceLocation,
@@ -186,8 +186,7 @@ impl ToCss for NonTSPseudoClass {
 }
 
 /// 擬似要素。`::before`/`::after`(`content`宣言と組み合わせた生成コンテンツ)・
-/// `::first-letter`(限定的なプロパティのみの上書きスタイル、[0024](
-/// ../../../docs/decisions/0024-generated-content-design.md)決定4)に対応する。
+/// `::first-letter`(限定的なプロパティのみの上書きスタイル)に対応する。
 /// `::first-line`は非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PseudoElement {

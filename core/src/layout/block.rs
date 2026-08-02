@@ -31,7 +31,6 @@ use super::inline::{apply_text_overflow, finish_line, layout_inline_content, sha
 use super::table::layout_table;
 
 /// マーカー(`list-style-position: outside`)と内容のcontent edgeの間の固定の隙間(px)。
-/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
 const LIST_MARKER_GAP: f32 = 8.0;
 
 #[derive(Debug, Clone)]
@@ -53,17 +52,13 @@ pub struct LaidOutBox {
     /// フラグメントを持つことはない)。
     pub has_visible_decoration: bool,
     /// `float: left/right`が指定されている要素かどうか。`paginate.rs`が
-    /// フロー外要素として特別扱いする判定に使う
-    /// ([0019](../../../docs/decisions/0019-float-clear-position-relative-design.md)
-    /// 決定3/決定5)。
+    /// フロー外要素として特別扱いする判定に使う。
     pub is_float: bool,
     pub content: LaidOutContent,
     /// `display: list-item`のマーカー(箇条書きの記号・番号)。シェイピング済み
-    /// `TextRun`1つを持つ`LineBox`として表現し、`pdf::document::render_line`を
-    /// そのまま再利用して描画する([0022](
-    /// ../../../docs/decisions/0022-list-style-design.md)決定4)。ページ分割で
-    /// このボックスが複数ページにまたがる場合、先頭フラグメントにのみ残す
-    /// (`paginate.rs`)。
+    /// `TextRun`1つを持つ`LineBox`として表現し、`pdf::document::render_line`
+    /// をそのまま再利用して描画する。ページ分割でこのボックスが複数
+    /// ページにまたがる場合、先頭フラグメントにのみ残す(`paginate.rs`)。
     pub marker: Option<LineBox>,
 }
 
@@ -103,10 +98,9 @@ pub enum LaidOutContent {
     Table(LaidOutTable),
     /// `display: flex`。`Blocks`と同じ形(taffyが確定した位置・サイズで
     /// 既にレイアウト済みの`LaidOutBox`の並び)で十分なため、`Table`のような
-    /// 専用構造体は作らない([0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
+    /// 専用構造体は作らない。
     Flex(Vec<LaidOutBox>),
-    /// `display: grid`。ページ分割の単位である行帯を持つ([0054](
-    /// ../../../docs/decisions/0054-grid-design.md)決定6)。
+    /// `display: grid`。ページ分割の単位である行帯を持つ。
     Grid(LaidOutGrid),
     /// `<img>`。フェッチ・デコードに失敗していれば`None`
     /// (空の置換要素として扱い、何も描画しない)。
@@ -128,23 +122,21 @@ pub struct LaidOutTable {
 pub struct LaidOutTableRow {
     pub node: NodeId,
     pub cells: Vec<LaidOutBox>,
-    /// この行が属するセクション([0045](
-    /// ../../../docs/decisions/0045-table-header-repetition-design.md)決定1)。
-    /// `paginate`が`<thead>`の行を各ページの先頭へ複製するために使う。
+    /// この行が属するセクション。`paginate`が`<thead>`の
+    /// 行を各ページの先頭へ複製するために使う。
     pub section: TableSection,
 }
 
-/// 絶対配置([0049](
-/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))された
-/// ボックス1つ分。`laid`はcontaining block基準(絶対座標)でレイアウト済みで、
-/// ページ分割層がこれを属するページへオーバーレイとして配置する。
+/// 絶対配置されたボックス1つ分。`laid`はcontaining block基準(絶対座標)で
+/// レイアウト済みで、ページ分割層がこれを
+/// 属するページへオーバーレイとして配置する。
 #[derive(Debug, Clone)]
 pub struct PositionedBox {
     pub laid: LaidOutBox,
     pub kind: PositionedKind,
 }
 
-/// 絶対配置ボックスの配置先の種別([0049]決定2)。
+/// 絶対配置ボックスの配置先の種別。
 #[derive(Debug, Clone, Copy)]
 pub enum PositionedKind {
     /// `position: fixed`。全ページのコンテンツ領域に、レイアウト時の座標
@@ -162,8 +154,8 @@ pub enum PositionedKind {
     },
 }
 
-/// レイアウト中に持ち回る絶対配置のコンテキスト([0049])。`float_ctx`と
-/// 同じく`&mut`で子孫へ渡す。
+/// レイアウト中に持ち回る絶対配置のコンテキスト。
+/// `float_ctx`と同じく`&mut`で子孫へ渡す。
 pub(super) struct PosCtx<'a> {
     /// 現在の`absolute`のcontaining block(最も近いpositioned祖先の
     /// padding box、無ければ最初のページのコンテンツ領域)。
@@ -195,10 +187,8 @@ impl<'a> PosCtx<'a> {
 }
 
 /// [`layout_document`]の絶対配置対応版。通常フローの`LaidOutBox`と、
-/// 絶対配置ボックス([`PositionedBox`])のリストを返す([0049](
-/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
-/// `page_size`は`(content_width, content_height)`で、`fixed`のcontaining
-/// blockとして使う。
+/// 絶対配置ボックス([`PositionedBox`])のリストを返す。`page_size`は
+/// `(content_width, content_height)`で、`fixed`のcontaining blockとして使う。
 pub fn layout_document_positioned(
     root: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -254,8 +244,8 @@ pub fn layout_document_from(
     )
 }
 
-/// [`layout_document_from`]の絶対配置対応版。`pos`に絶対配置ボックスを集める
-/// ([0049](../../../docs/decisions/0049-absolute-fixed-positioning-design.md))。
+/// [`layout_document_from`]の絶対配置対応版。
+/// `pos`に絶対配置ボックスを集める。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_document_from_positioned(
     root: &LayoutBox,
@@ -267,7 +257,7 @@ pub(super) fn layout_document_from_positioned(
     pos: &mut PosCtx,
 ) -> LaidOutBox {
     // `layout_document`/`layout_document_from`1回の呼び出し全体で1つの
-    // `FloatContext`を共有する([0019]決定1)。
+    // `FloatContext`を共有する。
     let mut float_ctx = FloatContext::new();
     layout_box(
         root,
@@ -339,10 +329,9 @@ pub(super) fn layout_box_with_forced_width(
 
 /// `layout_box_with_forced_width`の高さ版拡張。幅・高さの両方を強制する
 /// ([`super::flex`]専用)。taffyが確定した各flexアイテムの幅・高さで実際の
-/// `LaidOutBox`を得る最終レイアウトパスに使う([0034](
-/// ../../../docs/decisions/0034-flexbox-design.md)決定2)。`align-items:
-/// stretch`(既定値)でtaffyがアイテムをコンテナの高さへ引き伸ばした場合、
-/// この高さ強制によって背景色・枠線も引き伸ばされた高さ分だけ描画される。
+/// `LaidOutBox`を得る最終レイアウトパスに使う。`align-items: stretch`(既定値)
+/// でtaffyがアイテムをコンテナの高さへ引き伸ばした場合、この高さ強制によって
+/// 背景色・枠線も引き伸ばされた高さ分だけ描画される。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_with_forced_size(
     b: &LayoutBox,
@@ -371,9 +360,8 @@ pub(super) fn layout_box_with_forced_size(
 }
 
 /// `table`/`flex`/`inline`のセル・アイテム・アトミックボックスから呼ぶ、
-/// 絶対配置を集めない版のラッパー([0049](
-/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定5:
-/// これらのフォーマッティングコンテキスト内の`absolute`/`fixed`は非対応)。
+/// 絶対配置を集めない版のラッパー(これらのフォーマッティングコンテキスト
+/// 内の`absolute`/`fixed`は非対応)。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_box_ignoring_positioned(
     b: &LayoutBox,
@@ -452,14 +440,12 @@ pub(super) fn layout_box_with_forced_size_ignoring_positioned(
     )
 }
 
-/// `b`のcontent幅・margin・padding・borderを解決する(置換要素のauto-size適用込み)。
-/// `layout_box_impl`本体と、float配置のための事前幅計算(`layout_float_child`)の
-/// 両方から呼ばれる共通ロジック。
+/// `b`のcontent幅・margin・padding・borderを解決する(置換要素のauto-size
+/// 適用込み)。`layout_box_impl`本体と、float配置のための事前幅計算
+/// (`layout_float_child`)の両方から呼ばれる共通ロジック。
 /// `position: absolute`/`fixed`の子を、containing block基準でレイアウトして
-/// `pos.out`へ集める([0049](
-/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定1・3)。
-/// bottom/rightのうち、`bottom`はcontaining blockの高さが確定しないため
-/// `top`へフォールバックする(決定3改訂、既知の限界)。
+/// `pos.out`へ集める。bottom/rightのうち、`bottom`はcontaining blockの高さが
+/// 確定しないため`top`へフォールバックする(既知の限界)。
 fn layout_out_of_flow_child(
     child: &LayoutBox,
     child_style: &ComputedStyle,
@@ -510,8 +496,8 @@ fn layout_out_of_flow_child(
     let left = resolve_lpa_or_zero(child_style.left, cb_rect.width);
     let right = resolve_lpa_or_zero(child_style.right, cb_rect.width);
 
-    // content幅の解決([0049]決定3)。`min-width`/`max-width`は求めた使用幅を
-    // クランプする形で効かせる([0051]決定5)。
+    // content幅の解決。`min-width`/`max-width`は
+    // 求めた使用幅をクランプする形で効かせる。
     let content_width = match child_style.width {
         LengthPercentageOrAuto::LengthPercentage(lp) => {
             let w = resolve_lp(lp, cb_rect.width);
@@ -527,7 +513,7 @@ fn layout_out_of_flow_child(
         LengthPercentageOrAuto::Auto => {
             let avail = (cb_rect.width - non_content_width).max(0.0);
             // 絶対配置の`width: auto`もshrink-to-fitなので、高さが確定していれば
-            // `aspect-ratio`から幅を導ける([0052]決定3)。
+            // `aspect-ratio`から幅を導ける。
             aspect_ratio_width(child_style, &padding, &border).unwrap_or_else(|| {
                 shrink_to_fit_content_width(child, styles, fonts, child_style, avail)
             })
@@ -542,7 +528,7 @@ fn layout_out_of_flow_child(
     );
 
     let margin_box_width = non_content_width + content_width;
-    // マージンボックス左上のx(決定3)。
+    // マージンボックス左上のx。
     let margin_box_x = if has_left {
         cb_rect.x + left
     } else if has_right {
@@ -571,9 +557,9 @@ fn layout_out_of_flow_child(
     );
 
     // `bottom`指定(かつ`top`未指定)は、レイアウト後の高さが分かってから
-    // 下端合わせで再配置する([0049]決定3)。cb高さが確定している`fixed`・
-    // initial containing block・明示heightのabsoluteで効く。positioned祖先の
-    // cb高さは0(未確定)なのでこのケースには入らない(既知の限界)。
+    // 下端合わせで再配置する。cb高さが確定している`fixed`・initial
+    // containing block・明示heightのabsoluteで効く。positioned祖先のcb高さは
+    // 0(未確定)なのでこのケースには入らない(既知の限界)。
     if !has_top && has_bottom && cb_rect.height > 0.0 {
         let mbh = laid.layout.margin_box_height();
         let target_y = cb_rect.y + cb_rect.height - mbh - bottom;
@@ -582,11 +568,10 @@ fn layout_out_of_flow_child(
     pos.out.push(PositionedBox { laid, kind });
 }
 
-/// shrink-to-fit(内容に合わせた)content幅([0047](
-/// ../../../docs/decisions/0047-float-shrink-to-fit-design.md)決定1)。
-/// `display: inline-block`のアトミックボックス([0043])とfloatの`width: auto`で
-/// 共有する。CSS2.1のpreferred minimum widthは持たないため
-/// `min(preferred, available)`に簡略化する(内容がavailableを超えると折り返す)。
+/// shrink-to-fit(内容に合わせた)content幅。`display: inline-block`の
+/// アトミックボックスとfloatの`width: auto`で共有する。CSS2.1のpreferred
+/// minimum widthは持たないため`min(preferred, available)`に簡略化する(内容が
+/// availableを超えると折り返す)。
 pub(super) fn shrink_to_fit_content_width(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -619,20 +604,22 @@ fn resolve_box_geometry(
             resolve_lpa_or_zero(style.margin_left, containing_width),
             resolve_lpa_or_zero(style.margin_right, containing_width),
         ),
-        // floatが明示`width`を持つ場合は`resolve_width_and_horizontal_margins`を
-        // 使わない: あの関数の「over-constrained」規則(width/margin-left/
-        // margin-right全てが非auto=`margin`省略時のデフォルト0も含むときに
-        // margin-rightを残り幅いっぱいに再計算する、CSS2.1 §10.3.3の通常フロー
-        // 用ルール)を素通しすると、再計算後の巨大なmargin-rightが
+        // floatが明示`width`を持つ場合は
+        // `resolve_width_and_horizontal_margins`を使わない: あの関数の
+        // 「over-constrained」規則(width/margin-left/margin-right全てが非
+        // auto=`margin`省略時のデフォルト0も含むときにmargin-rightを残り
+        // 幅いっぱいに再計算する、CSS2.1 §10.3.3の通常フロー用ルール)を
+        // 素通しすると、再計算後の巨大なmargin-rightが
         // `margin_box_width`(float配置計算に使う占有幅)に混入してしまう。
-        // floatにはこの再計算規則が無い(CSS2.1 §10.3.5、auto marginは単純に0)
-        // ため、ここでは迂回する([0019]決定4)。
+        // floatにはこの再計算規則が無い(CSS2.1 §10.3.5、auto marginは単純に
+        // 0)ため、ここでは迂回する。
         None if style.float != Float::None
             && !matches!(style.width, LengthPercentageOrAuto::Auto) =>
         {
             let width = resolve_lpa_or_zero(style.width, containing_width);
-            // `box-sizing: border-box`の場合の変換([0027]決定2)。通常フロー用の
-            // `resolve_width_and_horizontal_margins`と同じ調整をここでも行う。
+            // `box-sizing: border-box`の場合の変換。通常フロー用の
+            // `resolve_width_and_horizontal_margins`と
+            // 同じ調整をここでも行う。
             let width = if style.box_sizing == BoxSizing::BorderBox {
                 (width - padding.left - padding.right - border.left - border.right).max(0.0)
             } else {
@@ -650,10 +637,10 @@ fn resolve_box_geometry(
                 resolve_lpa_or_zero(style.margin_right, containing_width),
             )
         }
-        // floatで`width: auto`は内容に合わせて縮む(shrink-to-fit、CSS2.1
-        // §10.3.5、[0047](../../../docs/decisions/0047-float-shrink-to-fit-design.md))。
-        // 通常フロー用の`resolve_width_and_horizontal_margins`(containing width
-        // いっぱいに広げる)には落とさない。margin autoはfloatでは0。
+        // floatで`width: auto`は内容に合わせて縮む(shrink-to-fit、CSS2.1§
+        // 10.3.5)。通常フロー用の
+        // `resolve_width_and_horizontal_margins`(containing widthいっぱいに
+        // 広げる)には落とさない。margin autoはfloatでは0。
         None if style.float != Float::None => {
             let available = (containing_width
                 - resolve_lpa_or_zero(style.margin_left, containing_width)
@@ -663,8 +650,7 @@ fn resolve_box_geometry(
                 - border.left
                 - border.right)
                 .max(0.0);
-            // 高さが確定していれば`aspect-ratio`から幅を導ける([0052](
-            // ../../../docs/decisions/0052-aspect-ratio-design.md)決定3)。
+            // 高さが確定していれば`aspect-ratio`から幅を導ける。
             let width = aspect_ratio_width(&style, &padding, &border).unwrap_or_else(|| {
                 shrink_to_fit_content_width(b, styles, fonts, &style, available)
             });
@@ -717,9 +703,8 @@ fn layout_box_impl(
     let mut content_y = y + margin.top + border.top + padding.top;
 
     // positioned要素(relative/absolute/fixed)は、子孫の`absolute`の
-    // containing blockを自分のpadding boxにする([0049](
-    // ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定2)。
-    // 高さは循環を避けるため使わない(bottom配置は非対応、決定3改訂)。
+    // containing blockを自分のpadding boxにする。高さは循環を避けるため
+    // 使わない(bottom配置は非対応)。
     let saved_cb = pos.abs_cb;
     if style.position != Position::Static {
         if let Some(node) = b.node {
@@ -743,8 +728,9 @@ fn layout_box_impl(
             for child in children {
                 let child_style = box_style(child, styles);
 
-                // `position: absolute`/`fixed`はフロー外(スペースを占めない、
-                // [0049]決定1)。containing block基準で配置して`pos.out`へ集める。
+                // `position: absolute`/`fixed`はフロー外(スペースを
+                // 占めない)。containing block
+                // 基準で配置して`pos.out`へ集める。
                 if child_style.position.is_out_of_flow() {
                     layout_out_of_flow_child(child, &child_style, styles, fonts, pos);
                     continue;
@@ -758,7 +744,7 @@ fn layout_box_impl(
                     // floatはフローに参加しない(CSS2.1 9.5): マージン相殺の対象外、
                     // `cursor_y`は進めない。`float_ctx`は子・孫にも共有されるため、
                     // このBFC内の以降の通常フロー・インラインコンテンツから
-                    // 回り込み判定に見える([0019]決定1/決定3)。
+                    // 回り込み判定に見える。
                     let child_laid = layout_float_child(
                         child,
                         &child_style,
@@ -807,7 +793,7 @@ fn layout_box_impl(
             }
             // 直接の子floatが通常フローより下に伸びていれば、その分だけ
             // auto-heightを拡張する(CSS2.1 10.6.7の浅い実装、孫要素には
-            // 伝播しない、既知の簡略化。[0019]参照)。
+            // 伝播しない、既知の簡略化)。
             let auto_height = cursor_y.max(max_float_bottom) - content_y;
             let height = resolve_used_height(&style, &padding, &border, content_width, auto_height);
             (LaidOutContent::Blocks(laid_children), height)
@@ -823,11 +809,9 @@ fn layout_box_impl(
                 Some(&*float_ctx),
             );
             // 行内の`display: inline-block`ボックスは、行の位置が確定した
-            // この時点で最終座標へ移動させる([0043](
-            // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+            // この時点で最終座標へ移動させる。
             place_atomic_inlines(&mut lines);
-            // `text-overflow: ellipsis`は行組みの後処理として適用する
-            // ([0053](../../../docs/decisions/0053-text-details-design.md)決定4)。
+            // `text-overflow: ellipsis`は行組みの後処理として適用する。
             apply_text_overflow(&mut lines, &style, content_width, fonts);
             let lines_height: f32 = lines.iter().map(|line| line.rect.height).sum();
             let height =
@@ -835,10 +819,10 @@ fn layout_box_impl(
             (LaidOutContent::Inline(lines), height)
         }
         BoxContent::Table(table) => {
-            // `display: table`のセルは新しいBlock Formatting Contextを確立する
-            // (CSS2.1 9.4.1)ため、外側の`float_ctx`とは独立させる([0019]決定1)。
-            // `border-spacing`は`border-collapse: collapse`とは排他([0021]決定1)
-            // なので、collapseの場合はここで0に潰してから渡す。
+            // `display: table`のセルは新しいBlock Formatting Contextを
+            // 確立する(CSS2.1 9.4.1)ため、外側の`float_ctx`とは独立させる。
+            // `border-spacing`は`border-collapse: collapse`とは排他なので、
+            // collapseの場合はここで0に潰してから渡す。
             let (h_spacing, v_spacing) = if style.border_collapse == BorderCollapse::Collapse {
                 (0.0, 0.0)
             } else {
@@ -864,8 +848,7 @@ fn layout_box_impl(
         }
         BoxContent::Grid(grid) => {
             // グリッドコンテナもflex/tableと同様に新しいフォーマッティング
-            // コンテキストを確立する([0054](
-            // ../../../docs/decisions/0054-grid-design.md)決定1)。
+            // コンテキストを確立する。
             let (laid_grid, grid_height) = layout_grid(
                 grid,
                 styles,
@@ -881,8 +864,7 @@ fn layout_box_impl(
         BoxContent::Flex(flex) => {
             // `display: table`と同様、flexコンテナは新しいフォーマッティング
             // コンテキストを確立する(`float`はflexアイテムに効果を持たない、
-            // CSS仕様通り)ため、外側の`float_ctx`とは独立させる
-            // ([0034](../../../docs/decisions/0034-flexbox-design.md)決定1)。
+            // CSS仕様通り)ため、外側の`float_ctx`とは独立させる。
             let (items, flex_height) = layout_flex(
                 flex,
                 styles,
@@ -900,23 +882,21 @@ fn layout_box_impl(
             // autoだったケースは既に具体的なLengthへ差し替え済みなので、
             // `resolve_height`は`Some`を返す(高さゼロは、内在サイズが
             // 得られない=フェッチ・デコード失敗時の妥当な既定)。
-            // `min-height`/`max-height`のクランプは他の内容種別と同じく効くが、
-            // アスペクト比の維持は行わない([0051]決定5)。
+            // `min-height`/`max-height`のクランプは他の内容種別と同じく
+            // 効くが、アスペクト比の維持は行わない。
             let height = resolve_used_height(&style, &padding, &border, content_width, 0.0);
             (LaidOutContent::Image(image_content.image.clone()), height)
         }
     };
-    // 子孫のレイアウトが終わったのでcontaining blockを復元する([0049])。
+    // 子孫のレイアウトが終わったのでcontaining blockを復元する。
     pos.abs_cb = saved_cb;
     // taffyが確定した高さを最終レイアウトパスでそのまま反映する
-    // (`layout_box_with_forced_size`専用、[0034]決定2)。
+    // (`layout_box_with_forced_size`専用)。
     let mut content_height = forced_content_height.unwrap_or(content_height);
 
-    // 親子間・空ブロックのマージン相殺([0048](
-    // ../../../docs/decisions/0048-margin-collapse-parent-child-empty-design.md))。
-    // `layout.margin`を実効(相殺後)値に、`content.y`/`content_height`を
-    // それに合わせて調整する。親子相殺は`height: auto`のブロックのみ対象
-    // (決定2の簡略化)。
+    // 親子間・空ブロックのマージン相殺。`layout.margin`を実効(相殺後)値に、
+    // `content.y`/`content_height`をそれに合わせて調整する。親子相殺は
+    // `height: auto`のブロックのみ対象(既知の簡略化)。
     let height_is_auto =
         forced_content_height.is_none() && matches!(style.height, LengthPercentageOrAuto::Auto);
     apply_margin_collapse(
@@ -930,8 +910,8 @@ fn layout_box_impl(
     );
 
     // `position: relative`の視覚的オフセット。後続兄弟の`cursor_y`計算は
-    // `margin_box_height()`(座標に依存しない)を使うため、ここでcontent座標を
-    // ずらしても後続要素のフローには影響しない([0019]決定6)。
+    // `margin_box_height`(座標に依存しない)を使うため、ここでcontent
+    // 座標をずらしても後続要素のフローには影響しない。
     let (offset_x, offset_y) = if style.position == Position::Relative {
         resolve_relative_offset(&style, content_width)
     } else {
@@ -973,8 +953,7 @@ fn layout_box_impl(
 /// `display: list-item`のマーカー(`list-style-position: outside`、または
 /// ブロック子を持つため`inside`からフォールバックした場合)をレイアウトする。
 /// マーカーはcontent boxの外側(左のgutter)に独立して配置するだけなので、
-/// `b`の内容が`BoxContent::Inline`/`Blocks`のどちらでも同じロジックで扱える
-/// ([0022](../../../docs/decisions/0022-list-style-design.md)決定4)。
+/// `b`の内容が`BoxContent::Inline`/`Blocks`のどちらでも同じロジックで扱える。
 ///
 /// 実装は通常のテキストランと全く同じシェイピング(`shape_run`)を再利用し、
 /// 結果を`runs`が1つだけの`LineBox`として返す。これにより描画側
@@ -1092,8 +1071,7 @@ pub(crate) fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) 
     }
     // `background-image`のみを持つ要素(背景色・枠線なし)も、`place_split`が
     // 装飾フラグメント(`node`付きの`LaidOutBox`)を生成する対象に含めない
-    // 限り`collect_image_uses`/`render_box`から参照できず描画されない
-    // ([0017](../../../docs/decisions/0017-background-image-design.md)決定2)。
+    // 限り`collect_image_uses`/`render_box`から参照できず描画されない。
     if style.background_image.is_some() {
         return true;
     }
@@ -1133,13 +1111,12 @@ pub(crate) fn resolve_lpa_or_zero(lpa: LengthPercentageOrAuto, basis: f32) -> f3
     }
 }
 
-/// `min-width`/`max-width`による使用幅のクランプ([0051](
-/// ../../../docs/decisions/0051-min-max-size-design.md)決定2)。
+/// `min-width`/`max-width`による使用幅のクランプ。
 ///
 /// `max`→`min`の順に適用するので、`min-width > max-width`のときは`min-width`が
 /// 勝つ(CSS2.1 §10.4の手順と同じ結果)。`box-sizing: border-box`の場合、
 /// `min-*`/`max-*`の指定値もborder-box基準なので、`width`と同じく
-/// padding+borderを引いてcontent-box相当へ変換してから比較する([0027]決定2)。
+/// padding+borderを引いてcontent-box相当へ変換してから比較する。
 pub(crate) fn clamp_used_width(
     style: &ComputedStyle,
     containing_width: f32,
@@ -1166,9 +1143,9 @@ pub(crate) fn clamp_used_width(
     .max(0.0)
 }
 
-/// `min-height`/`max-height`による使用高さのクランプ([0051]決定2・決定4)。
-/// パーセンテージ指定はcontaining blockの高さが不定なため無視する
-/// (`height`のパーセンテージが無視されるのと同じ扱い)。
+/// `min-height`/`max-height`による使用高さのクランプ。パーセンテージ指定は
+/// containing blockの高さが不定なため無視する(`height`のパーセンテージが
+/// 無視されるのと同じ扱い)。
 pub(crate) fn clamp_used_height(
     style: &ComputedStyle,
     padding_tb: f32,
@@ -1196,7 +1173,7 @@ pub(crate) fn clamp_used_height(
 }
 
 /// 高さ方向で使える絶対長(px)。パーセンテージ、およびパーセンテージ成分を持つ
-/// `calc()`は、containing blockの高さが不定なため`None`(=無視)を返す([0051]決定4)。
+/// `calc`は、containing blockの高さが不定なため`None`(=無視)を返す。
 fn definite_height_px(lp: LengthPercentage) -> Option<f32> {
     match lp {
         LengthPercentage::Length(px) => Some(px),
@@ -1233,10 +1210,9 @@ pub(crate) fn resolve_border(style: &ComputedStyle) -> EdgeSizes {
     }
 }
 
-/// 使用高さ = 「明示`height` → `aspect-ratio`による導出 → `auto_height`(内容から
-/// 求めた高さ)」の優先順で決めた値を、`min-height`/`max-height`でクランプしたもの
-/// ([0051](../../../docs/decisions/0051-min-max-size-design.md)決定4、
-/// [0052](../../../docs/decisions/0052-aspect-ratio-design.md)決定3・決定5)。
+/// 使用高さ = 「明示`height` → `aspect-ratio`による導出 →
+/// `auto_height`(内容から求めた高さ)」の優先順で決めた値を、
+/// `min-height`/`max-height`でクランプしたもの。
 pub(crate) fn resolve_used_height(
     style: &ComputedStyle,
     padding: &EdgeSizes,
@@ -1252,8 +1228,8 @@ pub(crate) fn resolve_used_height(
     clamp_used_height(style, padding_tb, border_tb, height)
 }
 
-/// `aspect-ratio`から導出したcontent高さ([0052]決定3)。比が無ければ`None`。
-/// 比が適用される箱は`box-sizing`に従う(決定4)。
+/// `aspect-ratio`から導出したcontent高さ。比が無ければ`None`。比が適用される
+/// 箱は`box-sizing`に従う。
 fn aspect_ratio_height(
     style: &ComputedStyle,
     padding: &EdgeSizes,
@@ -1273,9 +1249,9 @@ fn aspect_ratio_height(
     }
 }
 
-/// `aspect-ratio`から導出したcontent幅([0052]決定3)。高さが確定していて
-/// `width: auto`のshrink-to-fit文脈(float / `inline-block` / 絶対配置 / `<img>`)で
-/// 使う。通常フローのブロックの`width: auto`はstretchが優先されるため呼ばない。
+/// `aspect-ratio`から導出したcontent幅。高さが確定していて`width: auto`の
+/// shrink-to-fit文脈(float / `inline-block` / 絶対配置 / `<img>`)で使う。通常
+/// フローのブロックの`width: auto`はstretchが優先されるため呼ばない。
 pub(crate) fn aspect_ratio_width(
     style: &ComputedStyle,
     padding: &EdgeSizes,
@@ -1299,8 +1275,7 @@ pub(crate) fn aspect_ratio_width(
 /// `height`が明示指定されていれば返す。`auto`および(containing blockの高さが
 /// 不定なため)パーセンテージ指定は`None`とし、呼び出し側でコンテンツ高さを使う。
 /// `box-sizing: border-box`の場合、指定値は border-box の高さを表すため
-/// `padding_tb`/`border_tb`を引いてcontent-box相当に変換する
-/// ([0027](../../../docs/decisions/0027-box-sizing-design.md)決定2)。
+/// `padding_tb`/`border_tb`を引いてcontent-box相当に変換する。
 fn resolve_height(style: &ComputedStyle, padding_tb: f32, border_tb: f32) -> Option<f32> {
     let LengthPercentageOrAuto::LengthPercentage(lp) = style.height else {
         return None;
@@ -1319,16 +1294,15 @@ fn resolve_height(style: &ComputedStyle, padding_tb: f32, border_tb: f32) -> Opt
 /// 一方だけ値が得られる場合はアスペクト比を保って他方を導出する。
 ///
 /// CSSで`width`/`height`のどちらか一方だけが明示指定されている場合は、使用比
-/// (`aspect-ratio`指定、無ければ内在比)からもう一方を導出する([0052](
-/// ../../../docs/decisions/0052-aspect-ratio-design.md)決定3)。
-/// 「幅が確定&`height: auto`」は下流の[`resolve_used_height`]が導出するため、
-/// ここでは何もしない。
+/// (`aspect-ratio`指定、無ければ内在比)からもう一方を導出する。「幅が確定
+/// &`height: auto`」は下流の[`resolve_used_height`]が
+/// 導出するため、ここでは何もしない。
 pub(super) fn apply_replaced_element_auto_size(
     style: &mut ComputedStyle,
     image: &ImageBoxContent,
     containing_width: f32,
 ) {
-    // 内在比を計算スタイルへ焼き込む([0052]決定2)。以降の一般ロジックは
+    // 内在比を計算スタイルへ焼き込む。以降の一般ロジックは
     // 「`style.aspect_ratio.ratio`があれば使う」だけでよくなる。
     if style.aspect_ratio.auto {
         if let Some(ratio) = intrinsic_ratio(image) {
@@ -1347,7 +1321,7 @@ pub(super) fn apply_replaced_element_auto_size(
     }
     if !height_is_auto {
         // 高さ確定&`width: auto`。置換要素の`width: auto`はshrink-to-fit
-        // (通常のブロックのstretchではない)ので、比から幅を導ける([0052]決定3)。
+        // (通常のブロックのstretchではない)ので、比から幅を導ける。
         if let Some(width) = aspect_ratio_width(style, &padding, &border) {
             style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
         }
@@ -1379,7 +1353,7 @@ pub(super) fn apply_replaced_element_auto_size(
     style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
 
     // `auto`なしの`aspect-ratio`指定(例: `aspect-ratio: 16 / 9`)は内在比より
-    // 優先する([0052]決定2・決定3)。幅は内在幅のまま、高さだけ比で決め直す。
+    // 優先する。幅は内在幅のまま、高さだけ比で決め直す。
     let height = if style.aspect_ratio.auto {
         height
     } else {
@@ -1408,12 +1382,11 @@ fn derive_via_aspect_ratio(known: f32, ratio_basis: Option<(f32, f32)>) -> f32 {
     }
 }
 
-/// 親子間・空ブロックのマージン相殺を適用する([0048](
-/// ../../../docs/decisions/0048-margin-collapse-parent-child-empty-design.md))。
+/// 親子間・空ブロックのマージン相殺を適用する。
 ///
 /// `margin`を実効(相殺後)値へ、`content.y`と`content_height`をそれに合わせて
 /// 調整する。呼び出し側は、返された実効`margin`をそのまま`LaidOutBox`へ格納する
-/// ことで、祖先の隣接兄弟相殺ループが多階層の相殺へ自然につながる(決定1)。
+/// ことで、祖先の隣接兄弟相殺ループが多階層の相殺へ自然につながる。
 fn apply_margin_collapse(
     content: &mut LaidOutContent,
     content_height: &mut f32,
@@ -1423,9 +1396,9 @@ fn apply_margin_collapse(
     padding: &EdgeSizes,
     height_is_auto: bool,
 ) {
-    // 空ブロック(決定3): 高さ0・border/padding無し・子が空。自身の上下
-    // マージンを1つに相殺する(`margin_box_height`が相殺値1つ分になるよう
-    // 上へ寄せる)。上の兄弟とはこの相殺値で相殺され、二重マージンを防ぐ。
+    // 空ブロック: 高さ0・border/padding無し・子が空。自身の上下マージンを
+    // 1つに相殺する(`margin_box_height`が相殺値1つ分になるよう上へ寄せる)。
+    // 上の兄弟とはこの相殺値で相殺され、二重マージンを防ぐ。
     let content_is_empty = match content {
         LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => children.is_empty(),
         // 子を持たない`<div></div>`は`Inline`(空)になる。
@@ -1450,8 +1423,8 @@ fn apply_margin_collapse(
         return;
     };
 
-    // 親と最初の子(決定2): 親に上境界(border-top/padding-top)が無ければ、
-    // 最初の非float子の実効`margin-top`を親の外へ持ち上げて相殺する。
+    // 親と最初の子: 親に上境界(border-top/padding-top)が無ければ、最初の非
+    // float子の実効`margin-top`を親の外へ持ち上げて相殺する。
     if border.top == 0.0 && padding.top == 0.0 && height_is_auto {
         if let Some(first_top) = children
             .iter()
@@ -1471,8 +1444,9 @@ fn apply_margin_collapse(
         }
     }
 
-    // 親と最後の子(決定2): 親に下境界(border-bottom/padding-bottom/明示height)が
-    // 無ければ、最後の非float子の`margin-bottom`を親の外へ持ち上げて相殺する。
+    // 親と最後の子: 親に下境界(border-bottom/padding-bottom/明示height)が
+    // 無ければ、最後の非float子の`margin-bottom`を
+    // 親の外へ持ち上げて相殺する。
     if border.bottom == 0.0 && padding.bottom == 0.0 && height_is_auto {
         if let Some(last_bottom) = children
             .iter()
@@ -1510,10 +1484,10 @@ pub(crate) fn resolve_width_and_horizontal_margins(
         solve_horizontal(style, containing_width, padding_lr, border_lr, None);
 
     // `min-width`/`max-width`でクランプし、値が変わったら「その幅が明示指定
-    // されていた」ものとして水平方向の等式を解き直す(CSS2.1 §10.4、[0051](
-    // ../../../docs/decisions/0051-min-max-size-design.md)決定3)。こうしないと
-    // `width: auto; max-width: 600px; margin: 0 auto`のような指定で、auto幅の枝で
-    // 0に潰れたmargin autoがそのまま残り中央寄せされない。
+    // されていた」ものとして水平方向の等式を解き直す(CSS2.1 §10.4)。
+    // こうしないと`width: auto; max-width: 600px; margin: 0 auto`のような
+    // 指定で、auto幅の枝で0に潰れたmargin
+    // autoがそのまま残り中央寄せされない。
     let clamped = clamp_used_width(style, containing_width, padding_lr, border_lr, width);
     if clamped == width {
         return (width, margin_left, margin_right);
@@ -1530,7 +1504,7 @@ pub(crate) fn resolve_width_and_horizontal_margins(
 /// CSS2.1 §10.3.3の水平方向の等式(margin-left + border + padding + width +
 /// margin-right = containing width)を解く。`used_width`に`Some`を渡すと、
 /// その値(content-box基準、変換済み)が明示指定された`width`として扱われる
-/// ([0051]決定3のクランプ後の解き直し用)。
+/// (min/max幅のクランプ後の解き直し用)。
 fn solve_horizontal(
     style: &ComputedStyle,
     containing_width: f32,
@@ -1545,9 +1519,9 @@ fn solve_horizontal(
         Some(w) => Some(w),
         None if matches!(style.width, LengthPercentageOrAuto::Auto) => None,
         None => {
-            // `box-sizing: border-box`の場合、指定値はborder-boxの幅を表すため、
-            // padding+borderを引いてcontent-box相当に変換してから既存の等式へ渡す
-            // ([0027]決定2)。
+            // `box-sizing: border-box`の場合、指定値はborder-boxの幅を
+            // 表すため、padding+borderを引いてcontent-box
+            // 相当に変換してから既存の等式へ渡す。
             let width = resolve_lpa_or_zero(style.width, containing_width);
             Some(if style.box_sizing == BoxSizing::BorderBox {
                 (width - padding_lr - border_lr).max(0.0)
@@ -1603,7 +1577,7 @@ fn solve_horizontal(
 ///
 /// `layout::inline`は行の縦位置が決まる前に中身をレイアウトする(原点0,0)ため、
 /// ここでまとめて平行移動する。縦は「マージンボックスの下端がベースラインに
-/// 乗る」([0043]決定2)ように置く。
+/// 乗る」ように置く。
 fn place_atomic_inlines(lines: &mut [LineBox]) {
     for line in lines.iter_mut() {
         let baseline_y = line.rect.y + line.baseline;
@@ -1618,7 +1592,7 @@ fn place_atomic_inlines(lines: &mut [LineBox]) {
                 layout.content.x - layout.padding.left - layout.border.left + -layout.margin.left;
             let current_y =
                 layout.content.y - layout.padding.top - layout.border.top - layout.margin.top;
-            // `shift_box_y`の`delta`は**引く**量(`shift_rect_y`が`y -= delta`)
+            // `shift_box_y`の`delta`は引く量(`shift_rect_y`が`y -= delta`)
             // である点に注意。`shift_box_x`は逆に足す量。
             atomic.content = shift_box_x(
                 &shift_box_y(&atomic.content, current_y - target_y),
@@ -1697,7 +1671,7 @@ pub(super) fn shift_box_y(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         LaidOutContent::Inline(lines) => {
             for line in lines.iter_mut() {
                 shift_rect_y(&mut line.rect, delta);
-                // 行内のアトミックボックスも行と一緒に動かす([0043]決定1)。
+                // 行内のアトミックボックスも行と一緒に動かす。
                 for atomic in line.atomics.iter_mut() {
                     atomic.content = shift_box_y(&atomic.content, delta);
                 }
@@ -1729,8 +1703,7 @@ fn shift_rect_y(rect: &mut Rect, delta: f32) {
 /// 行・セル)だけを縦にシフトする。`shift_box_y`(自身含めた全体を平行移動)
 /// とは別物として明確に区別する: テーブルセルの`vertical-align`実装では、
 /// セル自身の高さ・位置は行の高さ均等化で既に確定済みで変えたくないが、
-/// その内側の内容だけをtop/middle/bottom/baselineに応じて上下させたい
-/// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定4)。
+/// その内側の内容だけをtop/middle/bottom/baselineに応じて上下させたい。
 pub(super) fn shift_content_vertical(b: &LaidOutBox, delta: f32) -> LaidOutBox {
     let mut b = b.clone();
 
@@ -1752,7 +1725,7 @@ pub(super) fn shift_content_vertical(b: &LaidOutBox, delta: f32) -> LaidOutBox {
         LaidOutContent::Inline(lines) => {
             for line in lines.iter_mut() {
                 shift_rect_y(&mut line.rect, delta);
-                // 行内のアトミックボックスも行と一緒に動かす([0043]決定1)。
+                // 行内のアトミックボックスも行と一緒に動かす。
                 for atomic in line.atomics.iter_mut() {
                     atomic.content = shift_box_y(&atomic.content, delta);
                 }
@@ -2048,7 +2021,7 @@ mod tests {
         assert_eq!(float_box.layout.content.x, 0.0);
         assert_eq!(float_box.layout.content.y, 0.0);
         // floatはフローに参加しないため、後続のブロックはfloatの高さ(50px)を
-        // 無視してcontaining blockの先頭からすぐ配置される([0019]決定5前提)。
+        // 無視してcontaining blockの先頭からすぐ配置される。
         assert_eq!(after_box.layout.content.y, 0.0);
     }
 
@@ -2198,7 +2171,7 @@ mod tests {
         assert_eq!(rel_box.layout.content.x, 7.0);
         assert_eq!(rel_box.layout.content.y, 15.0);
         // cはrel要素本来の(オフセット前の)下端(10+20=30)を基準に配置され、
-        // 視覚的オフセットの影響を受けない([0019]決定6)。
+        // 視覚的オフセットの影響を受けない。
         assert_eq!(c_box.layout.content.y, 30.0);
     }
 
@@ -2254,8 +2227,8 @@ mod tests {
 
     #[test]
     fn parent_and_first_child_top_margins_collapse_through_the_parent() {
-        // [0048]決定2: 親に border-top/padding-top が無ければ、最初の子の
-        // margin-top は親を突き抜けて親の margin-top と相殺する。
+        // 親に border-top/padding-top が無ければ、最初の子のmargin-top は親を
+        // 突き抜けて親の margin-top と相殺する。
         let dom = html::parse(br#"<div class="outer"><p class="inner">x</p></div>"#);
         let ua = user_agent_stylesheet();
         let author =
@@ -2307,8 +2280,8 @@ mod tests {
 
     #[test]
     fn an_empty_block_collapses_its_own_top_and_bottom_margins() {
-        // [0048]決定3: 空ブロック(高さ0・border/padding無し)の上下マージンは
-        // 1つに相殺され、二重に効かない。
+        // 空ブロック(高さ0・border/padding無し)の上下マージンは1つに
+        // 相殺され、二重に効かない。
         let dom = html::parse(br#"<div class="empty"></div>"#);
         let ua = user_agent_stylesheet();
         let author = parse_stylesheet(".empty { margin: 30px 0; }");
@@ -2611,9 +2584,9 @@ mod tests {
 
     #[test]
     fn failed_image_with_explicit_attrs_still_reserves_the_specified_space() {
-        // [0014]の方針: 取得失敗でもwidth/height属性があればそのサイズの
-        // 空ボックスとして扱う(後続コンテンツが不意にレイアウトが
-        // 詰まらないよう、指定サイズ分のスペースは確保する)。
+        // 取得失敗でもwidth/height属性があればそのサイズの空ボックスとして
+        // 扱う(後続コンテンツが不意にレイアウトが詰まらないよう、指定サイズ
+        // 分のスペースは確保する)。
         let tree = image_box(ImageBoxContent {
             image: None,
             attr_width: Some(50),

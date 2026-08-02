@@ -1,8 +1,7 @@
 //! レガシーHTML表示属性のE2Eテスト(M10 カテゴリE、T227〜T232)。
 //!
 //! wkhtmltopdf時代の帳票HTML(`<table border cellpadding>`ベース)がそれらしく
-//! 出ることを、実際のパイプラインを通して確認する。設計は[0039](
-//! ../../docs/decisions/0039-presentational-attributes-design.md)参照。
+//! 出ることを、実際のパイプラインを通して確認する。
 
 use std::collections::HashMap;
 

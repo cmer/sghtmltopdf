@@ -1,29 +1,26 @@
 //! OS標準のフォントディレクトリを走査してシステムフォントを解決する(`fontdb`を使用)。
 //!
 //! CSSの汎用family名(`monospace`/`serif`/`sans-serif`)は、`fontdb`(=Linuxでは
-//! fontconfig)の汎用名解決には**任せず**、自前の候補リストで解決する
-//! ([0036](../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
-//! 決定3)。`fontdb`はfontconfig未設置の最小環境ではOS間で一貫性のない
-//! ハードコードの既定名(`Arial`等)にフォールバックし、インストール環境に
-//! 実在するとは限らないため。候補リストが全て外れた場合、`monospace`のみ
-//! `fontdb`のフェース単位のメタデータ(`FaceInfo::monospaced`。fontconfig
-//! 非依存)を使って等幅フェースを探す。それでも見つからなければ解決を諦め、
-//! [`crate::fonts::FontCollection`]が既に持つグリフカバレッジ・フォールバックに
-//! 任せる。`sans-serif`は当初「既定`font-family`と同値なので解決しない」と
-//! していたが([0036]決定3-1)、**既定`font-family`を空(未指定)に切り離した**
-//! ため、`sans-serif`を明示した場合のみゴシック体を解決するよう改めた
-//! (決定3-1改訂)。未指定要素は空`font-family`で`select_for_char`の
-//! フォールバック(=`--font`のフォント)へ行くため、`--font`が既定という
-//! 挙動は保たれる。`--gothic-font`が渡された場合はそちらが`sans-serif`として
-//! 最優先で使われる。
+//! fontconfig)の汎用名解決には任せず、自前の候補リストで解決する。
+//! `fontdb`はfontconfig未設置の最小環境ではOS間で一貫性のないハードコードの
+//! 既定名(`Arial`等)にフォールバックし、インストール環境に実在するとは
+//! 限らないため。候補リストが全て外れた場合、`monospace`のみ`fontdb`の
+//! フェース単位のメタデータ(`FaceInfo::monospaced`。fontconfig非依存)を使って
+//! 等幅フェースを探す。それでも見つからなければ解決を諦め、
+//! [`crate::fonts::FontCollection`]が既に持つグリフカバレッジ・フォールバック
+//! に任せる。`sans-serif`は当初「既定`font-family`と同値なので解決しない」
+//! としていたが、既定`font-family`を空(未指定)に切り離したため、
+//! `sans-serif`を明示した場合のみゴシック体を解決するよう改めた。未指定要素は
+//! 空`font-family`で`select_for_char`のフォールバック(=`--font`のフォント)へ
+//! 行くため、`--font`が既定という挙動は保たれる。`--gothic-font`が渡された
+//! 場合はそちらが`sans-serif`として最優先で使われる。
 //!
-//! family名による解決とは別に、**文書中の文字を描画できるフォントが1本も無い
-//! 場合に、その文字を描画できるシステムフォントを探す**経路も持つ
-//! ([`SystemFonts::load_covering`]・[`load_fonts_for_uncovered_chars`]、
-//! [0065](../../../docs/decisions/0065-glyph-coverage-font-fallback.md))。
-//! `font-family`未指定の日本語文書のように、**どのfamily名も手掛かりに
-//! ならない**ケースでは[`FontCollection`]のグリフカバレッジ・フォールバックが
-//! 選ぶ候補自体が存在しないため、ここで補う必要がある。
+//! family名による解決とは別に、文書中の文字を描画できるフォントが1本も無い
+//! 場合に、その文字を描画できるシステムフォントを探す経路も持つ
+//! ([`SystemFonts::load_covering`]・[`load_fonts_for_uncovered_chars`])。
+//! `font-family`未指定の日本語文書のように、どのfamily名も
+//! 手掛かりにならないケースでは[`FontCollection`]のグリフカバレッジ・フォー
+//! ルバックが選ぶ候補自体が存在しないため、ここで補う必要がある。
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -39,9 +36,9 @@ const GENERIC_FAMILIES: &[&str] = &["serif", "sans-serif", "monospace", "cursive
 
 /// 汎用family名ごとの、実在しやすい具体フォント名の候補(優先順)。
 ///
-/// `cursive`/`fantasy`は環境差が大きく実務上の需要も薄いため候補を持たない
-/// (=解決しない、[0036]決定3)。`sans-serif`は既定`font-family`を空に切り離した
-/// ため明示時のみ解決する(決定3-1改訂)。
+/// `cursive`/`fantasy`は環境差が大きく実務上の需要も薄いため候補を持たない(=
+/// 解決しない)。`sans-serif`は既定`font-family`を
+/// 空に切り離したため明示時のみ解決する。
 const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
     (
         "monospace",
@@ -65,15 +62,15 @@ const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
             "Times New Roman",
             "Times",
             "Georgia",
-            // 公式Dockerイメージが同梱する明朝体([0061]決定4改訂)。ラテン系の
-            // 候補が全て外れる最小環境(=そのイメージの中)で拾わせるため末尾に置く。
+            // 公式Dockerイメージが同梱する明朝体。ラテン系の候補が全て外れる
+            // 最小環境(=そのイメージの中)で拾わせるため末尾に置く。
             "BIZ UDPMincho",
             "BIZ UDMincho",
         ],
     ),
     (
-        // `sans-serif`は明示指定時のみゴシック体を探す([0036]決定3-1改訂)。
-        // 英字ゴシックの候補(実運用では`--gothic-font`で決定的に上書きできる)。
+        // `sans-serif`は明示指定時のみゴシック体を探す。英字ゴシックの候補
+        // (実運用では`--gothic-font`で決定的に上書きできる)。
         "sans-serif",
         &[
             "DejaVu Sans",
@@ -94,16 +91,14 @@ const GENERIC_FAMILY_CANDIDATES: &[(&str, &[&str])] = &[
 /// CJK(漢字・かな・ハングル)を描画できるフォントの候補(優先順)。
 ///
 /// CJK統合漢字は日本語・韓国語・中国語で共有されるため、言語ごとに分けず
-/// **1つの候補列**にまとめ、実際に描画できるか([`Font::has_glyph`])で
+/// 1つの候補列にまとめ、実際に描画できるか([`Font::has_glyph`])で
 /// 確認しながら順に試す(例えばHiragino Sansはハングルを持たないので、
 /// ハングルを探しているときは自然に次の候補へ進む)。
 ///
 /// 日本語 → 韓国語 → 中国語簡体 → 中国語繁体の順に並べるのは、帳票用途で
-/// 日本語が支配的なため([0065](
-/// ../../../docs/decisions/0065-glyph-coverage-font-fallback.md)決定1)。
-/// 漢字の字体には国別の差があるが、`lang`属性を見ないと決められないので
-/// 初期スコープでは踏み込まない(外れる場合は`--gothic-font`等で決定的に
-/// 上書きできる)。
+/// 日本語が支配的なため。漢字の字体には国別の差があるが、`lang`属性を見ないと
+/// 決められないので初期スコープでは踏み込まない(外れる場合は`--gothic-font`
+/// 等で決定的に上書きできる)。
 const CJK_FAMILY_CANDIDATES: &[&str] = &[
     // 日本語
     "Noto Sans CJK JP",
@@ -116,7 +111,7 @@ const CJK_FAMILY_CANDIDATES: &[&str] = &[
     "IPAGothic",
     "TakaoPGothic",
     "VL PGothic",
-    // 公式Dockerイメージが同梱するゴシック体([0061]決定4改訂)。
+    // 公式Dockerイメージが同梱するゴシック体。
     "BIZ UDPGothic",
     "BIZ UDGothic",
     // 韓国語
@@ -141,7 +136,7 @@ const CJK_FAMILY_CANDIDATES: &[&str] = &[
 /// `c`がCJK系の文字か([`CJK_FAMILY_CANDIDATES`]を引くかどうかの判定に使う)。
 ///
 /// 全走査([`SystemFonts::load_any_covering`])より先に候補リストを試すための
-/// **絞り込み**でしかないので、境界の厳密さは求めない(ここで漏れても
+/// 絞り込みでしかないので、境界の厳密さは求めない(ここで漏れても
 /// 全走査が拾う)。
 fn is_cjk(c: char) -> bool {
     matches!(c as u32,
@@ -211,13 +206,10 @@ impl SystemFonts {
 
     /// CSSの汎用family名(`monospace`/`serif`)を、自前の候補リスト
     /// ([`GENERIC_FAMILY_CANDIDATES`])を優先順に試して具体フォントへ
-    /// 解決する([0036](
-    /// ../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
-    /// 決定3)。候補が全て外れた場合、`monospace`のみ`fontdb`の
-    /// `FaceInfo::monospaced`フラグで等幅フェースを探す。`sans-serif`
-    /// (既定`font-family`と同値のため意図的に対象外、決定3-1)・
-    /// `cursive`/`fantasy`・汎用名でない名前を渡した場合、および何も
-    /// 見つからない場合は`None`。
+    /// 解決する。候補が全て外れた場合、`monospace`のみ`fontdb`の
+    /// `FaceInfo::monospaced`フラグで等幅フェースを探す。`sans-serif`(既定
+    /// `font-family`と同値のため意図的に対象外)・`cursive`/`fantasy`・
+    /// 汎用名でない名前を渡した場合、および何も見つからない場合は`None`。
     pub fn load_generic(
         &self,
         generic: &str,
@@ -241,19 +233,18 @@ impl SystemFonts {
         None
     }
 
-    /// `c`を描画できるシステムフォントを1つ探し、見つかった**実family名**と
-    /// ともに返す([0065](
-    /// ../../../docs/decisions/0065-glyph-coverage-font-fallback.md)決定1)。
+    /// `c`を描画できるシステムフォントを1つ探し、見つかった実family名と
+    /// ともに返す。
     ///
-    /// 解決は[0036]決定3と同じ2段階(fontconfigの汎用名解決には任せない):
+    /// 解決は2段階(fontconfigの汎用名解決には任せない):
     ///
     /// 1. CJKなら[`CJK_FAMILY_CANDIDATES`]を順に`load`し、実際に`c`を
     ///    描画できるものを採る
     /// 2. 候補が外れたら[`Self::load_any_covering`]で全フェースを走査する
-    ///    (**最終手段**)
+    ///    (最終手段)
     ///
     /// family名を一緒に返すのは、追加したフォントを
-    /// [`FontCollection::push_font_face`]へ**実family名で**登録するため。
+    /// [`FontCollection::push_font_face`]へ実family名で登録するため。
     /// 空名や擬似的な名前だと`matches_family`で意図しない一致を起こす。
     pub fn load_covering(
         &self,
@@ -276,7 +267,7 @@ impl SystemFonts {
 
     /// DB内の全フェースを走査して`c`を描画できるものを探す(最終手段)。
     ///
-    /// グリフの有無の判定は`ttf_parser`で**その場で読むだけ**にして
+    /// グリフの有無の判定は`ttf_parser`でその場で読むだけにして
     /// [`Font`]への変換(データのコピー)を避け、当たったフェースの
     /// family名で改めて`load`する(weight/styleの面選択を`load`に任せるため)。
     /// それでもフェースの実体読み込みは全件に及ぶので、候補リストが全て
@@ -377,12 +368,11 @@ fn to_fontdb_style(style: FontStyle) -> fontdb::Style {
 /// そのfamilyのBold面だけを追加でシステムから探しに行く。
 ///
 /// CSSの汎用family名(`monospace`等)は[`SystemFonts::load_generic`]で解決し、
-/// **汎用名そのものを宣言family名として**`fonts`へ登録する
-/// ([0036](../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)
-/// 決定3)。こうすることで`font-family: monospace`の照合が
-/// [`FontCollection::select_for_char`]の通常のfamily一致でそのまま機能する。
+/// 汎用名そのものを宣言family名として`fonts`へ登録する。こうすることで
+/// `font-family: monospace`の照合が[`FontCollection::select_for_char`]の
+/// 通常のfamily一致でそのまま機能する。
 ///
-/// 走査順は[`document_chars`]と同じく**文書順**([`NodeId`]順)に固定する。
+/// 走査順は[`document_chars`]と同じく文書順([`NodeId`]順)に固定する。
 /// `styles`は`HashMap`なので反復順が実行ごとに変わり、そのまま回すと
 /// ここで追加されるフォントの順序=PDFのフォント番号がぶれて、同じHTMLから
 /// 別のバイト列が出てしまう。
@@ -420,11 +410,10 @@ pub fn load_missing_system_fonts(
 }
 
 /// 文書中の文字のうち`fonts`のどのフォントでも描画できないものについて、
-/// 描画できるシステムフォントを探して`fonts`へ追加する([0065](
-/// ../../../docs/decisions/0065-glyph-coverage-font-fallback.md)決定2)。
+/// 描画できるシステムフォントを探して`fonts`へ追加する。
 ///
-/// [`load_missing_system_fonts`]がfamily**名**を手掛かりにするのに対し、
-/// こちらは**実際に使われている文字**を手掛かりにする。`font-family`未指定の
+/// [`load_missing_system_fonts`]がfamily名を手掛かりにするのに対し、
+/// こちらは実際に使われている文字を手掛かりにする。`font-family`未指定の
 /// 日本語文書のようにfamily名が何の手掛かりにもならないケースを救うための
 /// 経路で、`load_missing_system_fonts`の直後に呼ぶ。
 ///
@@ -434,7 +423,7 @@ pub fn load_missing_system_fonts(
 ///
 /// フォントを1本追加するたびに残りの文字を再判定するため、日本語文書なら
 /// CJKフォント1本の追加で以降の文字は全てカバー済みになる。走査順は
-/// **文書順**([`NodeId`]順)に固定して、追加されるフォントの順序=PDFの
+/// 文書順([`NodeId`]順)に固定して、追加されるフォントの順序=PDFの
 /// フォント番号が実行ごとにぶれないようにする。
 pub fn load_fonts_for_uncovered_chars(
     fonts: &mut FontCollection,
@@ -460,7 +449,7 @@ pub fn load_fonts_for_uncovered_chars(
     }
 }
 
-/// 文書中で実際に描画される文字を、**文書順**([`NodeId`]順)に列挙する。
+/// 文書中で実際に描画される文字を、文書順([`NodeId`]順)に列挙する。
 ///
 /// 対象はテキストノードの文字と、`::before`/`::after`の生成文字列
 /// (`counter()`やquotesを解決済みの[`ComputedStyle::pseudo_before_content`]等)。
@@ -520,8 +509,7 @@ fn cover_char(
 }
 
 /// ストリーミングモードのように文書全体の文字を事前に集められない場合に、
-/// **CJKの代表文字を描画できるフォントを先回りで足す**([0065](
-/// ../../../docs/decisions/0065-glyph-coverage-font-fallback.md)決定3)。
+/// CJKの代表文字を描画できるフォントを先回りで足す。
 ///
 /// [`crate::pdf::StreamingPdfWriter`]は`new`の時点でフォント数を固定するので、
 /// 読み進めながら[`load_fonts_for_uncovered_chars`]で補うことができない。
@@ -550,9 +538,8 @@ pub fn ensure_cjk_fallback_font(fonts: &mut FontCollection, system: &SystemFonts
     }
 }
 
-/// 文書中に**どのフォントでも描画できない文字**が残っていれば、文字ごとに
-/// 一度だけ警告する([0065](
-/// ../../../docs/decisions/0065-glyph-coverage-font-fallback.md)決定4)。
+/// 文書中にどのフォントでも描画できない文字が残っていれば、文字ごとに
+/// 一度だけ警告する。
 ///
 /// 黙って豆腐を出力しないための最後の網。`warned`は既に警告した文字の集合で、
 /// ストリーミングモードのようにこの関数が何度も呼ばれる場合に、同じ文字を
@@ -633,10 +620,10 @@ mod tests {
 
     #[test]
     fn load_missing_system_fonts_adds_fonts_in_document_order() {
-        // `styles`は`HashMap`なので反復順が実行ごとに変わる。文書順に固定して
-        // いないと、追加されるフォントの順序=PDFのフォント番号がぶれて、
-        // **同じHTMLから別のバイト列**が出てしまう(0061 決定4が謳う
-        // 「同じHTMLなら同じ出力」が成り立たなくなる)。
+        // `styles`は`HashMap`なので反復順が実行ごとに変わる。文書順に
+        // 固定していないと、追加されるフォントの順序=PDFのフォント
+        // 番号がぶれて、同じHTMLから別のバイト列が出てしまう(「同じ
+        // HTMLなら同じ出力」が成り立たなくなる)。
         //
         // `HashMap`のハッシュキーはインスタンスごとに変わるため、順序が
         // 崩れているかどうかは1回の実行では見えないことがある。毎回
@@ -715,9 +702,9 @@ mod tests {
 
     #[test]
     fn explicit_sans_serif_resolves_to_a_system_gothic_face() {
-        // `sans-serif`を**明示**した場合はゴシック体を候補リストで解決する
-        // ([0036]決定3-1改訂)。fixtureの"DejaVu Sans"が候補にあるので拾える。
-        // 既定`font-family`は空(未指定)に切り離したため、この解決が
+        // `sans-serif`を明示した場合はゴシック体を候補リストで解決する。
+        // fixtureの"DejaVu Sans"が候補にあるので拾える。既定`font-family`は空
+        // (未指定)に切り離したため、この解決が
         // `--font`の既定挙動を壊すことはない。
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         let author = parse_stylesheet("p { font-family: sans-serif; }");
@@ -771,7 +758,7 @@ mod tests {
     #[test]
     fn load_generic_returns_none_for_families_we_deliberately_skip() {
         // `cursive`/`fantasy`は候補を持たない。`Helvetica`は汎用名でない。
-        // (`sans-serif`は決定3-1改訂で解決対象になったのでここには含めない。)
+        // (`sans-serif`は解決対象になったのでここには含めない。)
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         for generic in ["cursive", "fantasy", "Helvetica"] {
             assert!(
@@ -868,7 +855,7 @@ mod tests {
     #[test]
     fn load_fonts_for_uncovered_chars_adds_a_cjk_face_for_japanese_text() {
         // `font-family`未指定の日本語文書。family名は何の手掛かりにもならないので、
-        // 文字カバレッジからCJKフォントを引き当てる必要がある([0065]決定2)。
+        // 文字カバレッジからCJKフォントを引き当てる必要がある。
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         let dom = html::parse("<p>本文です。</p>".as_bytes());
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
@@ -926,8 +913,8 @@ mod tests {
 
     #[test]
     fn ensure_cjk_fallback_font_adds_a_single_face_covering_kana_and_kanji() {
-        // ストリーミング用の先回り([0065]決定3)。代表文字2つを試すが、
-        // 1本のCJKフォントが両方を持つので追加は1本で済む。
+        // ストリーミング用の先回り。代表文字2つを試すが、1本のCJKフォントが
+        // 両方を持つので追加は1本で済む。
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         let latin = system
             .load("DejaVu Sans", FontWeight::Normal, FontStyle::Normal)

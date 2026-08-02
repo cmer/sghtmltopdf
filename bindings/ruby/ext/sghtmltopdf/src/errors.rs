@@ -1,6 +1,4 @@
 //! Rubyの例外クラスと、コアの[`CliError`]からの対応付け。
-//!
-//! ([0062](../../../../../docs/decisions/0062-ruby-binding.md)決定9)
 
 use magnus::{prelude::*, ExceptionClass, RModule, Ruby};
 use sghtmltopdf_core::cli::CliError;

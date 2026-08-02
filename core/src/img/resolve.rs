@@ -1,9 +1,8 @@
 //! `<img src>`のURL/パス分類。
 //!
-//! ネットワークフェッチ([0013](../../../docs/decisions/0013-image-fetch-security.md))・
-//! ローカルファイル読み込み・`data:` URIのデコードのどれを行うべきかを、
-//! 実際に取得を試みる前に判別する。判別のみを行い、実際のフェッチ/読み込み
-//! (T46)は行わない。
+//! ネットワークフェッチ・ローカルファイル読み込み・`data:` URIの
+//! デコードのどれを行うべきかを、実際に取得を試みる前に判別する。判別のみを
+//! 行い、実際のフェッチ/読み込み(T46)は行わない。
 
 use std::path::{Path, PathBuf};
 
@@ -18,13 +17,11 @@ pub enum ImgSrc {
     /// `base_dir`相対のローカルファイルパスとして扱う値。
     ///
     /// `http`/`https`/`data:`のいずれにも一致しなかった値がここに来る。
-    /// `file:`は明示的に別扱い(拒否)のため、ここには来ない
-    /// ([0013](../../../docs/decisions/0013-image-fetch-security.md)の
-    /// 「ローカル相対パスとURLスキームを取り違えさせない」方針通り)。
+    /// `file:`は明示的に別扱い(拒否)のため、ここには来ない(「ローカル相対
+    /// パスとURLスキームを取り違えさせない」方針通り)。
     LocalPath(String),
-    /// `http`/`https`の絶対URL。実際のフェッチはT46が
-    /// [0013](../../../docs/decisions/0013-image-fetch-security.md)の
-    /// ポリシーに従って行う。
+    /// `http`/`https`の絶対URL。実際のフェッチは
+    /// T46がセキュリティポリシーに従って行う。
     RemoteUrl(String),
     /// `data:`URI(base64エンコードされたペイロードのみ対応。
     /// パーセントエンコードされた非base64ペイロードは画像用途では
@@ -33,8 +30,7 @@ pub enum ImgSrc {
     DataUri { mime_type: String, bytes: Vec<u8> },
 }
 
-/// `raw`(生の参照値)を`<base href>`に対して解決する([0040](
-/// ../../../docs/decisions/0040-base-href-design.md)決定2)。
+/// `raw`(生の参照値)を`<base href>`に対して解決する。
 ///
 /// `base`が`None`、または`raw`が絶対参照(`http(s)`/`data:`)の場合は`raw`を
 /// そのまま返す。`base`が`http(s)`の絶対URLならURLとして結合し、そうでなければ
@@ -96,9 +92,8 @@ pub fn resolve_against_base_href(base: Option<&str>, raw: &str) -> String {
 }
 
 /// `src`属性の値を分類する。デコード不能な`data:`URI・`file:`スキームなど
-/// 「そもそも取得を試みるべきでない」値は`None`を返す
-/// (呼び出し側は[0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)
-/// の方針通り、画像なしの置換要素として扱う)。
+/// 「そもそも取得を試みるべきでない」値は`None`を返す(呼び出し側は
+/// 画像なしの置換要素として扱う)。
 pub fn classify_img_src(src: &str) -> Option<ImgSrc> {
     let trimmed = src.trim();
 
@@ -293,7 +288,7 @@ mod tests {
     fn resolve_local_asset_path_treats_a_leading_slash_as_relative_to_base_dir() {
         // 素朴な`base_dir.join(raw)`だと、Path::joinは絶対パスを渡されると
         // base_dirを丸ごと捨ててしまう(Unix)。root-relativeなhref
-        // (CLAUDE.mdの`<link href="/stylesheets/main.css" />`の例)が
+        // (`<link href="/stylesheets/main.css" />`の例)が
         // base_dirの外(OSのファイルシステムルート)へ逃げないことを確認する。
         let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "/stylesheets/main.css");
         assert_eq!(
@@ -315,7 +310,7 @@ mod tests {
         assert_eq!(resolved, Path::new("/var/www/app/./assets/x.css"));
     }
 
-    // ===== `<base href>`([0040]) =====
+    // ===== `<base href>` =====
 
     #[test]
     fn base_href_is_ignored_for_absolute_references() {

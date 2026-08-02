@@ -28,10 +28,9 @@ enum Origin {
 /// [`matching_declarations`]と同じだが、UAスタイルシート由来と作者CSS由来を
 /// 分けて返す(それぞれの中はカスケード優先度の昇順)。
 ///
-/// レガシー表示属性(presentational hints)は「UAスタイルシートより強く、
-/// 作者CSSより弱い」位置に入れる必要がある([0039](
-/// ../../../docs/decisions/0039-presentational-attributes-design.md)決定1)
-/// ため、両者の間に割り込めるようこの形を用意している。
+/// レガシー表示属性(presentational hints)は「UAスタイルシートより強く、作者
+/// CSSより弱い」位置に入れる必要があるため、
+/// 両者の間に割り込めるようこの形を用意している。
 pub fn matching_declarations_by_origin<'a>(
     dom: &Dom,
     element: NodeId,

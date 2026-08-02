@@ -7,8 +7,7 @@
 //! 回帰を検知する。この機能は`Engine`(`core/src/engine.rs`)に直接配線されて
 //! いる(`@page`の解決・`counter(pages)`のMode::Streaming制限・総ページ数の
 //! 事前カウントは`Engine`層の責務)ため、他のE2Eテストファイルと異なり
-//! `Engine` APIを直接使う。詳細設計は
-//! [0028](../../docs/decisions/0028-paged-media-design.md)参照。
+//! `Engine` APIを直接使う。
 
 use sghtmltopdf_core::engine::{Engine, EngineError, EngineOptions, FontSpec, Mode};
 use sghtmltopdf_core::sink::MemorySink;
@@ -29,8 +28,8 @@ fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
         .count()
 }
 
-/// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ。
-/// PDFへはpt(既定で0.75倍、[0057])で書かれるため、ここで換算する。
+/// `/MediaBox`の期待値をCSS pxで書けるようにするヘルパ。PDFへはpt(既定で
+/// 0.75倍)で書かれるため、ここで換算する。
 fn media_box(width_px: f32, height_px: f32) -> String {
     format!(
         "/MediaBox [0 0 {} {}]",
@@ -116,8 +115,8 @@ fn at_page_size_and_margin_override_the_whole_document() {
 
 #[test]
 fn at_page_pseudo_class_size_is_ignored_only_unconditional_rules_apply() {
-    // [0028]決定4改訂: `:first`等のsize/margin宣言はパースされるが適用されない
-    // (文書全体で単一のジオメトリのまま)。無条件ルールのみが効く。
+    // `:first`等のsize/margin宣言はパースされるが適用されない(文書全体で
+    // 単一のジオメトリのまま)。無条件ルールのみが効く。
     let bytes = build_pdf_batch(
         r#"<html><head><style>
              @page { size: 300px 400px; }

@@ -5,7 +5,7 @@ require_relative "renderer"
 require_relative "view_helpers"
 
 module Sghtmltopdf
-  # Rails統合(docs/decisions/0062-ruby-binding.md 決定7)。
+  # Rails統合。
   #
   # `sghtmltopdf.rb`が`defined?(Rails::Railtie)`のときだけこのファイルを
   # 読み込むため、素のRuby/Sinatraからの利用には影響しない。
@@ -18,13 +18,13 @@ module Sghtmltopdf
     #   素の`stylesheet_link_tag`がそのまま動く)。開発環境向けには
     #   [ViewHelpers#sghtmltopdf_stylesheet_link_tag]を用意している
     # * `allow`: `Rails.root`。ローカル参照をアプリのディレクトリ配下へ
-    #   限定する([0055](../../../docs/decisions/0055-cli-design.md)の
-    #   ローカルファイルアクセス制御)。テンプレートにユーザー入力が
-    #   混ざっても`/etc/passwd`のような文書外のファイルを読ませない。
+    #   限定する(CLIのローカルファイルアクセス制御)。テンプレートに
+    #   ユーザー入力が混ざっても`/etc/passwd`のような文書外のファイルを
+    #   読ませない。
     #   `--font`系で渡すフォントはフェッチャを通らないのでこの制限を受けない
     #
     # どちらも`Sghtmltopdf.configure`で上書きできる(このイニシャライザは
-    # `config/initializers/*`より**前**に走るため、後から設定した値が勝つ)。
+    # `config/initializers/*`より前に走るため、後から設定した値が勝つ)。
     def self.default_options(root)
       root = root.to_s
       defaults = {allow: [root]}

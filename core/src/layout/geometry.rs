@@ -80,8 +80,7 @@ impl Layout {
     }
 
     /// `overflow`のクリップ境界に使うパディングボックス(content+padding、
-    /// border線の内側、[0023](../../../docs/decisions/0023-box-model-details-design.md)
-    /// 決定1)。
+    /// border線の内側)。
     pub fn padding_box(&self) -> Rect {
         Rect {
             x: self.content.x - self.padding.left,

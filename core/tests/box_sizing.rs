@@ -2,7 +2,6 @@
 //!
 //! `box_model.rs`/`typography.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0027](../../docs/decisions/0027-box-sizing-design.md)参照。
 
 use std::collections::HashMap;
 

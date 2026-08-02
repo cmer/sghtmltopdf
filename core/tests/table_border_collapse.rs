@@ -1,8 +1,7 @@
 //! `border-collapse: collapse`のE2Eテスト(M8 Phase 1 Table layout完全対応)。
 //!
 //! `table_caption.rs`/`table_vertical_align.rs`/`table_rowspan.rs`と同じ方針:
-//! 実際のパイプラインを通して回帰を検知する。詳細設計は
-//! [0021](../../docs/decisions/0021-table-layout-design.md)参照。
+//! 実際のパイプラインを通して回帰を検知する。
 
 use std::collections::HashMap;
 

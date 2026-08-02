@@ -1,12 +1,9 @@
-//! wkhtmltopdfにあってsghtmltopdfが実装しないオプションの、明示的な拒否
-//! ([0055](../../../docs/decisions/0055-cli-design.md)決定5)。
+//! wkhtmltopdfにあってsghtmltopdfが実装しないオプションの、明示的な拒否。
 //!
 //! 黙って無視すると「指定したのに効かない」という最悪の失敗の仕方になるため、
-//! **理由と代替手段を示してエラーにする**。clapのオプションとして1つずつ
+//! 理由と代替手段を示してエラーにする。clapのオプションとして1つずつ
 //! 定義するのではなく、パース前に引数名を照合する方式にしている
 //! (数が多く、`--help`にも出したくないため)。
-//!
-//! 全一覧と非対応の理由は`docs/wkhtmltopdf_option_mapping.md`。
 
 /// 非対応の理由(同じ理由のオプションでまとめる)。
 struct Reason {
@@ -120,7 +117,7 @@ const REASONS: &[Reason] = &[
         options: &["--cache-dir"],
     },
     Reason {
-        message: "ドキュメントは docs/cli.md と README を参照してください",
+        message: "ドキュメントとREADMEを参照してください",
         options: &[
             "--extended-help",
             "--htmldoc",

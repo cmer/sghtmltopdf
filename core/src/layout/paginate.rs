@@ -59,7 +59,7 @@ pub struct Page {
 ///
 /// [`place_split`]によるコンテナの装飾フラグメント(背景・枠線)挿入は、
 /// そのコンテナの子要素すべてを配置し終えてから、既に`push`済みの
-/// (一見「確定した」ように見える)ページへ**遡って**行われる(モジュールdoc
+/// (一見「確定した」ように見える)ページへ遡って行われる(モジュールdoc
 /// 参照)。そのため「新しいページが始まったら直前のページは確定」という
 /// 単純な判定はできない。文書ルート自身もこの`place_split`を通るため、
 /// 何も対策しなければ「文書全体の処理が終わるまでどのページも確定しない」
@@ -102,7 +102,7 @@ impl PaginationBuffer {
 ///
 /// [`place_split`]によるコンテナの装飾フラグメント(背景・枠線)挿入は、
 /// そのコンテナの子要素すべてを配置し終えてから、既に`push`済みの
-/// (一見「確定した」ように見える)ページへ**遡って**行われる(モジュールdoc
+/// (一見「確定した」ように見える)ページへ遡って行われる(モジュールdoc
 /// 参照)。そのため「新しいページが始まったら直前のページは確定」という
 /// 単純な判定はできない。文書ルート自身もこの`place_split`を通るため、
 /// 何も対策しなければ「文書全体の処理が終わるまでどのページも確定しない」
@@ -300,9 +300,7 @@ pub fn paginate_document(
 }
 
 /// 絶対配置ボックス([`PositionedBox`])を、属するページへオーバーレイとして
-/// 追加する([0049](
-/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md)決定1)。
-/// `page.boxes`の末尾に足すので、通常フローの上(最前面)に描かれる(決定5)。
+/// 追加する。`page.boxes`の末尾に足すので、通常フローの上(最前面)に描かれる。
 pub(crate) fn apply_positioned_overlays(pages: &mut [Page], positioned: &[PositionedBox]) {
     for pb in positioned {
         match pb.kind {
@@ -383,11 +381,10 @@ fn find_node_padding_origin(b: &LaidOutBox, node: NodeId) -> Option<(f32, f32)> 
     }
 }
 
-/// `Mode::Batch`用: 全ページを確定させてから絶対配置([0049](
-/// ../../../docs/decisions/0049-absolute-fixed-positioning-design.md))を
-/// オーバーレイして返す。`fixed`の全ページ複製・`absolute`の祖先ページ解決は
-/// 全ページが揃ってからでないとできないため、ストリーミング解放は行わない
-/// (batchは全体をメモリに載せてよい前提)。
+/// `Mode::Batch`用: 全ページを確定させてから絶対配置をオーバーレイして返す。
+/// `fixed`の全ページ複製・`absolute`の祖先ページ解決は全ページが
+/// 揃ってからでないとできないため、ストリーミング解放は行わない(batchは全体を
+/// メモリに載せてよい前提)。
 pub fn paginate_document_with_absolutes(
     dom: &mut Dom,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -415,8 +412,7 @@ pub fn paginate_document_with_absolutes(
 /// 現状のパイプライン(`compute_styles`→`build_box_tree`→`layout_document`は
 /// いずれもDOM全体を一括で読む)では、この時点でスタイル計算・レイアウトは
 /// 両方とも完了済みで、以後どのページの処理も`dom`を読み返すことはない。
-/// そのため[0006](../../docs/decisions/0006-css-non-locality-scope.md)が
-/// 定める「兄弟・子孫セレクタの参照範囲を跨がない」制約は、ここでは常に
+/// そのため「兄弟・子孫セレクタの参照範囲を跨がない」制約は、ここでは常に
 /// 満たされている(まだパースされていない後続要素が存在しないため)。
 /// 将来ストリーミングHTMLパース([`crate::html::StreamingParser`])と統合し、
 /// スタイル計算自体も段階的に行うようになった場合は、この前提が崩れるため
@@ -486,11 +482,9 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
             }
         }
         // flexコンテナはページ分割に対してアトミック(`display: table`と同じ
-        // 扱い、[0034](../../../docs/decisions/0034-flexbox-design.md)決定3)。
-        // グリッドは行単位で分割する([0054](
-        // ../../../docs/decisions/0054-grid-design.md)決定6)が、断片ごとの
-        // 完了判定は`place_grid`が`FragmentPosition`で表現するため、ここでは
-        // テーブルと同じく再帰しない。
+        // 扱い)。グリッドは行単位で分割するが、断片ごとの完了判定は
+        // `place_grid`が`FragmentPosition`で表現するため、
+        // ここではテーブルと同じく再帰しない。
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -547,15 +541,13 @@ fn place_box(b: &LaidOutBox, page_height: f32, state: &mut PaginationState<'_>, 
             );
             return;
         }
-        // テーブルは行単位で分割する([0044](
-        // ../../../docs/decisions/0044-table-pagination-design.md))。
-        // これが無いと、ページに収まらない行が描画されずに失われる。
+        // テーブルは行単位で分割する。これが無いと、
+        // ページに収まらない行が描画されずに失われる。
         LaidOutContent::Table(table) if !table.rows.is_empty() => {
             place_table(b, table, page_height, state, cursor);
             return;
         }
-        // グリッドは行帯単位で分割する([0054](
-        // ../../../docs/decisions/0054-grid-design.md)決定6)。
+        // グリッドは行帯単位で分割する。
         LaidOutContent::Grid(grid) if grid.rows.len() > 1 => {
             place_grid(b, grid, page_height, state, cursor);
             return;
@@ -619,7 +611,7 @@ fn margin_box_top(b: &LaidOutBox) -> f32 {
 /// これが`true`の場合、`b`自身がページ残り高さに収まっていても「丸ごと1個の
 /// リーフとして配置する」高速経路は使えない(強制改ページの位置を見逃して
 /// しまうため)。テーブルの内部行・インライン行の分割はM2のスコープ外
-/// (`0001-rest-of-m1.md`参照)なので、`Blocks`のみ再帰する。
+/// なので、`Blocks`のみ再帰する。
 fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
     match &b.content {
         LaidOutContent::Blocks(children) => children.iter().any(|child| {
@@ -627,8 +619,8 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        // flexコンテナはアトミック([0034]決定3)。グリッドの行分割は
-        // `place_grid`が担うため、ここでは再帰しない([0054]決定6)。
+        // flexコンテナはアトミック。グリッドの行分割は`place_grid`が
+        // 担うため、ここでは再帰しない。
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -744,12 +736,11 @@ fn compute_orphans_widows_breaks(
 /// から事前計算した配列をインデックスで引くコールバックを渡す)。
 ///
 /// `is_float`/`item_margin_box_top`は、`items`のうちフロー外の要素(`float`)を
-/// 判定するためのコールバック(`LineBox`側は常に`false`/`0.0`のダミー実装を渡す。
-/// 行にfloatの概念は無い)。float項目は共有`cursor`を変更せず、
-/// `shift_reference`(絶対Y→ページ内相対Yの変換係数)でシードした一時カーソルを
-/// 使って`place_one`へ再帰させる([0019](
-/// ../../../docs/decisions/0019-float-clear-position-relative-design.md)決定5、
-/// `place_leaf`/`place_line`/`new_page`はこの分岐のために一切変更しない)。
+/// 判定するためのコールバック(`LineBox`側は常に`false`/`0.0`のダミー実装を
+/// 渡す。行にfloatの概念は無い)。float項目は共有`cursor`を変更せず、
+/// `shift_reference`(絶対Y→ページ内相対Yの変換係数)でシードした一時
+/// カーソルを使って`place_one`へ再帰させる
+/// (`place_leaf`/`place_line`/`new_page`はこの分岐のために一切変更しない)。
 #[allow(clippy::too_many_arguments)]
 fn place_split<T>(
     b: &LaidOutBox,
@@ -782,7 +773,7 @@ fn place_split<T>(
     // `PaginationState`にページを保持させる理由もなくなる
     // (`enter_split`/`exit_split`を呼ばない)。装飾を持たないコンテナ
     // (`<html>`/`<body>`や大半のラッパー`<div>`)がこの高速経路を通ることで、
-    // ストリーミング時のflush頻度が大きく改善される([0007]参照)。
+    // ストリーミング時のflush頻度が大きく改善される。
     let needs_decoration = b.has_visible_decoration;
     if needs_decoration {
         // このコンテナが最初に触れる絶対ページインデックスを記録する
@@ -834,11 +825,11 @@ fn place_split<T>(
         if is_float(item) {
             // floatはフローに参加しないため共有`cursor`を変更しない。
             // `shift_reference`でシードした一時カーソルを使うことで、
-            // `place_one`(=`place_box`)内部の`shift = margin_box_top -
-            // *cursor`計算が周囲の通常フローと同じ平行移動になり、
-            // 正しいページ内相対位置に配置される。floatの配置自体が改ページを
-            // 誘発した場合、以降の通常フローにも影響し得るのは既知の限界
-            // ([0019]決定5)。
+            // `place_one`(=`place_box`)内部の
+            // `shift = margin_box_top -*cursor`計算が周囲の通常フローと同じ
+            // 平行移動になり、正しいページ内相対位置に配置される。floatの
+            // 配置自体が改ページを誘発した場合、以降の
+            // 通常フローにも影響し得るのは既知の限界。
             let mut local_cursor = item_margin_box_top(item) - shift_reference;
             place_one(item, page_height, state, &mut local_cursor);
         } else {
@@ -1006,11 +997,10 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
     let shift = line.rect.y - *cursor;
     let mut translated = line.clone();
     translated.rect.y -= shift;
-    // 行内の`display: inline-block`ボックス([0043](
-    // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))も
-    // 行と一緒に動かす(行のrectだけを動かすと箱が元の位置に取り残される)。
-    // `shift_box_y`の`delta`は引く量(`rect.y -= delta`)なので、行の
-    // `rect.y -= shift`と同じ移動量は`shift`をそのまま渡せばよい。
+    // 行内の`display: inline-block`ボックスも行と一緒に動かす(行のrectだけを
+    // 動かすと箱が元の位置に取り残される)。`shift_box_y`の`delta`は引く量
+    // (`rect.y -= delta`)なので、行の`rect.y -= shift`と同じ移動量は
+    // `shift`をそのまま渡せばよい。
     for atomic in translated.atomics.iter_mut() {
         atomic.content = shift_box_y(&atomic.content, shift);
     }
@@ -1036,16 +1026,13 @@ fn place_line(line: &LineBox, page_height: f32, state: &mut PaginationState<'_>,
     state.last_mut().boxes.push(fragment);
 }
 
-/// テーブルを行単位でページへ分割して配置する([0044](
-/// ../../../docs/decisions/0044-table-pagination-design.md))。
+/// テーブルを行単位でページへ分割して配置する。
 ///
 /// 同じページに載る連続した行を1つの断片(`LaidOutContent::Table`を持つ
-/// `LaidOutBox`)にまとめる(決定1)。断片はテーブル自身のノードとジオメトリを
-/// 引き継ぎ、`content.y`/`content.height`と`FragmentPosition`だけを差し替える
-/// (決定2)。
-/// グリッドコンテナを行帯単位でページへ配置する([0054](
-/// ../../../docs/decisions/0054-grid-design.md)決定6)。`place_table`と同じ
-/// 「断片を組み立てて確定する」構造で、単位が行帯になる。
+/// `LaidOutBox`)にまとめる。断片はテーブル自身のノードとジオメトリを引き
+/// 継ぎ、`content.y`/`content.height`と`FragmentPosition`だけを差し替える。
+/// グリッドコンテナを行帯単位でページへ配置する。`place_table`と同じ「断片を
+/// 組み立てて確定する」構造で、単位が行帯になる。
 ///
 /// 行帯の下端をまたぐアイテム(複数行にまたがるグリッドアイテム)がある境界では
 /// 分割しない(テーブルの`rowspan`と同じ扱い)。
@@ -1177,15 +1164,14 @@ fn place_table(
     let top_extra = container_top_extra(b);
     let bottom_extra = b.layout.padding.bottom + b.layout.border.bottom + b.layout.margin.bottom;
 
-    // 断片に積む行と、その断片の絶対座標→ページ内座標への平行移動量(決定3)。
+    // 断片に積む行と、その断片の絶対座標→ページ内座標への平行移動量。
     let mut pending: Vec<LaidOutTableRow> = Vec::new();
     let mut shift = 0.0f32;
     let mut fragment_top = 0.0f32;
     let mut is_first_fragment = true;
 
-    // 2ページ目以降の先頭に複製する`<thead>`の行([0045](
-    // ../../../docs/decisions/0045-table-header-repetition-design.md)決定3)。
-    // 見出しだけでページが埋まる(=1行も進まない)場合は繰り返さない(決定3-2)。
+    // 2ページ目以降の先頭に複製する`<thead>`の行。見出しだけでページが埋まる
+    // (=1行も進まない)場合は繰り返さない。
     let head_rows: Vec<&LaidOutTableRow> = table
         .rows
         .iter()
@@ -1205,7 +1191,7 @@ fn place_table(
         head_bottom - head_top
     };
     let repeat_head = !head_rows.is_empty() && head_height < page_height;
-    // `caption-side: top`のcaptionは最初の断片に付ける(決定5)。
+    // `caption-side: top`のcaptionは最初の断片に付ける。
     let caption_is_top = table.caption_side == CaptionSide::Top;
     let mut pending_caption = table.caption.as_deref().filter(|_| caption_is_top).cloned();
 
@@ -1255,8 +1241,8 @@ fn place_table(
             is_first_fragment = false;
             new_page(state, cursor);
             fragment_top = *cursor;
-            // 新しいページの先頭に見出し行を複製する(決定3・決定4: 最初の
-            // ページには元の行がそのまま置かれるので複製は2ページ目以降だけ)。
+            // 新しいページの先頭に見出し行を複製する(最初のページには元の
+            // 行がそのまま置かれるので複製は2ページ目以降だけ)。
             if repeat_head {
                 let head_shift = head_top - *cursor;
                 for head_row in &head_rows {
@@ -1271,7 +1257,7 @@ fn place_table(
         *cursor = row_bottom - shift;
     }
 
-    // `caption-side: bottom`のcaptionは最後の断片に付ける(決定5)。
+    // `caption-side: bottom`のcaptionは最後の断片に付ける。
     if !caption_is_top {
         if let Some(caption) = table.caption.as_deref() {
             let translated = shift_box_y(caption, shift);
@@ -1550,7 +1536,7 @@ mod tests {
         assert!(
             pages.len() > 1,
             "a float containing 20 items of 100px should overflow a single page \
-             ([0019]決定5: floatのページ跨ぎを許容する)"
+             (floatのページ跨ぎを許容する)"
         );
 
         let mut ps = Vec::new();
@@ -2591,7 +2577,7 @@ mod tests {
         }
     }
 
-    // ===== テーブルの行単位ページ分割([0044]) =====
+    // ===== テーブルの行単位ページ分割 =====
 
     /// `html_src`をページ分割し、ページごとのテーブル行数を返す。
     fn table_rows_per_page(html_src: &str) -> Vec<usize> {
@@ -2748,8 +2734,7 @@ mod tests {
 
     #[test]
     fn a_header_taller_than_the_page_is_not_repeated() {
-        // 見出しだけでページが埋まると1行も進めなくなるため繰り返さない
-        // ([0045]決定3-2)。
+        // 見出しだけでページが埋まると1行も進めなくなるため繰り返さない。
         let rows: String = (0..40).map(|i| format!("<tr><td>b{i}</td></tr>")).collect();
         let head: String = (0..80).map(|i| format!("<tr><td>h{i}</td></tr>")).collect();
         let html_src = format!("<table><thead>{head}</thead><tbody>{rows}</tbody></table>");

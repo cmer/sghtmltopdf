@@ -1,13 +1,11 @@
 //! `@import`文の検出・再帰展開(パース前のテキスト前処理)。
 //!
-//! [0016](../../../docs/decisions/0016-at-import-resolution-design.md)の
-//! 方針により、`parse_stylesheet`本体にI/Oを持ち込まず、パース前のCSS
-//! テキストに対する文字列レベルの展開として実装する。`@import`文の検出は
-//! CSS仕様上の「先頭にしか書けない」規定を厳密にvalidateせず、CSS内の
-//! どこにあっても検出・展開する(スパイクで非先頭のimportも正しく検出
-//! できることを確認済み)。展開結果は、`@import`文があった位置にそのまま
-//! フェッチ内容を差し込む(hoistして先頭にまとめるのではない、真の意味での
-//! in-place置換)。
+//! `parse_stylesheet`本体にI/Oを持ち込まず、パース前のCSSテキストに対する
+//! 文字列レベルの展開として実装する。`@import`文の検出はCSS仕様上の
+//! 「先頭にしか書けない」規定を厳密にvalidateせず、CSS内のどこにあっても
+//! 検出・展開する(スパイクで非先頭のimportも正しく検出できることを確認済み)。
+//! 展開結果は、`@import`文があった位置にそのままフェッチ内容を差し込む
+//! (hoistして先頭にまとめるのではない、真の意味でのin-place置換)。
 
 use std::ops::Range;
 
@@ -15,9 +13,8 @@ use cssparser::{Delimiter, Parser, ParserInput, Token};
 
 use crate::img::{DocumentImageCache, ImageFetcher};
 
-/// 循環import対策の再帰深さ上限(0016決定3)。URL正規化による訪問済み
-/// 集合の判定は相対/絶対/data:混在下でのコストが見合わないため、単純な
-/// 深さ上限で代替する。
+/// 循環import対策の再帰深さ上限。URL正規化による訪問済み集合の判定は相対/絶対
+/// /data:混在下でのコストが見合わないため、単純な深さ上限で代替する。
 const MAX_IMPORT_DEPTH: u32 = 16;
 
 struct ImportStatement {
@@ -29,8 +26,7 @@ struct ImportStatement {
 /// `css`中の`@import`文を検出し、フェッチした内容で再帰的に展開したCSS
 /// テキストを返す。フェッチ・デコードに失敗した`@import`、または
 /// [`MAX_IMPORT_DEPTH`]を超えた`@import`は、その1件だけ無視して標準エラー
-/// 出力に警告を出し、処理を継続する([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)/
-/// [0015](../../../docs/decisions/0015-external-stylesheet-fetch-design.md)と同じ方針)。
+/// 出力に警告を出し、処理を継続する(画像・外部スタイルシートと同じ方針)。
 pub fn resolve_imports(
     css: &str,
     fetcher: &ImageFetcher,
@@ -87,7 +83,7 @@ fn find_imports(css: &str) -> Vec<ImportStatement> {
             Ok(Token::AtKeyword(name)) if name.eq_ignore_ascii_case("import") => {
                 // メディアクエリ付き(`@import url(...) screen;`)であっても、
                 // hrefだけを取り出しメディア部分は無条件import扱いで捨てる
-                // (`@media`自体が非対応スコープのため、0016決定4)。
+                // (`@media`自体が非対応スコープのため)。
                 let href = parser
                     .parse_until_before::<_, _, ()>(Delimiter::Semicolon, |input| {
                         input

@@ -3,7 +3,7 @@
 //! 実際にバイナリをサーバとして起動し、`ureq`でリクエストを投げて
 //! ステータスコードとPDFバイト列を検証する。ポート衝突を避けるため
 //! `--listen 127.0.0.1:0`で起動し、標準出力に出る`listening on <addr>`から
-//! 実ポートを読む([0060](../../docs/decisions/0060-http-server-mode.md))。
+//! 実ポートを読む。
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
@@ -62,7 +62,7 @@ fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
         .count()
 }
 
-/// `/MediaBox`の期待値を**CSS px**で書けるようにするヘルパ
+/// `/MediaBox`の期待値をCSS pxで書けるようにするヘルパ
 /// (PDFへはpt=0.75倍で書かれる。f32の丸めがあるのでRust側で同じ計算をする)。
 fn media_box(width_px: f32, height_px: f32) -> String {
     format!(
@@ -161,8 +161,8 @@ fn options_that_take_local_paths_are_rejected() {
 
 #[test]
 fn local_file_access_is_disabled_by_default() {
-    // 既定ではローカル参照が禁止なので、画像は取得されず本文だけが出る
-    // ([0060]決定3)。取得しようとしても失敗して無視される。
+    // 既定ではローカル参照が禁止なので、画像は取得されず本文だけが出る。
+    // 取得しようとしても失敗して無視される。
     let server = TestServer::start(&[]);
     let html = r#"<html><body><img src="/etc/hostname"><p>x</p></body></html>"#;
 
@@ -218,7 +218,7 @@ fn stream_query_switches_to_chunked_transfer_encoding() {
         "the default response should be buffered"
     );
 
-    // `?stream=1`でchunkedになる([0060]決定2)。
+    // `?stream=1`でchunkedになる。
     let mut streamed = ureq::post(server.url("/pdf?stream=1")).send(HTML).unwrap();
     assert_eq!(streamed.status().as_u16(), 200);
     assert_eq!(

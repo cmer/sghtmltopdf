@@ -2,15 +2,14 @@
 //! PNGスパイク(`spike_image_png_decode.rs`)と同じRGB本体+SMask分離方式で
 //! PDFへ埋め込むPoC。
 //!
-//! なぜ`image`crateなのか: PNG/JPEGは専用クレート(`png`単体、JPEGは
-//! デコード無しのDCTDecodeパススルー)で足りるが、WebPには相当する軽量
-//! 単体クレートが無い(`libwebp-sys`はCライブラリバインディングで
-//! Pure Rustではない)。`image`crateはデフォルト機能だとAV1/TIFF/GIF等が
-//! 芋づる式に付いてくるため全体は不採用としたが(`docs/decisions/
-//! 0012-image-embedding-crates.md`参照)、`default-features = false,
-//! features = ["webp"]`に絞ると追加は`image`/`image-webp`/`quick-error`/
-//! `moxcms`/`pxfm`等9crateのみで、AV1エンコーダ一式(`rav1e`等)は
-//! 一切付いてこないことを確認済み。既存の`png`crateとも依存が大きく
+//! なぜ`image`crateなのか: PNG/JPEGは専用クレート(`png`単体、JPEGはデコード
+//! 無しのDCTDecodeパススルー)で足りるが、WebPには相当する軽量単体クレートが
+//! 無い(`libwebp-sys`はCライブラリバインディングでPure Rustではない)。
+//! `image`crateはデフォルト機能だとAV1/TIFF/GIF等が芋づる式に付いてくるため
+//! 全体は不採用としたが、`default-features = false, features = ["webp"]`に
+//! 絞ると追加は`image`/`image-webp`/`quick-error`/`moxcms`/`pxfm`等
+//! 9crateのみで、AV1エンコーダ一式(`rav1e`等)は一切付いてこないことを
+//! 確認済み。既存の`png`crateとも依存が大きく
 //! 重複する(flate2系)ため実質的な純増は小さい
 //!
 //! 実行: `cargo run --example spike_image_webp_decode`

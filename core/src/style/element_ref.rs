@@ -240,10 +240,9 @@ mod tests {
     /// [`Dom::release_subtree`](crate::html::Dom::release_subtree)で解放済み
     /// のノードは、`NodeData::Released`が既存のいずれの`match`パターンにも
     /// 積極的にマッチしないため、要素として振る舞わなくなる(タグ名・属性・
-    /// クラス等の照会がすべて非マッチになる)ことを確認する。これは
-    /// [0006](../../docs/decisions/0006-css-non-locality-scope.md)が
-    /// 前提とする「解放済みノードは以後のセレクタマッチングで安全に無視
-    /// される」という性質の裏付け。
+    /// クラス等の照会がすべて非マッチになる)ことを確認する。ストリーミング
+    /// 処理が前提とする「解放済みノードは以後のセレクタマッチングで安全に
+    /// 無視される」という性質の裏付け。
     #[test]
     fn released_node_no_longer_behaves_like_an_element() {
         let mut dom = parse(br#"<div id="x" class="c"><p>text</p></div>"#);

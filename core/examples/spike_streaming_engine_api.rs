@@ -9,18 +9,17 @@
 //! 検証したいこと:
 //! - `Engine<S: Sink>`がSinkを所有し、`feed`のたびに内部で`sink.write`を
 //!   呼べる形が、既存の`Sink`トレイト(`sink/mod.rs`)とそのまま噛み合うか
-//! - CLAUDE.mdが示すFFI境界(`Engine.new(options)` / `feed(html_chunk)` /
+//! - Ruby側のFFI境界(`Engine.new(options)` / `feed(html_chunk)` /
 //!   `each_pdf_chunk { |bytes| ... }` / `finish`)に、コア側のRust APIを
 //!   ほぼ1:1で対応させられるか
 //! - Rubyの`each_pdf_chunk { |bytes| ... }`ブロックを、コアに手を入れずに
 //!   「呼ばれるたびにブロックを呼ぶだけのSink実装」でラップできるか
 //!   (`CallbackSink`で模擬)
-//! - **`Mode::Batch`/`Mode::Streaming`の切り替えが同じ`Engine`型に
-//!   自然に載るか**。Batchモードは[0006](../../docs/decisions/0006-css-non-locality-scope.md)
-//!   が定めた非局所性の制約を一切課さず(DOM全体を待ってから処理するため
-//!   `nth-last-child`等も問題なく扱える)、Streamingモードのみ制約を適用する
-//!   ([0006](../../docs/decisions/0006-css-non-locality-scope.md)改訂: body
-//!   途中の`<style>`は「無視」ではなく「エラーで拒否」する方針に変更)
+//! - `Mode::Batch`/`Mode::Streaming`の切り替えが同じ`Engine`型に
+//!   自然に載るか。Batchモードは非局所性の制約を一切課さず(DOM全体を
+//!   待ってから処理するため`nth-last-child`等も問題なく扱える)、
+//!   Streamingモードのみ制約を適用する(body途中の`<style>`はエラーで
+//!   拒否する)
 //!
 //! 実行: `cargo run --example spike_streaming_engine_api`
 
@@ -28,9 +27,9 @@ use sghtmltopdf_core::sink::{MemorySink, Sink};
 
 /// 一括処理かストリーミング処理かを選択する。
 ///
-/// `Batch`はDOM全体が揃ってから処理するため、[0006](../../docs/decisions/0006-css-non-locality-scope.md)
-/// が挙げた非局所性の制約(`nth-last-child`等の非サポート、`<style>`は
-/// `<head>`内のみ)を一切課さない。`Streaming`のみこれらの制約を適用する。
+/// `Batch`はDOM全体が揃ってから処理するため、非局所性の制約(`nth-last-child`
+/// 等の非サポート、`<style>`は`<head>`内のみ)を一切課さない。
+/// `Streaming`のみこれらの制約を適用する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Mode {
     #[default]
@@ -88,10 +87,9 @@ impl<S: Sink> Engine<S> {
     /// 到達した分があれば、そのつど`sink.write`を呼ぶ(このダミー実装では
     /// 呼ばない。T23でレイアウトのflush化と合わせて実装する)。
     ///
-    /// `Mode::Streaming`では、`<body`より後に`<style`が現れたら
-    /// [0006](../../docs/decisions/0006-css-non-locality-scope.md)の方針に
-    /// 従いエラーを返す。実際の判定はT21でTreeSinkのフックとして実装する
-    /// (ここでは検証用にバイト列の雑な走査で代用している)。
+    /// `Mode::Streaming`では、`<body`より後に`<style`が現れたらエラーを返す。
+    /// 実際の判定はT21でTreeSinkのフックとして実装する(ここでは検証用にバイト
+    /// 列の雑な走査で代用している)。
     fn feed(&mut self, html_chunk: &[u8]) -> Result<(), EngineError<S::Error>> {
         if self.options.mode == Mode::Streaming {
             if !self.seen_body && contains(html_chunk, b"<body") {

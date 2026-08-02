@@ -1,10 +1,8 @@
 //! `@page`ルール(ページの`size`/`margin`・margin box)のパースと解決。
 //!
-//! 設計判断は[0028](../../../docs/decisions/0028-paged-media-design.md)参照。
 //! `@page`のブロックは「`size`/`margin`系の通常のプロパティ宣言」と
 //! 「16個のmargin box at-rule(`@top-left`等)」が混在する構文で、
-//! `stylesheet.rs`の既存パーサーとは別に専用の[`PageRuleParser`]を用いる
-//! (決定2)。
+//! `stylesheet.rs`の既存パーサーとは別に専用の[`PageRuleParser`]を用いる。
 //!
 //! `style`クレート内は`layout`クレートに依存しない設計方針
 //! ([`crate::layout`]が[`crate::style`]に依存する一方向)のため、ページ
@@ -24,7 +22,7 @@ use super::stylesheet::DeclarationBlockParser;
 use super::values::{ContentPart, LengthPercentageOrAuto, SpecifiedLength};
 
 /// `@page`のページセレクタ(prelude)。名前付きページ(`@page intro`)・
-/// `:blank`は非対応(決定2、非目標)。
+/// `:blank`は非対応(非目標)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageSelector {
     All,
@@ -33,7 +31,7 @@ pub enum PageSelector {
     Right,
 }
 
-/// margin boxの領域(16個、決定2)。
+/// margin boxの領域(16個)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MarginBoxArea {
     TopLeftCorner,
@@ -83,8 +81,8 @@ impl MarginBoxArea {
     }
 }
 
-/// `size`プロパティの名前付きページサイズ。`b4`/`b5`/`ledger`はCLAUDE.mdの
-/// 想定用途(請求書・帳票)での実用性を踏まえ非対応。
+/// `size`プロパティの名前付きページサイズ。`b4`/`b5`/`ledger`は想定用途
+/// (請求書・帳票)での実用性を踏まえ非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NamedPageSize {
     A4,
@@ -195,7 +193,7 @@ impl<'i> RuleBodyItemParser<'i, PageBodyItem, ()> for PageRuleParser {
 }
 
 /// `@page`のprelude(ページセレクタ)をパースする。`:first`/`:left`/`:right`
-/// 単体のみ認識(複合・名前付きページは非対応、決定2)。
+/// 単体のみ認識(複合・名前付きページは非対応)。
 pub(super) fn parse_page_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<PageSelector, ParseError<'i, ()>> {
@@ -298,9 +296,8 @@ fn parse_page_size<'i>(input: &mut Parser<'i, '_>) -> Result<PageSizeValue, Pars
 /// 複数`@page`ルールを併合した最終結果。
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedPageRule {
-    /// 幅・高さ(px)。文書全体で1回だけ解決する
-    /// ([0028](../../../docs/decisions/0028-paged-media-design.md)決定4改訂、
-    /// `:first`/`:left`/`:right`のsize宣言は今回反映されない)。
+    /// 幅・高さ(px)。文書全体で1回だけ解決する(`:first`/`:left`/`:right`の
+    /// size宣言は今回反映されない)。
     pub size_px: Option<(f32, f32)>,
     pub margin_top: Option<LengthPercentageOrAuto>,
     pub margin_right: Option<LengthPercentageOrAuto>,
@@ -309,10 +306,9 @@ pub struct ResolvedPageRule {
     pub margin_boxes: HashMap<MarginBoxArea, Vec<PropertyDeclaration>>,
 }
 
-/// [0028]決定3の簡易カスケード。無条件`@page{}`ルールをスタイルシート順に
-/// 畳み込んだ後、`is_first`/`is_left`に合致する擬似クラス付きルールを
-/// margin boxについてのみ畳み込む(`size`/`margin`は決定4改訂により
-/// 無条件ルールのみが有効)。
+/// 簡易カスケード。無条件`@page{}`ルールをスタイルシート順に畳み込んだ後、
+/// `is_first`/`is_left`に合致する擬似クラス付きルールをmargin boxに
+/// ついてのみ畳み込む(`size`/`margin`は無条件ルールのみが有効)。
 pub fn resolve_page_rules(rules: &[PageRule], is_first: bool, is_left: bool) -> ResolvedPageRule {
     let mut result = ResolvedPageRule::default();
 
@@ -342,8 +338,7 @@ pub fn resolve_page_rules(rules: &[PageRule], is_first: bool, is_left: bool) -> 
 /// いずれかのmargin boxの`content`で`counter(pages)`(`counters(pages, ...)`
 /// 含む)が使われているかを判定する。`Mode::Streaming`では総ページ数が
 /// 原理的に決まらないため、`EngineError::UnsupportedInStreamingMode`を
-/// 返すかどうかの判定に使う([0028](../../../docs/decisions/0028-paged-media-design.md)
-/// 決定6)。
+/// 返すかどうかの判定に使う。
 pub fn rules_use_page_count(rules: &[PageRule]) -> bool {
     rules.iter().any(|rule| {
         rule.margin_boxes.values().any(|decls| {
@@ -471,8 +466,8 @@ mod tests {
 
     #[test]
     fn page_rule_rejects_named_pages_and_combined_pseudo_classes() {
-        // 名前付きページ・複合擬似クラスは非対応(決定2)。パースエラーに
-        // なった@pageルールは無視され、後続のルールには影響しない。
+        // 名前付きページ・複合擬似クラスは非対応。パースエラーになった@page
+        // ルールは無視され、後続のルールには影響しない。
         for css in [
             "@page intro { margin: 0; }",
             "@page :first:left { margin: 0; }",
@@ -528,7 +523,7 @@ mod tests {
              @page :first { size: 999px 999px; margin: 999px; }",
         );
         let resolved = resolve_page_rules(&sheet.page_rules, true, false);
-        // :firstのsize/marginは([0028]決定4改訂により)反映されない。
+        // :firstのsize/marginは反映されない。
         assert_eq!(resolved.size_px, Some((300.0, 400.0)));
         assert_eq!(
             resolved.margin_top,

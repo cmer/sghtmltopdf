@@ -17,7 +17,7 @@ PDFエンジンは、html5ever/Stylo/Taffy といった Servo が提供してい
 現在は、Headless Chrome等のヘッドレスブラウザを使って PDF を出力する場面が多いと思います。
 
 個人的に、wkhtmltopdf のアプローチがとても好きだったので、wkhtmltopdf をモダナイズしたものを作ろうと思いました。  
-sghtmltopdf の「sg」は **Second Generation** の略で、wkhtmltopdf への敬意を込めて「次世代」をつけました。
+sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf への敬意を込めて「次世代」をつけました。
 
 ## wkhtmltopdf（QtWebkit）やヘッドレスブラウザを使ったPDF出力に感じていた課題
 

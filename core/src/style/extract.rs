@@ -3,22 +3,20 @@
 //!
 //! `style="..."`属性(インラインスタイル)の抽出は未対応(T3参照)。
 //!
-//! [0015](../../../docs/decisions/0015-external-stylesheet-fetch-design.md)
-//! の方針により、DOM走査(I/O無し、[`collect_css_sources`])とhref解決
-//! (I/Oあり)を分離する。全CSSソース(インライン・外部いずれも)を
-//! document順に連結してから`parse_stylesheet`を1回だけ呼ぶため、
-//! フェッチした外部CSS内の相対`url()`は常に元HTMLの`base_dir`基準で
-//! 解決される(0015 決定6、スタイルシートごとの基準切り替えは非対応)。
+//! DOM走査(I/O無し、[`collect_css_sources`])とhref解決(I/Oあり)を分離する。全
+//! CSSソース(インライン・外部いずれも)をdocument順に連結してから
+//! `parse_stylesheet`を1回だけ呼ぶため、フェッチした外部CSS内の相対`url()`は
+//! 常に元HTMLの`base_dir`基準で解決される
+//! (スタイルシートごとの基準切り替えは非対応)。
 //!
 //! 各CSSソースのテキストは、連結する前に[`resolve_imports`]で`@import`を
-//! 再帰展開する([0016](../../../docs/decisions/0016-at-import-resolution-design.md)参照)。
-//! `parse_stylesheet`自体は`@import`を知らないまま(cssparserのエラー回復で
-//! 無視される)なので、`extract_author_stylesheet`を経由しない直接呼び出しでは
-//! 従来通り`@import`は展開されず単に無視される。
+//! 再帰展開する。`parse_stylesheet`自体は`@import`を知らないまま(cssparserの
+//! エラー回復で無視される)なので、`extract_author_stylesheet`を経由しない
+//! 直接呼び出しでは従来通り`@import`は展開されず単に無視される。
 //!
 //! 連結後・パース前に[`substitute_custom_properties`]でCSS Custom
-//! Properties(`--foo`/`var()`)をテキスト置換で解決する([0033](../../../docs/decisions/0033-css-custom-properties-design.md)、
-//! `<style>`/`<link>`をまたいだ文書全体でフラットな名前空間として扱う)。
+//! Properties(`--foo`/`var`)をテキスト置換で解決する(`<style>`/`<link>`をまた
+//! いだ文書全体でフラットな名前空間として扱う)。
 
 use crate::html::{is_stylesheet_link, Dom, NodeData, NodeId};
 use crate::img::{DocumentImageCache, ImageFetcher};
@@ -39,11 +37,10 @@ enum CssSource {
 /// DOM中の全ての`<style>`/`<link rel=stylesheet>`のCSSを、document順を
 /// 保ったまま連結してパースする。
 ///
-/// 外部スタイルシート(`<link>`)の取得に失敗した場合(ネットワークエラー・
-/// SSRFブロック・非2xx・不正なUTF-8等、いずれも同列)は、[0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)
-/// が画像に対して定めた方針と同じく、そのスタイルシートだけを無視して
-/// 標準エラー出力に警告を出し、処理全体は継続する(壊れた/ブロックされた
-/// URLで文書生成全体を止めない)。
+/// 外部スタイルシート(`<link>`)の取得に失敗した場合(ネットワークエラー・SSRF
+/// ブロック・非2xx・不正なUTF-8等、いずれも同列)は、画像と同じくその
+/// スタイルシートだけを無視して標準エラー出力に警告を出し、処理全体は継続する
+/// (壊れた/ブロックされたURLで文書生成全体を止めない)。
 pub fn extract_author_stylesheet(
     dom: &Dom,
     fetcher: &ImageFetcher,

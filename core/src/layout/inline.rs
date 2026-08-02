@@ -34,9 +34,8 @@ use super::geometry::Rect;
 /// CHARACTER)。実際には描画されず、行組みが箱の位置を保つためだけに使う。
 const ATOMIC_PLACEHOLDER: char = '\u{FFFC}';
 
-/// `text-emphasis`のマーク1つ分の描画情報([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定6)。
-/// マークのサイズは`font-size`の半分(仕様の推奨値)。
+/// `text-emphasis`のマーク1つ分の描画情報。マークの
+/// サイズは`font-size`の半分(仕様の推奨値)。
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmphasisMark {
     pub style: EmphasisStyle,
@@ -47,18 +46,17 @@ pub struct EmphasisMark {
 }
 
 /// `text-emphasis`のマークが行に要求する高さの、font-sizeに対する比率
-/// ([0053]決定6、仕様の推奨値`0.5em`)。
+/// (仕様の推奨値`0.5em`)。
 const EMPHASIS_SIZE_RATIO: f32 = 0.5;
 
-/// soft hyphen(U+00AD)。描画はせず、改行機会としてのみ扱う([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定2)。
+/// soft hyphen(U+00AD)。描画はせず、改行機会としてのみ扱う。
 const SOFT_HYPHEN: char = '\u{00AD}';
 
-/// 行末に表示するハイフン(soft hyphenで分割したとき、決定2)。
+/// 行末に表示するハイフン(soft hyphenで分割したとき)。
 const HYPHEN: &str = "-";
 
 /// `text-overflow: ellipsis`の省略記号(U+2026)。グリフを持たないフォントでは
-/// ハイフンにフォールバックする(決定4)。
+/// ハイフンにフォールバックする。
 const ELLIPSIS: &str = "…";
 
 /// 同一スタイル・同一フォントで連続する区間(1単語の一部、または1単語全体)。
@@ -68,14 +66,11 @@ pub struct TextRun {
     pub font_index: usize,
     pub font_size: f32,
     pub color: RgbaColor,
-    /// このランを囲む`<a href>`のhref値([0042](
-    /// ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
-    /// PDF層がこの値ごとに`/Link`注釈を作る。
+    /// このランを囲む`<a href>`のhref値。PDF
+    /// 層がこの値ごとに`/Link`注釈を作る。
     pub link: Option<Rc<str>>,
     /// このランの`background-color`。インライン要素の背景は、そのランの
-    /// (ascent〜descentの)矩形として描画層が塗る([0041](
-    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)で
-    /// `ascent`/`descent`を持たせたことで実装可能になった。`<mark>`等)。
+    /// (ascent〜descentの)矩形として描画層が塗る(`<mark>`等)。
     pub background_color: RgbaColor,
     pub bold: bool,
     pub italic: bool,
@@ -89,38 +84,34 @@ pub struct TextRun {
     pub x_offset: f32,
     pub width: f32,
     /// このランの計算済み行高さ(px)。`line-height: normal`は`font_size*1.2`の
-    /// 近似、`<number>`はこのランの`font_size`で乗算済み([0020](
-    /// ../../../docs/decisions/0020-typography-details-design.md)決定3)。
+    /// 近似、`<number>`はこのランの`font_size`で乗算済み。
     pub line_height: f32,
-    /// `letter-spacing`の解決済みpx。PDF描画層(`pdf::document::render_line`)が
-    /// `Tc`(character spacing)としてそのまま使う(決定2、レイアウト側の幅計算
-    /// にも反映済み)。
+    /// `letter-spacing`の解決済みpx。PDF描画層(`pdf::document::render_line`)
+    /// が`Tc`(character spacing)としてそのまま
+    /// 使う(レイアウト側の幅計算にも反映済み)。
     pub letter_spacing: f32,
     /// `word-spacing`の解決済みpx。単語間gap計算専用(描画には使わない、
-    /// 決定1: PDFの`Tw`は複合フォントに効かないためgap幅への加算だけで実現)。
+    /// PDFの`Tw`は複合フォントに効かないためgap幅への加算だけで実現)。
     pub word_spacing: f32,
     /// このランのフォント・サイズにおけるアセント(px、ベースラインより上)。
-    /// 行ボックスの高さ・ベースライン位置の算出に使う([0041](
-    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
+    /// 行ボックスの高さ・ベースライン位置の算出に使う。
     pub ascent: f32,
     /// 同じくディセント(px、ベースラインより下、正の値)。
     pub descent: f32,
-    /// `vertical-align`によるベースラインからのずれ(px、**正=上方向**)。
+    /// `vertical-align`によるベースラインからのずれ(px、正=上方向)。
     /// 描画層は`line.baseline`にこの値を加減して各ランのベースラインを求める。
     pub baseline_shift: f32,
     /// `text-shadow`(継承済み・色解決済み)。描画層がテキスト本体の前に
-    /// 重ね描きする([0053](../../../docs/decisions/0053-text-details-design.md)
-    /// 決定5)。レイアウトには影響しない。空なら影なし。
+    /// 重ね描きする。レイアウトには影響しない。空なら影なし。
     pub text_shadow: Rc<[ComputedTextShadow]>,
-    /// `text-emphasis`のマーク(決定6)。`None`ならマークなし。
-    /// マーク分の高さは`ascent`/`descent`に加算済み。
+    /// `text-emphasis`のマーク。`None`ならマークなし。マーク分の高さは
+    /// `ascent`/`descent`に加算済み。
     pub emphasis: Option<EmphasisMark>,
     /// このランのスタイルの、IFC内での位置(`span_styles`のインデックス)。
-    /// 行組み中にハイフンや省略記号を同じスタイルで生成し直すために持つ
-    /// ([0053](../../../docs/decisions/0053-text-details-design.md)決定2・決定4)。
+    /// 行組み中にハイフンや省略記号を同じスタイルで生成し直すために持つ。
     pub(super) style_index: usize,
-    /// このランの直前がsoft hyphen由来の改行機会かどうか(決定2)。
-    /// ここで行が分かれたら、前の行の末尾にハイフンを表示する。
+    /// このランの直前がsoft hyphen由来の改行機会かどうか。ここで行が
+    /// 分かれたら、前の行の末尾にハイフンを表示する。
     pub(super) hyphen_before: bool,
     /// このランに適用された`vertical-align`の計算値(行の高さ確定後に
     /// `top`/`bottom`を後追いで解決するため、レイアウト中だけ使う)。
@@ -131,13 +122,10 @@ pub struct TextRun {
 pub struct LineBox {
     pub rect: Rect,
     pub runs: Vec<TextRun>,
-    /// 行ボックス上端からベースラインまでの距離(px)。`vertical-align`が
-    /// 絡むとランごとにベースラインがずれるため、レイアウト時に確定させて
-    /// 保持する([0041](
-    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定1)。
+    /// 行ボックス上端からベースラインまでの距離(px)。`vertical-align`が絡むと
+    /// ランごとにベースラインがずれるため、レイアウト時に確定させて保持する。
     pub baseline: f32,
-    /// この行に置かれた`display: inline-block`のボックス([0043](
-    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+    /// この行に置かれた`display: inline-block`のボックス。
     pub atomics: Vec<AtomicInline>,
 }
 
@@ -154,7 +142,7 @@ pub struct AtomicInline {
     /// `vertical-align`によるベースラインからのずれ(px、正=上)。
     pub baseline_shift: f32,
     /// このボックスの`vertical-align`(行の高さ確定後に`top`/`bottom`を
-    /// 解決するために保持する、[0041]決定2と同じ扱い)。
+    /// 解決するために保持する)。
     pub(super) vertical_align: VerticalAlign,
 }
 
@@ -164,32 +152,27 @@ struct StyledChar {
     ch: char,
     style_index: usize,
     /// `display: inline-block`のプレースホルダなら、その`InlineSpan`の
-    /// インデックス([0043](
-    /// ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
-    /// `ch`はU+FFFC(OBJECT REPLACEMENT CHARACTER)。
+    /// インデックス。`ch`はU+FFFC(OBJECT REPLACEMENT CHARACTER)。
     atomic_span: Option<usize>,
-    /// `<br>`由来の強制改行文字かどうか([0037](
-    /// ../../../docs/decisions/0037-forced-line-break-design.md)決定1)。
-    /// `ch`は`'\n'`。`white-space: pre`の経路はこのフラグを見ずに`'\n'`だけで
-    /// 行を分割するため、`<pre>`内の`<br>`も自然に改行になる。
+    /// `<br>`由来の強制改行文字かどうか。`ch`は`'\n'`。`white-space: pre`の
+    /// 経路はこのフラグを見ずに`'\n'`だけで行を分割するため、`<pre>`内の
+    /// `<br>`も自然に改行になる。
     is_forced_break: bool,
-    /// この文字の**直前**にsoft hyphen(U+00AD)があったか([0053](
-    /// ../../../docs/decisions/0053-text-details-design.md)決定2)。soft hyphen
-    /// 自身は描画されないため文字列からは取り除き、改行機会としてこのフラグに
+    /// この文字の直前にsoft hyphen(U+00AD)があったか。soft hyphen自身は
+    /// 描画されないため文字列からは取り除き、改行機会としてこのフラグに
     /// 変換する。ここで行が分かれた場合は行末にハイフンを表示する。
     hyphen_before: bool,
 }
 
-/// 通常フロー(`white-space: normal`/`nowrap`)の行組みの入力単位
-/// ([0037]決定2)。
+/// 通常フロー(`white-space: normal`/`nowrap`)の行組みの入力単位。
 enum InlineItem<'a> {
     Word {
         chars: &'a [StyledChar],
         /// 直前に空白があったか(単語間スペースを入れるかの判定)。
         space_before: bool,
     },
-    /// `display: inline-block`の箱([0043]決定1)。`span_index`は`InlineSpan`の
-    /// インデックス。
+    /// `display: inline-block`の箱。
+    /// `span_index`は`InlineSpan`のインデックス。
     Atomic {
         span_index: usize,
         space_before: bool,
@@ -204,12 +187,10 @@ enum InlineItem<'a> {
 /// スタイル(`<b>`等)やフォント(CSSの`font-family`フォールバック)が切り替わる
 /// 場合は、その単語を複数の[`TextRun`]に分けてシェイピングする。
 ///
-/// `float_ctx`が`Some`の場合、各行の開始時点でその行のY位置における
-/// float占有帯を問い合わせ、`available_width`/`origin_x`を動的に狭める
-/// (float周りのテキスト回り込み、[0019](
-/// ../../../docs/decisions/0019-float-clear-position-relative-design.md)参照)。
-/// `None`(floatが無い、またはテーブル列幅の事前測定など無関係な呼び出し)なら
-/// 固定の`available_width`/`origin_x`のまま(既存動作)。
+/// `float_ctx`が`Some`の場合、各行の開始時点でその行のY位置におけるfloat
+/// 占有帯を問い合わせ、`available_width`/`origin_x`を動的に狭める(float周りの
+/// テキスト回り込み)。`None`(floatが無い、またはテーブル列幅の事前測定など
+/// 無関係な呼び出し)なら固定の`available_width`/`origin_x`のまま(既存動作)。
 pub(crate) fn layout_inline_content(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -225,23 +206,21 @@ pub(crate) fn layout_inline_content(
 
     let (chars, span_styles, span_links) = flatten_spans(spans, styles);
     // `text-align`/`text-indent`/`white-space`はIFC内の先頭spanの計算値で
-    // 代表する(無名ボックスのbox_style欠陥を回避する設計、[0020]決定4)。
-    // ただし`display: inline-block`のスパンは**除外**する([0043](
-    // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1):
-    // 箱は独自のIFCを内側に持つため、その`white-space`等が親の行組みを
-    // 支配してはいけない(UAスタイルシートが`input`に付ける
-    // `white-space: pre`が段落全体をpre扱いにしてしまう)。
-    // 箱しか無いIFC(`<p><input></p>`等)ではテキスト由来の代表値が存在しない
-    // ため、初期値(`white-space: normal`/`text-align: left`/`text-indent: 0`)を
-    // 使う(既知の簡略化: この場合コンテナの`text-align`は効かない)。
+    // 代表する(無名ボックスのbox_style欠陥を回避する設計)。ただし
+    // `display: inline-block`のスパンは除外する:箱は独自のIFCを内側に
+    // 持つため、その`white-space`等が親の行組みを支配してはいけない(UA
+    // スタイルシートが`input`に付ける`white-space: pre`が段落全体をpre
+    // 扱いにしてしまう)。箱しか無いIFC(`<p><input></p>`等)ではテキスト由来の
+    // 代表値が存在しないため、初期値
+    // (`white-space: normal`/`text-align: left`/`text-indent: 0`)を使う
+    // (既知の簡略化: この場合コンテナの`text-align`は効かない)。
     let representative = spans
         .iter()
         .position(|span| span.atomic.is_none())
         .and_then(|i| span_styles.get(i));
     let white_space = representative.map(|s| s.white_space).unwrap_or_default();
     let text_align = representative.map(|s| s.text_align).unwrap_or_default();
-    // `word-break`/`overflow-wrap`も`white-space`と同じくIFCの代表値で扱う
-    // ([0053](../../../docs/decisions/0053-text-details-design.md)決定3)。
+    // `word-break`/`overflow-wrap`も`white-space`と同じくIFCの代表値で扱う。
     let word_break = representative.map(|s| s.word_break).unwrap_or_default();
     let overflow_wrap = representative.map(|s| s.overflow_wrap).unwrap_or_default();
     // パーセンテージはこのIFCのcontaining width(`available_width`)基準で解決する
@@ -286,7 +265,7 @@ pub(crate) fn layout_inline_content(
     // 境界として記録しない、既存の行の左端そのものだから)。
     let mut word_boundaries: Vec<usize> = Vec::new();
     // 直前のアイテムが強制改行だった場合の、その`<br>`が要求する行高さ。
-    // 末尾の`<br>`に対して空行を1つ足すため([0037]決定2-3)に使う。
+    // 末尾の`<br>`に対して空行を1つ足すために使う。
     let mut trailing_break_height: Option<f32> = None;
 
     for item in items {
@@ -335,7 +314,7 @@ pub(crate) fn layout_inline_content(
                 };
                 let line_is_empty = current_runs.is_empty() && current_atomics.is_empty();
 
-                // 行に収まらなければ先に改行する(箱自体は分割しない、決定3)。
+                // 行に収まらなければ先に改行する(箱自体は分割しない)。
                 if !line_is_empty
                     && white_space != WhiteSpace::Nowrap
                     && current_width + gap_width + margin_box_width > line_available_width
@@ -384,14 +363,14 @@ pub(crate) fn layout_inline_content(
             }
             InlineItem::ForcedBreak { style_index } => {
                 // 強制改行は行幅の残りに関係なく行を確定させる
-                // (`white-space: nowrap`でも効く、[0037]決定2)。
+                // (`white-space: nowrap`でも効く)。
                 let break_height = span_styles
                     .get(style_index)
                     .map(resolve_line_height)
                     .unwrap_or(0.0);
                 if current_runs.is_empty() && current_atomics.is_empty() {
-                    // 行に何も無い状態での強制改行(連続する`<br>`や
-                    // 段落先頭の`<br>`)は、高さだけを持つ空行になる(決定2-2)。
+                    // 行に何も無い状態での強制改行(連続する`<br>`や段落先頭の
+                    // `<br>`)は、高さだけを持つ空行になる。
                     (line_left, line_available_width) =
                         line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
                     lines.push(finish_line(
@@ -416,7 +395,7 @@ pub(crate) fn layout_inline_content(
                         fonts,
                     ));
                     // 強制改行で終わる行は最終行と同じ扱いで、`justify`の
-                    // 伸縮対象にしない(決定2-1)。
+                    // 伸縮対象にしない。
                     apply_text_align(
                         lines.last_mut().expect("just pushed"),
                         text_align,
@@ -429,9 +408,8 @@ pub(crate) fn layout_inline_content(
                     current_width = 0.0;
                 }
                 // `<br clear="left|right|all">`(レガシー表示属性が`clear`
-                // プロパティに変換されている、[0039](
-                // ../../../docs/decisions/0039-presentational-attributes-design.md)
-                // 決定5)。CSSで`br { clear: both }`と書いた場合も同じ経路。
+                // プロパティに変換されている)。CSSで
+                // `br { clear: both }`と書いた場合も同じ経路。
                 if let (Some(ctx), Some(clear)) =
                     (float_ctx, span_styles.get(style_index).map(|s| s.clear))
                 {
@@ -448,7 +426,7 @@ pub(crate) fn layout_inline_content(
         // 単語区切りは常に改行可能(次段の`is_first_chunk_of_word`で扱う)。
         // 要素は`(chunk, 単語の先頭chunkか, overflow-wrapの文字分割を試みてよいか)`。
         // 3つ目は「1文字も入らないので分割を諦めた」chunkを再投入したときに
-        // 無限ループへ入らないためのフラグ([0053]決定3)。
+        // 無限ループへ入らないためのフラグ。
         let mut chunk_queue: VecDeque<(Vec<TextRun>, bool, bool)> =
             group_into_chunks(word_runs, word_break)
                 .into_iter()
@@ -491,10 +469,10 @@ pub(crate) fn layout_inline_content(
                 0.0
             };
 
-            // `overflow-wrap: break-word`: 行頭に置いてもなお収まらないchunkは、
-            // 収まるところまで文字単位で切って改行する([0053]決定3)。
-            // 1文字も入らない場合(極端に狭い帯)は無限ループを避けるため
-            // そのまま置いてはみ出させる。
+            // `overflow-wrap: break-word`: 行頭に置いてもなお収まらない
+            // chunkは、収まるところまで文字単位で切って改行する。1文字も
+            // 入らない場合(極端に狭い帯)は無限ループを
+            // 避けるためそのまま置いてはみ出させる。
             if starting_new_line
                 && allow_break_fallback
                 && overflow_wrap == OverflowWrap::BreakWord
@@ -519,8 +497,8 @@ pub(crate) fn layout_inline_content(
                 && white_space != WhiteSpace::Nowrap
                 && current_width + gap_width + chunk_width > line_available_width
             {
-                // soft hyphenの位置で改行する場合、確定する行の末尾にハイフンを
-                // 表示する([0053]決定2)。
+                // soft hyphenの位置で改行する場合、
+                // 確定する行の末尾にハイフンを表示する。
                 if chunk.first().is_some_and(|run| run.hyphen_before) {
                     push_hyphen(&mut current_runs, &mut current_width, &span_styles, fonts);
                 }
@@ -553,7 +531,7 @@ pub(crate) fn layout_inline_content(
 
                 // 改行したので、このchunkを「行頭に置く」ケースとして評価し直す。
                 // こうしないと`overflow-wrap: break-word`の文字分割が2行目以降で
-                // 効かない(行頭判定を通らないまま置かれてしまう、[0053]決定3)。
+                // 効かない(行頭判定を通らないまま置かれてしまう)。
                 chunk_queue.push_front((chunk, is_first_chunk_of_word, allow_break_fallback));
                 continue;
             } else if !starting_new_line {
@@ -572,8 +550,8 @@ pub(crate) fn layout_inline_content(
     }
 
     // 行にテキストが1つも無く`display: inline-block`の箱だけが載っている場合も
-    // 行として確定させる([0043]決定1。`current_runs`だけを見ていると
-    // `<p><input></p>`のような行がまるごと捨てられる)。
+    // 行として確定させる(`current_runs`だけを見ていると`<p><input></p>`のよう
+    // な行がまるごと捨てられる)。
     if !current_runs.is_empty() || !current_atomics.is_empty() {
         let line_height = line_height_for(&current_runs);
         lines.push(finish_line(
@@ -594,8 +572,7 @@ pub(crate) fn layout_inline_content(
             &word_boundaries,
         );
     } else if let Some(break_height) = trailing_break_height {
-        // 末尾の`<br>`は1行分の空行を残す(主要ブラウザと同じ挙動、
-        // [0037]決定2-3)。
+        // 末尾の`<br>`は1行分の空行を残す(主要ブラウザと同じ挙動)。
         let (left, _) = line_band(float_ctx, cursor_y, break_height, origin_x, available_width);
         lines.push(finish_line(
             Vec::new(),
@@ -673,17 +650,15 @@ fn line_band(
 
 /// `spans`を1文字単位に展開し、各文字が元のどの[`ComputedStyle`]に属するかの
 /// インデックスを付与する。`span_styles`は文字と対になるスタイルの実体。
-/// `text-transform`はここで適用する(単語分割前の1パスで完結させる、[0020](
-/// ../../../docs/decisions/0020-typography-details-design.md)参照)。
+/// `text-transform`はここで適用する(単語分割前の1パスで完結させる)。
 fn flatten_spans(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, ComputedStyle>,
 ) -> (Vec<StyledChar>, Vec<ComputedStyle>, Vec<Option<Rc<str>>>) {
     let mut chars = Vec::new();
     let mut span_styles = Vec::with_capacity(spans.len());
-    // スパンと同じインデックスで引く`<a href>`([0042](
-    // ../../../docs/decisions/0042-link-annotations-design.md)決定1)。
-    // CSSプロパティではないため`ComputedStyle`には載せない。
+    // スパンと同じインデックスで引く`<a href>`。CSSプロパティではないため
+    // `ComputedStyle`には載せない。
     let mut span_links: Vec<Option<Rc<str>>> = Vec::with_capacity(spans.len());
     // spanを跨いでも語頭判定を継続する(先頭は語頭扱い)。
     let mut prev_is_boundary = true;
@@ -705,8 +680,7 @@ fn flatten_spans(
 
         if span.atomic.is_some() {
             // `display: inline-block`は文字列を持たないため、位置を保つための
-            // プレースホルダを1つだけ置く([0043](
-            // ../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定1)。
+            // プレースホルダを1つだけ置く。
             chars.push(StyledChar {
                 ch: ATOMIC_PLACEHOLDER,
                 style_index,
@@ -719,8 +693,7 @@ fn flatten_spans(
         }
 
         let hyphens = span_styles[style_index].hyphens;
-        // 直前にsoft hyphenがあったか([0053](
-        // ../../../docs/decisions/0053-text-details-design.md)決定2)。
+        // 直前にsoft hyphenがあったか。
         let mut hyphen_pending = false;
         for ch in span.text.chars() {
             // soft hyphen(U+00AD)自身は描画しない。`hyphens: manual`(初期値)
@@ -746,8 +719,7 @@ fn flatten_spans(
     (chars, span_styles, span_links)
 }
 
-/// `style.first_letter_style`(あれば)で対応するプロパティのみを上書きする
-/// ([0024](../../../docs/decisions/0024-generated-content-design.md)決定4)。
+/// `style.first_letter_style`(あれば)で対応するプロパティのみを上書きする。
 fn apply_first_letter_style(style: &mut ComputedStyle) {
     let Some(first_letter) = style.first_letter_style.clone() else {
         return;
@@ -791,14 +763,13 @@ fn apply_text_transform(ch: char, transform: TextTransform, is_word_start: bool)
 }
 
 /// `char::is_whitespace`基準で`str::split_whitespace`相当に単語分割しつつ、
-/// `<br>`由来の強制改行を[`InlineItem::ForcedBreak`]として出現順に挟み込む
-/// ([0037](../../../docs/decisions/0037-forced-line-break-design.md)決定2)。
-/// 連続する空白は畳み込み、先頭・末尾の空白は無視する(強制改行は空白では
-/// あるが畳み込まれず、常に1つのアイテムとして残る)。
+/// `<br>`由来の強制改行を[`InlineItem::ForcedBreak`]として出現順に挟み込む。
+/// 連続する空白は畳み込み、先頭・末尾の空白は無視する(強制改行は
+/// 空白ではあるが畳み込まれず、常に1つのアイテムとして残る)。
 fn split_into_items(chars: &[StyledChar]) -> Vec<InlineItem<'_>> {
     let mut items = Vec::new();
     let mut word_start = 0usize;
-    // 直前に空白があったか(単語間スペースを入れるかの判定、[0043]決定3)。
+    // 直前に空白があったか(単語間スペースを入れるかの判定)。
     let mut space_pending = false;
 
     for (i, sc) in chars.iter().enumerate() {
@@ -923,7 +894,7 @@ fn group_into_chunks(runs: Vec<TextRun>, word_break: WordBreak) -> Vec<Vec<TextR
     for run in runs {
         let starts_new_chunk = match chunks.last().and_then(|chunk| chunk.last()) {
             None => true,
-            // soft hyphenも改行機会([0053]決定2)。
+            // soft hyphenも改行機会。
             Some(_) if run.hyphen_before => true,
             Some(prev) => is_break_boundary(
                 prev.text.chars().last().unwrap_or(' '),
@@ -940,13 +911,12 @@ fn group_into_chunks(runs: Vec<TextRun>, word_break: WordBreak) -> Vec<Vec<TextR
     chunks
 }
 
-/// `text-overflow: ellipsis`([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定4)。
-/// 行組みが終わった後に、`content_width`からはみ出した行を省略記号で切り詰める。
-/// `overflow`が`visible`、または`text-overflow`が`clip`なら何もしない
+/// `text-overflow: ellipsis`。行組みが終わった後に、`content_width`からはみ
+/// 出した行を省略記号で切り詰める。`overflow`が`visible`、または
+/// `text-overflow`が`clip`なら何もしない
 /// (`clip`は既存の`overflow`クリップに委ねる)。
 ///
-/// **既知の簡略化**: 幅方向にはみ出した行のみを対象にする(ブロック全体の
+/// 既知の簡略化: 幅方向にはみ出した行のみを対象にする(ブロック全体の
 /// オーバーフローは扱わない)。省略記号のグリフを持たないフォントでは
 /// ハイフンにフォールバックする。
 pub(super) fn apply_text_overflow(
@@ -978,7 +948,7 @@ pub(super) fn apply_text_overflow(
 
         // 省略記号の幅を確保した上で、収まるところまでランを残す。
         // 各ランの`x_offset`は行内の確定位置(単語間スペースを含む)なので
-        // **書き換えない**。累積幅で置き直すとスペース分ずれる。
+        // 書き換えない。累積幅で置き直すとスペース分ずれる。
         let budget = (content_width - ellipsis.width).max(0.0);
         let mut kept: Vec<TextRun> = Vec::with_capacity(line.runs.len());
         let mut end_x = 0.0f32;
@@ -1022,11 +992,10 @@ fn shape_ellipsis(
     None
 }
 
-/// 行末にハイフンを追加する(soft hyphenで分割したとき、[0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定2)。直前のランと
-/// 同じスタイル・フォントでシェイプする。
+/// 行末にハイフンを追加する(soft hyphenで分割したとき)。直前のランと同じ
+/// スタイル・フォントでシェイプする。
 ///
-/// **既知の簡略化**: ハイフン分の幅は「収まるかどうか」の判定には含めない
+/// 既知の簡略化: ハイフン分の幅は「収まるかどうか」の判定には含めない
 /// (判定後に足すため、行がハイフン1文字分だけはみ出しうる)。
 fn push_hyphen(
     current_runs: &mut Vec<TextRun>,
@@ -1051,8 +1020,8 @@ fn push_hyphen(
     current_runs.push(hyphen);
 }
 
-/// chunkを`max_width`に収まる前半と残りに分割する([0053]決定3、
-/// `overflow-wrap: break-word`のフォールバック用)。
+/// chunkを`max_width`に収まる前半と残りに分割する
+/// (`overflow-wrap: break-word`のフォールバック用)。
 ///
 /// グリフ単位で切るため再シェイプは不要(`ShapedGlyph::cluster`が元テキストの
 /// バイトオフセットを持つ)。合字・結合文字の途中で切れる可能性はあるが、
@@ -1135,10 +1104,9 @@ fn split_run_at_width(run: &TextRun, max_width: f32) -> (Option<TextRun>, Option
 }
 
 /// `prev`と`next`の間で(空白が無くても)改行してよいかどうか。
-/// `word-break: normal`ではどちらか一方がCJK文字([`is_cjk`])であれば改行可能と
-/// みなす簡略判定(UAX#14の全面実装ではない)。`break-all`はすべての文字境界、
-/// `keep-all`はCJK境界でも改行しない([0053](
-/// ../../../docs/decisions/0053-text-details-design.md)決定3)。
+/// `word-break: normal`ではどちらか一方がCJK文字([`is_cjk`])であれば
+/// 改行可能とみなす簡略判定(UAX#14の全面実装ではない)。`break-all`はすべての
+/// 文字境界、`keep-all`はCJK境界でも改行しない。
 fn is_break_boundary(prev: char, next: char, word_break: WordBreak) -> bool {
     match word_break {
         WordBreak::BreakAll => true,
@@ -1173,8 +1141,7 @@ fn resolve_length_percentage(lp: LengthPercentage, basis: f32) -> f32 {
 }
 
 /// `line-height`の計算値からこの要素自身の`font_size`を使ってpx値を求める
-/// ([0020](../../../docs/decisions/0020-typography-details-design.md)決定3:
-/// `Number`/`Normal`は使用側=ここでその要素のfont-sizeを使って乗算する)。
+/// (`Number`/`Normal`は使用側=ここでその要素のfont-sizeを使って乗算する)。
 fn resolve_line_height(style: &ComputedStyle) -> f32 {
     let font_size = style.font_size.0;
     match style.line_height {
@@ -1187,7 +1154,7 @@ fn resolve_line_height(style: &ComputedStyle) -> f32 {
 /// `white-space: pre`用のレイアウト。改行文字(`\n`)で明示的に行を分割し、
 /// 連続する空白はそのまま保持する(畳み込まない、`split_into_words`を経由しない)。
 /// 折り返しは行わない(`nowrap`と同様、既存の`layout_inline_content`本体とは
-/// 別経路にすることでNormal/Nowrap側のリグレッションリスクを避ける、[0020]参照)。
+/// 別経路にすることでNormal/Nowrap側のリグレッションリスクを避ける)。
 /// `split_word_into_runs`/`group_into_chunks`は変更せず再利用できるが、
 /// `group_into_chunks`はCJK境界の改行可能判定用でpreでは折り返さないため
 /// 使わず、`split_word_into_runs`の結果をそのまま1行に連結する。
@@ -1212,7 +1179,7 @@ fn layout_pre_content(
 
     for segment in chars.split(|sc| sc.ch == '\n') {
         // 行高さの近似は、その行最初の文字のスタイル(無ければIFC先頭spanの
-        // スタイル)を基準にする(既知の簡略化、[0020]決定5)。
+        // スタイル)を基準にする(既知の簡略化)。
         let hint = segment
             .first()
             .and_then(|sc| span_styles.get(sc.style_index))
@@ -1267,8 +1234,7 @@ fn layout_pre_content(
 }
 
 /// `list-style-type`のマーカーテキストのシェイピングにも使う
-/// (`block.rs::layout_list_marker`、[0022](
-/// ../../../docs/decisions/0022-list-style-design.md)決定4)ため`pub(super)`。
+/// (`block.rs::layout_list_marker`)ため`pub(super)`。
 pub(super) fn shape_run(
     text: &str,
     font_index: usize,
@@ -1286,17 +1252,16 @@ pub(super) fn shape_run(
     let needs_synthetic_italic =
         style.font_style == FontStyle::Italic && !fonts.is_italic(font_index);
     let mut line_height = resolve_line_height(style);
-    // `letter-spacing`はグリフ数分だけ幅に加算する(行末にも均等加算する簡略化、
-    // [0020]既知の簡略化2)。PDF描画層は`run.letter_spacing`を`Tc`として使う
+    // `letter-spacing`はグリフ数分だけ幅に加算する(行末にも均等加算する
+    // 既知の簡略化)。PDF描画層は`run.letter_spacing`を`Tc`として使う
     // ため、ここでの幅計算とレンダリング結果が一致する。
     let width = shaped.width + style.letter_spacing * shaped.glyphs.len() as f32;
     let units_per_em = font.units_per_em() as f32;
     let mut ascent = font.ascender() as f32 / units_per_em * font_size;
     let mut descent = -(font.descender() as f32) / units_per_em * font_size;
 
-    // `text-emphasis`のマークは行ボックスの高さを増やす([0053](
-    // ../../../docs/decisions/0053-text-details-design.md)決定6)。`over`なら
-    // ascent側、`under`ならdescent側に`0.5em`を足す。
+    // `text-emphasis`のマークは行ボックスの高さを増やす。`over`ならascent側、
+    // `under`ならdescent側に`0.5em`を足す。
     let emphasis = (style.text_emphasis_style != EmphasisStyle::None).then(|| {
         let size = font_size * EMPHASIS_SIZE_RATIO;
         match style.text_emphasis_position {
@@ -1305,7 +1270,7 @@ pub(super) fn shape_run(
         }
         // 行ボックスの高さは`line-height`由来の値が下限になる
         // (`line_height_for`→`finish_line`)ため、マーク分はそちらにも足す。
-        // こうしないと上下の行とマークが重なる([0053]決定6)。
+        // こうしないと上下の行とマークが重なる。
         line_height += size;
         EmphasisMark {
             style: style.text_emphasis_style.clone(),
@@ -1347,9 +1312,8 @@ pub(super) fn shape_run(
 }
 
 /// 任意の文字列を、折り返しなしの単一行として`(origin_x, origin_y)`起点で
-/// シェイピングする。通常のDOMテキストノードを経由しない用途
-/// (`@page`のmargin box、[0028](../../../docs/decisions/0028-paged-media-design.md)
-/// 決定5)向け。文字ごとに`fonts.select_for_char`でフォントを選び直す
+/// シェイピングする。通常のDOMテキストノードを経由しない用途(`@page`のmargin
+/// box)向け。文字ごとに`fonts.select_for_char`でフォントを選び直す
 /// (`split_word_into_runs`と同じ考え方だが、折り返し判定が不要な分単純)。
 pub fn shape_standalone_line(
     text: &str,
@@ -1416,11 +1380,10 @@ fn line_height_for(runs: &[TextRun]) -> f32 {
 }
 
 /// 確定した行の`vertical-align`を解決し、行ボックスの高さとベースライン位置を
-/// 求めて[`LineBox`]を組み立てる([0041](
-/// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定2)。
+/// 求めて[`LineBox`]を組み立てる。
 ///
 /// `height`は`line-height`プロパティ由来の高さ(`line_height_for`の結果)で、
-/// 行ボックスの高さの**下限**として使う。`vertical-align`を使わない文書では
+/// 行ボックスの高さの下限として使う。`vertical-align`を使わない文書では
 /// 高さもベースライン位置も従来と完全に一致する。
 pub(super) fn finish_line(
     mut runs: Vec<TextRun>,
@@ -1432,8 +1395,7 @@ pub(super) fn finish_line(
     fonts: &FontCollection,
 ) -> LineBox {
     resolve_baseline_shifts(&mut runs, fonts);
-    // アトミックボックスはマージンボックスの下端をベースラインに合わせる
-    // ([0043](../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定2)。
+    // アトミックボックスはマージンボックスの下端をベースラインに合わせる。
     // つまりascent=マージンボックス高さ・descent=0として行に参加する。
     for atomic in atomics.iter_mut() {
         atomic.baseline_shift = match atomic.vertical_align {
@@ -1441,8 +1403,8 @@ pub(super) fn finish_line(
             VerticalAlign::LengthPercentage(LengthPercentage::Percentage(fraction)) => {
                 height * fraction
             }
-            // `sub`/`super`/`text-*`/`middle`は箱に対する厳密な定義が
-            // 本エンジンの簡略化(決定2)と噛み合わないため、`baseline`扱い。
+            // `sub`/`super`/`text-*`/`middle`は箱に対する厳密な定義が本
+            // エンジンの簡略化と噛み合わないため、`baseline`扱い。
             _ => 0.0,
         };
     }
@@ -1457,11 +1419,11 @@ pub(super) fn finish_line(
     let mut above = baseline;
     let mut below = height - baseline;
 
-    // アトミックボックスは**必ず**行の高さに参加する(下端=ベースライン、決定2)。
+    // アトミックボックスは必ず行の高さに参加する(下端=ベースライン)。
     // テキストランと違い`top`/`bottom`でも除外しない: 箱しか無い行
     // (`<p><input></p>`や並べたカード)で行の高さが0になり、後続の内容と
-    // 重なってしまうため。`top`/`bottom`の場合は「行の高さが箱の高さ以上」で
-    // ありさえすればよく、実際の位置は行の寸法確定後に決める。
+    // 重なってしまうため。`top`/`bottom`の場合は「行の高さが箱の高さ以上」
+    // でありさえすればよく、実際の位置は行の寸法確定後に決める。
     for atomic in atomics.iter() {
         if matches!(
             atomic.vertical_align,
@@ -1476,8 +1438,8 @@ pub(super) fn finish_line(
 
     // ずらされたランだけを、行ボックスからはみ出す分について考慮する。
     // `baseline_shift`が0のランは行の高さに影響しないため、`vertical-align`を
-    // 使わない文書の行の高さ・ベースラインは従来と完全に一致する(決定2)。
-    // `top`/`bottom`は行の高さを増やさない(決定2の簡略化)。
+    // 使わない文書の行の高さ・ベースラインは従来と完全に一致する。
+    // `top`/`bottom`は行の高さを増やさない(既知の簡略化)。
     for run in runs.iter().filter(|r| {
         r.baseline_shift != 0.0
             && !matches!(r.vertical_align, VerticalAlign::Top | VerticalAlign::Bottom)
@@ -1497,7 +1459,7 @@ pub(super) fn finish_line(
         above
     };
 
-    // 行ボックスの寸法が決まってはじめて解決できる値(決定3)。
+    // 行ボックスの寸法が決まってはじめて解決できる値。
     for run in &mut runs {
         match run.vertical_align {
             VerticalAlign::Top => run.baseline_shift = baseline - run.ascent,
@@ -1506,7 +1468,7 @@ pub(super) fn finish_line(
         }
     }
     // アトミックボックスの`top`/`bottom`も同様(箱はascent=マージンボックス
-    // 高さ・descent=0として扱う、決定2)。
+    // 高さ・descent=0として扱う)。
     for atomic in &mut atomics {
         match atomic.vertical_align {
             VerticalAlign::Top => {
@@ -1530,9 +1492,9 @@ pub(super) fn finish_line(
     }
 }
 
-/// `display: inline-block`の中身をレイアウトする([0043]決定1-1・1-2)。
-/// 新しいBlock Formatting Contextを確立するため、空の`FloatContext`を渡す。
-/// 幅は明示指定があればそれ、無ければ内容の自然幅を使える幅でクランプする。
+/// `display: inline-block`の中身をレイアウトする。新しいBlock Formatting
+/// Contextを確立するため、空の`FloatContext`を渡す。幅は
+/// 明示指定があればそれ、無ければ内容の自然幅を使える幅でクランプする。
 fn layout_atomic_inline(
     b: &LayoutBox,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -1545,9 +1507,8 @@ fn layout_atomic_inline(
         .cloned()
         .unwrap_or_default();
     // 置換要素(`<img>`)は`width`/`height`属性・画像の固有サイズから寸法が
-    // 決まる([0046](../../../docs/decisions/0046-inline-image-design.md)決定3)。
-    // ブロック配置時(`resolve_box_geometry`)と同じ処理をここでも通し、
-    // 寸法決定ロジックを共有する。
+    // 決まる。ブロック配置時(`resolve_box_geometry`)と同じ処理をここでも
+    // 通し、寸法決定ロジックを共有する。
     if let BoxContent::Image(image_content) = &b.content {
         super::block::apply_replaced_element_auto_size(&mut style, image_content, available_width);
     }
@@ -1558,9 +1519,8 @@ fn layout_atomic_inline(
     // over-constrained規則(CSS2.1 §10.3.3、width/margin両方が非autoのとき
     // margin-rightを残り幅いっぱいに再計算する)はインラインレベルの箱には
     // 適用されず、そのまま通すと巨大なmargin-rightが行送りの幅に混入する
-    // (floatが同じ理由で迂回している、[0019](
-    // ../../../docs/decisions/0019-float-clear-position-relative-design.md)決定4)。
-    // 代わりに使用content幅を自分で決めて`forced_content_width`として渡す。
+    // (floatが同じ理由で迂回している)。代わりに使用content幅を自分で決めて
+    // `forced_content_width`として渡す。
     let content_width = match style.width {
         LengthPercentageOrAuto::LengthPercentage(lp) => {
             let width = super::block::resolve_lp(lp, available_width);
@@ -1570,12 +1530,11 @@ fn layout_atomic_inline(
                 width
             }
         }
-        // shrink-to-fit相当([0043]決定1-2): 内容の自然幅を使える幅でクランプ。
-        // floatの`width: auto`([0047])と同じ`shrink_to_fit_content_width`を共有する。
+        // shrink-to-fit相当: 内容の自然幅を使える幅でクランプ。floatの
+        // `width: auto`と同じ`shrink_to_fit_content_width`を共有する。
         LengthPercentageOrAuto::Auto => {
             let outer = padding.left + padding.right + border.left + border.right;
-            // 高さが確定していれば`aspect-ratio`から幅を導ける([0052](
-            // ../../../docs/decisions/0052-aspect-ratio-design.md)決定3)。
+            // 高さが確定していれば`aspect-ratio`から幅を導ける。
             super::block::aspect_ratio_width(&style, &padding, &border).unwrap_or_else(|| {
                 super::block::shrink_to_fit_content_width(
                     b,
@@ -1587,8 +1546,7 @@ fn layout_atomic_inline(
             })
         }
     };
-    // `min-width`/`max-width`([0051](
-    // ../../../docs/decisions/0051-min-max-size-design.md)決定5)。
+    // `min-width`/`max-width`。
     let content_width = super::block::clamp_used_width(
         &style,
         available_width,
@@ -1618,9 +1576,9 @@ fn margin_box_width_of(b: &LaidOutBox) -> f32 {
 
 /// 各ランの`vertical-align`から`baseline_shift`(px、正=上)を求める。
 /// `top`/`bottom`は行ボックスの寸法が要るため、ここでは0のままにして
-/// [`finish_line`]が後追いで解決する([0041]決定3)。
+/// [`finish_line`]が後追いで解決する。
 fn resolve_baseline_shifts(runs: &mut [TextRun], fonts: &FontCollection) {
-    // `text-top`/`text-bottom`/`middle`の基準は行の先頭ラン(決定4)。
+    // `text-top`/`text-bottom`/`middle`の基準は行の先頭ラン。
     let Some(first) = runs.first() else {
         return;
     };
@@ -1869,8 +1827,8 @@ mod tests {
         let with_empty_ctx =
             layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, Some(&empty_ctx));
 
-        // `LineBox`は`display: inline-block`のボックス([0043])を含むように
-        // なりPartialEqを持たないため、行の幾何とテキストで比較する。
+        // `LineBox`は`display: inline-block`のボックスを含むようになり
+        // PartialEqを持たないため、行の幾何とテキストで比較する。
         assert_eq!(with_none.len(), with_empty_ctx.len());
         for (a, b) in with_none.iter().zip(with_empty_ctx.iter()) {
             assert_eq!(a.rect, b.rect);
@@ -2389,7 +2347,7 @@ mod tests {
 
     #[test]
     fn a_trailing_br_leaves_one_empty_line() {
-        // 主要ブラウザと同じ挙動([0037]決定2-3)。
+        // 主要ブラウザと同じ挙動。
         let (_, spans, styles) = spans_for("a<br>", "");
         let fonts = dejavu_only();
         let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
@@ -2420,7 +2378,7 @@ mod tests {
     #[test]
     fn br_inside_pre_also_breaks_the_line() {
         // `white-space: pre`は別経路(`layout_pre_content`)だが、`<br>`は
-        // `'\n'`としてスパンに載るため改修なしで改行になる([0037]決定1)。
+        // `'\n'`としてスパンに載るため改修なしで改行になる。
         let (_, spans, styles) = spans_for("a<br>b", "p { white-space: pre; }");
         let fonts = dejavu_only();
         let lines = layout_inline_content(&spans, &styles, &fonts, 5000.0, 0.0, 0.0, None);
@@ -2445,8 +2403,8 @@ mod tests {
 
     #[test]
     fn br_clear_pushes_the_next_line_below_a_float() {
-        // `<br clear="left">`はレガシー表示属性が`clear: left`に変換され
-        // ([0039]決定5)、強制改行の直後の行をfloatの下端まで押し下げる。
+        // `<br clear="left">`はレガシー表示属性が`clear: left`に変換され、
+        // 強制改行の直後の行をfloatの下端まで押し下げる。
         use crate::layout::float_ctx::FloatContext;
         use crate::style::Float;
 
@@ -2464,7 +2422,7 @@ mod tests {
         );
     }
 
-    // ===== `vertical-align`(インライン文脈、[0041]) =====
+    // ===== `vertical-align`(インライン文脈) =====
 
     /// 行内の各ランを`(テキスト, ベースラインからのずれ)`で返す。
     fn run_shifts(line: &LineBox) -> Vec<(String, f32)> {
@@ -2486,7 +2444,7 @@ mod tests {
 
     #[test]
     fn a_line_without_vertical_align_keeps_its_previous_height_and_baseline() {
-        // 回帰確認: `finish_line`の書き換え前と同じ値([0041]決定2の下限規則)。
+        // 回帰確認: `finish_line`の書き換え前と同じ値(下限規則)。
         let (_, spans, styles) = spans_for("text", "");
         let fonts = dejavu_only();
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
@@ -2524,7 +2482,7 @@ mod tests {
         let plain =
             layout_inline_content(&plain_spans, &plain_styles, &fonts, 500.0, 0.0, 0.0, None);
 
-        // 大きく持ち上げれば行の高さが伸びる(決定2の`content_height`)。
+        // 大きく持ち上げれば行の高さが伸びる(`content_height`)。
         let (_, spans, styles) = spans_for("H<span>x</span>", "span { vertical-align: 30px; }");
         let raised = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
 

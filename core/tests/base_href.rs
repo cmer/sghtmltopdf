@@ -1,6 +1,5 @@
 //! `<base href>`のE2Eテスト(M10 カテゴリF、T233〜T235)。
 //!
-//! 設計は[0040](../../docs/decisions/0040-base-href-design.md)。
 //! ローカルパス基準の移動(`<base href="assets/">`)を、実際に`Engine`へ
 //! HTMLを流して画像が埋め込まれるかどうかで確認する。
 
@@ -69,7 +68,7 @@ fn base_href_moves_the_directory_relative_references_are_resolved_against() {
 #[test]
 fn without_base_href_the_same_reference_does_not_resolve() {
     // 対照実験: `<base href>`が無ければ`img.png`はbase_dir直下を指し、存在しない
-    // ([0014]の方針どおり、失敗しても文書全体は生成される)。
+    // (失敗しても文書全体は生成される)。
     let dir = fixture_dir("without");
     let bytes = build_pdf(
         r#"<html><body><img src="img.png" width="20" height="20"></body></html>"#,

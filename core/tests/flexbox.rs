@@ -1,8 +1,7 @@
 //! Flexbox(`display: flex`)のE2Eテスト(M9 Phase 3)。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
-//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。詳細設計は
-//! [0034](../../docs/decisions/0034-flexbox-design.md)参照。
+//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
 
 use std::collections::HashMap;
 
@@ -242,7 +241,7 @@ fn a_nested_flex_container_lays_out_inside_a_flex_item() {
 fn a_flex_container_is_treated_as_an_atomic_unit_across_page_breaks() {
     // ページ残り高さより本文全体が僅かに大きい状態を作り、flexコンテナが
     // 内部で分割されず丸ごと次ページへ送られることを確認する
-    // ([0034]決定3、`display: table`と同じアトミック扱い)。
+    // (`display: table`と同じアトミック扱い)。
     let page_height = PageSettings::default().content_height();
     let filler_height = page_height - 30.0;
     let html =

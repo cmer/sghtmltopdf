@@ -1,9 +1,7 @@
 //! 確定したPDFのバイト列を、Rubyのブロックへチャンクごとに渡す[`Sink`]。
 //!
-//! 設計は[0063](../../../../../docs/decisions/0063-ffi-chunk-callback.md)。
-//!
 //! レンダリングは[`crate::gvl::without_gvl`]の中で走るので、ここはGVLを
-//! **解放している区間**から呼ばれる。ブロックを呼ぶ瞬間だけ
+//! 解放している区間から呼ばれる。ブロックを呼ぶ瞬間だけ
 //! [`crate::gvl::with_gvl`]でGVLを取り戻す。
 
 use std::io;
@@ -18,8 +16,8 @@ use crate::gvl;
 /// ブロックが中断したときに`Sink::write`が返すエラー。
 ///
 /// `convert::render`が`Sink<Output = (), Error = io::Error>`を要求するため、
-/// Ruby由来の情報をエラーの型に載せられない。**本当の理由は
-/// [`PendingUnwind`]へ置き**、こちらは「巻き戻すための合図」として使う。
+/// Ruby由来の情報をエラーの型に載せられない。本当の理由は
+/// [`PendingUnwind`]へ置き、こちらは「巻き戻すための合図」として使う。
 fn interrupted() -> io::Error {
     io::Error::other("Rubyのブロックが中断しました")
 }
@@ -29,9 +27,9 @@ fn interrupted() -> io::Error {
 /// # なぜ必要か
 ///
 /// Rubyの保守的GCはマシンスタックを走査してVALUEを見つけるが、
-/// **GVLを解放した時点のスタック位置までしか走査しない**
+/// GVLを解放した時点のスタック位置までしか走査しない
 /// (解放時にマシンコンテキストが保存されるため)。`without_gvl`の内側で
-/// スタックに積んだ値はその先にあるので**走査されない**。解放区間をまたいで
+/// スタックに積んだ値はその先にあるので走査されない。解放区間をまたいで
 /// 生かしたいVALUEは、必ずここへ登録する。
 ///
 /// 登録アドレスは`Box`で固定する。GCのコンパクションでオブジェクトが移動
@@ -52,7 +50,7 @@ impl ValueSlot {
         &*self.slot as *const VALUE as *mut VALUE
     }
 
-    /// 現在の`VALUE`。**GVLを保持している間だけ**呼ぶこと。
+    /// 現在の`VALUE`。GVLを保持している間だけ呼ぶこと。
     pub fn get(&self) -> VALUE {
         *self.slot
     }
@@ -68,7 +66,7 @@ impl Drop for ValueSlot {
 #[derive(Clone, Copy)]
 pub struct BlockSlot(*mut VALUE);
 
-// SAFETY: 解放区間ではアドレスを**数値として持ち回るだけ**で、`VALUE`として
+// SAFETY: 解放区間ではアドレスを数値として持ち回るだけで、`VALUE`として
 // 読むのは`with_gvl`の内側(＝GVLを保持している間)に限る。指す先は
 // `ValueSlot`がGCに登録済みで、`without_gvl`が返るまで生きている。
 unsafe impl Send for BlockSlot {}
@@ -107,7 +105,7 @@ impl PendingUnwind {
     }
 
     /// magnusの`Error`を、解放区間をまたげる形に変換して保存する。
-    /// **GVLを保持している間**に呼ぶこと(GCへの登録を行うため)。
+    /// GVLを保持している間に呼ぶこと(GCへの登録を行うため)。
     fn store(&mut self, error: Error) {
         use magnus::error::ErrorType;
 
@@ -124,10 +122,10 @@ impl PendingUnwind {
         self.unwind = Some(unwind);
     }
 
-    /// 保存した中断をRubyへ返す。**GVLを保持している間**に呼ぶこと。
+    /// 保存した中断をRubyへ返す。GVLを保持している間に呼ぶこと。
     ///
     /// `break`などの脱出は`rb_jump_tag`で忠実に伝播させる。この関数は
-    /// そこから戻らないため、**Rust側の後始末が済んでから**呼ぶこと
+    /// そこから戻らないため、Rust側の後始末が済んでから呼ぶこと
     /// (`ValueSlot`のGC登録解除もこの関数の中で済ませてある)。
     pub fn into_error(self) -> Option<Error> {
         match self.unwind? {
@@ -189,10 +187,10 @@ impl<'a> CallbackSink<'a> {
     /// 溜まっているバイト列をブロックへ渡す。
     ///
     /// GVLを取り戻すのはこの中だけ。ブロックの呼び出しはmagnusの
-    /// `Proc::call`が内部で`rb_protect`しているので、例外が出ても
-    /// **longjmpがRustのフレームを飛び越えない**([0063])。
+    /// `Proc::call`が内部で`rb_protect`しているので、例外が出てもlongjmpが
+    /// Rustのフレームを飛び越えない。
     ///
-    /// エラーの保存も**この区間の中で**済ませる。`with_gvl`から
+    /// エラーの保存もこの区間の中で済ませる。`with_gvl`から
     /// Rubyのオブジェクト(例外)を持ち出すと、GVLを手放した瞬間に
     /// GCのスコープから外れてしまうため(`gvl::with_gvl`のドキュメント)。
     /// 持ち出すのは真偽値だけ。

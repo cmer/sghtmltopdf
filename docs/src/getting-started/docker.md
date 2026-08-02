@@ -34,7 +34,7 @@ docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf \
     server --listen 0.0.0.0:8080 --workers 4 --max-body-size 52428800
 ```
 
-> **認証とTLSは持ちません。**
+> 認証とTLSは持ちません。
 > 外部へ公開する場合はリバースプロキシを前段に置いてください。
 
 ### docker compose

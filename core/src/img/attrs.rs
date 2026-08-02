@@ -32,8 +32,7 @@ pub struct ImgAttrs {
 /// `node`が`src`属性を持つ`<img>`要素の場合のみ属性を読み取る。
 ///
 /// `<img>`要素でない、または`src`が無い(あっても空文字列)場合は`None`を
-/// 返す。呼び出し側([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md))
-/// はこれを「画像なしの置換要素」として扱う。
+/// 返す。呼び出し側はこれを「画像なしの置換要素」として扱う。
 pub fn read_img_attrs(dom: &Dom, node: NodeId) -> Option<ImgAttrs> {
     let NodeData::Element { name, attrs, .. } = &dom.node(node).data else {
         return None;

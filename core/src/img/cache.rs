@@ -1,17 +1,15 @@
 //! 文書内での画像取得結果のメモ化。
 //!
 //! 同じ`src`が同一文書内で何度参照されても、URL/パス分類
-//! ([`classify_img_src`])から実際のフェッチ/読み込み([`ImageFetcher`])
-//! までを初回の1回だけで済ませる
-//! ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)
-//! の方針)。単一スレッド前提で`Rc`/`RefCell`により共有する(このプロジェクトの
-//! DOM構築・エンジン処理は一貫して単一スレッドであり、`html/parse.rs`の
-//! `Sink`も同様の前提で`RefCell`を使っている)。
+//! ([`classify_img_src`])から実際のフェッチ/読み込み([`ImageFetcher`])までを
+//! 初回の1回だけで済ませる。単一スレッド前提で`Rc`/`RefCell`により共有する
+//! (このプロジェクトのDOM構築・エンジン処理は一貫して単一スレッドであり、
+//! `html/parse.rs`の`Sink`も同様の前提で`RefCell`を使っている)。
 //!
 //! 成功したバイト列だけでなく失敗(取得不能・非対応srcなど)も記録する。
 //! 同じ壊れた`src`が文書中に何百回出てきても、毎回ネットワークタイムアウトを
-//! 待ち直したりはしない([0014]が挙げる「ブロック対象URLを埋め込むことで
-//! 処理全体を遅延させる」可用性上の懸念への対処を兼ねる)。
+//! 待ち直したりはしない(「ブロック対象URLを埋め込むことで処理全体を
+//! 遅延させる」可用性上の懸念への対処を兼ねる)。
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -57,8 +55,7 @@ impl DocumentImageCache {
         }
 
         // 分類の前に`<base href>`に対する解決を挟むため、`classify_img_src`は
-        // 直接呼ばず`ImageFetcher::resolve`を経由する([0040](
-        // ../../../docs/decisions/0040-base-href-design.md)決定1)。
+        // 直接呼ばず`ImageFetcher::resolve`を経由する。
         let result: Result<Vec<u8>, String> = fetcher
             .resolve(raw_src)
             .ok_or_else(|| format!("サポートされていないsrcです: {raw_src}"))

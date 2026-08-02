@@ -5,7 +5,7 @@ module Sghtmltopdf
   # RailtieがAction Viewへ`include`する。
   #
   # PDFのレンダリングはHTTPサーバを介さないため、`/assets/…`のようなURLは
-  # **ローカルファイルとして**解決される(`--base-url`の既定は
+  # ローカルファイルとして解決される(`--base-url`の既定は
   # `Rails.root/public`。[Railtie.default_options])。precompile済みの
   # 本番環境ではこれで素の`stylesheet_link_tag`もそのまま動くが、開発環境の
   # ようにアセットがまだ`public/`へ書き出されていない場合は解決できない。
@@ -14,9 +14,8 @@ module Sghtmltopdf
   #
   #   <%= sghtmltopdf_stylesheet_link_tag "pdf" %>
   #
-  # のようにCSSの中身を`<style>`へ展開するヘルパを用意する
-  # (wicked_pdfの`wicked_pdf_stylesheet_link_tag`に相当。
-  # docs/wicked_pdf_migration.md)。
+  # のようにCSSの中身を`<style>`へ展開するヘルパを用意する(wicked_pdfの
+  # `wicked_pdf_stylesheet_link_tag`に相当)。
   module ViewHelpers
     # アセットのローカルファイルパスを返す。見つからなければ`nil`。
     #

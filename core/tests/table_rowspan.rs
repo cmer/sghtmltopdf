@@ -2,8 +2,7 @@
 //!
 //! `table_caption.rs`/`table_vertical_align.rs`と同じ方針: 実際の
 //! パイプラインを通して回帰を検知する。座標の詳細な検証は`layout_document`
-//! (ページ分割前)の結果に対して行う。詳細設計は
-//! [0021](../../docs/decisions/0021-table-layout-design.md)参照。
+//! (ページ分割前)の結果に対して行う。
 
 use std::collections::HashMap;
 

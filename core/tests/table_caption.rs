@@ -2,8 +2,7 @@
 //!
 //! `fragmentation.rs`/`float_position.rs`/`typography.rs`と同じ方針: 実際の
 //! パイプラインを通して回帰を検知する。座標の詳細な検証は`layout_document`
-//! (ページ分割前)の結果に対して行う。詳細設計は
-//! [0021](../../docs/decisions/0021-table-layout-design.md)参照。
+//! (ページ分割前)の結果に対して行う。
 
 use std::collections::HashMap;
 
@@ -161,10 +160,10 @@ fn caption_bottom_is_placed_below_the_rows() {
 
 #[test]
 fn caption_text_actually_renders_in_the_final_pdf() {
-    // 以前は`<caption>`の内容が完全に失われていた(既知のバグ、[0021]参照)。
-    // captionのテキストがPDF出力に実際に反映されることを確認する
-    // (フォント埋め込みが行われる=何らかのグリフが描画された証拠として、
-    // 埋め込みフォントの存在を確認する)。
+    // 以前は`<caption>`の内容が完全に失われていた(既知のバグ)。captionの
+    // テキストがPDF出力に実際に反映されることを確認する(フォント埋め込みが
+    // 行われる=何らかのグリフが描画された
+    // 証拠として、埋め込みフォントの存在を確認する)。
     let html_src = r#"<table><caption>Fruit Prices</caption><tr><td>Apple</td></tr></table>"#;
     let (page_count, bytes) = build_pdf(html_src, "body { margin: 0; }");
     assert_eq!(page_count, 1);

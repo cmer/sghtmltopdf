@@ -10,11 +10,10 @@
 //! 既知の簡略化(将来のマイルストーンで見直す):
 //! - `rowspan="0"`(HTML5の「以降の行末まで拡張」特殊値)は非対応、1として扱う
 //! - `border-collapse: collapse`は見た目の枠線描画のみ統合し、レイアウト計算は
-//!   separateモデルと同一([0021](../../../docs/decisions/0021-table-layout-design.md)決定1)
+//!   separateモデルと同一
 //! - セル内にネストしたテーブルの自然幅測定は非対応(0として扱う)
 //! - `vertical-align: baseline`でベースラインを提供できないセル内容
 //!   (ネストしたテーブル・置換要素)は`bottom`相当にフォールバックする
-//!   ([0021]決定4の既知の簡略化)
 
 use std::collections::HashMap;
 
@@ -40,7 +39,7 @@ const UNCONSTRAINED_WIDTH: f32 = f32::MAX / 4.0;
 /// 高さを返す。`table_layout`は`display: table`要素自身の`table-layout`計算値
 /// (非継承プロパティ、呼び出し元がテーブル要素自身のスタイルから読んで渡す)。
 /// `h_spacing`/`v_spacing`は`border-spacing`の解決済み値(呼び出し元が
-/// `border-collapse: collapse`の場合は0に潰して渡す、[0021]決定1)。
+/// `border-collapse: collapse`の場合は0に潰して渡す)。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_table(
     table: &TableBox,
@@ -56,7 +55,7 @@ pub(super) fn layout_table(
     // captionは行が無くても独立してレイアウトする(空テーブル+captionのみの
     // ケースにも対応するため、column_count==0の早期リターンより前に行う)。
     // captionも新しいBlock Formatting Contextを確立するとみなし、外側の
-    // floatとは独立させる(テーブル本体のセルと同じ方針、[0019]決定1)。
+    // floatとは独立させる(テーブル本体のセルと同じ方針)。
     let laid_caption = table.caption.as_deref().map(|caption| {
         let mut caption_float_ctx = FloatContext::new();
         layout_box_ignoring_positioned(
@@ -113,15 +112,14 @@ pub(super) fn layout_table(
     let available_column_width =
         (containing_width - h_spacing * (column_count + 1) as f32).max(0.0);
 
-    // rowspan/colspanのoccupancyを考慮したグリッド配置([0021]決定3)。以降の
-    // 列幅・行の高さ・セル配置は全てこのグリッド経由で計算する。rowspanが
-    // 全て1の場合、`col += cell.colspan`による単純な列カーソル走査と完全に
-    // 同一の結果になる。
+    // rowspan/colspanのoccupancyを考慮したグリッド配置。以降の列幅・行の
+    // 高さ・セル配置は全てこのグリッド経由で計算する。rowspanが全て1の場合、
+    // `col += cell.colspan`による単純な列
+    // カーソル走査と完全に同一の結果になる。
     let grid = build_table_grid(&table.rows, column_count);
 
-    // `<colgroup>`/`<col>`由来の列幅ヒントを、この時点で使用幅(px)へ解決する
-    // ([0038](../../../docs/decisions/0038-colgroup-col-design.md)決定4)。
-    // 列数を超える分は捨て、足りない分は指定なしとして扱う。
+    // `<colgroup>`/`<col>`由来の列幅ヒントを、この時点で使用幅(px)へ
+    // 解決する。列数を超える分は捨て、足りない分は指定なしとして扱う。
     let column_hints: Vec<Option<f32>> = (0..column_count)
         .map(|i| {
             table
@@ -162,7 +160,7 @@ pub(super) fn layout_table(
 
     // 1パス目: 各セルをy=0の仮位置でレイアウトし、行の高さ確定前の「自然な
     // 高さ」を求める(rowspanで複数行にまたがるセルの実際の位置は、後段で
-    // 行の高さが全て確定してから`shift_box_y`でまとめて動かす、[0021]決定3)。
+    // 行の高さが全て確定してから`shift_box_y`でまとめて動かす)。
     let laid_grid: Vec<Vec<LaidOutBox>> = grid
         .iter()
         .map(|row_cells| {
@@ -188,8 +186,7 @@ pub(super) fn layout_table(
 
                     // `display: table`のセルは新しいBlock Formatting Contextを
                     // 確立する(CSS2.1 9.4.1)ため、外側のfloatとは独立した空の
-                    // コンテキストを渡す
-                    // ([0019](../../../docs/decisions/0019-float-clear-position-relative-design.md)決定1)。
+                    // コンテキストを渡す。
                     let mut cell_float_ctx = FloatContext::new();
                     layout_box_with_forced_width_ignoring_positioned(
                         &gc.cell.content,
@@ -208,7 +205,7 @@ pub(super) fn layout_table(
 
     let row_count = table.rows.len();
     // 2パス目: rowspan=1のセルだけで各行の自然な高さの最大値を求める
-    // (colspanの列幅計算と同じ2パス方式、[0021]決定5)。
+    // (colspanの列幅計算と同じ2パス方式)。
     let mut row_natural = vec![0.0f32; row_count];
     for (row_cells, laid_row) in grid.iter().zip(laid_grid.iter()) {
         for (gc, laid_cell) in row_cells.iter().zip(laid_row.iter()) {
@@ -291,8 +288,7 @@ pub(super) fn layout_table(
                 VerticalAlign::Bottom => deficit,
                 // `sub`/`super`/`text-top`/`text-bottom`/長さはインライン文脈
                 // 専用の値で、CSS2.1ではテーブルセルに適用できない。`baseline`
-                // として扱う([0041](
-                // ../../../docs/decisions/0041-inline-vertical-align-design.md)決定5)。
+                // として扱う。
                 VerticalAlign::Baseline
                 | VerticalAlign::Sub
                 | VerticalAlign::Super
@@ -354,9 +350,8 @@ fn cell_vertical_align(
 
 /// セル内容の最初の行のベースラインが、セル自身の上端
 /// (`cell.layout.content.y`)からどれだけ下にあるかを求める。テキストを
-/// 含まない内容(ネストしたテーブル・置換要素等)からは求められないため
-/// `None`を返す([0021]決定4の既知の簡略化、呼び出し側で`bottom`相当に
-/// フォールバックする)。
+/// 含まない内容(ネストしたテーブル・置換要素等)からは求められないため`None`を
+/// 返す(既知の簡略化、呼び出し側で`bottom`相当にフォールバックする)。
 fn own_baseline_offset(cell: &LaidOutBox, fonts: &FontCollection) -> Option<f32> {
     let absolute = first_baseline_absolute_y(cell, fonts)?;
     Some(absolute - cell.layout.content.y)
@@ -385,8 +380,7 @@ fn first_baseline_absolute_y(b: &LaidOutBox, fonts: &FontCollection) -> Option<f
 }
 
 /// 行番号+実際の開始列・終了列(exclusive)を持つ、グリッド上の1セルへの参照。
-/// CSS2.1 §17.2「テーブルグリッド構築」の簡略版
-/// ([0021](../../../docs/decisions/0021-table-layout-design.md)決定3)。
+/// CSS2.1 §17.2「テーブルグリッド構築」の簡略版。
 struct GridCell<'a> {
     cell: &'a TableCell,
     row_index: usize,
@@ -395,11 +389,10 @@ struct GridCell<'a> {
 }
 
 /// `rows`から、rowspan/colspanのoccupancy(rowspanで埋まっている列を後続行が
-/// スキップする)を考慮したグリッド配置を求める。戻り値は行ごとの
-/// `GridCell`一覧(外側の`Vec`が行、内側がその行に属するセル)。rowspanが
-/// 全て1の場合、列カーソルを`col += cell.colspan`で単純に進める走査と完全に
-/// 同一の結果を返すため、既存の(rowspanを使わない)テストへの後方互換性が
-/// 保たれる([0021]決定3)。
+/// スキップする)を考慮したグリッド配置を求める。戻り値は行ごとの`GridCell`
+/// 一覧(外側の`Vec`が行、内側がその行に属するセル)。rowspanが全て1の場合、列
+/// カーソルを`col += cell.colspan`で単純に進める走査と完全に同一の結果を
+/// 返すため、既存の(rowspanを使わない)テストへの後方互換性が保たれる。
 fn build_table_grid(rows: &[TableRow], column_count: usize) -> Vec<Vec<GridCell<'_>>> {
     // occupied[col]: その列を占有しているrowspanの残り行数(0なら空き)。
     let mut occupied = vec![0usize; column_count];
@@ -465,7 +458,7 @@ fn compute_fixed_column_widths(
         }
     }
 
-    // `<col>`の指定は最初の行のセルより優先する([0038]決定4)。
+    // `<col>`の指定は最初の行のセルより優先する。
     for (i, hint) in column_hints.iter().enumerate().take(column_count) {
         if let Some(hint) = hint {
             widths[i] = Some(*hint);
@@ -488,8 +481,7 @@ fn compute_fixed_column_widths(
 /// containing widthちょうどに収まるよう比例縮尺する。
 ///
 /// `<col>`由来のヒント(`column_hints`)がある列はその幅で確定させ、残りの幅を
-/// ヒントの無い列へ自然幅に比例して配分する([0038](
-/// ../../../docs/decisions/0038-colgroup-col-design.md)決定4)。
+/// ヒントの無い列へ自然幅に比例して配分する。
 fn compute_column_widths(
     grid: &[Vec<GridCell<'_>>],
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -550,8 +542,7 @@ fn compute_column_widths(
     }
 }
 
-/// `table-layout: fixed`で、1行目のセルが列幅として与える指定値
-/// ([0051](../../../docs/decisions/0051-min-max-size-design.md)決定6)。
+/// `table-layout: fixed`で、1行目のセルが列幅として与える指定値。
 ///
 /// * `width`指定あり → `min-width`/`max-width`でクランプした値
 /// * `width: auto`で`min-width`のみ指定 → `min-width`をその列の指定幅とする
@@ -574,8 +565,8 @@ fn fixed_cell_width(cell_style: &ComputedStyle, containing_width: f32) -> Option
 }
 
 /// `<col>`のヒントがある列を確定させ、残りをヒントの無い列へ自然幅に比例して
-/// 配分する([0038]決定4)。ヒントの合計が`containing_width`を超える場合は
-/// ヒントのある列だけを比例縮小して収める(決定4-1)。
+/// 配分する。ヒントの合計が`containing_width`を超える場合はヒントのある
+/// 列だけを比例縮小して収める。
 fn distribute_with_column_hints(
     natural: &[f32],
     column_hints: &[Option<f32>],
@@ -612,10 +603,9 @@ fn distribute_with_column_hints(
 
 /// セル1つの「自然な幅」(内容を折り返し無しで並べた幅+パディング+ボーダー)。
 ///
-/// セル自身の`min-width`/`max-width`はここでクランプする形で反映する
-/// ([0051](../../../docs/decisions/0051-min-max-size-design.md)決定6)。列の
+/// セル自身の`min-width`/`max-width`はここでクランプする形で反映する。列の
 /// 自然幅はクランプ済みの値の最大値になるが、その後の比例縮尺(表を紙幅に
-/// 収める処理)は従来どおり行うため、**最終列幅は`min-width`を保証しない**。
+/// 収める処理)は従来どおり行うため、最終列幅は`min-width`を保証しない。
 fn natural_cell_width(
     cell: &TableCell,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -642,8 +632,7 @@ fn natural_cell_width(
 
 /// ボックスの内容を折り返し無しでレイアウトした場合の自然な幅を測る。
 /// テーブルの自動列幅アルゴリズムに加え、`layout::flex`のtaffy採寸ブリッジ
-/// (`available_space`が`MinContent`/`MaxContent`の場合)からも共有で使う
-/// ([0034](../../../docs/decisions/0034-flexbox-design.md)決定2)。
+/// (`available_space`が`MinContent`/`MaxContent`の場合)からも共有で使う。
 pub(super) fn measure_natural_content_width(
     content: &BoxContent,
     styles: &HashMap<NodeId, ComputedStyle>,
@@ -668,8 +657,7 @@ pub(super) fn measure_natural_content_width(
                     + border.right
             })
             .fold(0.0f32, f32::max),
-        // ネストしたテーブル・flex・gridの自然幅測定は非対応(既知の簡略化、
-        // [0034]決定2と同じ考え方)。
+        // ネストしたテーブル・flex・gridの自然幅測定は非対応(既知の簡略化)。
         BoxContent::Table(_) | BoxContent::Flex(_) | BoxContent::Grid(_) => 0.0,
         BoxContent::Image(image_content) => image_content
             .attr_width
@@ -1045,7 +1033,7 @@ mod tests {
     #[test]
     fn border_collapse_forces_border_spacing_to_zero() {
         // `border-spacing`を明示していても`border-collapse: collapse`では
-        // 無視され、セルは隙間なく隣接するはず([0021]決定1、両者は排他)。
+        // 無視され、セルは隙間なく隣接するはず(両者は排他)。
         let table = layout_table_html(
             "<table><tr><td>a</td><td>b</td></tr></table>",
             "body { margin: 0; } table { border-spacing: 20px; border-collapse: collapse; }",
@@ -1310,7 +1298,7 @@ mod tests {
         );
     }
 
-    // ===== <colgroup>/<col>(列幅指定、[0038]) =====
+    // ===== <colgroup>/<col>(列幅指定) =====
 
     #[test]
     fn col_width_fixes_the_column_width_in_auto_layout() {
@@ -1397,7 +1385,7 @@ mod tests {
 
     #[test]
     fn col_hints_wider_than_the_table_are_scaled_down_to_fit() {
-        // [0038]決定4-1: 指定の合計が使える幅を超えたら指定列だけを比例縮小する。
+        // 指定の合計が使える幅を超えたら指定列だけを比例縮小する。
         let table = layout_table_html(
             r#"<table>
                  <colgroup><col style="width: 600px;"><col style="width: 200px;"></colgroup>

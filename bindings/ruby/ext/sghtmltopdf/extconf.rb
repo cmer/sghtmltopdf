@@ -3,12 +3,11 @@
 require "mkmf"
 require "rb_sys/mkmf"
 
-# ソースからのビルドはリポジトリのチェックアウト上でしか成立しない。
-# gemに詰められるのは`bindings/ruby`配下だけで、extが依存するRustコア
-# (`core/`)は親ディレクトリにあるため入らない(gem buildはgemspecのある
-# ディレクトリ配下しか集められない)。配布はprecompiled gem
-# (docs/decisions/0061-distribution.md 決定2・3)なので通常ここは通らない。
-# 分かりにくいコンパイルエラーになる前に理由を出す。
+# ソースからのビルドはリポジトリのチェックアウト上でしか成立しない。gemに
+# 詰められるのは`bindings/ruby`配下だけで、extが依存するRustコア(`core/`)は親
+# ディレクトリにあるため入らない(gem buildはgemspecのあるディレクトリ配下しか
+# 集められない)。配布はprecompiled gemなので通常ここは通らない。分かりにくい
+# コンパイルエラーになる前に理由を出す。
 core = File.expand_path("../../../../core", __dir__)
 unless File.exist?(File.join(core, "Cargo.toml"))
   abort <<~MESSAGE
@@ -25,7 +24,6 @@ unless File.exist?(File.join(core, "Cargo.toml"))
   MESSAGE
 end
 
-# `lib/sghtmltopdf/sghtmltopdf.so`として作る。
-# `Init_sghtmltopdf`はCargo.tomlのパッケージ名から生成される
-# (docs/decisions/0062-ruby-binding.md「パッケージ名がInit_シンボル名を決める」)。
+# `lib/sghtmltopdf/sghtmltopdf.so`として作る。`Init_sghtmltopdf`はCargo.tomlの
+# パッケージ名から生成される。
 create_rust_makefile("sghtmltopdf/sghtmltopdf")

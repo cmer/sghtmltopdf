@@ -1,19 +1,18 @@
 //! CSS Custom Properties(`--foo`/`var()`)の、パース前テキスト置換による対応。
 //!
-//! 設計方針は[0033](../../../docs/decisions/0033-css-custom-properties-design.md)
-//! に記録済み。`style/import.rs::resolve_imports`(`@import`展開)と同じ
-//! 「トークン走査でバイト範囲を特定し、元テキストから置換後の文字列を
-//! 再構築する」パターンを使う。cascade/継承ベースの実装ではなく、文書全体で
-//! フラットな名前空間の単純なテキスト置換であることに注意(決定1・決定5)。
-//! `parse_stylesheet`本体はこのモジュールを経由した後のテキストを受け取る
-//! ため、`var()`もカスタムプロパティも一切知らないままでよい。
+//! `style/import.rs::resolve_imports`(`@import`展開)と同じ「トークン走査で
+//! バイト範囲を特定し、元テキストから置換後の文字列を再構築する」パターンを
+//! 使う。cascade/継承ベースの実装ではなく、文書全体でフラットな名前空間の
+//! 単純なテキスト置換であることに注意。`parse_stylesheet`本体はこの
+//! モジュールを経由した後のテキストを受け取るため、`var()`も
+//! カスタムプロパティも一切知らないままでよい。
 
 use std::collections::HashMap;
 
 use cssparser::{ParseError, Parser, ParserInput, Token};
 
 /// `declared`自身に含まれる`var()`の解決・文書全体への適用それぞれで安定する
-/// まで繰り返す反復回数の上限([0016]の`MAX_IMPORT_DEPTH`と同じ考え方、決定4)。
+/// まで繰り返す反復回数の上限(`MAX_IMPORT_DEPTH`と同じ考え方)。
 const MAX_SUBSTITUTION_ITERATIONS: u32 = 8;
 
 /// `css`中の`--foo: value;`宣言・`var(--foo, fallback)`呼び出しをすべて
@@ -70,7 +69,7 @@ fn is_block_start(token: &Token) -> bool {
 }
 
 /// `css`中の`--foo: value;`宣言を走査して収集する(トークン走査、I/Oなし)。
-/// 同名の宣言が複数あれば、テキスト出現順で最後のものが勝つ(決定5、セレクタの
+/// 同名の宣言が複数あれば、テキスト出現順で最後のものが勝つ(セレクタの
 /// 詳細度・オリジンは見ない)。
 fn collect_custom_properties(css: &str) -> HashMap<String, String> {
     let mut input = ParserInput::new(css);
@@ -190,9 +189,9 @@ fn substitute_var_calls_in_scope(
                         Some(value) => value.clone(),
                         None => match fallback_range {
                             Some((start, end)) => css[start..end].trim().to_string(),
-                            // 未定義でフォールバックも無い場合は元のテキストのまま
-                            // 残す(決定3。後段のプロパティパーサが未知トークンと
-                            // して黙って無視する)。
+                            // 未定義でフォールバックも無い場合は元の
+                            // テキストのまま残す(後段のプロパティパーサが未知
+                            // トークンとして黙って無視する)。
                             None => css[call_start..call_end].to_string(),
                         },
                     },

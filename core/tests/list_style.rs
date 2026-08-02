@@ -5,8 +5,7 @@
 //! スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
 //! マーカーの座標・カウンタ挙動の詳細な検証は`layout_document`(ページ分割前)の
 //! 結果に対して行い、PDFエンコードまでのパイプライン全体がクラッシュせず
-//! 妥当な出力になることは`build_pdf`で別途確認する。詳細設計は
-//! [0022](../../docs/decisions/0022-list-style-design.md)参照。
+//! 妥当な出力になることは`build_pdf`で別途確認する。
 
 use std::collections::HashMap;
 
@@ -249,7 +248,7 @@ fn list_style_shorthand_applies_type_position_and_falls_back_from_image() {
     let li_box = find_laid_out(&laid, li).expect("li box not found");
 
     // `list-style-image`は常に`list-style-type`のテキストマーカーへ
-    // フォールバックする([0022]決定5)。`inside`なのでspansに埋め込まれる。
+    // フォールバックする。`inside`なのでspansに埋め込まれる。
     assert!(li_box.marker.is_none());
     let LaidOutContent::Inline(lines) = &li_box.content else {
         panic!("expected inline content");

@@ -9,11 +9,10 @@ module Sghtmltopdf
   #   end
   #
   # ここで設定した値は`render`/`render_to_file`の引数で上書きできる
-  # (マージ順はグローバル → 呼び出し時。
-  # docs/decisions/0062-ruby-binding.md 決定7)。
+  # (マージ順はグローバル → 呼び出し時)。
   #
-  # **キー名の妥当性は検査しない**。オプション定義はRust側(`cli/options.rs`)の
-  # 1箇所に集約する方針(決定2)のため、未知のキーはレンダリング時にclapが
+  # キー名の妥当性は検査しない。オプション定義はRust側(`cli/options.rs`)の
+  # 1箇所に集約する方針のため、未知のキーはレンダリング時にclapが
   # `UsageError`として報告する。
   class Configuration
     def initialize(options = {})
@@ -37,8 +36,7 @@ module Sghtmltopdf
     # @param with_defaults [Boolean] 流し込まれた既定値を含めるか。
     #   HTTPサーバへ委譲するときは`false`にする。Rails向けの既定値
     #   (`base_url`・`allow`)はローカルのファイル解決のためのもので、
-    #   サーバモードでは**リクエストから指定できない**キーだから
-    #   (docs/decisions/0062-ruby-binding.md 決定10)
+    #   サーバモードではリクエストから指定できないキーだから
     def to_h(with_defaults: true)
       with_defaults ? @defaults.merge(@options) : @options.dup
     end

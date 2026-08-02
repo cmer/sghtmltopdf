@@ -5,8 +5,7 @@
 //! (HTMLパース→スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を
 //! 検知する。座標の詳細な検証は`layout_document`(ページ分割前)の結果に対して
 //! 行い、PDFエンコードまでのパイプライン全体がクラッシュせず妥当な出力になる
-//! ことは`build_pdf`で別途確認する。詳細設計は
-//! [0020](../../docs/decisions/0020-typography-details-design.md)参照。
+//! ことは`build_pdf`で別途確認する。
 
 use std::collections::HashMap;
 

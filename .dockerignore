@@ -1,11 +1,9 @@
 # Dockerのビルドコンテキストに入れないもの。
 # 実行ファイルのビルドに要るのは Cargo.toml / Cargo.lock / core / docker だけ。
-target/
-.git/
-.github/
-.claude/
-.ruby-lsp/
+.*/
+.gitignore
 bindings/
 docs/
+target/
 *.md
 LICENSE

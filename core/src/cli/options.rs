@@ -1,12 +1,10 @@
 //! CLIオプションの定義。
 //!
-//! [0055](../../../docs/decisions/0055-cli-design.md)決定6により、
-//! **オプション定義はこのファイル1箇所だけ**に置く。HTTPサーバモード
+//! オプション定義はこのファイル1箇所だけに置く。HTTPサーバモード
 //! (Phase 7)はクエリ文字列を引数列へ機械変換して同じパーサへ通すため、
 //! CLIとサーバで解釈がずれない。
 //!
-//! オプション名はwkhtmltopdf互換を優先する(対応表は
-//! `docs/wkhtmltopdf_option_mapping.md`)。
+//! オプション名はwkhtmltopdf互換を優先する。
 
 use std::path::PathBuf;
 
@@ -30,7 +28,7 @@ pub const STD_STREAM: &str = "-";
     name = "sghtmltopdf",
     version,
     about = "Chromium/WebKit/Geckoに依存しないHTML→PDFレンダラー",
-    // 変換をサブコマンドにせず、位置引数のまま扱う([0055]決定3)。
+    // 変換をサブコマンドにせず、位置引数のまま扱う。
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true
 )]
@@ -495,13 +493,12 @@ impl ConvertArgs {
 
     /// ページサイズ・マージンのCLI指定を[`PageSettings`]へまとめる。
     ///
-    /// ここで返すのは**初期値**であり、著者CSSに`@page`の宣言があれば
-    /// プロパティ単位でそちらが優先される
-    /// ([0055](../../../docs/decisions/0055-cli-design.md)決定2。合成は
+    /// ここで返すのは初期値であり、著者CSSに`@page`の宣言があれば
+    /// プロパティ単位でそちらが優先される(合成は
     /// `engine::apply_page_rule_settings_override`が行う)。
     ///
     /// `--page-width`/`--page-height`は`--page-size`より優先し、
-    /// `--orientation Landscape`は**最後に**幅と高さを入れ替える。
+    /// `--orientation Landscape`は最後に幅と高さを入れ替える。
     pub fn page_settings(&self) -> Result<PageSettings, String> {
         let defaults = PageSettings::default();
 
@@ -535,7 +532,7 @@ impl ConvertArgs {
         }
 
         // `--header-spacing`/`--footer-spacing`はヘッダー/フッターと本文の
-        // 間隔で、その分だけ上下マージンを増やす([0058]決定6)。
+        // 間隔で、その分だけ上下マージンを増やす。
         const MM_TO_PX: f32 = 96.0 / 25.4;
         if let Some(mm) = self.header_spacing {
             margin.top += mm * MM_TO_PX;
@@ -554,8 +551,7 @@ impl ConvertArgs {
         Ok(settings)
     }
 
-    /// PDF書き出しオプションへまとめる([0057](
-    /// ../../../docs/decisions/0057-pdf-output-options-design.md))。
+    /// PDF書き出しオプションへまとめる。
     ///
     /// `--title`が未指定の場合の`<title>`フォールバックはエンジン側で行う。
     pub fn pdf_output_options(&self) -> PdfOutputOptions {
@@ -608,7 +604,7 @@ impl ConvertArgs {
             .collect()
     }
 
-    /// ヘッダー/フッターの簡易オプションをまとめる([0058]決定1)。
+    /// ヘッダー/フッターの簡易オプションをまとめる。
     pub fn simple_header_footer(&self) -> SimpleHeaderFooter {
         let mut boxes = Vec::new();
         if self.default_header {
@@ -657,7 +653,7 @@ impl ConvertArgs {
         }
     }
 
-    /// 目次の見た目のオプション([0059]決定2、wkhtmltopdf互換)。
+    /// 目次の見た目のオプション(wkhtmltopdf互換)。
     pub fn toc_options(&self) -> TocOptions {
         TocOptions {
             header_text: self.toc_header_text.clone(),
@@ -696,7 +692,7 @@ impl ConvertArgs {
         Ok(())
     }
 
-    /// `--font`と`--font-index`を**コマンドラインでの出現順**に基づいて
+    /// `--font`と`--font-index`をコマンドラインでの出現順に基づいて
     /// 組にする。
     ///
     /// `--font-index`は「直前の`--font`に対する指定」という位置依存の意味を

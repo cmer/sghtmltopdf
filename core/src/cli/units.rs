@@ -1,6 +1,6 @@
 //! 単位付き数値(`10mm`/`0.5in`/`72pt`/`96px`/`1cm`)のパース。
 //!
-//! wkhtmltopdfの`<unitreal>`に相当する。**単位を省略した場合はmm**として
+//! wkhtmltopdfの`<unitreal>`に相当する。単位を省略した場合はmmとして
 //! 解釈する(wkhtmltopdf互換)。
 //!
 //! 返す値はエンジンの内部単位であるCSS px(96dpi基準)。

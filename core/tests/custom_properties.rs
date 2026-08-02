@@ -1,8 +1,7 @@
 //! CSS Custom Properties(`--foo`/`var()`)のE2Eテスト(M9 Phase 2)。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
-//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。詳細設計は
-//! [0033](../../docs/decisions/0033-css-custom-properties-design.md)参照。
+//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
 
 use std::path::PathBuf;
 
@@ -158,9 +157,9 @@ fn fallback_value_is_used_when_the_custom_property_is_undefined() {
 
 #[test]
 fn an_undefined_var_without_a_fallback_leaves_the_declaration_ignored() {
-    // フォールバックが無い未定義の`var()`は、置換されずに残ったテキストが
-    // 既存の「未対応/不正な宣言は無視される」経路に自然に乗り、`width`は
-    // 指定なし(auto)扱いになる(決定3)。
+    // フォールバックが無い未定義の`var`は、置換されずに残ったテキストが既存の
+    // 「未対応/不正な宣言は無視される」経路に自然に
+    // 乗り、`width`は指定なし(auto)扱いになる。
     let (dom, laid) = layout(
         r#"<div class="box">content</div>"#,
         "body { margin: 0; } \
@@ -192,7 +191,7 @@ fn later_declaration_wins_across_the_whole_document_regardless_of_selector_scope
 fn custom_properties_declared_in_one_style_tag_resolve_in_another() {
     // extract_author_stylesheetは複数の<style>タグを連結してから置換するため、
     // 別タグで宣言した`--foo`が別タグの`var(--foo)`から参照できるはず
-    // (決定2、文書全体でフラットな名前空間)。
+    // (文書全体でフラットな名前空間)。
     let dom = html::parse(
         br#"<html><head>
             <style>:root { --brand-width: 64px; }</style>

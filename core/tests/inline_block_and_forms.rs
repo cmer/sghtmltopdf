@@ -1,7 +1,5 @@
 //! `display: inline-block`とフォーム要素の静的描画のE2Eテスト
 //! (M10 カテゴリI、T249〜T254)。
-//!
-//! 設計は[0043](../../docs/decisions/0043-inline-block-and-form-controls-design.md)。
 
 use std::collections::HashMap;
 
@@ -366,7 +364,7 @@ fn a_form_encodes_to_a_valid_pdf() {
     assert!(bytes.windows(5).any(|w| w == b"%%EOF"));
 }
 
-// ===== インラインの`<img>`(M11 Phase 2、T268、[0046]) =====
+// ===== インラインの`<img>`(M11 Phase 2、T268) =====
 
 fn jpeg_data_uri() -> String {
     use base64::Engine;

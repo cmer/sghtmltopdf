@@ -2,7 +2,7 @@
 
 require "tmpdir"
 
-# サーバモードへの委譲(決定10)。
+# サーバモードへの委譲。
 RSpec.describe "server_url" do
   let(:html) { "<h1>Invoice</h1>" }
 

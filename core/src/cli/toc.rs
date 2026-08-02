@@ -1,8 +1,7 @@
-//! 目次(`--toc`)のHTML組み立て
-//! ([0059](../../../docs/decisions/0059-cover-and-toc-design.md)決定2)。
+//! 目次(`--toc`)のHTML組み立て。
 //!
-//! 生成する構造と既定スタイルは**wkhtmltopdfの既定TOC XSL
-//! (`src/lib/tocstylesheet.cc`)の出力に合わせてある**。階層は入れ子の
+//! 生成する構造と既定スタイルはwkhtmltopdfの既定TOC XSL
+//! (`src/lib/tocstylesheet.cc`)の出力に合わせてある。階層は入れ子の
 //! `<ul>`で表現し、各項目は
 //! `<li><div><a>見出し</a><span>ページ番号</span></div><ul>子</ul></li>`。
 //! class属性は付けない(TOCは独立ドキュメントとしてレンダリングするため、
@@ -18,7 +17,7 @@ pub struct TocEntry {
     pub title: String,
     /// 表示するページ番号。
     pub page: usize,
-    /// リンク先の名前付き宛先([0042])。
+    /// リンク先の名前付き宛先。
     pub anchor: String,
     /// `--enable-toc-back-links`用に、この項目自身へ付ける宛先名。
     pub back_anchor: Option<String>,
@@ -76,7 +75,7 @@ pub fn build_toc_html(entries: &[TocEntry], options: &TocOptions) -> String {
     html
 }
 
-/// 見出しレベルの相対関係で入れ子の`<ul>`を作る(決定5)。
+/// 見出しレベルの相対関係で入れ子の`<ul>`を作る。
 fn write_entries(html: &mut String, entries: &[TocEntry], options: &TocOptions) {
     if entries.is_empty() {
         html.push_str("<ul></ul>\n");
@@ -203,7 +202,7 @@ mod tests {
 
     #[test]
     fn a_level_jump_counts_as_one_nesting_step() {
-        // h1 -> h3 の飛びも1段だけ深くする(決定5)。
+        // h1 -> h3 の飛びも1段だけ深くする。
         let html = build_toc_html(
             &[entry(1, "A", 1), entry(3, "A-x", 2)],
             &TocOptions::default(),

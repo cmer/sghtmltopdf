@@ -12,8 +12,7 @@ RSpec.describe Sghtmltopdf do
     end
 
     it "GVLを解放するので他のスレッドが並行して進む" do
-      # 4スレッド×300ms。GVLを握ったままなら約1200msかかる
-      # (docs/decisions/0062-ruby-binding.md 決定6)。
+      # 4スレッド×300ms。GVLを握ったままなら約1200msかかる。
       elapsed = elapsed_seconds do
         4.times.map { Thread.new { Sghtmltopdf::Native.sleep_without_gvl(300) } }.each(&:join)
       end

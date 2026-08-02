@@ -1,9 +1,7 @@
 //! `box-shadow`のE2Eテスト(M9 Phase 2)。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
-//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。詳細設計は
-//! [0032](../../docs/decisions/0032-box-shadow-design.md)、半透明描画の基盤は
-//! [0031](../../docs/decisions/0031-fill-alpha-design.md)参照。
+//! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
 
 use std::collections::HashMap;
 
@@ -129,7 +127,7 @@ fn box_shadow_none_draws_nothing_extra_end_to_end() {
 
 #[test]
 fn box_shadow_inset_is_parsed_but_not_rendered_end_to_end() {
-    // [0032]決定1: `inset`はパースするが描画は非対応(既知の簡略化)。
+    // `inset`はパースするが描画は非対応(既知の簡略化)。
     let with_inset = build_pdf(
         r#"<div class="box">x</div>"#,
         "body { margin: 0; } \
@@ -150,11 +148,11 @@ fn box_shadow_with_zero_blur_draws_exactly_one_rect_end_to_end() {
          .box { width: 100px; height: 60px; box-shadow: 4px 4px rgb(0, 0, 0); }",
     );
     let decompressed = decompressed_stream_bytes(&bytes);
-    // ぼかし無し(blur-radius: 0)は同心矩形近似のループをスキップし、
-    // コア矩形1枚だけを描画する([0032]決定3)。`rounded_rect_path`は
-    // 角丸パス(`m`/`l`/`c`/`h`)を使うため、`close_path`+`fill_nonzero`の
-    // 組み合わせ(`h\nf\n`)の出現回数で描画枚数を数えられる。div自身に
-    // background-colorが無いため、この出現はbox-shadow由来の1枚のみのはず。
+    // ぼかし無し(blur-radius: 0)は同心矩形近似のループをスキップし、コア矩形1
+    // 枚だけを描画する。`rounded_rect_path`は角丸パス(`m`/`l`/`c`/`h`)を
+    // 使うため、`close_path`+`fill_nonzero`の組み合わせ(`h\nf\n`)の出現回数で
+    // 描画枚数を数えられる。div自身にbackground-colorが無いため、この出現は
+    // box-shadow由来の1枚のみのはず。
     assert_eq!(count_occurrences(&decompressed, b"h\nf\n"), 1);
 }
 
@@ -166,7 +164,7 @@ fn box_shadow_with_blur_draws_multiple_concentric_rects_end_to_end() {
          .box { width: 100px; height: 60px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); }",
     );
     let decompressed = decompressed_stream_bytes(&bytes);
-    // ぼかし近似は4段階のリング+コア矩形=5枚([0032]決定3)。
+    // ぼかし近似は4段階のリング+コア矩形=5枚。
     assert_eq!(count_occurrences(&decompressed, b"h\nf\n"), 5);
 }
 

@@ -1,12 +1,10 @@
 //! `<img>`のバイト列取得。ローカルファイル/HTTP(S)/`data:` URIを
 //! [`ImgSrc`]の分類(T45)に従って統一的に扱う。
 //!
-//! [0013](../../../docs/decisions/0013-image-fetch-security.md)の
-//! セキュリティポリシー(プライベートIPブロック・許可スキーム・
-//! リダイレクト制限・サイズ上限・タイムアウト・既定無効のオプトイン)を
-//! ここで実装する。実際にどのタイミングで呼ぶか
-//! ([0014](../../../docs/decisions/0014-image-streaming-and-fallback.md)の
-//! 「box tree構築時に遅延して1回だけ」)は呼び出し側(T52)の責務。
+//! セキュリティポリシー(プライベートIPブロック・許可スキーム・リダイレクト
+//! 制限・サイズ上限・タイムアウト・既定無効のオプトイン)をここで実装する。
+//! 実際にどのタイミングで呼ぶか(「box tree構築時に
+//! 遅延して1回だけ」)は呼び出し側(T52)の責務。
 
 use std::fmt;
 use std::net::{IpAddr, SocketAddr};
@@ -44,18 +42,15 @@ pub struct ImageFetcher {
     /// 役割)。
     base_dir: PathBuf,
     /// リモート(http/https)フェッチを許可するかどうか。既定は無効
-    /// ([0013](../../../docs/decisions/0013-image-fetch-security.md)の
-    /// 「既定無効・明示オプトイン」方針)。`data:`/ローカルパスはこの値に
-    /// 関わらず常に許可する(ネットワークを介さない、または`@font-face`と
-    /// 同じ信頼境界のため)。
+    /// (「既定無効・明示オプトイン」方針)。`data:`/ローカルパスはこの値に
+    /// 関わらず常に許可する(ネットワークを介さない、
+    /// または`@font-face`と同じ信頼境界のため)。
     allow_remote: bool,
     max_bytes: u64,
     agent: Agent,
-    /// `<base href>`の値([0040](
-    /// ../../../docs/decisions/0040-base-href-design.md)決定1)。相対参照は
-    /// フェッチ前にこれに対して解決される。`<img src>`・`<link href>`・
-    /// `@import`はいずれもこのフェッチャを共有するため、ここ1箇所で3種類
-    /// すべてに効く。
+    /// `<base href>`の値。相対参照はフェッチ前にこれに対して解決される。
+    /// `<img src>`・`<link href>`・`@import`はいずれもこのフェッチャを
+    /// 共有するため、ここ1箇所で3種類すべてに効く。
     base_href: Option<String>,
     /// ローカルファイル参照を許すか(`--disable-local-file-access`でfalse)。
     /// HTTPサーバモード(Phase 7)では既定でfalseにする想定。
@@ -89,8 +84,8 @@ impl ImageFetcher {
         self
     }
 
-    /// 生の参照値を`<base href>`に対して解決し、URL/パスとして分類する
-    /// ([0040]決定2)。フェッチ経路はすべてここを通す。
+    /// 生の参照値を`<base href>`に対して解決し、URL/パスとして分類する。
+    /// フェッチ経路はすべてここを通す。
     pub fn resolve(&self, raw: &str) -> Option<super::ImgSrc> {
         let resolved = super::resolve_against_base_href(self.base_href.as_deref(), raw);
         super::classify_img_src(&resolved)
@@ -206,7 +201,6 @@ impl ImageFetcher {
 /// 判定する。IPv4-mapped IPv6(`::ffff:a.b.c.d`)は埋め込まれたIPv4側を
 /// 再帰的に判定する(素通しするとIPv4側のフィルタを迂回できてしまうため)。
 ///
-/// [0013](../../../docs/decisions/0013-image-fetch-security.md)で
 /// `core/examples/spike_image_fetch_ssrf_guard.rs`を使って実際に検証済みの
 /// ロジックをそのまま本実装へ移した。
 fn is_blocked_ip(ip: IpAddr) -> bool {
@@ -237,9 +231,8 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
 /// 1件も残らなければ`Error::HostNotFound`で拒否する(「ブロックされた」と
 /// 「そもそも存在しない」を呼び出し元から区別させない)。
 ///
-/// `ureq`はリダイレクト追従のたびに`resolve()`を呼び直す
-/// ([0013](../../../docs/decisions/0013-image-fetch-security.md)参照)ため、
-/// このフック1箇所で初回・リダイレクト経由の両方のSSRF対策になる。
+/// `ureq`はリダイレクト追従のたびに`resolve`を呼び直すため、このフック1箇所で
+/// 初回・リダイレクト経由の両方のSSRF対策になる。
 #[derive(Debug)]
 struct PolicyResolver<R> {
     inner: R,
@@ -300,8 +293,8 @@ mod tests {
 
     #[test]
     fn a_root_relative_local_path_stays_inside_base_dir() {
-        // T61: `/logo.png`のようなroot-relativeなsrc(CLAUDE.mdの
-        // `<link href="/stylesheets/main.css" />`と同種の書き方)が
+        // T61: `/logo.png`のようなroot-relativeなsrc(`<link
+        // href="/stylesheets/main.css" />`と同種の書き方)が
         // base_dirの外(OSのファイルシステムルート)へ逃げず、base_dir配下の
         // ファイルとして読めることを確認する。
         let dir = temp_dir("root_relative");

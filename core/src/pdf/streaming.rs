@@ -1,15 +1,13 @@
 //! PDFバイト列をページ確定のそばから逐次[`Sink`]へ書き出すストリーミング
 //! ライター。
 //!
-//! [0004](../../../docs/decisions/0004-streaming-pdf-and-font-subsetting.md)
-//! で検証した設計をそのまま本実装に落とし込む: 各ページのコンテンツ
-//! ストリームは、そのページの[`Page`]が確定した時点で即座に構築し
-//! `Sink`へ書き出す(CIDは常に元のグリフID、`render_box`/`render_line`に
-//! `remaps: None`を渡す)。フォント埋め込み(サブセット化・
-//! `/CIDToGIDMap`ストリームの構築)は、[`StreamingPdfWriter::finish`]が
-//! 呼ばれた時点(全ページ処理後)にまとめて行う。
+//! 各ページのコンテンツストリームは、そのページの[`Page`]が確定した時点で
+//! 即座に構築し`Sink`へ書き出す(CIDは常に元のグリフID、
+//! `render_box`/`render_line`に`remaps: None`を渡す)。フォント埋め込み
+//! (サブセット化・`/CIDToGIDMap`ストリームの構築)は、
+//! [`StreamingPdfWriter::finish`]が呼ばれた
+//! 時点(全ページ処理後)にまとめて行う。
 //!
-//! [0001](../../../docs/decisions/0001-pdf-writer-crate.md)の通り、
 //! `pdf_writer::Pdf`はxref/trailerの構築を非公開実装に持つため、`Chunk`
 //! (1オブジェクトごとの自己完結したバイト列)単位で`Sink`へ逐次書き出しつつ、
 //! `(Ref, 書き込み済みオフセット)`を自前で記録し、[`StreamingPdfWriter::finish`]
@@ -60,35 +58,28 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// `Rc::as_ptr`(デコード結果の同一性)をキーにした、文書全体で共有する
     /// 画像Refのマップ。フォントと違い画像はページをまたいだ使用状況の
     /// 集計(サブセット化)が不要なため、`finish`まで待たずページごとに
-    /// 「初出なら書き出す」形で埋めていく([0014]参照)。
+    /// 「初出なら書き出す」形で埋めていく。
     image_ids: HashMap<usize, ImageIds>,
-    /// `@page`ルール(margin box描画用、[0028](
-    /// ../../../docs/decisions/0028-paged-media-design.md))。
+    /// `@page`ルール(margin box描画用)。
     page_rules: Vec<PageRule>,
     /// `background-color`/`box-shadow`の半透明描画用ExtGState(0.05刻み・
-    /// 21段階、[0031](../../../docs/decisions/0031-fill-alpha-design.md)
-    /// 決定1)。バッチモード(`encode_pdf`)と同じく文書全体で1回だけ確保する。
+    /// 21段階)。バッチモード(`encode_pdf`)と同じく文書全体で1回だけ確保する。
     alpha_gs_ids: Vec<Ref>,
     alpha_gs_names: Vec<String>,
-    /// リンク注釈の生成設定([0042](
-    /// ../../../docs/decisions/0042-link-annotations-design.md))。
+    /// リンク注釈の生成設定。
     links: LinkSettings,
     /// これまでに書いたページで見つかったアンカーの位置
     /// (名前, ページのRef, x, y)。`finish`で`/Dests`辞書として書き出す。
     destinations: Vec<(String, Ref, f32, f32)>,
-    /// メタデータ・圧縮・スケール・グレースケール([0057](
-    /// ../../../docs/decisions/0057-pdf-output-options-design.md))。
+    /// メタデータ・圧縮・スケール・グレースケール。
     output: PdfOutputOptions,
-    /// 次に書くページへ重ねるサブドキュメント(`--header-html`/
-    /// `--footer-html`、[0058](
-    /// ../../../docs/decisions/0058-header-footer-design.md)決定3)。
-    /// `write_page`で消費される。
+    /// 次に書くページへ重ねるサブドキュメント
+    /// (`--header-html`/`--footer-html`)。`write_page`で消費される。
     pending_overlays: Vec<PageOverlay>,
-    /// 次に書くページのページ番号([0059](
-    /// ../../../docs/decisions/0059-cover-and-toc-design.md)決定1)。
+    /// 次に書くページのページ番号。
     ///
     /// * `Some(Some(n))`: 番号`n`のページとして扱う
-    /// * `Some(None)`: **番号を持たないページ**(cover)。margin boxも
+    /// * `Some(None)`: 番号を持たないページ(cover)。margin boxも
     ///   ヘッダー/フッターも描かない
     /// * `None`: 明示指定なし(これまでに書いたページ数+1を使う)
     pending_page_number: Option<Option<usize>>,
@@ -97,8 +88,7 @@ pub struct StreamingPdfWriter<S: Sink> {
 impl<S: Sink> StreamingPdfWriter<S> {
     /// 新しいライターを作り、PDFファイルヘッダを即座に`sink`へ書き出す。
     /// `links`は内部アンカーの対応表と`<base href>`([`LinkSettings`])。
-    /// 既定値なら外部リンクの注釈だけを生成する([0042](
-    /// ../../../docs/decisions/0042-link-annotations-design.md)決定5)。
+    /// 既定値なら外部リンクの注釈だけを生成する。
     pub fn new(
         fonts: &FontCollection,
         settings: PageSettings,
@@ -116,7 +106,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         )
     }
 
-    /// [`PdfOutputOptions`]を明示して作る版([0057]決定1)。
+    /// [`PdfOutputOptions`]を明示して作る版。
     pub fn with_options(
         fonts: &FontCollection,
         settings: PageSettings,
@@ -181,10 +171,10 @@ impl<S: Sink> StreamingPdfWriter<S> {
 
     /// 次に`write_page`で書くページへ重ねるサブドキュメントを設定する。
     ///
-    /// `write_page`のシグネチャを変えずにヘッダー/フッターHTMLを合成する
-    /// ための入口([0058]決定3)。ページごとに内容が変わりうる(`[page]`)ため、
-    /// 呼び出し側がページ単位で設定する。
-    /// これまでに書き出したページ数(次のページ番号は`+1`)。
+    /// `write_page`のシグネチャを変えずにヘッダー/フッターHTMLを
+    /// 合成するための入口。ページごとに内容が変わりうる(`[page]`)ため、呼び
+    /// 出し側がページ単位で設定する。これまでに
+    /// 書き出したページ数(次のページ番号は`+1`)。
     pub fn page_count(&self) -> usize {
         self.page_ids.len()
     }
@@ -193,9 +183,9 @@ impl<S: Sink> StreamingPdfWriter<S> {
         self.pending_overlays = overlays;
     }
 
-    /// 次に書くページのページ番号を明示する([0059]決定1)。
+    /// 次に書くページのページ番号を明示する。
     ///
-    /// `Some(n)`でその番号として扱い、`None`を渡すと**番号を持たないページ**
+    /// `Some(n)`でその番号として扱い、`None`を渡すと番号を持たないページ
     /// (cover)としてmargin box・ヘッダー/フッターを描かない。
     pub fn set_next_page_number(&mut self, number: Option<usize>) {
         self.pending_page_number = Some(number);
@@ -207,8 +197,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
     ///
     /// `total_pages`は`counter(pages)`用の総ページ数(`Mode::Streaming`では
     /// 原理的に決まらないため常に`None`、`Mode::Batch`で`@page`が
-    /// `counter(pages)`を使う場合のみ事前カウント済みの値を渡す、
-    /// [0028](../../../docs/decisions/0028-paged-media-design.md)決定6)。
+    /// `counter(pages)`を使う場合のみ事前カウント済みの値を渡す)。
     pub fn write_page(
         &mut self,
         page: &Page,
@@ -218,8 +207,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
         total_pages: Option<usize>,
     ) -> Result<(), S::Error> {
         // ページ番号は既定では「これまでに書いたページ数+1」(1始まり)だが、
-        // cover/TOC([0059]決定1)のために明示指定できる。`None`は
-        // 「番号を持たないページ」で、margin box・ヘッダー/フッターを描かない。
+        // cover/TOCのために明示指定できる。`None`は「番号を持たないページ」
+        // で、margin box・ヘッダー/フッターを描かない。
         let explicit = self.pending_page_number.take();
         let numbered = explicit.map(|n| n.is_some()).unwrap_or(true);
         let page_number = explicit
@@ -253,8 +242,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
 
         // 画像はフォントと違いページをまたいだ使用状況集計(サブセット化)が
         // 不要なため、このページで初出のものはこの時点で即座にXObjectとして
-        // 書き出し切る([0014]参照)。`<img>`本体と`background-image`
-        // ([0017]決定2)の両方をここで一括して集める。
+        // 書き出し切る。`<img>`本体と`background-image`の
+        // 両方をここで一括して集める。
         let mut used_images = Vec::new();
         for b in &page.boxes {
             collect_image_uses(b, background_images, &mut used_images);
@@ -272,8 +261,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         }
 
         // `opacity < 1`の要素を先に集めてRefを払い出す(バッチモード
-        // `encode_pdf`と同じ構造、[0035](
-        // ../../../docs/decisions/0035-opacity-transform-design.md)決定2)。
+        // `encode_pdf`と同じ構造)。
         let mut opacity_nodes = Vec::new();
         for b in &page.boxes {
             collect_opacity_uses(b, styles, &mut opacity_nodes);
@@ -289,11 +277,11 @@ impl<S: Sink> StreamingPdfWriter<S> {
         self.page_ids.push(page_id);
 
         let mut content = Content::new();
-        // CSS px → PDF ptの換算はページ全体のCTMで行う([0057]決定2)。
-        // これ以降のcontent stream内の座標はすべてCSS pxのままでよい。
+        // CSS px → PDF ptの換算はページ全体のCTMで行う。これ以降のcontent
+        // stream内の座標はすべてCSS pxのままでよい。
         let scale = self.output.scale;
         content.transform([scale, 0.0, 0.0, scale, 0.0, 0.0]);
-        // 色変換([0057]決定4)を挟むラッパー。
+        // 色変換を挟むラッパー。
         let mut target = RenderTarget::new(&mut content, self.output.grayscale);
         for b in &page.boxes {
             // `remaps: None` — CIDは常に元のグリフIDのまま使う(モジュールdoc参照)。
@@ -354,9 +342,9 @@ impl<S: Sink> StreamingPdfWriter<S> {
         content_stream.finish();
         self.write_chunk(content_id, &chunk)?;
 
-        // `<a href>`の注釈と、このページに落ちたアンカーの位置([0042])。
-        // 注釈は名前付き宛先を参照するだけなので、後方のページを指すリンクも
-        // このページの時点で書き切れる(決定3-1)。
+        // `<a href>`の注釈と、このページに落ちたアンカーの位置。注釈は
+        // 名前付き宛先を参照するだけなので、後方のページを指すリンクもこの
+        // ページの時点で書き切れる。
         let mut page_links = Vec::new();
         let mut page_anchors = Vec::new();
         for b in &page.boxes {
@@ -420,8 +408,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
         }
         self.write_chunk(page_id, &chunk)?;
 
-        // opacityグループのForm XObjectを実際に書き出す(バッチモードと同じ
-        // 方針、決定2)。
+        // opacityグループのForm XObjectを実際に
+        // 書き出す(バッチモードと同じ方針)。
         for (form_ref, bytes) in &pending_forms {
             let mut chunk = Chunk::new();
             {
@@ -467,8 +455,8 @@ impl<S: Sink> StreamingPdfWriter<S> {
             .count(self.page_ids.len() as i32);
         self.write_chunk(self.pages_tree_id, &chunk)?;
 
-        // 名前付き宛先はすべてのページを書き終えたこの時点で解決する
-        // ([0042]決定3-1)。前方参照のリンクもここで初めて宛先が定まる。
+        // 名前付き宛先はすべてのページを書き終えたこの時点で解決する。
+        // 前方参照のリンクもここで初めて宛先が定まる。
         let destinations = std::mem::take(&mut self.destinations);
         let dests_id = (!destinations.is_empty()).then(|| self.alloc.next());
         if let Some(dests_id) = dests_id {

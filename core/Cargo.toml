@@ -21,12 +21,10 @@ name = "server"
 required-features = ["server"]
 
 # CLI(clap)とHTTPサーバ(tiny_http)はfeatureで切り離す。ライブラリとして
-# 使う側は`--no-default-features`でこれらを引き込まずに済む
-# (docs/decisions/0055-cli-design.md 決定1)。
+# 使う側は`--no-default-features`でこれらを引き込まずに済む。
 #
 # `cli`と`server`が分かれているのはRuby binding(M14)のため。gemは
-# オプション解釈のためにclap(=`cli`)を使うが、HTTPサーバは要らない
-# (docs/decisions/0062-ruby-binding.md 決定4)。
+# オプション解釈のためにclap(=`cli`)を使うが、HTTPサーバは要らない。
 [features]
 default = ["cli", "server"]
 cli = ["dep:clap"]
@@ -35,8 +33,7 @@ server = ["cli", "dep:tiny_http"]
 [dependencies]
 base64 = "0.22.1"
 # 既定featureとの差はヘルプの色付け(anstream等6クレート)のみで実測差もほぼ
-# 無いため最小構成にし、タイポ時の候補提示(suggestions)だけ足している
-# (docs/decisions/0056-cli-and-server-crates.md 決定1)。
+# 無いため最小構成にし、タイポ時の候補提示(suggestions)だけ足している。
 clap = { version = "4", default-features = false, features = [
     "std",
     "derive",
@@ -62,14 +59,13 @@ rustybuzz = "0.20.1"
 selectors = "0.39.0"
 subsetter = "0.2.6"
 taffy = "0.12.2"
-# HTTPサーバモード(M12 Phase 7)。同期・軽量でボディを`Read`として扱える
-# (docs/decisions/0056-cli-and-server-crates.md 決定2)。
+# HTTPサーバモード(M12 Phase 7)。同期・軽量でボディを`Read`として扱える。
 tiny_http = { version = "0.12", optional = true }
 ttf-parser = "0.25.1"
 ureq = "3.3.0"
 
 # krillaはT1スパイクの比較対象として examples/spike_krilla.rs でのみ使用。
-# 採用はpdf-writerに決定したため本実装では使わない(docs/decisions/0001-pdf-writer-crate.md参照)
+# 採用はpdf-writerに決定したため本実装では使わない
 [dev-dependencies]
 krilla = "0.8.2"
 # HTTPサーバモードのE2Eテスト(core/tests/server.rs)でクライアントとして使う。

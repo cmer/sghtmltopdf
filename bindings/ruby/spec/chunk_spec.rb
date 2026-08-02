@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-# ローカル変換(ネイティブ拡張)でのチャンク出力
-# (docs/decisions/0063-ffi-chunk-callback.md、M14 Phase 6)。
+# ローカル変換(ネイティブ拡張)でのチャンク出力(M14 Phase 6)。
 RSpec.describe "ブロック付きrender(ローカル変換)" do
   # 複数ページになるHTML。ページ確定ごとにSinkへ書き出されるので、
   # チャンクが複数回に分かれる。

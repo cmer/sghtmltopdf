@@ -24,38 +24,38 @@ require_relative "sghtmltopdf/server_client"
 #   Sghtmltopdf.render_to_file(html, "invoice.pdf", margin_top: "20mm")
 #
 # オプション名はCLI(`sghtmltopdf --help`)と同じで、`_`が`-`に対応する
-# (`page_size:` → `--page-size`)。詳細はdocs/cli.mdを参照。
+# (`page_size:` → `--page-size`)。
 #
 # `server_url`を指定すると、変換をHTTPサーバモードで動く別プロセス
-# (`sghtmltopdf server`)へ委譲する(決定10)。負荷分散は前段のLBに任せる
-# 前提でURLは1つだけ受け、サーバへ到達できないときは
+# (`sghtmltopdf server`)へ委譲する。負荷分散は前段のLBに任せる前提でURLは
+# 1つだけ受け、サーバへ到達できないときは
 # `ServerError`にする(ローカルへフォールバックしない)。
 #
 #   Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
 #
 # 例外は`Sghtmltopdf::Error`を基底に、`UsageError`(オプションの誤り)・
 # `InputError`(入力やファイルの読み書き)・`RenderError`(レンダリング失敗)の
-# 3つ(ネイティブ拡張側で定義。docs/decisions/0062-ruby-binding.md 決定9)と、
-# サーバへ委譲したときだけ起きる`ServerError`(到達不能・過負荷)。
+# 3つ(ネイティブ拡張側で定義)と、サーバへ委譲したときだけ起きる
+# `ServerError`(到達不能・過負荷)。
 module Sghtmltopdf
   # ブロック付き`render`で1回に渡すバイト数の目安(ローカル変換のみ)。
   # ページ確定ごとにブロックを呼ぶとGVLの取り直しが増えるため、ここまで
-  # 溜めてから渡す(docs/decisions/0063-ffi-chunk-callback.md)。
+  # 溜めてから渡す。
   DEFAULT_CHUNK_SIZE = 64 * 1024
 
   class << self
     # HTMLを変換してPDFのバイト列(ASCII-8BITのString)を返す。
     #
-    # ブロックを渡すと、PDF全体を組み立ててから返す代わりに**チャンクごとに
-    # ブロックを呼ぶ**(返り値はnil)。Rackの`response.stream`へ流したり、
-    # S3のマルチパートアップロードへ繋いだりするための口
-    # (CLAUDE.mdの「エンジン側は出力先(sink)を意識しない設計」に対応する)。
+    # ブロックを渡すと、PDF全体を組み立ててから返す代わりにチャンクごとに
+    # ブロックを呼ぶ(返り値はnil)。Rackの`response.stream`へ流したり、S3の
+    # マルチパートアップロードへ繋いだりするための口(エンジン側は出力先(sink)
+    # を意識しない設計に対応する)。
     #
     #   Sghtmltopdf.render(html) { |bytes| response.stream.write(bytes) }
     #
-    # ローカル・サーバ委譲のどちらでも**逐次**になる。ローカルは確定した
-    # ページから順に(docs/decisions/0063-ffi-chunk-callback.md)、サーバは
-    # `?stream=1`のchunked transfer encodingをそのまま渡す。
+    # ローカル・サーバ委譲のどちらでも逐次になる。ローカルは確定した
+    # ページから順に、サーバは`?stream=1`の
+    # chunked transfer encodingをそのまま渡す。
     #
     # 1回に渡すバイト数の目安は`chunk_size:`で変えられる(既定64KiB。
     # ローカル変換のみ。小さくするとGVLの取り直しが増える)。
@@ -121,7 +121,7 @@ module Sghtmltopdf
       value.nil? ? DEFAULT_CHUNK_SIZE : Integer(value)
     end
 
-    # サーバへ渡すオプション。**流し込まれた既定値は外す**
+    # サーバへ渡すオプション。流し込まれた既定値は外す
     # (Rails向けの`base_url`・`allow`はローカルのファイル解決のための
     # 既定値で、サーバモードではリクエストから指定できず400になる。
     # 明示的に設定した値はそのまま送り、可否はサーバに判断させる)。
@@ -131,8 +131,8 @@ module Sghtmltopdf
   end
 end
 
-# Rails統合(Railtie・`render pdf:`・ビューヘルパ)は、Railsが読み込まれて
-# いるときだけ有効にする(docs/decisions/0062-ruby-binding.md 決定1)。
-# 通常のRailsアプリでは`config/application.rb`の`rails/all`が先に走るため、
-# Bundler.requireでこのファイルが読まれた時点で定数が揃っている。
+# Rails統合(Railtie・`render pdf:`・ビューヘルパ)は、Railsが読み
+# 込まれているときだけ有効にする。通常のRailsアプリでは`config/application.rb`
+# の`rails/all`が先に走るため、Bundler.requireでこの
+# ファイルが読まれた時点で定数が揃っている。
 require_relative "sghtmltopdf/railtie" if defined?(::Rails::Railtie)

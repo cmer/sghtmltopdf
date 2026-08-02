@@ -3,7 +3,6 @@
 //!
 //! `list_style.rs`/`box_model.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を検知する。
-//! 詳細設計は[0024](../../docs/decisions/0024-generated-content-design.md)参照。
 
 use std::collections::HashMap;
 
@@ -136,8 +135,7 @@ fn content_attr_reads_the_element_own_attribute_value() {
 #[test]
 fn counter_reset_on_an_element_stays_visible_to_its_following_siblings() {
     // 回帰テスト: h2のcounter-resetが自分の処理直後にpopされてしまうと、
-    // 2つ目以降のh3が参照するsection値が消えてしまっていた
-    // ([0024](../../docs/decisions/0024-generated-content-design.md)関連)。
+    // 2つ目以降のh3が参照するsection値が消えてしまっていた。
     let laid = layout(
         r#"<h2>Intro</h2><h3>Background</h3><h3>Motivation</h3>"#,
         "h2 { counter-reset: section; } \
@@ -183,7 +181,7 @@ fn nested_counters_are_scoped_per_ancestor_and_joined_with_the_separator() {
 #[test]
 fn after_content_is_resolved_after_descendants_so_it_reflects_their_counter_changes() {
     // pにブロック子孫を混ぜると::after自体が非対応になるため、子孫は
-    // インライン要素(span)にする([0024](../../docs/decisions/0024-generated-content-design.md)関連)。
+    // インライン要素(span)にする。
     let laid = layout(
         r#"<p class="section">Heading <span class="mark">note</span></p>"#,
         "p.section { counter-reset: n; } \

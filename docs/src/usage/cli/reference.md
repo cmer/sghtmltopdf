@@ -51,6 +51,7 @@ cat invoice.html | sghtmltopdf - -o - > invoice.pdf
 単位を省略するとmmです(wkhtmltopdf互換)。
 
 > CSSの`@page`との関係
+>
 > これらのオプションは初期値であり、HTMLのCSSに`@page { size: … }`や`@page { margin: … }`が書かれていればそちらが勝ちます(プロパティ単位)。
 > wkhtmltopdfとは逆なので注意してください。
 
@@ -85,6 +86,7 @@ cat invoice.html | sghtmltopdf - -o - > invoice.pdf
 `/Producer`と`/CreationDate`は常に書かれます。
 
 > グレースケールの限界
+>
 > JPEG(`/DCTDecode`のパススルー)とCMYK画像はデコーダを持たないため、変換されずカラーのまま残ります。
 
 ## コンテンツの挙動

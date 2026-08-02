@@ -1,7 +1,6 @@
 //! `position: absolute`/`fixed`のE2Eテスト(M11 Phase 2、T270)。
 //!
-//! 設計は[0049](../../docs/decisions/0049-absolute-fixed-positioning-design.md)。
-//! 絶対配置は`Mode::Batch`でのみ有効(決定4)。オーバーレイは全ページ確定後に
+//! 絶対配置は`Mode::Batch`でのみ有効。オーバーレイは全ページ確定後に
 //! 足すため、ページ分割結果(`paginate_document`)とレイアウト結果で検証する。
 
 use sghtmltopdf_core::engine::{Engine, EngineOptions, FontSpec, Mode};

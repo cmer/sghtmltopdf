@@ -110,7 +110,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
   # T355: ブロック付きrenderをActionController::Liveと組み合わせて、
   # 確定したページから順にRackのレスポンスへ流せること。
   #
-  # **Rack::Testの`last_response.body`は使えない**。`MockResponse`は
+  # Rack::Testの`last_response.body`は使えない。`MockResponse`は
   # ストリーミングのボディを読み切らずに最初のチャンクで止まるため、
   # Rackのボディを自分で`each`する。
   describe "Rackへのストリーミング" do
@@ -141,7 +141,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
-  describe "サーバモードへの委譲(決定10)" do
+  describe "サーバモードへの委譲" do
     it "コントローラからでもサーバへ委譲でき、Railsの既定値は送らない" do
       FakeServer.run do |server|
         Sghtmltopdf.configure { |c| c.server_url = server.url }

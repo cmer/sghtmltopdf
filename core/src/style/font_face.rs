@@ -20,9 +20,7 @@ pub struct FontFaceRule {
     pub weight: FontWeight,
     pub style: FontStyle,
     /// `unicode-range`。空`Vec`は「未指定」を意味し、全域(U+0-10FFFF)を
-    /// 暗黙にカバーするものとして扱う(呼び出し側の責務。[0011]参照)。
-    ///
-    /// [0011]: ../../../../docs/decisions/0011-unicode-range-parsing.md
+    /// 暗黙にカバーするものとして扱う(呼び出し側の責務)。
     pub unicode_range: Vec<UnicodeRange>,
 }
 

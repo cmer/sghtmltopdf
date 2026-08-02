@@ -11,8 +11,7 @@ gem "rb_sys", "~> 0.9.128"
 gem "rspec", "~> 3.13"
 
 # Rails統合(Railtie・pdfレンダラ)のテスト用。gem本体はRailsに依存しない
-# (`defined?(Rails::Railtie)`でガードして読み込む。
-# docs/decisions/0062-ruby-binding.md 決定1)。
+# (`defined?(Rails::Railtie)`でガードして読み込む)。
 group :test do
   gem "actionpack", ">= 7.0"
   gem "rack-test", "~> 2.1"

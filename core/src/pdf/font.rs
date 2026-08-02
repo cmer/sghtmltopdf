@@ -15,9 +15,8 @@
 //!   /Identity`)。「元のグリフID→サブセット後のグリフID(=CID)」の対応表を
 //!   返し、呼び出し側がコンテンツストリームを書く際にこの対応表でグリフIDを
 //!   変換する
-//! - [`embed_font_streaming_chunks`](ストリーミング処理向け、
-//!   [0004](../../../docs/decisions/0004-streaming-pdf-and-font-subsetting.md)
-//!   参照): コンテンツストリームは各ページ確定時点で即座に書き出すため、
+//! - [`embed_font_streaming_chunks`](ストリーミング処理向け):
+//!   コンテンツストリームは各ページ確定時点で即座に書き出すため、
 //!   CIDは常に元のグリフIDのまま(詰め替えない)。フォント埋め込み側だけ
 //!   全ページ処理後にサブセット化し、`/CIDToGIDMap`をCID(=元GID)→
 //!   サブセット後GIDの対応表を持つ明示的なストリームにすることで整合させる
@@ -180,9 +179,7 @@ pub fn embed_font(
 
 /// [`embed_font`]のストリーミング版。CIDをサブセット後のグリフIDに詰め替えず、
 /// 常に元のグリフIDのまま扱う。かわりに`/CIDToGIDMap`を、CID(元GID)から
-/// サブセット後GIDへの対応を持つ明示的なストリームにする
-/// ([0004](../../../docs/decisions/0004-streaming-pdf-and-font-subsetting.md)
-/// で検証した設計)。
+/// サブセット後GIDへの対応を持つ明示的なストリームにする。
 ///
 /// 返り値は、各オブジェクトを`(Ref, Chunk)`の列として返す。1つの`Chunk`には
 /// 1つの間接オブジェクトのみを含める(呼び出し側がオブジェクトごとに
@@ -316,10 +313,9 @@ pub fn embed_font_streaming_chunks(
     chunks
 }
 
-/// zlib(`/FlateDecode`)圧縮する。
-/// `compress`がfalseなら無圧縮のまま返す(`--no-pdf-compression`、
-/// [0057](../../../docs/decisions/0057-pdf-output-options-design.md)決定5)。
-/// 呼び出し側は同じ条件で`/Filter`を書くかどうかを決める。
+/// zlib(`/FlateDecode`)圧縮する。`compress`がfalseなら無圧縮のまま返す
+/// (`--no-pdf-compression`)。呼び出し側は同じ
+/// 条件で`/Filter`を書くかどうかを決める。
 pub(super) fn maybe_deflate(data: &[u8], compress: bool) -> Vec<u8> {
     if compress {
         deflate(data)

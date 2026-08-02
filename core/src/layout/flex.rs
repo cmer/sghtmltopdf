@@ -1,14 +1,13 @@
 //! Flexbox(`display: flex`)を、既存box treeのサブツリーとしてtaffyへ
-//! ブリッジする。設計判断は[0034](../../../docs/decisions/0034-flexbox-design.md)
-//! に記録済み。
+//! ブリッジする。
 //!
 //! taffyは自前でノードツリー(`TaffyTree`)を持つ設計のため、flexコンテナ・
 //! 各アイテムに対応するtaffyのリーフノードを都度組み立て、`compute_layout_with_measure`
 //! で1回だけレイアウトを計算する。テキスト等の内在サイズが必要なリーフには
 //! 採寸(measure)コールバックを渡し、その中で既存のブロック/インライン/テーブル
-//! レイアウト関数を呼んで実測する(決定2)。計算結果(各アイテムの確定した
-//! 位置・サイズ)は、`layout_box_with_forced_size`でもう一度実際のレイアウトを
-//! 行うことで`LaidOutBox`へ変換する(2パス方式、決定2)。
+//! レイアウト関数を呼んで実測する。計算結果(各アイテムの確定した位置・サイズ)
+//! は、`layout_box_with_forced_size`でもう一度実際のレイアウトを行うことで
+//! `LaidOutBox`へ変換する(2パス方式)。
 //!
 //! taffyの型は自前の同名CSS型(`crate::style::FlexDirection`等)と衝突するため
 //! `tf`という別名で参照する。
@@ -58,9 +57,8 @@ pub(super) fn layout_flex(
     (result.items, result.container_height)
 }
 
-/// taffyへ委譲するレイアウトの種類([0054](
-/// ../../../docs/decisions/0054-grid-design.md)決定1)。コンテナ/アイテムへ渡す
-/// `Style`だけが変わり、採寸ブリッジと座標変換は共通。
+/// taffyへ委譲するレイアウトの種類。コンテナ/アイテムへ渡す`Style`だけが
+/// 変わり、採寸ブリッジと座標変換は共通。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TaffyMode {
     Flex,
@@ -72,7 +70,7 @@ pub(super) struct TaffySubtreeLayout {
     pub items: Vec<LaidOutBox>,
     /// コンテナの自然な(内容に基づく)content-box高さ。
     pub container_height: f32,
-    /// Gridのときのみ、行トラックの使用サイズとガター(ページ分割用、決定6)。
+    /// Gridのときのみ、行トラックの使用サイズとガター(ページ分割用)。
     pub row_tracks: Option<GridRowTracks>,
 }
 
@@ -84,7 +82,7 @@ pub(super) struct GridRowTracks {
 }
 
 /// flex/gridのアイテム群をtaffyでレイアウトし、既存の`LaidOutBox`へ変換する
-/// ([0034](../../../docs/decisions/0034-flexbox-design.md)決定2の2パス方式)。
+/// (2パス方式)。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn layout_taffy_subtree(
     flex_items: &[LayoutBox],
@@ -147,13 +145,12 @@ pub(super) fn layout_taffy_subtree(
                 match available_space.width {
                     // 「使える幅」が確定していても、内容がそれより狭ければ
                     // 内容幅を返す。ここで常に`w`を返すと、内容幅に縮むべき
-                    // ケース(Gridの`justify-items: start`等)で常に
-                    // トラック幅いっぱいになってしまう([0054](
-                    // ../../../docs/decisions/0054-grid-design.md)決定1)。
+                    // ケース(Gridの`justify-items: start`等)で常にトラック
+                    // 幅いっぱいになってしまう。
                     tf::AvailableSpace::Definite(w) => {
                         measure_natural_content_width(&item.content, styles, fonts).min(w)
                     }
-                    // min-contentとmax-contentは区別しない(決定2、既知の簡略化)。
+                    // min-contentとmax-contentは区別しない(既知の簡略化)。
                     tf::AvailableSpace::MinContent | tf::AvailableSpace::MaxContent => {
                         measure_natural_content_width(&item.content, styles, fonts)
                     }
@@ -242,7 +239,7 @@ pub(super) fn layout_taffy_subtree(
         .layout(root)
         .expect("直前にcompute_layout_with_measureで計算済み");
 
-    // Gridのページ分割(決定6)に使う行トラック情報を取り出す。
+    // Gridのページ分割に使う行トラック情報を取り出す。
     let row_tracks = match (mode, tree.detailed_layout_info(root)) {
         (TaffyMode::Grid, tf::DetailedLayoutInfo::Grid(info)) => Some(GridRowTracks {
             sizes: info.rows.sizes.clone(),
@@ -279,9 +276,8 @@ fn container_taffy_style(style: &ComputedStyle, content_width: f32) -> tf::Style
             width: tf::Dimension::length(content_width),
             height: map_dimension(style.height),
         },
-        // `min-*`/`max-*`はtaffyへそのまま委譲する([0051](
-        // ../../../docs/decisions/0051-min-max-size-design.md)決定7)。flex文脈では
-        // taffyがコンテナ基準でパーセンテージを解決できるため、ブロック側と違い
+        // `min-*`/`max-*`はtaffyへそのまま委譲する。flex文脈ではtaffyが
+        // コンテナ基準でパーセンテージを解決できるため、ブロック側と違い
         // 高さのパーセンテージも有効になる(既存の`height`と同じ非対称性)。
         min_size: tf::Size {
             width: map_length_percentage_dimension(style.min_width),
@@ -291,8 +287,7 @@ fn container_taffy_style(style: &ComputedStyle, content_width: f32) -> tf::Style
             width: map_max_size(style.max_width),
             height: map_max_size(style.max_height),
         },
-        // `aspect-ratio`もtaffyへ委譲する([0052](
-        // ../../../docs/decisions/0052-aspect-ratio-design.md)決定6)。
+        // `aspect-ratio`もtaffyへ委譲する。
         aspect_ratio: style.aspect_ratio.ratio,
         ..Default::default()
     }
@@ -435,7 +430,7 @@ pub(super) fn map_dimension(v: LengthPercentageOrAuto) -> tf::Dimension {
     }
 }
 
-/// `min-width`/`min-height`(初期値`0`)をtaffyの`Dimension`へ([0051]決定7)。
+/// `min-width`/`min-height`(初期値`0`)をtaffyの`Dimension`へ。
 pub(super) fn map_length_percentage_dimension(v: LengthPercentage) -> tf::Dimension {
     match v {
         LengthPercentage::Length(px) => tf::Dimension::length(px),

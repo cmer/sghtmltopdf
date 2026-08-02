@@ -96,8 +96,7 @@ impl Font {
     }
 
     /// x-height(px)。`OS/2`テーブルが持たない場合はアセントの半分で近似する
-    /// (`vertical-align: middle`の基準、[0041](
-    /// ../../../docs/decisions/0041-inline-vertical-align-design.md)決定3)。
+    /// (`vertical-align: middle`の基準)。
     pub fn x_height(&self, font_size: f32) -> f32 {
         let units_per_em = self.units_per_em() as f32;
         match self.face().x_height() {
@@ -107,7 +106,7 @@ impl Font {
     }
 
     /// `vertical-align: sub`の下げ幅(px、正の値)。フォントの`OS/2`が
-    /// subscriptのYオフセットを持たない場合は`0.2em`で近似する([0041]決定3)。
+    /// subscriptのYオフセットを持たない場合は`0.2em`で近似する。
     pub fn subscript_offset(&self, font_size: f32) -> f32 {
         let units_per_em = self.units_per_em() as f32;
         match self.face().subscript_metrics() {

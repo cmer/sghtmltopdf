@@ -1,24 +1,20 @@
 //! UAデフォルトスタイルシート。
 //!
-//! WHATWG HTML仕様の"Rendering"節を出発点に、印刷/PDF出力で意味を持つ宣言だけを
-//! 移植したもの([0036](
-//! ../../../docs/decisions/0036-ua-stylesheet-and-hidden-elements-design.md)決定1)。
-//! 対話状態(フォーカス・hover)、bidi、スクロール関連は移植していない。
+//! WHATWG HTML仕様の"Rendering"節を出発点に、印刷/PDF出力で意味を持つ
+//! 宣言だけを移植したもの。対話状態(フォーカス・
+//! hover)、bidi、スクロール関連は移植していない。
 //!
 //! `thead`/`tbody`/`tfoot`は`display: block`のままで、専用のボックスは持たない。
 //! テーブルの行収集([`crate::layout::box_tree`])がこれらを透過的に素通りして
 //! `table-row`の子孫を探すため、実質的に「テーブル本体との間の透明な入れ物」として
 //! 扱われる。`caption`は`display: table-caption`専用の値を持ち、`box_tree.rs`が
-//! `table-row`と並んで専用に検出する([0021](
-//! ../../../docs/decisions/0021-table-layout-design.md)決定4関連)。
+//! `table-row`と並んで専用に検出する。
 //!
-//! **`display: none`にする要素の考え方**: `ComputedStyle`の`display`初期値は
+//! `display: none`にする要素の考え方: `ComputedStyle`の`display`初期値は
 //! `Inline`なので、UA規則の無い要素はインラインとして扱われ、その子孫テキストが
 //! 本文に流れ込む。描画できない埋め込みコンテンツ(`svg`/`canvas`/`video`等)や
 //! フォームコントロールは、代替内容・選択肢のテキストが本文に漏れないよう
-//! 明示的に`display: none`にする([0036]決定2)。フォームコントロールは
-//! M10カテゴリI([0043](
-//! ../../../docs/decisions/0043-inline-block-and-form-controls-design.md))で
+//! 明示的に`display: none`にする。フォームコントロールはM10カテゴリIで
 //! `display: inline-block`の静的な見た目に置き換えた。
 
 use super::stylesheet::{parse_stylesheet, Stylesheet};
@@ -72,7 +68,7 @@ head, script, style, title, meta, link, base, noscript, template {
   display: none;
 }
 
-/* 描画できない埋め込みコンテンツ([0036]決定2)。要素名だけで判定し、
+/* 描画できない埋め込みコンテンツ。要素名だけで判定し、
    名前空間は見ない。`layout::box_tree::child_kind`が`display: none`の要素で
    再帰を止めるため、ルート1つを消せばサブツリー全体(`<svg><text>`等)が
    消える。`picture`はその中の`<img>`を描画したいので対象外。 */
@@ -82,8 +78,7 @@ area, map {
 }
 
 /* フォームコントロールのうち、値の視覚化が帳票用途で意味を持たないもの・
-   選択肢そのもの(表示テキストは`<select>`側が生成する)は非表示のまま
-   ([0043](../../../docs/decisions/0043-inline-block-and-form-controls-design.md)決定4)。 */
+   選択肢そのもの(表示テキストは`<select>`側が生成する)は非表示のまま。 */
 option, optgroup, datalist, progress, meter {
   display: none;
 }
@@ -92,7 +87,7 @@ input[type="hidden"] {
   display: none;
 }
 
-/* `hidden`属性([0036]決定5)。Originの優先度(UA < Author)により、
+/* `hidden`属性。Originの優先度(UA < Author)により、
    作者CSSの`[hidden] { display: block }`が必ず勝つ。 */
 [hidden] {
   display: none;
@@ -103,9 +98,9 @@ dialog:not([open]) {
   display: none;
 }
 
-/* `<details>`は`open`属性が無ければ`summary`以外の子要素を隠す
-   ([0036]決定6)。直下の裸テキストノードはセレクタで指定できないため
-   隠せない(既知の限界)。 */
+/* `<details>`は`open`属性が無ければ`summary`以外の子要素を隠す。
+   直下の裸テキストノードはセレクタで指定できないため隠せない
+   (既知の限界)。 */
 details:not([open]) > *:not(summary) {
   display: none;
 }
@@ -143,7 +138,7 @@ mark {
 /* ===== フォントサイズ ===== */
 
 /* `font-size`の`em`は親のフォントサイズ基準で解決されるため、UA規則は
-   相対値で書ける([0036]決定4。`smaller`/`larger`等のキーワード値は非対応)。 */
+   相対値で書ける(`smaller`/`larger`等のキーワード値は非対応)。 */
 
 h1 { font-size: 2em; }
 h2 { font-size: 1.5em; }
@@ -155,14 +150,13 @@ h6 { font-size: 0.67em; }
 small, sub, sup { font-size: 0.83em; }
 big { font-size: 1.17em; }
 
-/* 上下ずらしは`vertical-align`([0041](
-   ../../../docs/decisions/0041-inline-vertical-align-design.md))で行う。
+/* 上下ずらしは`vertical-align`で行う。
    縮小(上の`font-size`)とは独立した指定である点はCSS仕様どおり。 */
 sub { vertical-align: sub; }
 sup { vertical-align: super; }
 
 /* 等幅フォント。汎用family名`monospace`は`fonts::system`が自前の候補リストで
-   具体フォントへ解決する([0036]決定3)。 */
+   具体フォントへ解決する。 */
 pre, code, kbd, samp, tt {
   font-family: monospace;
 }
@@ -237,11 +231,11 @@ th {
   text-align: center;
 }
 
-/* ===== フォームコントロールの静的描画([0043]決定4) ===== */
+/* ===== フォームコントロールの静的描画 ===== */
 
 /* 枠線付きの箱として行の中に置く。中身のテキスト(`value`/`placeholder`/
-   選択中の`<option>`)はbox tree構築時に生成する(決定4)。
-   サイズは属性ではなくここで決める(決定4-1)。 */
+   選択中の`<option>`)はbox tree構築時に生成する。
+   サイズは属性ではなくここで決める。 */
 input, select, textarea, button {
   display: inline-block;
   border: 1px solid #767676;
@@ -275,14 +269,14 @@ button, input[type="submit"], input[type="reset"], input[type="button"] {
   text-align: center;
 }
 
-/* チェックボックス・ラジオは小さな枠。`checked`なら塗りつぶす(決定4-2)。 */
+/* チェックボックス・ラジオは小さな枠。`checked`なら塗りつぶす。 */
 input[type="checkbox"], input[type="radio"] {
   width: 11px;
   height: 11px;
   padding: 0;
 }
 
-/* `border-radius`のパーセンテージは非対応([0023])なので、箱の半分の
+/* `border-radius`のパーセンテージは非対応なので、箱の半分の
    px値で円にする。 */
 input[type="radio"] {
   border-radius: 6px;
@@ -292,7 +286,7 @@ input[type="checkbox"][checked], input[type="radio"][checked] {
   background-color: #333333;
 }
 
-/* `disabled`は薄いグレーで表す(決定4-2)。 */
+/* `disabled`は薄いグレーで表す。 */
 input[disabled], select[disabled], textarea[disabled], button[disabled] {
   background-color: #ebebeb;
   color: #6d6d6d;
@@ -302,7 +296,7 @@ fieldset {
   min-width: 0;
 }
 
-/* `<q>`の自動引用符([0036]決定8)。`quotes`の初期値はM8で実装済みなので、
+/* `<q>`の自動引用符。`quotes`の初期値はM8で実装済みなので、
    入れ子の深さに応じた引用符がこれだけで出る。 */
 q::before {
   content: open-quote;
@@ -397,7 +391,7 @@ mod tests {
             assert_eq!(
                 style_of(&html_src, tag).display,
                 Display::None,
-                "<{tag}> should be hidden ([0036]決定2)"
+                "<{tag}> should be hidden"
             );
         }
     }
@@ -410,7 +404,7 @@ mod tests {
             assert_eq!(
                 style.display,
                 Display::InlineBlock,
-                "<{tag}> should be drawn as a static box ([0043]決定4)"
+                "<{tag}> should be drawn as a static box"
             );
             assert_eq!(
                 style.border_top_width.0, 1.0,
@@ -444,7 +438,7 @@ mod tests {
         let checked = style_of(r#"<input type="checkbox" checked>"#, "input");
         assert_ne!(
             checked.background_color, unchecked.background_color,
-            "a checked box must be visually distinct ([0043]決定4-2)"
+            "a checked box must be visually distinct"
         );
     }
 
@@ -586,7 +580,7 @@ mod tests {
         assert_eq!(
             styles[&div].display,
             Display::Block,
-            "author origin must win over the UA rule ([0036]決定5)"
+            "author origin must win over the UA rule"
         );
     }
 

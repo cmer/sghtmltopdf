@@ -1,5 +1,4 @@
-//! ヘッダー/フッターの簡易オプションを`@page`ルールへ変換する
-//! ([0058](../../../docs/decisions/0058-header-footer-design.md)決定1・決定2)。
+//! ヘッダー/フッターの簡易オプションを`@page`ルールへ変換する。
 //!
 //! `--header-center "Page [page]"`のような指定を
 //! `@page { @top-center { content: "Page " counter(page); } }`というCSSテキスト
@@ -33,7 +32,7 @@ impl PlaceholderValues {
         }
     }
 
-    /// 文字列中のプレースホルダのうち、**ページ番号以外**を展開する。
+    /// 文字列中のプレースホルダのうち、ページ番号以外を展開する。
     /// `[page]`/`[topage]`は呼び出し側の文脈(CSSのcounter()かページ番号の
     /// 直接埋め込みか)で扱いが変わるため、ここでは触らない。
     fn expand_document_level(&self, text: &str) -> String {
@@ -54,7 +53,7 @@ impl PlaceholderValues {
     }
 
     /// `--header-html`向け: `[page]`/`[topage]`だけを残して他を展開する。
-    /// 残りはエンジンがページごとに差し込む([0058]決定5)。
+    /// 残りはエンジンがページごとに差し込む。
     pub fn expand_keeping_page_tokens(&self, text: &str) -> String {
         self.expand_document_level(text)
     }
@@ -93,8 +92,8 @@ impl SimpleHeaderFooter {
 
     /// `@page`ルールのCSSテキストを組み立てる。何も指定が無ければ`None`。
     ///
-    /// `[page]`/`[topage]`は`counter(page)`/`counter(pages)`へ、
-    /// それ以外のプレースホルダは文字列へ展開する(決定2)。
+    /// `[page]`/`[topage]`は`counter(page)`/`counter(pages)`へ、それ以外の
+    /// プレースホルダは文字列へ展開する。
     pub fn to_page_css(&self, values: &PlaceholderValues) -> Option<String> {
         if self.is_empty() {
             return None;

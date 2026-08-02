@@ -1,12 +1,9 @@
 //! `server`サブコマンド(HTTPサーバモード)。
 //!
-//! 設計は[0060](../../../docs/decisions/0060-http-server-mode.md)。
-//!
-//! * `POST /pdf?<CLIと同名のオプション>` + ボディは生HTML(決定1)
-//! * クエリ文字列は**引数列へ機械変換して同じclapパーサに通す**
-//!   ([0055](../../../docs/decisions/0055-cli-design.md)決定6)ので、
+//! * `POST /pdf?<CLIと同名のオプション>` + ボディは生HTML
+//! * クエリ文字列は引数列へ機械変換して同じclapパーサに通すので、
 //!   CLIとサーバでオプションの解釈がずれない
-//! * ローカル/リモートの参照は既定で禁止し、リクエストからは緩められない(決定3)
+//! * ローカル/リモートの参照は既定で禁止し、リクエストからは緩められない
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -21,7 +18,7 @@ use crate::sink::{MemorySink, Sink};
 use super::options::{Cli, ConvertArgs, ServerArgs};
 use super::CliError;
 
-/// クエリで指定させないオプション([0060]決定3)。
+/// クエリで指定させないオプション。
 ///
 /// ローカルパスを取るもの・出力先・セキュリティ設定は、リクエストから
 /// 変更できてはならない。
@@ -176,8 +173,8 @@ fn wants_chunked(query: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// `std::io::PipeWriter`へ書き出すSink。レンダリング側(push)と
-/// HTTPレスポンス側(pull)をつなぐ([0060]決定2)。
+/// `std::io::PipeWriter`へ書き出すSink。レンダリング
+/// 側(push)とHTTPレスポンス側(pull)をつなぐ。
 struct PipeSink(std::io::PipeWriter);
 
 impl Sink for PipeSink {
@@ -193,11 +190,11 @@ impl Sink for PipeSink {
     }
 }
 
-/// `?stream=1`のときの応答。**ページが確定したそばからchunkedで流す**。
+/// `?stream=1`のときの応答。ページが確定したそばからchunkedで流す。
 ///
 /// `tiny_http`の`Request`はボディ読み取り(`as_reader`が`&mut self`)と
-/// 応答(`respond`が`self`)が排他なので、**入力は先に読み切ってから**
-/// 出力を流す(入力ストリーミングとは同時に使えない、[0060]決定7)。
+/// 応答(`respond`が`self`)が排他なので、入力は先に読み切ってから
+/// 出力を流す(入力ストリーミングとは同時に使えない)。
 ///
 /// 既にヘッダを送ってしまうため、途中で失敗してもステータスは変えられない。
 /// その場合はパイプを閉じるだけになり、クライアントには不完全なPDFが届く。
@@ -328,9 +325,9 @@ impl<R: Read> Read for LimitedReader<R> {
     }
 }
 
-/// 1リクエスト分の変換。エラーは(ステータス, メッセージ)で返す([0060]決定6)。
+/// 1リクエスト分の変換。エラーは(ステータス, メッセージ)で返す。
 ///
-/// **ボディは読み切らずに`Engine::feed`へ流す**([0060]決定7)。
+/// ボディは読み切らずに`Engine::feed`へ流す。
 fn render_request(
     request: &mut Request,
     query: &str,
@@ -378,7 +375,7 @@ fn render_request(
     })
 }
 
-/// クエリ文字列をCLIの引数列へ変換し、同じclapパーサへ通す([0055]決定6)。
+/// クエリ文字列をCLIの引数列へ変換し、同じclapパーサへ通す。
 fn build_convert_args(query: &str, server: &ServerArgs) -> Result<ConvertArgs, String> {
     let mut argv: Vec<String> = vec!["sghtmltopdf".to_string()];
     // 入力はボディなので、位置引数にはstdinを表す`-`を置く(実際には読まない)。
@@ -386,7 +383,7 @@ fn build_convert_args(query: &str, server: &ServerArgs) -> Result<ConvertArgs, S
     argv.push("--output".to_string());
     argv.push("-".to_string());
 
-    // サーバ起動時に固定するもの(リクエストからは変えられない、決定3)。
+    // サーバ起動時に固定するもの(リクエストからは変えられない)。
     for path in &server.font {
         argv.push("--font".to_string());
         argv.push(path.display().to_string());
@@ -414,7 +411,7 @@ fn build_convert_args(query: &str, server: &ServerArgs) -> Result<ConvertArgs, S
     argv.push("--quiet".to_string());
 
     for (key, value) in parse_query(query)? {
-        // 非対応オプションはCLIと同じ理由を返す([0055]決定5)。
+        // 非対応オプションはCLIと同じ理由を返す。
         if let Some(reason) = super::unsupported::unsupported_reason(&format!("--{key}")) {
             return Err(format!("{key}は対応していません。{reason}"));
         }

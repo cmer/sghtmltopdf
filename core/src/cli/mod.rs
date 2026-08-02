@@ -1,14 +1,12 @@
 //! CLI(`sghtmltopdf`バイナリ)の実装。
 //!
-//! 設計は[0055](../../../docs/decisions/0055-cli-design.md)。
 //! `main.rs`は[`run`]を呼ぶだけの薄いエントリで、オプション定義は
-//! [`options`]の1箇所に集約する(決定6。HTTPサーバモードも同じ定義を使う)。
+//! [`options`]の1箇所に集約する(HTTPサーバモードも同じ定義を使う)。
 
 pub mod convert;
 pub mod header_footer;
 pub mod options;
-/// HTTPサーバモード。`server` feature(既定ON)でのみ有効
-/// ([0062](../../../docs/decisions/0062-ruby-binding.md)決定4)。
+/// HTTPサーバモード。`server` feature(既定ON)でのみ有効。
 #[cfg(feature = "server")]
 pub mod server;
 pub mod toc;
@@ -23,7 +21,7 @@ use options::Cli;
 #[cfg(feature = "server")]
 use options::Command;
 
-/// CLIのエラー。バリアントがそのままexit code([0055]決定4)に対応する。
+/// CLIのエラー。バリアントがそのままexit codeに対応する。
 #[derive(Debug)]
 pub enum CliError {
     /// 使用法エラー(不明なオプション、値の形式不正、非対応オプション) = 1
@@ -60,9 +58,8 @@ impl std::error::Error for CliError {}
 
 /// 引数列を解析して[`options::ConvertArgs`]とフォント指定を返す。
 ///
-/// **CLI以外の入口（Ruby binding）が同じオプション解釈を使うための関数**
-/// ([0062](../../../docs/decisions/0062-ruby-binding.md)決定2)。呼び出し側は
-/// `argv[0]`にプログラム名を置くこと（clapの慣習に合わせる）。
+/// CLI以外の入口（Ruby binding）が同じオプション解釈を使うための関数。
+/// 呼び出し側は`argv[0]`にプログラム名を置くこと（clapの慣習に合わせる）。
 ///
 /// `--font`と`--font-index`の対応付けには[`clap::ArgMatches`]の出現位置が
 /// 必要なため、ここで解決して[`options::FontArg`]の列にして返す
@@ -70,8 +67,8 @@ impl std::error::Error for CliError {}
 pub fn parse_convert_argv(
     argv: &[String],
 ) -> Result<(options::ConvertArgs, Vec<options::FontArg>), CliError> {
-    // 非対応オプションは、clapの「unknown argument」ではなく理由を示す
-    // ([0055]決定5)。CLIの`run`と同じ扱いにする。
+    // 非対応オプションは、clapの「unknown argument」
+    // ではなく理由を示す。CLIの`run`と同じ扱いにする。
     if let Some(message) = unsupported::check_arguments(&argv[1..]) {
         return Err(CliError::Usage(message));
     }
@@ -87,15 +84,15 @@ pub fn parse_convert_argv(
 /// CLIのエントリポイント。
 pub fn run() -> ExitCode {
     // wkhtmltopdfにあって対応していないオプションは、clapの「unknown
-    // argument」ではなく**理由と代替手段を示して**終了する([0055]決定5)。
+    // argument」ではなく理由と代替手段を示して終了する。
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(message) = unsupported::check_arguments(&args) {
         eprintln!("エラー: {message}");
         return ExitCode::from(1);
     }
 
-    // clapは既定で引数エラーにexit code 2を使うが、[0055]決定4では
-    // 使用法エラーを1に割り当てているため、自前でExitCodeへ変換する。
+    // clapは既定で引数エラーにexit code 2を使うが、このCLIは使用法エラーを
+    // 1に割り当てているため、自前でExitCodeへ変換する。
     let matches = match Cli::command().try_get_matches() {
         Ok(matches) => matches,
         Err(e) => {
@@ -147,8 +144,8 @@ mod tests {
 
     #[test]
     fn parse_convert_argv_binds_each_font_index_to_the_preceding_font() {
-        // Ruby bindingは`--font-index`を対応する`--font`の直後に置く
-        // ([0062]決定2)。その並びが期待どおり解決されること。
+        // Ruby bindingは`--font-index`を対応する`--font`の直後に置く。その
+        // 並びが期待どおり解決されること。
         let (_, fonts) = parse_convert_argv(&argv(&[
             "--font",
             "a.ttf",

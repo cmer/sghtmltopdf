@@ -50,9 +50,8 @@ impl Sink for MemorySink {
 ///
 /// 一時ファイル(`<出力先>.tmp-<pid>`)へ書き、[`Sink::finish`]が成功した
 /// ときだけ最終的な出力先へ`rename`する。レンダリング途中で失敗しても
-/// 壊れたPDFが出力先に残らないようにするため
-/// ([0055](../../../docs/decisions/0055-cli-design.md)決定4)。
-/// `finish`されないまま破棄された場合は`Drop`で一時ファイルを消す。
+/// 壊れたPDFが出力先に残らないようにするため。`finish`されないまま破棄された
+/// 場合は`Drop`で一時ファイルを消す。
 pub struct FileSink {
     /// `finish`で`take`する。`None`は「既に`finish`済み」を意味し、
     /// `Drop`での一時ファイル削除の要否判定を兼ねる。
@@ -120,7 +119,7 @@ impl Drop for FileSink {
 /// 標準出力へ書き出すSink(`-o -`向け)。
 ///
 /// 既に書き出したバイトは取り消せないため、途中で失敗した場合は
-/// 呼び出し側がstderrとexit codeで失敗を伝える([0055]決定4)。
+/// 呼び出し側がstderrとexit codeで失敗を伝える。
 #[derive(Debug)]
 pub struct StdoutSink {
     out: io::Stdout,
@@ -156,17 +155,16 @@ pub const MULTIPART_MIN_PART_SIZE: usize = 5 * 1024 * 1024;
 
 /// `threshold`バイト溜まるごとに`on_part`を呼ぶSink。
 ///
-/// CLAUDE.mdが挙げる「5MB溜めてマルチパートPUTするバッファ付きSink」
+/// 「5MB溜めてマルチパートPUTするバッファ付きSink」
 /// ([`MULTIPART_MIN_PART_SIZE`]を`threshold`に使う想定)向けの汎用実装。
-/// マルチパートアップロードは最後のパート以外に最小サイズ制約がある
-/// ため、flush boundary由来の小さいPDFチャンクをそのまま都度PUTするのでは
-/// なく、閾値まで溜めてからパートとしてまとめて渡す必要がある。
+/// マルチパートアップロードは最後のパート以外に最小サイズ制約があるため、
+/// flush boundary由来の小さいPDFチャンクをそのまま都度PUTするのではなく、
+/// 閾値まで溜めてからパートとしてまとめて渡す必要がある。
 ///
-/// コアはRuby/AWS SDKに一切依存しない設計方針(CLAUDE.md参照)のため、
-/// 実際のアップロード処理(HTTP PUT等)自体は行わない。
-/// `on_part`コールバックへ1パート分のバイト列を渡すところまでがこの型の
-/// 責務で、ストレージサービスへの実際のPUT呼び出しはFFI層(Ruby bindings)が`on_part`の
-/// 中で行う想定。
+/// コアはRuby/AWS SDKに一切依存しない設計方針のため、実際のアップロード処理
+/// (HTTP PUT等)自体は行わない。`on_part`コールバックへ1パート分のバイト列を
+/// 渡すところまでがこの型の責務で、ストレージサービスへの実際のPUT呼び出しは
+/// FFI層(Ruby bindings)が`on_part`の中で行う想定。
 ///
 /// 最後のパート(`finish`が呼ばれた時点でバッファに残っている端数)は
 /// `threshold`未満でもそのまま`on_part`に渡す(最後のパートは最小サイズ未満が許される)。

@@ -2,7 +2,7 @@
 //!
 //! `table_rowspan.rs`/`table_caption.rs`と同じ方針: 実際のパイプライン
 //! (HTMLパース→スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を
-//! 検知する。設計は[0038](../../docs/decisions/0038-colgroup-col-design.md)参照。
+//! 検知する。
 
 use std::collections::HashMap;
 

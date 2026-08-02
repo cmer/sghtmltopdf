@@ -1,8 +1,7 @@
 //! Ruby拡張のエントリポイント。
 //!
-//! 設計は[0062](../../../../../docs/decisions/0062-ruby-binding.md)。
-//! **この層は薄く保つ**。オプションの引数列(argv)への組み立てはRuby側が行い
-//! (決定2)、ここは受け取ったargvをCLI・HTTPサーバと同じパーサへ通して
+//! この層は薄く保つ。オプションの引数列(argv)への組み立てはRuby側が
+//! 行い、ここは受け取ったargvをCLI・HTTPサーバと同じパーサへ通して
 //! レンダリングするだけ。
 
 mod callback_sink;
@@ -23,7 +22,7 @@ use callback_sink::{BlockSlot, CallbackSink, PendingUnwind, ValueSlot};
 fn render(html: RString, argv: Vec<String>) -> Result<RString, Error> {
     let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
     // GVLを解放する前にRust側へコピーする。解放中はRubyのオブジェクトに
-    // 触れないため(決定6)、`RString`のままでは持ち込めない。
+    // 触れないため、`RString`のままでは持ち込めない。
     let html = unsafe { html.as_slice() }.to_vec();
     let (args, fonts) = cli::parse_convert_argv(&argv).map_err(|e| errors::to_ruby(&ruby, e))?;
 
@@ -60,10 +59,9 @@ fn render_to_file(html: RString, argv: Vec<String>, path: String) -> Result<(), 
 
 /// HTMLを変換し、確定したPDFのバイト列を`chunk_size`ごとに`block`へ渡す。
 ///
-/// レンダリングの間はGVLを解放し、ブロックを呼ぶ瞬間だけ取り戻す
-/// ([0063](../../../../../docs/decisions/0063-ffi-chunk-callback.md))。
-/// ブロックが例外を投げた場合は、その例外をそのまま呼び出し元へ伝える
-/// (エンジン側は通常のエラーパスで巻き戻る)。
+/// レンダリングの間はGVLを解放し、ブロックを呼ぶ瞬間だけ取り戻す。ブロックが
+/// 例外を投げた場合は、その例外をそのまま呼び出し元へ伝える(エンジン側は
+/// 通常のエラーパスで巻き戻る)。
 fn render_each(
     html: RString,
     argv: Vec<String>,
@@ -75,7 +73,7 @@ fn render_each(
     let (args, fonts) = cli::parse_convert_argv(&argv).map_err(|e| errors::to_ruby(&ruby, e))?;
 
     // ブロックはGVL解放区間をまたいで生きる必要があるため、GCへ登録する
-    // (解放後にスタックへ積んだ値は保守的GCの走査対象外。[0063])。
+    // (解放後にスタックへ積んだ値は保守的GCの走査対象外)。
     let block = ValueSlot::new(block.as_raw());
     let mut pending = PendingUnwind::default();
 
@@ -91,7 +89,7 @@ fn render_each(
 
     // ブロック由来の中断は、エンジンが返すエラーより優先して伝える
     // (`Sink::Error`が`io::Error`固定のため、理由はこちらに載っている)。
-    // `break`等の脱出は`into_error`の中で`rb_jump_tag`し**戻らない**ので、
+    // `break`等の脱出は`into_error`の中で`rb_jump_tag`し戻らないので、
     // Rust側の値はここで落としきってから呼ぶ。
     if pending.is_pending() {
         drop(result);

@@ -90,7 +90,7 @@ disable-local-file-access, allow-remote-assets, log-level, quiet
 ## ストリーミング
 
 * 入力: リクエストボディは読み切らずに、64KiBずつエンジンへ流します。
-  ** 大きなHTMLを丸ごとメモリに載せません
+  * 大きなHTMLを丸ごとメモリに載せません
 * 出力: 既定はバッファ返却(`Content-Length`付き)。`?stream=1`を付けるとchunked transfer encodingで、ページが確定したそばから流します
 
 ```sh

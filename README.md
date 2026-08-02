@@ -1,8 +1,8 @@
 # sghtmltopdf
 
-An HTML-to-PDF renderer written in Rust that does **not** depend on Chromium, WebKit, or Gecko.
+An HTML-to-PDF renderer written in Rust that does not depend on Chromium, WebKit, or Gecko.
 
-**[Documentation](https://waka.github.io/sghtmltopdf/)** ([English](https://waka.github.io/sghtmltopdf/en/))
+[Documentation](https://waka.github.io/sghtmltopdf/) ([English](https://waka.github.io/sghtmltopdf/en/))
 
 ## What is this
 
@@ -11,10 +11,10 @@ It is aimed at documents that flow top to bottom with explicit breaks invoices, 
 
 Compared with the common headless-Chrome approach:
 
-* **No browser process.** One binary, or a native extension living inside your Ruby process.
-* **Fonts are resolved during rendering.** There is no `document.fonts.ready` to wait for, so a PDF is never emitted with unresolved webfonts.
-* **Streaming.** HTML is read in chunks and each page is written out as soon as its layout is final, so memory does not grow with document size (measured: 516MB → 40MB on a 60,000-element document).
-* **Page breaks are first class.** CSS Fragmentation (`break-before`, `break-inside`, `orphans`, `widows`) and `@page` are implemented directly.
+* No browser process. One binary, or a native extension living inside your Ruby process.
+* Fonts are resolved during rendering. There is no `document.fonts.ready` to wait for, so a PDF is never emitted with unresolved webfonts.
+* Streaming. HTML is read in chunks and each page is written out as soon as its layout is final, so memory does not grow with document size (measured: 825MB → 27MB on a 60,000-element document).
+* Page breaks are first class. CSS Fragmentation (`break-before`, `break-inside`, `orphans`, `widows`) and `@page` are implemented directly.
 
 Non-goals: executing JavaScript, pixel-perfect parity with browsers, and full CSS coverage. See [what is not supported](https://waka.github.io/sghtmltopdf/appendix/limitations.html).
 
@@ -85,7 +85,7 @@ class InvoicesController < ApplicationController
 end
 ```
 
-View-rendering keys (`template`, `layout`, `locals`, …) go to `render_to_string`, response keys (`filename`, `disposition`, `status`) go to `send_data`, `show_as_html: true` returns the HTML instead of a PDF, and **everything else is passed to the converter**.
+View-rendering keys (`template`, `layout`, `locals`, …) go to `render_to_string`, response keys (`filename`, `disposition`, `status`) go to `send_data`, `show_as_html: true` returns the HTML instead of a PDF, and everything else is passed to the converter.
 The converter keys are flat CLI flag names, so wicked_pdf's nested `margin: {top: 10}` becomes `margin_top: "10mm"` (with the unit spelled out); [migrating from wicked_pdf](https://waka.github.io/sghtmltopdf/migration/wicked-pdf.html) maps every key one by one.
 
 PDF rendering does not go through the HTTP server, so `/assets/…` URLs are resolved as local files: the Railtie defaults `base_url` to `Rails.root/public` and restricts local reads to `Rails.root` via `allow`.
@@ -118,7 +118,7 @@ If the gem cannot run where your app runs (Alpine, Windows, Intel Mac) or you wo
 Sghtmltopdf.configure { |c| c.server_url = "http://{REMOTE_SERVER_URL}:8080" }
 ```
 
-Everything else the full option reference, the HTTP API, CSS support tables, and migration guides from wkhtmltopdf and wicked_pdf lives in the **[documentation site](https://waka.github.io/sghtmltopdf/)** ([Ruby / Rails](https://waka.github.io/sghtmltopdf/ruby/index.html)).
+Everything else the full option reference, the HTTP API, CSS support tables, and migration guides from wkhtmltopdf and wicked_pdf lives in the [documentation site](https://waka.github.io/sghtmltopdf/) ([Ruby / Rails](https://waka.github.io/sghtmltopdf/ruby/index.html)).
 
 The Docker image (`linux/amd64` and `linux/arm64`) bundles BIZ UDPGothic and BIZ UDPMincho, so Japanese documents render without supplying a font, and the same HTML always produces the same PDF regardless of the host's fonts.
 `ENTRYPOINT` is the binary itself: no arguments starts the server, arguments run the CLI.

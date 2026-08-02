@@ -100,8 +100,7 @@ RSpec.describe "Sghtmltopdf.render_to_file" do
   end
 end
 
-# T340: CLIとgemが同じ実行経路に合流していること
-# (docs/decisions/0062-ruby-binding.md 決定2)をバイト列で確かめる。
+# T340: CLIとgemが同じ実行経路に合流していることをバイト列で確かめる。
 RSpec.describe "CLIとの出力一致" do
   # リポジトリルートの`cargo build --release`で作られるバイナリ。
   CLI_PATH = File.expand_path("../../../target/release/sghtmltopdf", __dir__)

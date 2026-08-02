@@ -2,13 +2,13 @@
 //!
 //! sghtmltopdfの内部表現はUTF-8だが、入力が常にUTF-8とは限らない
 //! (M10 Phase 5の積み残し)。優先順位は
-//! **BOM > `--encoding`の明示 > `<meta charset>` > UTF-8** とする。
+//! BOM > `--encoding`の明示 > `<meta charset>` > UTF-8 とする。
 //! BOMを最優先にするのはHTML Standardのsniffing手順に合わせるため。
 //!
 //! 入力全体が揃っている場合は[`decode_html`]を、読みながら処理する場合は
 //! [`StreamingDecoder`]を使う。後者は`encoding_rs`のインクリメンタル
-//! デコーダを持ち、**チャンク境界がマルチバイト文字を割っても正しく
-//! 復元する**(HTTPサーバがボディを読みながら`Engine::feed`へ渡す経路で使う)。
+//! デコーダを持ち、チャンク境界がマルチバイト文字を割っても正しく
+//! 復元する(HTTPサーバがボディを読みながら`Engine::feed`へ渡す経路で使う)。
 
 use encoding_rs::Encoding;
 
@@ -70,7 +70,7 @@ fn sniff_meta_charset(bytes: &[u8]) -> Option<&'static Encoding> {
 /// 読みながらUTF-8へ変換していくデコーダ。
 ///
 /// エンコーディングの判定には先頭の一定バイト([`PRESCAN_LIMIT`])が要るため、
-/// **確定するまでは内部にバッファ**し、確定後は`encoding_rs`の
+/// 確定するまでは内部にバッファし、確定後は`encoding_rs`の
 /// インクリメンタルデコーダへ流す。チャンク境界がマルチバイト文字の途中でも、
 /// デコーダが持ち越すので壊れない。
 pub struct StreamingDecoder {

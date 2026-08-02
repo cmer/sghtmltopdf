@@ -1,5 +1,5 @@
 [package]
-# **パッケージ名がRubyの初期化シンボル名(`Init_<パッケージ名>`)を決める**
+# パッケージ名がRubyの初期化シンボル名(`Init_<パッケージ名>`)を決める
 # (`#[magnus::init]`が`CARGO_PKG_NAME`から生成する)。`sghtmltopdf-rb`のような
 # 名前にすると`Init_sghtmltopdf_rb`になり`require "sghtmltopdf/sghtmltopdf"`が
 # LoadErrorになるため、gem名と同じ`sghtmltopdf`にする。
@@ -15,14 +15,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # `rb-sys` featureで`AsRawValue`/`FromRawValue`が使えるようになる
-# (GVL解放区間をまたいでブロックを運ぶのに必要。
-# docs/decisions/0063-ffi-chunk-callback.md)。
+# (GVL解放区間をまたいでブロックを運ぶのに必要)。
 magnus = { version = "0.8", features = ["rb-sys"] }
-# GVL解放(`rb_thread_call_without_gvl`)はmagnusに無いので直接呼ぶ
-# (docs/decisions/0062-ruby-binding.md 決定6)。
+# GVL解放(`rb_thread_call_without_gvl`)はmagnusに無いので直接呼ぶ。
 rb-sys = "0.9"
-# HTTPサーバ(tiny_http)は要らないので`server` featureは外す
-# (docs/decisions/0062-ruby-binding.md 決定4)。
+# HTTPサーバ(tiny_http)は要らないので`server` featureは外す。
 sghtmltopdf-core = { path = "../../../../core", default-features = false, features = [
     "cli",
 ] }
