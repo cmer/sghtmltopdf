@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-# CLI・コア・gemはすべて同じバージョンで出す(T351)。リリース時に片方を上げ
-# 忘れる事故を、普段のspecで拾う。
 RSpec.describe "バージョン" do
   ROOT = File.expand_path("../../..", __dir__)
 

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-02T21:10:17+09:00\n"
+"POT-Creation-Date: 2026-08-02T22:25:24+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -150,7 +150,8 @@ msgstr ""
 
 #: src/index.md:19
 msgid ""
-"個人的に、wkhtmltopdf のアプローチがとても好きだったので、wkhtmltopdf をモダナイズしたものを作ろうと思いました。  \n"
+"個人的にwkhtmltopdf のアプローチがとても好きだったので、使っていて感じた課題を解消させてモダナイズした wkhtmltopdf "
+"を作ろうと思いました。  \n"
 "sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf への敬意を込めて「次世代」をつけました。"
 msgstr ""
 
@@ -203,157 +204,178 @@ msgid "HTML をチャンク単位で読み確定したページから書き出�
 msgstr ""
 
 #: src/index.md:38
-msgid "wkhtmltopdfとのパフォーマンス比較"
+msgid "wkhtmltopdf / ヘッドレスChromeとのパフォーマンス比較"
 msgstr ""
 
 #: src/index.md:40
-msgid "同じHTMLを同じ用紙設定で変換したときの実測値です。 各セルは「ピークメモリ / 処理時間」を表します。"
+msgid ""
+"同じHTMLを同じ用紙設定で変換したときの実測値です。 "
+"用紙設定は「用紙A4・余白10mm」を`@page`で指定し、フォントは`@font-face`で同じファイルを参照しています。"
 msgstr ""
 
 #: src/index.md:43
-msgid "段落だけの文書:"
+msgid ""
+"比較対象は、アーカイブ時点の最終版である wkhtmltopdf 0.12.6.1 と、Google Chrome 151 のヘッドレスモードです。 "
+"各セルは「ピークメモリ / 処理時間」を表します。"
 msgstr ""
 
-#: src/index.md:45 src/usage/cli/streaming.md:52
+#: src/index.md:46
+msgid "この比較は `cargo run --release --example compare_engines` で出したものです。"
+msgstr ""
+
+#: src/index.md:48
+msgid "段落が主体の文書:"
+msgstr ""
+
+#: src/index.md:50 src/usage/cli/streaming.md:52
 msgid "要素数"
 msgstr ""
 
-#: src/index.md:45 src/index.md:53 src/migration/wkhtmltopdf.md:11
-msgid "wkhtmltopdf"
-msgstr ""
-
-#: src/index.md:45 src/index.md:53 src/migration/wkhtmltopdf.md:11
+#: src/index.md:50 src/index.md:58 src/migration/wkhtmltopdf.md:11
 #: src/migration/wicked-pdf.md:50 src/migration/wicked-pdf.md:100
 msgid "sghtmltopdf"
 msgstr ""
 
-#: src/index.md:45 src/index.md:53
+#: src/index.md:50 src/index.md:58
 msgid "sghtmltopdf（ストリーミング）"
 msgstr ""
 
-#: src/index.md:47 src/index.md:55 src/usage/cli/streaming.md:55
+#: src/index.md:50 src/index.md:58 src/migration/wkhtmltopdf.md:11
+msgid "wkhtmltopdf"
+msgstr ""
+
+#: src/index.md:50 src/index.md:58
+msgid "ヘッドレスChrome"
+msgstr ""
+
+#: src/index.md:52 src/index.md:60 src/usage/cli/streaming.md:55
 msgid "5,000"
 msgstr ""
 
-#: src/index.md:47
-msgid "50MB / 0.5秒"
+#: src/index.md:52
+msgid "26MB / 0.21秒"
 msgstr ""
 
-#: src/index.md:47
-msgid "28MB / 0.2秒"
+#: src/index.md:52
+msgid "9MB / 0.21秒"
 msgstr ""
 
-#: src/index.md:47
-msgid "11MB / 0.2秒"
+#: src/index.md:52
+msgid "43MB / 0.48秒"
 msgstr ""
 
-#: src/index.md:48 src/index.md:56 src/usage/cli/streaming.md:56
+#: src/index.md:52
+msgid "563MB / 1.29秒"
+msgstr ""
+
+#: src/index.md:53 src/index.md:61 src/usage/cli/streaming.md:56
 msgid "20,000"
 msgstr ""
 
-#: src/index.md:48
-msgid "92MB / 2.1秒"
-msgstr ""
-
-#: src/index.md:48
-msgid "83MB / 0.9秒"
-msgstr ""
-
-#: src/index.md:48
-msgid "16MB / 0.8秒"
-msgstr ""
-
-#: src/index.md:49 src/usage/cli/streaming.md:57
-msgid "60,000"
-msgstr ""
-
-#: src/index.md:49
-msgid "206MB / 25.3秒"
-msgstr ""
-
-#: src/index.md:49
-msgid "233MB / 3.3秒"
-msgstr ""
-
-#: src/index.md:49
-msgid "26MB / 3.0秒"
-msgstr ""
-
-#: src/index.md:51
-msgid "表が主体の帳票:"
+#: src/index.md:53
+msgid "79MB / 0.89秒"
 msgstr ""
 
 #: src/index.md:53
-msgid "行数"
+msgid "13MB / 0.88秒"
 msgstr ""
 
-#: src/index.md:55
-msgid "72MB / 1.6秒"
+#: src/index.md:53
+msgid "86MB / 2.30秒"
 msgstr ""
 
-#: src/index.md:55
-msgid "50MB / 0.8秒"
+#: src/index.md:53
+msgid "952MB / 7.40秒"
 msgstr ""
 
-#: src/index.md:55
-msgid "50MB / 0.9秒"
+#: src/index.md:54 src/usage/cli/streaming.md:57
+msgid "60,000"
+msgstr ""
+
+#: src/index.md:54
+msgid "228MB / 3.33秒"
+msgstr ""
+
+#: src/index.md:54
+msgid "24MB / 2.80秒"
+msgstr ""
+
+#: src/index.md:54
+msgid "200MB / 32.54秒"
+msgstr ""
+
+#: src/index.md:54
+msgid "1,649MB / 93.89秒"
 msgstr ""
 
 #: src/index.md:56
-msgid "182MB / 12.8秒"
-msgstr ""
-
-#: src/index.md:56
-msgid "175MB / 2.8秒"
+msgid "表が主体の帳票:"
 msgstr ""
 
 #: src/index.md:58
-msgid "処理時間は文書が大きくなるほど差が開き、60,000要素で約7.7倍、20,000行の帳票で約4.6倍の差になります。"
+msgid "行数"
 msgstr ""
 
 #: src/index.md:60
+msgid "48MB / 0.76秒"
+msgstr ""
+
+#: src/index.md:60
+msgid "48MB / 0.84秒"
+msgstr ""
+
+#: src/index.md:60
+msgid "62MB / 1.50秒"
+msgstr ""
+
+#: src/index.md:60
+msgid "1,369MB / 4.77秒"
+msgstr ""
+
+#: src/index.md:61
+msgid "171MB / 2.93秒"
+msgstr ""
+
+#: src/index.md:61
+msgid "171MB / 3.12秒"
+msgstr ""
+
+#: src/index.md:61
+msgid "163MB / 13.53秒"
+msgstr ""
+
+#: src/index.md:61
+msgid "6,221MB / 39.19秒"
+msgstr ""
+
+#: src/index.md:63
 msgid ""
-"メモリは、通常モードでは同程度です。 60,000要素では通常モードのほうが多く使っており（233MB 対 "
-"206MB）、文書サイズに比例して増える点はwkhtmltopdfと変わりません。 "
-"[ストリーミングモード](usage/cli/streaming.md)を使うと、ここが26MBまで下がります。 "
+"処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約10倍、ヘッドレスChromeの約28倍の速さです。 "
+"20,000行の帳票では、それぞれ約4.6倍・約13倍になります。"
+msgstr ""
+
+#: src/index.md:67
+msgid ""
+"メモリは、wkhtmltopdfとはほぼ同等です。 60,000要素と20,000行の帳票では sghtmltopdf "
+"のほうがやや多く、文書サイズに比例して増える点も変わりません。 "
+"[ストリーミングモード](usage/cli/streaming.md)を使うと、段落主体の文書では24MBまで下がります。 "
 "一方、巨大な表が1つだけの帳票ではストリーミングの効果がありません。 "
-"確定したページを書き出す区切りが`<body>`直下の要素単位のため、表が1つしかない文書では最後まで解放できないからです。"
-msgstr ""
-
-#: src/index.md:66 src/usage/cli/streaming.md:67
-msgid "測定条件は次のとおりです。"
-msgstr ""
-
-#: src/index.md:68
-msgid "sghtmltopdf 0.1.0 と wkhtmltopdf 0.12.6.1（アーカイブ時点の最終版）"
-msgstr ""
-
-#: src/index.md:69
-msgid "Intel Core Ultra 7 258V / メモリ16GB / WSL2(Linux 5.15)"
-msgstr ""
-
-#: src/index.md:70
-msgid ""
-"用紙A4・余白10mmを両者へ明示し、フォントは`@font-face`で同じファイルを参照。wkhtmltopdfには`--disable-javascript`を指定"
-msgstr ""
-
-#: src/index.md:71
-msgid "wkhtmltopdfはCSSのpxを1/72インチとして扱うため、`--zoom 1.3333333`で1px = 1/96インチに揃えている"
-msgstr ""
-
-#: src/index.md:72
-msgid "それでもページ数は完全には一致せず、wkhtmltopdf側が4〜10%多くなる（つまりwkhtmltopdfはわずかに多く処理したうえでの数値）"
+"確定したページを書き出す区切りが`<body>`直下の要素単位のため、表が1つしかない文書では表の最後を書き出すまでメモリを解放できないからです。"
 msgstr ""
 
 #: src/index.md:73
-msgid "各条件2回実行して良いほうの値"
+msgid ""
+"ヘッドレスChromeとは桁が違い、20,000行の帳票では6.2GBに達します。 "
+"1段落だけのHTMLでも約390MBを使うことから、この多くはブラウザ一式（ブラウザ・レンダラ・GPUなど8つ以上のプロセス）を立ち上げる固定費です。 "
+"そこに文書サイズに比例した分が積み上がります。 "
+"ブラウザとして必要なものを一通り持つ以上は妥当なコストで、PDFの出力だけを目的とする場合に割高になる、という関係です。"
 msgstr ""
 
-#: src/index.md:75
+#: src/index.md:78
 msgid "処理の流れ"
 msgstr ""
 
-#: src/index.md:88
+#: src/index.md:91
 msgid ""
 "ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしています。"
 msgstr ""
@@ -1691,6 +1713,10 @@ msgstr ""
 msgid ""
 "処理時間は両モードでほぼ変わりません。 この計測での差は数パーセントで、実行ごとのばらつきと同程度でした。 "
 "メモリを大きく減らす代わりに時間を損なう、という関係にはなっていません。"
+msgstr ""
+
+#: src/usage/cli/streaming.md:67
+msgid "測定条件は次のとおりです。"
 msgstr ""
 
 #: src/usage/cli/streaming.md:69

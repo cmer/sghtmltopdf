@@ -16,11 +16,6 @@ wicked_pdfから移ってくる場合は[wicked_pdfからの移行](../migration
 gem "sghtmltopdf"
 ```
 
-> Note
->
-> まだ0.1.0をリリースしていないため、現時点ではrubygems.orgから取得できません。
-> 試す場合はリポジトリを取得して`bindings/ruby`で`bundle install && bundle exec rake compile`してください。
-
 ビルド済み(precompiled)のgemを配布するため、Rustのツールチェインは不要です。
 
 | | 対応 |
