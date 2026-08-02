@@ -49,13 +49,13 @@ docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf
 CLIのロングオプションから`--`を取った名前がそのまま使えます。
 値の解釈もCLIと同一です(同じパーサへ通しているため)。
 
-```
-?page-size=A4                 →  --page-size A4
-?margin-top=20mm              →  --margin-top 20mm
-?toc                          →  --toc          (値なしは真)
-?grayscale=1  /  =true        →  --grayscale
-?grayscale=0  /  =false       →  (指定なしと同じ)
-```
+|クエリ|相当するCLIオプション|
+|-|-|
+|`?page-size=A4`|`--page-size A4`|
+|`?margin-top=20mm`|`--margin-top 20mm`|
+|`?toc`|`--toc`(値なしは真)|
+|`?grayscale=1` / `=true`|`--grayscale`|
+|`?grayscale=0` / `=false`|指定なしと同じ|
 
 値はパーセントエンコードできます(`%XX`と`+`)。
 

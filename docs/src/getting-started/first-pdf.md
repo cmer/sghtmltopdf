@@ -6,7 +6,7 @@
 
 `hello.html`を用意します。
 
-```html
+```
 <!DOCTYPE html>
 <html>
   <head>
@@ -62,7 +62,7 @@ wkhtmltopdfと逆なので、移行時は[wkhtmltopdfからの移行](../migrati
 
 「ここから次のページ」は、CSSの`break-before`で指定します。
 
-```html
+```
 <style>
   .page-break { break-before: page; }
 </style>
@@ -82,7 +82,7 @@ wkhtmltopdfと逆なので、移行時は[wkhtmltopdfからの移行](../migrati
 
 ## 4. ヘッダーとフッターを付ける
 
-```sh
+```
 sghtmltopdf hello.html -o hello.pdf \
   --header-center "請求書" \
   --footer-right "[page] / [topage]" \

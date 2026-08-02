@@ -196,7 +196,8 @@ pdf = Sghtmltopdf.render(html, page_size: "A4")   # 委譲される
 ローカルパスを取るものと出力先・アクセス制御はサーバ起動時にしか設定できません(指定すると`UsageError`)。
 
 ```
-font, font-index, gothic-font, serif-font, mono-font (と各-index),
+font, font-index, gothic-font, gothic-font-index, serif-font,
+serif-font-index, mono-font, mono-font-index,
 output, cover, header-html, footer-html, user-style-sheet, base-url,
 allow, enable-local-file-access, disable-local-file-access,
 allow-remote-assets, log-level, quiet

@@ -90,11 +90,11 @@ docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
 
 ## イメージの中身
 
-```
-/usr/local/bin/sghtmltopdf                    実行ファイル
-/usr/share/fonts/truetype/sghtmltopdf/*.ttf   同梱フォント
-/usr/share/doc/sghtmltopdf/fonts/OFL-*.txt    フォントのライセンス
-/work                                          既定の作業ディレクトリ
-```
+|パス|内容|
+|-|-|
+|`/usr/local/bin/sghtmltopdf`|実行ファイル|
+|`/usr/share/fonts/truetype/sghtmltopdf/*.ttf`|同梱フォント|
+|`/usr/share/doc/sghtmltopdf/fonts/OFL-*.txt`|フォントのライセンス|
+|`/work`|既定の作業ディレクトリ|
 
 ベースは`debian:bookworm-slim`で、追加のシステムパッケージはありません(TLSのルート証明書は実行ファイルに埋め込まれているため`ca-certificates`も不要です)。

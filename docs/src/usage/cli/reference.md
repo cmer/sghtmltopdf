@@ -2,10 +2,12 @@
 
 `sghtmltopdf`コマンドの全オプション。
 
+```sh
+sghtmltopdf [OPTIONS] <INPUT.HTML>
+sghtmltopdf server [OPTIONS]
 ```
-sghtmltopdf [OPTIONS] <INPUT.HTML>      # 変換
-sghtmltopdf server [OPTIONS]            # HTTPサーバ(別ページ)
-```
+
+上が変換、下が[HTTPサーバ](../server.md)です。
 
 wkhtmltopdfのオプションとの対応(非対応にしたものを含む全一覧)は[wkhtmltopdfオプション対応表](../../migration/wkhtmltopdf-options.md)を参照してください。
 
@@ -111,7 +113,7 @@ cat invoice.html | sghtmltopdf - -o - > invoice.pdf
 
 `@page`のmargin boxへマップされます。
 
-```sh
+```
 sghtmltopdf report.html \
   --header-center "四半期レポート" \
   --footer-right "[page] / [topage]" \
