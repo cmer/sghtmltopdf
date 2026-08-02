@@ -566,7 +566,7 @@ fn layout_out_of_flow_child(
     if !has_top && has_bottom && cb_rect.height > 0.0 {
         let mbh = laid.layout.margin_box_height();
         let target_y = cb_rect.y + cb_rect.height - mbh - bottom;
-        laid = shift_box_y(&laid, margin_box_y - target_y);
+        shift_box_y_in_place(&mut laid, margin_box_y - target_y);
     }
     pos.out.push(PositionedBox { laid, kind });
 }
@@ -1443,7 +1443,7 @@ fn apply_margin_collapse(
             // 上へ動く。delta <= 0。
             let child_delta = effective - first_top - margin.top;
             for child in children.iter_mut() {
-                *child = shift_box_y(child, -child_delta);
+                shift_box_y_in_place(child, -child_delta);
             }
             *content_y += effective - margin.top;
             *content_height -= first_top;
@@ -1601,10 +1601,8 @@ fn place_atomic_inlines(lines: &mut [LineBox]) {
                 layout.content.y - layout.padding.top - layout.border.top - layout.margin.top;
             // `shift_box_y`の`delta`は引く量(`shift_rect_y`が`y -= delta`)
             // である点に注意。`shift_box_x`は逆に足す量。
-            atomic.content = shift_box_x(
-                &shift_box_y(&atomic.content, current_y - target_y),
-                target_x - current_x,
-            );
+            shift_box_y_in_place(&mut atomic.content, current_y - target_y);
+            shift_box_x_in_place(&mut atomic.content, target_x - current_x);
         }
     }
 }

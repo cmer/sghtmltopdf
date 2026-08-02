@@ -314,6 +314,9 @@ pub(crate) fn build_box_for_element(
         }
         push_after_content(styles, node, &mut spans);
         apply_first_letter(node, style, &mut spans);
+        // `Vec`は最初のpushで最小4要素分を確保する。テキスト1つだけの箱
+        // (表のセルなど)が大量にある文書では、この余剰がそのまま積み上がる。
+        spans.shrink_to_fit();
         BoxContent::Inline(spans)
     };
 
@@ -759,6 +762,9 @@ fn build_inline_block_box(
         }
         push_after_content(styles, node, &mut spans);
         apply_first_letter(node, style, &mut spans);
+        // `Vec`は最初のpushで最小4要素分を確保する。テキスト1つだけの箱
+        // (表のセルなど)が大量にある文書では、この余剰がそのまま積み上がる。
+        spans.shrink_to_fit();
         BoxContent::Inline(spans)
     };
 
@@ -953,9 +959,11 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
         .iter()
         .any(|span| span.atomic.is_some() || !span.text.trim().is_empty());
     if has_meaningful_content {
+        let mut spans = std::mem::take(pending);
+        spans.shrink_to_fit();
         result.push(LayoutBox {
             node: None,
-            content: BoxContent::Inline(std::mem::take(pending)),
+            content: BoxContent::Inline(spans),
             marker: None,
         });
     }

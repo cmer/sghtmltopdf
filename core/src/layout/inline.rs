@@ -590,7 +590,13 @@ pub(crate) fn layout_inline_content(
     // `text-align`の適用まで終わってから、同じ体裁のランをまとめる。
     for line in &mut lines {
         merge_adjacent_runs(line, fonts);
+        // `Vec`は最初のpushで最小4要素分を確保するため、1行1ランの箱でも
+        // 4つ分を抱えたままになる。行やランは文書全体で数十万個になり、
+        // この余剰がレイアウトのメモリの2割前後を占めるので切り詰める。
+        line.runs.shrink_to_fit();
+        line.atomics.shrink_to_fit();
     }
+    lines.shrink_to_fit();
 
     lines
 }
