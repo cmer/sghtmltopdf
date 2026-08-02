@@ -115,7 +115,7 @@ end
 If the gem cannot run where your app runs (Alpine, Windows, Intel Mac) or you would rather not spend the app's CPU on rendering, set `server_url` and the same calls are delegated to a separate `sghtmltopdf server` process.
 
 ```ruby
-Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
+Sghtmltopdf.configure { |c| c.server_url = "http://{REMOTE_SERVER_URL}:8080" }
 ```
 
 Everything else the full option reference, the HTTP API, CSS support tables, and migration guides from wkhtmltopdf and wicked_pdf lives in the **[documentation site](https://waka.github.io/sghtmltopdf/)** ([Ruby / Rails](https://waka.github.io/sghtmltopdf/ruby/index.html)).
@@ -127,11 +127,6 @@ The Docker image (`linux/amd64` and `linux/arm64`) bundles BIZ UDPGothic and BIZ
 docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
     ghcr.io/waka/sghtmltopdf invoice.html -o invoice.pdf
 ```
-
-> **Note**
-> Version 0.1.0 has not been released yet. The gem is not on rubygems.org, and the
-> image is published only as `edge` (the tip of `main`) until then. The `latest`,
-> `0.1`, and `0.1.0` tags arrive with the first release.
 
 ## Guide for developer
 

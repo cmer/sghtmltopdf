@@ -1,38 +1,40 @@
-# sghtmltopdfとは
+# sghtmltopdf とは
 
-**Chromium/WebKit/Geckoに依存しない、HTMLからPDFを作るためのレンダラー**です。
-Rustで書かれており、ブラウザのプロセスを起動しません。
+HTML をそのまま PDF として出力するための変換器/レンダラーです。
+Rust で書かれており、**Chromium/Webkit/Gecko**のヘッドレスブラウザのインストールを必要とせず PDF を出力できます。
 
-請求書・納品書・レポートといった、**上から下へ流れて明示的な区切りがある文書**を
-PDFにすることに目的を絞っています。
+使い方は、CLI・HTTPサーバ・ライブラリの3種類から選択でき、どれも同じエンジンを同じオプションで動かします。
+ライブラリについては、現時点で Rubygems に対応しています。
 
-```sh
-sghtmltopdf invoice.html -o invoice.pdf
-```
+PDFエンジンは、html5ever/Stylo/Taffy といった Servo が提供している Rust クレートをベースに構築しています。
 
-CLI・HTTPサーバ・Ruby(Rails)の3つの入口があり、どれも同じエンジンを同じ
-オプションで動かします。
+## wkhtmltopdf/WickedPDF への感謝
 
-## なぜ作っているか
+作者が初めてWebアプリ上で PDF を出力する機能を実装することになったとき、当時の開発環境は Ruby on Rails だったのですが、wkhtmltopdf と Railsから使うための WickedPDF gem を使っていました。
+それまで何となく PDF は難しそうで敬遠していたのですが、HTML で見た目を確認してそのまま PDF に出力できるという快適な開発フローに感動したのを覚えています。
 
-[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf)は2023年1月に
-アーカイブされ、最終リリースは2020年、未修正の脆弱性(CVE-2022-35583)を
-抱えたままになっています。その後継として広く使われているheadless Chrome方式
-(Puppeteer/Playwright)には、帳票を大量に出す用途で次の困りごとがあります。
+しかし、[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) は依存していた QtWebkit がメンテナンス終了になったため、それに伴い2023年1月にアーカイブされてしまいました。
+現在は、Headless Chrome等のヘッドレスブラウザを使って PDF を出力する場面が多いと思います。
 
-| 困りごと | sghtmltopdfでは |
-|---|---|
-| Chromeプロセスが重く、並べるとCPUが飽和する | ブラウザを起動しない。1プロセスの中で変換する |
-| webfontの読み込みを待たずにPDF化されることがある | フォントの解決はレンダリングの一部で、待ち合わせの概念が無い |
-| 大きなHTMLは全体をメモリに載せる必要がある | チャンク単位で読み、確定したページから書き出せる([ストリーミングモード](cli/streaming.md)) |
-| ブラウザのバイナリを置けない環境で使えない | 単一の実行ファイル。ネイティブ拡張としてRubyプロセスに同居もできる |
+個人的に、wkhtmltopdf のアプローチがとても好きだったので、wkhtmltopdf をモダナイズしたものを作ろうと思いました。
+sghtmltopdf の`sg`は **Second Generation** の略で、作者が好きだった wkhtmltopdf という同様のライブラリ（現在はアーカイブされている）への敬意を込めて「次世代」としました。
 
-名前の`sg`は **Second Generation** の略で、WebKitベースだったwkhtmltopdfへの
-敬意を込めた「第2章」を表しています。
+## wkhtmltopdf（QtWebkit）やヘッドレスブラウザを使ったPDF出力に感じていた課題
 
-> **Note**
-> html5ever・Stylo・Taffy・KrillaといったServo/Rustエコシステム由来のクレートを
-> 使っていますが、Servo公式プロジェクトとは無関係の独立した実装です。
+- QtWebkit が古く、CSS3 への対応が限定的（FlexboxやGridやカスタムプロパティに非対応）
+- Webfont を使うと、読み込みを待たずに PDF 出力されてしまうことがある
+- 表（Table）の最中で改ページした場合、改ページ後のページに表のヘッダーが出せない
+- Webアプリとは別にバイナリをインストールする必要があり、AWS Lambda などで環境構築に手間がかかる
+- 同時リクエスト数が増えると CPU 消費コストが増えやすい
+- 巨大な HTML が渡ってくると、メモリ消費コストが増えやすい
+
+これらを解決するために、sghtmltopdf では以下のような対応を入れました。
+
+- CSS3 にほぼ対応（レアプロパティは一部非対応）
+- Webfont に対応。serif/sans-serif/mono それぞれ個別に指定可能に
+- 表（Table）の途中で改ページが起きてもヘッダーを表示するように
+- ネイティブ拡張をFFIで呼び出すことで、ブラウザを必要とせず、Webアプリのプロセスに同居可能に
+- HTMLをチャンク単位で読み、確定したページから書き出せるストリーミングモードを用意
 
 ## 処理の流れ
 
@@ -47,27 +49,4 @@ flowchart TD
     E -. メモリを解放して読み進む .-> B
 ```
 
-ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを手放して
-先へ読み進みます。これが「大きな文書でもメモリが増えない」の中身です。
-
-## 何ができないか
-
-期待と違うものを掴まないよう、先に書いておきます。
-
-* **JavaScriptを実行しません**。`<script>`は読み飛ばされます。ページ番号のような
-  動的な値は、JSではなく[ヘッダー/フッターのプレースホルダ](cli/reference.md#ヘッダーフッター)や
-  CSSのカウンタで表現します
-* **ブラウザとpixel-perfectな一致はしません**。一般のWebページをそのまま
-  綺麗に出すことは目標にしていません
-* **CSSは全部には対応していません**。対応状況は
-  [プロパティ対応表](css/properties.md)と[セレクタ・値・at-rule](css/selectors.md)に
-  実装から起こした一覧があります
-
-より詳しくは[対応していないこと](appendix/limitations.md)を参照してください。
-
-## 次に読むもの
-
-* [インストール](getting-started/install.md)
-* [はじめてのPDF](getting-started/first-pdf.md)
-* wkhtmltopdfを使っている場合は[wkhtmltopdfからの移行](migration/wkhtmltopdf.md)
-* wicked_pdf(Rails)を使っている場合は[wicked_pdfからの移行](migration/wicked-pdf.md)
+ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしています。
