@@ -421,7 +421,7 @@ fn resolve_page_size_px(size: PageSizeValue) -> (f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::parse_stylesheet;
+    use crate::style::{parse_stylesheet, LengthPercentage};
 
     #[test]
     fn page_rule_parses_size_and_margin() {
@@ -448,6 +448,36 @@ mod tests {
         let sheet = parse_stylesheet("@page { size: 300px 400px; }");
         let rule = &sheet.page_rules[0];
         assert!(matches!(rule.size, Some(PageSizeValue::Explicit(_, _))));
+    }
+
+    #[test]
+    fn page_rule_accepts_physical_units_for_size_and_margin() {
+        // 印刷CSSでよく書かれる形。A4を実寸で指定しても名前付き`a4`と同じ結果になる。
+        let sheet = parse_stylesheet("@page { size: 210mm 297mm; margin: 0.5in; }");
+        let resolved = resolve_page_rules(&sheet.page_rules, false, false);
+        let named = resolve_page_rules(
+            &parse_stylesheet("@page { size: a4; }").page_rules,
+            false,
+            false,
+        );
+
+        let (width, height) = resolved.size_px.expect("size が解決されていません");
+        let (named_width, named_height) = named.size_px.expect("size が解決されていません");
+        assert!(
+            (width - named_width).abs() < 0.5,
+            "{width} vs {named_width}"
+        );
+        assert!(
+            (height - named_height).abs() < 0.5,
+            "{height} vs {named_height}"
+        );
+        // 0.5in = 48px。
+        assert_eq!(
+            resolved.margin_top,
+            Some(LengthPercentageOrAuto::LengthPercentage(
+                LengthPercentage::Length(48.0)
+            ))
+        );
     }
 
     #[test]

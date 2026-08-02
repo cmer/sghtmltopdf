@@ -1265,8 +1265,8 @@ fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseEr
             value, ref unit, ..
         } => {
             let mut v = CalcValue::default();
-            if unit.eq_ignore_ascii_case("px") {
-                v.px = value;
+            if let Some(px_per_unit) = absolute_length_px(unit) {
+                v.px = value * px_per_unit;
             } else if unit.eq_ignore_ascii_case("em") {
                 v.em = value;
             } else if unit.eq_ignore_ascii_case("rem") {
@@ -1365,15 +1365,45 @@ pub(crate) fn parse_length<'i>(
     }
 }
 
-/// `<数値><単位>`の単位部分を見て`px`/`em`/`rem`のいずれかとして解釈する。
-/// それ以外の単位(`pt`/`vh`等)はM1では非対応。
+/// 絶対単位1つ分が何CSS pxかを返す。`px`以外の絶対単位でなければ`None`。
+///
+/// CSSの絶対単位はいずれもpxとの比が固定(1in = 96px)なので、パースの時点で
+/// pxへ畳んでしまう。こうすると[`SpecifiedLength`]に単位を持ち込まずに済み、
+/// 計算値の解決やレイアウトは一切変わらない。ビューポート単位(`vh`等)は
+/// 印刷にビューポートの概念が無いため対象外。
+fn absolute_length_px(unit: &str) -> Option<f32> {
+    const PX_PER_IN: f32 = 96.0;
+    if unit.eq_ignore_ascii_case("px") {
+        Some(1.0)
+    } else if unit.eq_ignore_ascii_case("in") {
+        Some(PX_PER_IN)
+    } else if unit.eq_ignore_ascii_case("cm") {
+        Some(PX_PER_IN / 2.54)
+    } else if unit.eq_ignore_ascii_case("mm") {
+        Some(PX_PER_IN / 25.4)
+    } else if unit.eq_ignore_ascii_case("q") {
+        // 1Q = 1/4mm。
+        Some(PX_PER_IN / 25.4 / 4.0)
+    } else if unit.eq_ignore_ascii_case("pt") {
+        Some(PX_PER_IN / 72.0)
+    } else if unit.eq_ignore_ascii_case("pc") {
+        // 1pc = 12pt。
+        Some(PX_PER_IN / 6.0)
+    } else {
+        None
+    }
+}
+
+/// `<数値><単位>`の単位部分を見て、絶対単位(`px`/`mm`/`cm`/`in`/`pt`/`pc`/`Q`)
+/// または相対単位(`em`/`rem`)として解釈する。
+/// ビューポート単位(`vh`等)は非対応。
 fn parse_length_unit<'i>(
     input: &Parser<'i, '_>,
     value: f32,
     unit: &str,
 ) -> Result<SpecifiedLength, ParseError<'i, ()>> {
-    if unit.eq_ignore_ascii_case("px") {
-        Ok(SpecifiedLength::Px(value))
+    if let Some(px_per_unit) = absolute_length_px(unit) {
+        Ok(SpecifiedLength::Px(value * px_per_unit))
     } else if unit.eq_ignore_ascii_case("em") {
         Ok(SpecifiedLength::Em(value))
     } else if unit.eq_ignore_ascii_case("rem") {

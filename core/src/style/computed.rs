@@ -4489,4 +4489,68 @@ mod tests {
         assert_eq!(styles[&p].min_width, LengthPercentage::Length(0.0));
         assert_eq!(styles[&p].max_height, MaxSize::None);
     }
+
+    #[test]
+    fn absolute_length_units_resolve_to_px() {
+        // 帳票のCSSは寸法をmm/ptで書くことが多い。1in = 96px換算で畳まれること。
+        let dom = html::parse(
+            br#"<div class="mm"></div><div class="cm"></div><div class="in"></div>
+                <div class="pt"></div><div class="pc"></div><div class="q"></div>"#,
+        );
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        let [mm, cm, inch, pt, pc, q] = divs[..] else {
+            panic!("expected exactly 6 divs")
+        };
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet(
+                ".mm { width: 25.4mm; } .cm { width: 2.54cm; } .in { width: 1in; }
+                 .pt { width: 72pt; } .pc { width: 6pc; } .q { width: 101.6q; }",
+            ),
+        );
+        // いずれも1インチ = 96px。
+        for node in [mm, cm, inch, pt, pc, q] {
+            assert_eq!(
+                styles[&node].width,
+                LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(96.0))
+            );
+        }
+    }
+
+    #[test]
+    fn absolute_length_units_work_inside_calc() {
+        let dom = html::parse(br#"<div></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { width: calc(1in - 24pt); }"),
+        );
+        // 96px - 32px。calcは`Calc`のまま保持される(pxへ畳むのはパース段階の単位換算だけ)。
+        assert_eq!(
+            styles[&div].width,
+            LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc {
+                px: 64.0,
+                percent: 0.0
+            })
+        );
+    }
+
+    #[test]
+    fn viewport_units_are_still_rejected() {
+        // ビューポート単位は印刷に概念が無いため非対応のまま(宣言ごと無視)。
+        let dom = html::parse(br#"<div></div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { width: 50vh; }"),
+        );
+        assert_eq!(styles[&div].width, LengthPercentageOrAuto::Auto);
+    }
 }
