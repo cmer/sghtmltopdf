@@ -128,6 +128,21 @@ docker run --rm -v "$PWD:/work" -w /work --user "$(id -u):$(id -g)" \
     ghcr.io/waka/sghtmltopdf invoice.html -o invoice.pdf
 ```
 
+To keep the server around next to your app, Compose is the shortest route the image needs no command, and inside the container it listens on `0.0.0.0:8080`.
+
+```yaml
+services:
+  pdf:
+    image: ghcr.io/waka/sghtmltopdf:0.1
+    ports: ["8080:8080"]
+    healthcheck:
+      test: ["CMD", "sghtmltopdf", "--version"]
+      interval: 30s
+```
+
+`curl` is not in the image, so the health check uses `--version`; hit `GET /healthz` from the outside (a load balancer, say) if you want the server itself checked.
+Point the Ruby side at it with `Sghtmltopdf.configure { |c| c.server_url = "http://pdf:8080" }`, and add `--font` and a mounted volume to the service's `command` if you need fonts other than the bundled ones.
+
 ## Guide for developer
 
 ### Layout
