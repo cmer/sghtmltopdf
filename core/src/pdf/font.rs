@@ -52,18 +52,21 @@ pub struct FontIds {
 /// 1フォント分の使用状況(文書全体を1パス目で走査して集める)。
 #[derive(Debug, Default)]
 pub struct FontUsage {
-    /// 元のグリフID -> (幅[1000unit/emグリフ空間], 代表Unicode文字)。
-    glyphs: BTreeMap<u16, (f32, char)>,
+    /// 元のグリフID -> (幅[1000unit/emグリフ空間], そのグリフが表す元テキスト)。
+    glyphs: BTreeMap<u16, (f32, String)>,
 }
 
 impl FontUsage {
-    /// `glyph_id`の使用を記録する。`unicode`は`/ToUnicode`生成用の代表文字
-    /// (`ShapedGlyph::cluster`から元テキストを逆引きしたもの)。
-    pub fn record(&mut self, font: &Font, glyph_id: u16, unicode: char) {
+    /// `glyph_id`の使用を記録する。`text`は`/ToUnicode`生成用の元テキスト
+    /// (`ShapedGlyph::cluster`から逆引きしたクラスタの文字列)。
+    ///
+    /// 1文字とは限らないのは合字のため(`fl`が1グリフになる等)。1文字しか
+    /// 持たせないと、PDFのテキスト抽出・検索で"float"が"foat"になる。
+    pub fn record(&mut self, font: &Font, glyph_id: u16, text: &str) {
         self.glyphs.entry(glyph_id).or_insert_with(|| {
             let advance = font.glyph_hor_advance(glyph_id).unwrap_or(0) as f32;
             let width_1000 = advance * 1000.0 / font.units_per_em() as f32;
-            (width_1000, unicode)
+            (width_1000, text.to_string())
         });
     }
 }
@@ -141,9 +144,9 @@ pub fn embed_font(
     cid_font.default_width(0.0);
     {
         let mut w = cid_font.widths();
-        for (&old_gid, &(width, _)) in &usage.glyphs {
+        for (&old_gid, (width, _)) in &usage.glyphs {
             let new_gid = old_to_new[&old_gid];
-            w.same(new_gid, new_gid, width);
+            w.same(new_gid, new_gid, *width);
         }
         w.finish();
     }
@@ -158,8 +161,8 @@ pub fn embed_font(
             supplement: 0,
         },
     );
-    for (&old_gid, &(_, unicode)) in &usage.glyphs {
-        cmap.pair(old_to_new[&old_gid], unicode);
+    for (&old_gid, (_, text)) in &usage.glyphs {
+        cmap.pair_with_multiple(old_to_new[&old_gid], text.chars());
     }
     let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut to_unicode = pdf.cmap(ids.to_unicode, &cmap_bytes);
@@ -271,8 +274,8 @@ pub fn embed_font_streaming_chunks(
         // /Wは元のグリフID(=CID)をキーに、サブセット前と同じ値をそのまま
         // 書ける(幅はusage収集時点で元GIDベースに記録済みのため変換不要)。
         let mut w = cid_font.widths();
-        for (&old_gid, &(width, _)) in &usage.glyphs {
-            w.same(old_gid, old_gid, width);
+        for (&old_gid, (width, _)) in &usage.glyphs {
+            w.same(old_gid, old_gid, *width);
         }
         w.finish();
     }
@@ -289,8 +292,8 @@ pub fn embed_font_streaming_chunks(
             supplement: 0,
         },
     );
-    for (&old_gid, &(_, unicode)) in &usage.glyphs {
-        cmap.pair(old_gid, unicode);
+    for (&old_gid, (_, text)) in &usage.glyphs {
+        cmap.pair_with_multiple(old_gid, text.chars());
     }
     let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut chunk = Chunk::new();

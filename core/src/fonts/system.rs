@@ -489,6 +489,9 @@ fn document_chars<'a>(
 
 /// `c`を`weight`/`style`で描画できるフォントが`fonts`に無ければ、システムから
 /// 探して追加する。判定済みの組は`seen`で覚えて再探索を避ける。
+///
+/// 「描画できる」の判定にウェイト/スタイルの一致まで含める理由は
+/// [`FontCollection::can_render_with_matching_face`]を参照。
 fn cover_char(
     fonts: &mut FontCollection,
     system: &SystemFonts,
@@ -501,11 +504,11 @@ fn cover_char(
     if !seen.insert((c, weight, font_style)) {
         return;
     }
-    if fonts.can_render(families, weight, font_style, c) {
+    if fonts.can_render_with_matching_face(families, weight, font_style, c) {
         return;
     }
     if let Some((family, font)) = system.load_covering(c, weight, font_style) {
-        fonts.push_font_face(family, None, None, Vec::new(), font);
+        fonts.push_fallback_font_face(family, font);
     }
 }
 

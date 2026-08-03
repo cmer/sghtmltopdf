@@ -32,6 +32,11 @@ pub struct FontCollection {
     /// `@font-face`)は全域(U+0-10FFFF)を暗黙にカバーするものとして扱う
     /// (0011参照)。
     declared_unicode_ranges: Vec<Vec<UnicodeRange>>,
+    /// 文字カバレッジから自動で見つけたフォールバックとして追加された要素か。
+    /// 利用者が明示したフォント(`--font`/`@font-face`)やfamily名から解決した
+    /// フォントは`false`。[`Self::can_render_with_matching_face`]が、
+    /// 「たまたま入っただけの面」と「利用者が選んだ面」を区別するために使う。
+    auto_fallbacks: Vec<bool>,
 }
 
 impl FontCollection {
@@ -43,6 +48,7 @@ impl FontCollection {
             declared_weights: vec![None; len],
             declared_styles: vec![None; len],
             declared_unicode_ranges: vec![Vec::new(); len],
+            auto_fallbacks: vec![false; len],
         }
     }
 
@@ -67,6 +73,18 @@ impl FontCollection {
         self.declared_weights.push(weight);
         self.declared_styles.push(style);
         self.declared_unicode_ranges.push(unicode_range);
+        self.auto_fallbacks.push(false);
+    }
+
+    /// 文字カバレッジから自動で見つけたフォールバックフォントを追加する
+    /// (`super::system::load_fonts_for_uncovered_chars`用)。family名を手掛かりに
+    /// できない文字を救うために勝手に足す面なので、利用者が明示したフォントとは
+    /// 区別して覚えておく([`Self::can_render_with_matching_face`]参照)。
+    pub fn push_fallback_font_face(&mut self, family: String, font: Font) {
+        self.push_font_face(family, None, None, Vec::new(), font);
+        if let Some(flag) = self.auto_fallbacks.last_mut() {
+            *flag = true;
+        }
     }
 
     pub fn fonts(&self) -> &[Font] {
@@ -212,6 +230,38 @@ impl FontCollection {
             .is_some_and(|font| font.has_glyph(c))
     }
 
+    /// `c`を、要求どおりの`weight`/`style`の面で描画できるか。
+    ///
+    /// [`Self::can_render`]は「豆腐にならないか」だけを見るので、自動
+    /// フォールバックで入ったBold面しか`c`を持たない場合に`true`を返す。
+    /// それだけを頼りにフォント探索を打ち切ると、通常ウェイトの文字まで
+    /// Bold面で描かれてしまう(文書中に太字の日本語が先に現れると以降の
+    /// 日本語が全て太くなる、という出現順依存のバグになる)。
+    ///
+    /// 一致を要求するのは自動フォールバックの面だけで、利用者が明示した
+    /// フォント(`--font`/`@font-face`)しか`c`を持たない場合は`true`のまま
+    /// にする。そちらは意図して選ばれた1本なので、勝手にシステムフォントへ
+    /// 差し替えず疑似太字/疑似イタリックで賄う。
+    pub fn can_render_with_matching_face(
+        &self,
+        families: &[String],
+        weight: FontWeight,
+        style: FontStyle,
+        c: char,
+    ) -> bool {
+        let Some(index) = self.select_for_char(families, weight, style, c) else {
+            return false;
+        };
+        if !self.get(index).is_some_and(|font| font.has_glyph(c)) {
+            return false;
+        }
+        if !self.auto_fallbacks.get(index).copied().unwrap_or(false) {
+            return true;
+        }
+        self.is_bold(index) == (weight == FontWeight::Bold)
+            && self.is_italic(index) == (style == FontStyle::Italic)
+    }
+
     /// `index`のフォントが実際にBold相当かどうか。`@font-face`の`font-weight`
     /// 申告があればそれを優先し、無ければフォント自身のOS/2ウェイト値で判定する。
     pub fn is_bold(&self, index: usize) -> bool {
@@ -330,6 +380,52 @@ mod tests {
         assert!(collection.has_family("DejaVu Sans"));
         assert!(collection.has_matching_face("DejaVu Sans", FontWeight::Normal, FontStyle::Normal));
         assert!(!collection.has_matching_face("DejaVu Sans", FontWeight::Bold, FontStyle::Normal));
+    }
+
+    #[test]
+    fn can_render_with_matching_face_rejects_a_fallback_face_of_the_wrong_weight() {
+        // 自動フォールバックでBold面だけが入った状態(文書中に太字の日本語が
+        // 先に現れたときに起きる)。can_renderは「豆腐にならない」ので真だが、
+        // 通常ウェイトの文字をBold面で描くことになるため、探索を続けさせたい。
+        let mut collection = FontCollection::new(vec![]);
+        collection.push_fallback_font_face("DejaVu Sans".to_string(), dejavu_bold());
+
+        assert!(collection.can_render(&[], FontWeight::Normal, FontStyle::Normal, 'A'));
+        assert!(!collection.can_render_with_matching_face(
+            &[],
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'A'
+        ));
+        assert!(collection.can_render_with_matching_face(
+            &[],
+            FontWeight::Bold,
+            FontStyle::Normal,
+            'A'
+        ));
+
+        // Regular面が足された後は、どちらのウェイトも一致する面で賄える。
+        collection.push_fallback_font_face("DejaVu Sans".to_string(), dejavu());
+        assert!(collection.can_render_with_matching_face(
+            &[],
+            FontWeight::Normal,
+            FontStyle::Normal,
+            'A'
+        ));
+    }
+
+    #[test]
+    fn can_render_with_matching_face_accepts_an_explicit_font_of_the_wrong_weight() {
+        // 利用者が明示した1本(`--font`/`@font-face`)しか無い場合は、
+        // 勝手にシステムフォントへ差し替えず疑似太字で賄う方針なので、
+        // ウェイトが違っても探索を続けさせない。
+        let collection = FontCollection::new(vec![dejavu()]);
+        assert!(collection.can_render_with_matching_face(
+            &[],
+            FontWeight::Bold,
+            FontStyle::Normal,
+            'A'
+        ));
     }
 
     #[test]

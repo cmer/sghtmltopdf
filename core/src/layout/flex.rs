@@ -140,44 +140,57 @@ pub(super) fn layout_taffy_subtree(
             let item = &flex_items[index];
             let item_style = box_style(item, styles);
 
+            // パディング/ボーダーはCSS仕様通り常に「containing blockの幅」
+            // (=flexコンテナのcontent_width)基準で解決する(水平・垂直とも)。
+            let padding = resolve_padding(&item_style, content_width);
+            let border = resolve_border(&item_style);
+            let pb_x = padding.left + padding.right + border.left + border.right;
+            let pb_y = padding.top + padding.bottom + border.top + border.bottom;
+
             // measureが返すのはcontent-box基準のサイズ(taffy自身がpadding/borderを
             // 加算する、`compute::leaf::compute_leaf_layout`で実測済みの規約)。
-            let width = known_dimensions.width.unwrap_or_else(|| {
-                match available_space.width {
-                    // 「使える幅」が確定していても、内容がそれより狭ければ
-                    // 内容幅を返す。ここで常に`w`を返すと、内容幅に縮むべき
-                    // ケース(Gridの`justify-items: start`等)で常にトラック
-                    // 幅いっぱいになってしまう。
-                    tf::AvailableSpace::Definite(w) => {
-                        measure_natural_content_width(&item.content, styles, fonts).min(w)
+            // 一方`known_dimensions`はborder-box基準(taffyは内部を一貫して
+            // border-boxで計算する)なので、そのまま使わずpadding/borderを引いて
+            // content-box基準へ揃える。`available_space`はtaffy側で既に
+            // padding/borderが引かれているため変換不要。
+            let width = known_dimensions
+                .width
+                .map(|w| (w - pb_x).max(0.0))
+                .unwrap_or_else(|| {
+                    match available_space.width {
+                        // 「使える幅」が確定していても、内容がそれより狭ければ
+                        // 内容幅を返す。ここで常に`w`を返すと、内容幅に縮むべき
+                        // ケース(Gridの`justify-items: start`等)で常にトラック
+                        // 幅いっぱいになってしまう。
+                        tf::AvailableSpace::Definite(w) => {
+                            measure_natural_content_width(&item.content, styles, fonts).min(w)
+                        }
+                        // min-contentとmax-contentは区別しない(既知の簡略化)。
+                        tf::AvailableSpace::MinContent | tf::AvailableSpace::MaxContent => {
+                            measure_natural_content_width(&item.content, styles, fonts)
+                        }
                     }
-                    // min-contentとmax-contentは区別しない(既知の簡略化)。
-                    tf::AvailableSpace::MinContent | tf::AvailableSpace::MaxContent => {
-                        measure_natural_content_width(&item.content, styles, fonts)
-                    }
-                }
-            });
+                });
 
-            let height = known_dimensions.height.unwrap_or_else(|| {
-                // パディング/ボーダーはCSS仕様通り常に「containing blockの幅」
-                // (=flexコンテナのcontent_width)基準で解決する(水平・垂直とも)。
-                let padding = resolve_padding(&item_style, content_width);
-                let border = resolve_border(&item_style);
-                let outer_width = width + padding.left + padding.right + border.left + border.right;
+            let height = known_dimensions
+                .height
+                .map(|h| (h - pb_y).max(0.0))
+                .unwrap_or_else(|| {
+                    let outer_width = width + pb_x;
 
-                let mut float_ctx = FloatContext::new();
-                let laid = layout_box_with_forced_width_ignoring_positioned(
-                    item,
-                    styles,
-                    fonts,
-                    outer_width,
-                    width,
-                    &mut float_ctx,
-                    0.0,
-                    0.0,
-                );
-                laid.layout.content.height
-            });
+                    let mut float_ctx = FloatContext::new();
+                    let laid = layout_box_with_forced_width_ignoring_positioned(
+                        item,
+                        styles,
+                        fonts,
+                        outer_width,
+                        width,
+                        &mut float_ctx,
+                        0.0,
+                        0.0,
+                    );
+                    laid.layout.content.height
+                });
 
             tf::Size { width, height }
         },

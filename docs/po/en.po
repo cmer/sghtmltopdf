@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-04T01:53:17+09:00\n"
+"POT-Creation-Date: 2026-08-04T02:35:22+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -2024,7 +2024,7 @@ msgstr ""
 msgid "制約"
 msgstr "Limitation"
 
-#: src/usage/cli/streaming.md:27 src/supports/fonts.md:90
+#: src/usage/cli/streaming.md:27 src/supports/fonts.md:91
 msgid "挙動"
 msgstr "Behaviour"
 
@@ -4091,7 +4091,7 @@ msgstr ""
 "`<length>` only, in `px`, `em`, or `rem`. Keywords such as `smaller`, "
 "`larger`, and `medium`, and percentages, are not supported"
 
-#: src/supports/properties.md:85 src/supports/fonts.md:92
+#: src/supports/properties.md:85 src/supports/fonts.md:93
 msgid "`font-weight`"
 msgstr "`font-weight`"
 
@@ -4104,7 +4104,7 @@ msgstr ""
 "states, 600 and above counting as `bold`. Without a bold face, a synthetic "
 "bold is drawn by filling and stroking"
 
-#: src/supports/properties.md:86 src/supports/fonts.md:93
+#: src/supports/properties.md:86 src/supports/fonts.md:94
 msgid "`font-style`"
 msgstr "`font-style`"
 
@@ -5602,7 +5602,7 @@ msgstr ""
 "with `counter(page)` and `counter(pages)`, though `counter(pages)` is "
 "unavailable in streaming mode"
 
-#: src/supports/selectors.md:107 src/supports/fonts.md:43
+#: src/supports/selectors.md:107 src/supports/fonts.md:44
 msgid "`@font-face`"
 msgstr "`@font-face`"
 
@@ -5736,17 +5736,21 @@ msgid ""
 "4番目は、`font-family`をどこにも書いていない日本語文書のように、名前が手掛か"
 "りにならない場合の網です。 1〜3で集めたフォントで描画できない文字が文書に含ま"
 "れていれば、その文字を持つシステムフォント(日本語ならNoto Sans CJK JPなど)を"
-"探して追加します。 それでも描画できない文字が残る場合は、豆腐(□)になる前に警"
-"告を出します。"
+"探して追加します。 この探索はウェイト・スタイルごとに行うので、太字と通常が混"
+"在する文書では両方の面が追加されます(通常の文字が太字の面で描かれてしまうのを"
+"防ぐためです)。 それでも描画できない文字が残る場合は、豆腐(□)になる前に警告を"
+"出します。"
 msgstr ""
 "The fourth step is the safety net for documents where the names give no "
 "clue, such as Japanese text with no `font-family` anywhere. If the document "
 "contains characters that none of the fonts gathered in steps 1 to 3 can "
 "draw, a system font that has them, for example Noto Sans CJK JP for "
-"Japanese, is found and added. If characters still cannot be drawn, a warning "
-"is printed before they turn into empty boxes."
+"Japanese, is found and added. The search runs per weight and style, so a "
+"document that mixes bold and regular text gets both faces added, which keeps "
+"regular text from being drawn with the bold face. If characters still cannot "
+"be drawn, a warning is printed before they turn into empty boxes."
 
-#: src/supports/fonts.md:19
+#: src/supports/fonts.md:20
 msgid ""
 "```\n"
 "警告: 文字 \"ไ\" を描画できるフォントがありません(豆腐になります)。\n"
@@ -5758,7 +5762,7 @@ msgstr ""
 "  --font/--gothic-font か @font-face でフォントを明示してください\n"
 "```"
 
-#: src/supports/fonts.md:24
+#: src/supports/fonts.md:25
 msgid ""
 "サーバやCIでは`--font`を明示してください。 指定しないと出力が実行環境のフォン"
 "ト構成に依存します。 同じHTMLが開発機と本番で違う見た目になる、という事故はこ"
@@ -5768,11 +5772,11 @@ msgstr ""
 "depends on the fonts installed on that machine, and that is how the same "
 "HTML ends up looking different on a developer's laptop and in production."
 
-#: src/supports/fonts.md:28
+#: src/supports/fonts.md:29
 msgid "汎用ファミリー名"
 msgstr "Generic family names"
 
-#: src/supports/fonts.md:30
+#: src/supports/fonts.md:31
 msgid ""
 "`serif` / `sans-serif` / `monospace`はシステムフォントから解決されます"
 "(`cursive` / `fantasy`は解決しません)。"
@@ -5780,7 +5784,7 @@ msgstr ""
 "`serif`, `sans-serif`, and `monospace` are resolved against the system "
 "fonts. `cursive` and `fantasy` are not resolved."
 
-#: src/supports/fonts.md:32
+#: src/supports/fonts.md:33
 msgid ""
 "日本語では、この解決を環境任せにすると本文の書体が変わってしまうので、CLIから"
 "決定的に指定できます。"
@@ -5788,7 +5792,7 @@ msgstr ""
 "For Japanese, leaving this to the environment changes the typeface of the "
 "body text, so the CLI lets you pin it explicitly."
 
-#: src/supports/fonts.md:41
+#: src/supports/fonts.md:42
 msgid ""
 "TrueType Collection(`.ttc`)を使う場合は、直前の`--font`系オプションに対して"
 "`--font-index`でフェイス番号を指定します。"
@@ -5796,15 +5800,15 @@ msgstr ""
 "For a TrueType Collection (`.ttc`), give the face index with `--font-index`, "
 "which applies to the `--font` option just before it."
 
-#: src/supports/fonts.md:47 src/supports/fonts.md:53
+#: src/supports/fonts.md:48 src/supports/fonts.md:54
 msgid "\"MyFont\""
 msgstr "\"MyFont\""
 
-#: src/supports/fonts.md:48
+#: src/supports/fonts.md:49
 msgid "\"fonts/MyFont-Regular.ttf\""
 msgstr "\"fonts/MyFont-Regular.ttf\""
 
-#: src/supports/fonts.md:56
+#: src/supports/fonts.md:57
 msgid ""
 "対応するディスクリプタは`font-family` / `src` / `unicode-range` / `font-"
 "weight` / `font-style`です。 `src`の`local()`と、`format()`/`tech()`付きの"
@@ -5816,7 +5820,7 @@ msgstr ""
 "with `format()` or `tech()` are accepted. Other descriptors, such as `font-"
 "display`, are ignored."
 
-#: src/supports/fonts.md:60
+#: src/supports/fonts.md:61
 msgid ""
 "フォントファイルはTTF/OTFのみです。WOFF/WOFF2は非対応なので、Webで配信してい"
 "るwebfontをそのまま指すとエラーになります。 元のTTF/OTFを使ってください。"
@@ -5824,7 +5828,7 @@ msgstr ""
 "Only TTF and OTF files are supported. WOFF and WOFF2 are not, so pointing at "
 "a webfont as served on the web is an error. Use the original TTF or OTF."
 
-#: src/supports/fonts.md:63
+#: src/supports/fonts.md:64
 msgid ""
 "読み込みの待ち合わせはありません。 headless Chromeで必要だった`document."
 "fonts.ready`待ちのような処理は不要で、フォントが未解決のままPDF化されることは"
@@ -5834,11 +5838,11 @@ msgstr ""
 "Chrome needs is unnecessary here, and a PDF is never produced with fonts "
 "still unresolved."
 
-#: src/supports/fonts.md:66
+#: src/supports/fonts.md:67
 msgid "`unicode-range`"
 msgstr "`unicode-range`"
 
-#: src/supports/fonts.md:68
+#: src/supports/fonts.md:69
 msgid ""
 "文字の範囲ごとにフォントを切り替えられます。 英数字は欧文フォント、日本語は和"
 "文フォント、という典型的な構成がそのまま書けます。"
@@ -5847,23 +5851,23 @@ msgstr ""
 "font for letters and digits and a Japanese font for Japanese, can be written "
 "directly."
 
-#: src/supports/fonts.md:73 src/supports/fonts.md:78
+#: src/supports/fonts.md:74 src/supports/fonts.md:79
 msgid "\"Mixed\""
 msgstr "\"Mixed\""
 
-#: src/supports/fonts.md:74
+#: src/supports/fonts.md:75
 msgid "\"fonts/Latin.ttf\""
 msgstr "\"fonts/Latin.ttf\""
 
-#: src/supports/fonts.md:79
+#: src/supports/fonts.md:80
 msgid "\"fonts/JP.ttf\""
 msgstr "\"fonts/JP.ttf\""
 
-#: src/supports/fonts.md:79
+#: src/supports/fonts.md:80
 msgid "/* 上の範囲外はこちら */"
 msgstr "/* everything outside the range above */"
 
-#: src/supports/fonts.md:83
+#: src/supports/fonts.md:84
 msgid ""
 "単一コードポイント・範囲・ワイルドカード(`U+4??`)・カンマ区切りの複数指定に対"
 "応します"
@@ -5871,7 +5875,7 @@ msgstr ""
 "Single code points, ranges, wildcards such as `U+4??`, and comma separated "
 "lists are all supported"
 
-#: src/supports/fonts.md:84
+#: src/supports/fonts.md:85
 msgid ""
 "宣言された範囲はハードフィルタとして働きます。範囲外の文字には、そのフォント"
 "が実際にグリフを持っていても使いません"
@@ -5879,7 +5883,7 @@ msgstr ""
 "A declared range acts as a hard filter. Outside it the font is not used, "
 "even if it does have a glyph for the character"
 
-#: src/supports/fonts.md:85
+#: src/supports/fonts.md:86
 msgid ""
 "`unicode-range`を書かなかったフォント(`local()`・`--font`・システム探索を含"
 "む)は全域をカバーします"
@@ -5887,19 +5891,19 @@ msgstr ""
 "A font declared without `unicode-range`, including those from `local()`, `--"
 "font`, and the system search, covers the whole range"
 
-#: src/supports/fonts.md:86
+#: src/supports/fonts.md:87
 msgid "範囲が重なった場合は、CSSの中で先に宣言されたほうが優先されます"
 msgstr "Where ranges overlap, whichever is declared first in the CSS wins"
 
-#: src/supports/fonts.md:88
+#: src/supports/fonts.md:89
 msgid "太字と斜体"
 msgstr "Bold and italic"
 
-#: src/supports/fonts.md:90
+#: src/supports/fonts.md:91
 msgid "指定"
 msgstr "Value"
 
-#: src/supports/fonts.md:92
+#: src/supports/fonts.md:93
 msgid ""
 "`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字のフォ"
 "ントが無い場合は、塗りに縁取りを足した疑似ボールドで描画します"
@@ -5908,7 +5912,7 @@ msgstr ""
 "600 and above counting as `bold`. Without a bold face, synthetic bold is "
 "drawn by adding a stroke around the fill"
 
-#: src/supports/fonts.md:93
+#: src/supports/fonts.md:94
 msgid ""
 "`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視)。イタリック字形が無"
 "い場合は、テキスト行列のせん断による疑似イタリックになります"
@@ -5917,7 +5921,7 @@ msgstr ""
 "Without italic shapes, synthetic italic is produced by shearing the text "
 "matrix"
 
-#: src/supports/fonts.md:95
+#: src/supports/fonts.md:96
 msgid ""
 "`font`ショートハンドは非対応です。 `font-size`・`font-family`などのロングハン"
 "ドを個別に書いてください。"
@@ -5925,11 +5929,11 @@ msgstr ""
 "The `font` shorthand is not supported. Write the longhands, such as `font-"
 "size` and `font-family`, individually."
 
-#: src/supports/fonts.md:98
+#: src/supports/fonts.md:99
 msgid "サブセット化"
 msgstr "Subsetting"
 
-#: src/supports/fonts.md:100
+#: src/supports/fonts.md:101
 msgid ""
 "埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定して"
 "も、PDFのサイズは文書に出てくる文字の分にしかなりません。"
@@ -5938,11 +5942,11 @@ msgstr ""
 "complete Japanese font, the PDF only grows by the characters that appear in "
 "the document."
 
-#: src/supports/fonts.md:103
+#: src/supports/fonts.md:104
 msgid "ストリーミングモードでの注意"
 msgstr "A note on streaming mode"
 
-#: src/supports/fonts.md:105
+#: src/supports/fonts.md:106
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たな"
 "いため 上の3・4のシステムフォント探索が行われません(警告を出して既定フォント"
@@ -5955,7 +5959,7 @@ msgstr ""
 "with the `--font` options or `@font-face` gives you the fonts you intended "
 "even when streaming."
 
-#: src/supports/fonts.md:109
+#: src/supports/fonts.md:110
 msgid ""
 "例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加"
 "えてCJKを描画できるフォントを1本先回りで読み込みます。 日本語の文書を何も指定"

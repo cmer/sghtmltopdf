@@ -221,6 +221,41 @@ fn a_flex_item_can_contain_ordinary_block_and_table_content() {
 }
 
 #[test]
+fn a_flex_item_with_padding_grows_to_fit_its_wrapped_text() {
+    // taffyがmeasureへ渡す既知サイズはborder-box基準なので、padding分を引かずに
+    // 内容を採寸すると実際より広い幅で行分割してしまい、アイテムの高さが
+    // 足りず内容がはみ出す。paddingの有無で内容の高さが変わらないことで、
+    // content-box幅で採寸できていることを確かめる。
+    let text = "wrap this text onto two lines";
+    let (dom, laid) = layout(
+        &format!(
+            r#"<div class="container">
+                 <div class="plain">{text}</div>
+                 <div class="padded">{text}</div>
+               </div>"#
+        ),
+        // stretchだと両方とも行のcross sizeまで伸びて差が消えるため、
+        // 自然な高さを見るためにflex-startにする。
+        "body { margin: 0; } \
+         .container { display: flex; align-items: flex-start; width: 400px; } \
+         .plain { flex: 0 0 100px; } \
+         .padded { flex: 0 0 100px; padding: 10px; }",
+    );
+    let d = divs(&dom);
+    let plain = find_laid_out(&laid, d[1]).unwrap();
+    let padded = find_laid_out(&laid, d[2]).unwrap();
+
+    // 同じ内容幅(100px)なので、paddingぶんだけ高い箱になるのが正しい。
+    assert_eq!(
+        padded.layout.border_box().height,
+        plain.layout.border_box().height + 20.0
+    );
+    // 前提: この文章は幅100pxで複数行に折り返す(1行に収まると回帰を検知
+    // できないため、行送りより高いことで確認する)。
+    assert!(plain.layout.border_box().height > 20.0);
+}
+
+#[test]
 fn a_nested_flex_container_lays_out_inside_a_flex_item() {
     let (dom, laid) = layout(
         r#"<div class="outer">

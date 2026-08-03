@@ -638,22 +638,53 @@ fn collect_line_usage(line: &LineBox, fonts: &FontCollection, usages: &mut [Font
         let Some(font) = fonts.get(run.font_index) else {
             continue;
         };
-        for glyph in &run.glyphs {
-            let unicode = run.text[glyph.cluster as usize..]
-                .chars()
-                .next()
-                .unwrap_or('\u{FFFD}');
-            usages[run.font_index].record(font, glyph.glyph_id, unicode);
+        for (i, glyph) in run.glyphs.iter().enumerate() {
+            let text = cluster_text(&run.text, &run.glyphs, i);
+            usages[run.font_index].record(font, glyph.glyph_id, text);
         }
         // `text-emphasis-style: <string>`のマークはテキストに現れない文字を
         // グリフとして描くため、サブセットから落ちないようここで記録する
         // (キーワード指定のマークはパスで描くので収集は不要)。
         if let Some(EmphasisStyle::String(ch)) = run.emphasis.as_ref().map(|mark| &mark.style) {
             if let Some(glyph_id) = font.glyph_id(*ch) {
-                usages[run.font_index].record(font, glyph_id, *ch);
+                usages[run.font_index].record(font, glyph_id, ch.encode_utf8(&mut [0u8; 4]));
             }
         }
     }
+}
+
+/// `glyphs[index]`が表す元テキスト(クラスタ)を`text`から切り出す。
+///
+/// `ShapedGlyph::cluster`は元テキスト内のバイトオフセットで、シェイピングの
+/// 結果1グリフが複数文字に対応することがある(`fl`のような合字)。次に
+/// オフセットが進むグリフの手前までを、そのグリフが表す文字列として扱う。
+/// これを1文字に切り詰めると、`/ToUnicode`が不完全になりPDFのテキスト検索・
+/// コピーで文字が欠ける。
+///
+/// 逆に、1つのクラスタに複数グリフが対応する場合(結合文字等)や、
+/// クラスタが前へ戻る場合(RTL)は、従来どおり先頭1文字だけを割り当てる。
+/// 前者で全グリフにクラスタ全体を割り当てると抽出時に文字が重複し、後者では
+/// クラスタの範囲を前方だけからは決められないため。
+fn cluster_text<'a>(text: &'a str, glyphs: &[crate::fonts::ShapedGlyph], index: usize) -> &'a str {
+    let start = (glyphs[index].cluster as usize).min(text.len());
+    let single_char = || {
+        let len = text[start..].chars().next().map_or(0, char::len_utf8);
+        &text[start..start + len]
+    };
+
+    // このグリフだけがクラスタを担当しているときのみ、クラスタ全体を割り当てる。
+    if index > 0 && glyphs[index - 1].cluster as usize == start {
+        return single_char();
+    }
+    let end = match glyphs.get(index + 1) {
+        Some(next) if (next.cluster as usize) > start => (next.cluster as usize).min(text.len()),
+        Some(_) => return single_char(),
+        None => text.len(),
+    };
+
+    // クラスタ境界が文字境界と食い違っている場合(想定外のシェイピング結果)に
+    // 部分文字列の切り出しでpanicしないよう、`get`で確かめる。
+    text.get(start..end).unwrap_or_else(single_char)
 }
 
 /// ページ(群)を再帰的に走査し、実際に使われている画像(`<img>`本体と
@@ -1525,11 +1556,17 @@ fn render_box_with_style_inner(
     }
 }
 
-/// `children`を`z-index`に従って描画する順序へ並べ替える(`(z-index, 文書順)`
-/// で安定ソート)。`position: static`の要素には`z-index`が効果を持たない
-/// (仕様通り)ため実効値は常に`0`として扱う。`sort_by_key`は安定ソートなので、
-/// 同じ実効`z-index`の要素同士は文書順が保たれる。スタッキングコンテキストの
-/// 分離は非対応(同一の直接の親を持つ兄弟間の描画順のみを制御する)。
+/// `children`を`z-index`とfloatに従って描画する順序へ並べ替える
+/// (`(z-index, floatか, 文書順)`で安定ソート)。`position: static`の要素には
+/// `z-index`が効果を持たない(仕様通り)ため実効値は常に`0`として扱う。
+/// `sort_by_key`は安定ソートなので、キーが同じ要素同士は文書順が保たれる。
+/// スタッキングコンテキストの分離は非対応(同一の直接の親を持つ兄弟間の
+/// 描画順のみを制御する)。
+///
+/// floatを同じ`z-index`の通常フローのブロックより後(上)に描画するのは
+/// CSS2.1 Appendix Eの規定による(ブロックの背景・枠線はfloatより前の
+/// レイヤー)。これが無いと、floatの直後に背景色を持つブロックが来たときに
+/// その背景がfloatを塗り潰してしまう。
 fn paint_order<'a>(
     children: &'a [LaidOutBox],
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -1545,7 +1582,7 @@ fn paint_order<'a>(
         }
     };
     let mut order: Vec<&LaidOutBox> = children.iter().collect();
-    order.sort_by_key(|child| effective_z_index(child));
+    order.sort_by_key(|child| (effective_z_index(child), u8::from(child.is_float)));
     order
 }
 
@@ -4348,6 +4385,27 @@ mod tests {
     }
 
     #[test]
+    fn to_unicode_maps_a_ligature_glyph_to_every_character_it_stands_for() {
+        // DejaVu Sansは"fl"を1グリフの合字にする。ToUnicodeに1文字しか
+        // 載せないと、PDFのテキスト抽出・検索で"float"が"foat"になる。
+        let dom = html::parse(b"<p>float</p>");
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let pages = paginate_document(&dom, &styles, &fonts, &settings);
+        let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+        let decompressed = decompressed_stream_bytes(&bytes);
+
+        // UTF-16BEで'f'=0066、'l'=006C。
+        assert!(
+            count_occurrences(&decompressed, b"<0066006C>") > 0,
+            "the fl ligature glyph should map to both characters"
+        );
+    }
+
+    #[test]
     fn subsetting_keeps_embedded_font_small() {
         // CJKフォント(元は約19MB)を、短いテキストだけ使ってPDFに埋め込む。
         // サブセット化が効いていれば、出力PDF全体が元フォントよりずっと小さいはず。
@@ -5366,6 +5424,38 @@ mod tests {
         let order: Vec<String> = ordered.iter().map(|b| text_of(b)).collect();
         // b(z-index:-1) < c/d(static、z-indexが効かずauto=0扱い、文書順でc→d) < a(z-index:2)。
         assert_eq!(order, vec!["b", "c", "d", "a"]);
+    }
+
+    #[test]
+    fn paint_order_puts_floats_above_in_flow_blocks() {
+        // floatが先に描かれると、直後のブロックの背景がfloatを塗り潰して
+        // しまう(CSS2.1 Appendix Eではブロックの背景よりfloatが後のレイヤー)。
+        let dom = html::parse(
+            br#"<div>
+                <p class="f" style="float: left; width: 100px;">f</p>
+                <p class="c">c</p>
+            </div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let fonts = test_fonts();
+        let tree = crate::layout::build_box_tree(&dom, &styles);
+        let laid = crate::layout::layout_document(&tree, &styles, &fonts, 800.0);
+        let div_node = find_tag(&dom, dom.document(), "div").expect("div not found");
+        let div_box = find_laid_out(&laid, div_node).expect("div box not found");
+        let LaidOutContent::Blocks(children) = &div_box.content else {
+            panic!("expected the div's own children");
+        };
+
+        let ordered = paint_order(children, &styles);
+        let text_of = |b: &LaidOutBox| -> String {
+            let LaidOutContent::Inline(lines) = &b.content else {
+                panic!("expected inline content");
+            };
+            lines[0].runs[0].text.clone()
+        };
+        let order: Vec<String> = ordered.iter().map(|b| text_of(b)).collect();
+        assert_eq!(order, vec!["c", "f"]);
     }
 
     // ===== `<a href>`のリンク注釈 =====
