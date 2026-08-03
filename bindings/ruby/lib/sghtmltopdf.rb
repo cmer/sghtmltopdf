@@ -53,9 +53,15 @@ module Sghtmltopdf
     #
     #   Sghtmltopdf.render(html) { |bytes| response.stream.write(bytes) }
     #
-    # ローカル・サーバ委譲のどちらでも逐次になる。ローカルは確定した
-    # ページから順に、サーバは`?stream=1`の
-    # chunked transfer encodingをそのまま渡す。
+    # ローカル・サーバ委譲のどちらでも、PDF全体が組み上がるのを待たずに
+    # 書き出せる(ローカルは確定したページから順に、サーバは`?stream=1`の
+    # chunked transfer encodingをそのまま渡す)。
+    #
+    # ただし逐次になるのはPDFの書き出しだけで、HTMLのパースとレイアウトは
+    # 文書全体に対して先に行う。最初のチャンクが届くのは変換の終盤で、
+    # ピークメモリもブロック無しの場合と変わらない。HTMLを読みながら
+    # ページを確定させたい場合は`streaming: true`と併せて使う
+    # (制約と引き換えにメモリが大きく減る)。
     #
     # 1回に渡すバイト数の目安は`chunk_size:`で変えられる(既定64KiB。
     # ローカル変換のみ。小さくするとGVLの取り直しが増える)。

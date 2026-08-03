@@ -845,7 +845,9 @@ impl<S: Sink> Engine<S> {
         self.parser.feed(chunk);
         if self.options.mode == Mode::Streaming && self.parser.has_late_css_source() {
             return Err(EngineError::UnsupportedInStreamingMode(
-                "<style>/<link rel=stylesheet> after <body> is not supported in streaming mode",
+                "<body>より後の<style>/<link rel=stylesheet>はストリーミングモードでは使えません\n  \
+                 (既に書き出したページへ遡って適用できないため)。\n  \
+                 これらを使う場合は --streaming を外してください",
             ));
         }
 
@@ -921,19 +923,25 @@ impl<S: Sink> Engine<S> {
         // 真のストリーミング処理とは原理的に相容れない(ユーザー確認済み)。
         if rules_use_page_count(&page_rules) {
             return Err(EngineError::UnsupportedInStreamingMode(
-                "counter(pages) in @page margin boxes is not supported in streaming mode",
+                "@pageのマージンボックスの counter(pages) はストリーミングモードでは使えません\n  \
+                 (総ページ数は1パスでは決まらないため)。\n  \
+                 これを使う場合は --streaming を外してください",
             ));
         }
         // `--header-html`/`--footer-html`の`[topage]`も同じ理由で使えない。
         if self.options.header_footer_html.uses_total_pages() {
             return Err(EngineError::UnsupportedInStreamingMode(
-                "[topage] in --header-html/--footer-html is not supported in streaming mode",
+                "--header-html/--footer-html の [topage] はストリーミングモードでは使えません\n  \
+                 (総ページ数は1パスでは決まらないため)。\n  \
+                 これを使う場合は --streaming を外してください",
             ));
         }
         // 目次は本文全体のページ分割が終わらないと作れない。
         if self.options.toc.enabled {
             return Err(EngineError::UnsupportedInStreamingMode(
-                "--toc is not supported in streaming mode",
+                "--toc はストリーミングモードでは使えません\n  \
+                 (目次には本文のページ番号が要るため)。\n  \
+                 これを使う場合は --streaming を外してください",
             ));
         }
         // 後方参照セレクタは常に非マッチになる。エラーにはしないが、黙って
@@ -1014,7 +1022,9 @@ impl<S: Sink> Engine<S> {
         let body_border = resolve_border(&body_style);
         if has_visible_decoration(&body_style, &body_border) {
             return Err(EngineError::UnsupportedInStreamingMode(
-                "<body> with a visible background/border is not supported in streaming mode",
+                "背景色・枠線を持つ<body>はストリーミングモードでは使えません\n  \
+                 (複数ページにまたがる装飾を再現できないため)。\n  \
+                 これらを使う場合は --streaming を外してください",
             ));
         }
 

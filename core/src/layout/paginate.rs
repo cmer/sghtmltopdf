@@ -249,6 +249,9 @@ pub struct StreamingPaginator {
     buffer: PaginationBuffer,
     cursor: f32,
     page_height: f32,
+    /// 直前に追加したアイテムが`break-after: always`を持っていたか。
+    /// 次のアイテムを追加するときに改ページとして消費する。
+    pending_break_after: bool,
 }
 
 impl StreamingPaginator {
@@ -257,15 +260,33 @@ impl StreamingPaginator {
             buffer: PaginationBuffer::new(),
             cursor: 0.0,
             page_height,
+            pending_break_after: false,
         }
     }
 
     /// 1つのアイテムを追加する。この呼び出しで確定したページを返す。
+    ///
+    /// アイテム自身の`break-before`/`break-after`はここで扱う。`place_box`が
+    /// 見るのは子リストの中の強制改ページだけで、アイテム同士(=`<body>`直下の
+    /// 兄弟)の関係は分割器の側にしか無いため。一括版で
+    /// [`place_split`]が兄弟に対して行う判定と揃えている。
     pub fn push_item(&mut self, item: &mut LaidOutBox) -> Vec<Page> {
+        let break_before =
+            self.pending_break_after || item.fragmentation.break_before == BreakBetween::Always;
+        // `break-after`は直後の兄弟の前で改ページするという意味なので、
+        // ここでは記録だけして次の`push_item`で消費する。最後のアイテムの
+        // `break-after`は`finish`が無視するため、末尾に空ページはできない。
+        self.pending_break_after = item.fragmentation.break_after == BreakBetween::Always;
+
         let mut flushed = Vec::new();
         {
             let mut on_flush = |page: Page| flushed.push(page);
             let mut state = PaginationState::new(&mut self.buffer, &mut on_flush);
+            // 現在のページに何も置かれていなければ、改ページしても空ページが
+            // 増えるだけなので何もしない(先頭要素の`break-before`など)。
+            if break_before && current_page_has_content(&state) {
+                new_page(&mut state, &mut self.cursor);
+            }
             place_box(item, self.page_height, &mut state, &mut self.cursor);
         }
         flushed
@@ -2654,6 +2675,104 @@ mod tests {
         for (batched, streamed) in batched_pages.iter().zip(streamed_pages.iter()) {
             assert_eq!(batched.boxes.len(), streamed.boxes.len());
         }
+    }
+
+    /// 同じ要素列を、一括版([`paginate`])と[`StreamingPaginator`]の
+    /// `push_item`版の両方でページ分割し、それぞれのページ数を返す。
+    ///
+    /// DOMを1つだけ作って両方で使い回すのは、要素ごとに`html::parse`すると
+    /// 補完される`<body>`のUAマージンが要素数ぶん累積してしまうため
+    /// (`streaming_paginator_multiple_push_item_calls_match_a_single_combined_tree`
+    /// と同じ理由)。
+    fn page_counts_both_ways(author_css: &str, items_html: &str) -> (usize, usize) {
+        let author = parse_stylesheet(author_css);
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let settings = PageSettings::default();
+
+        let dom = html::parse(format!("<div>{items_html}</div>").as_bytes());
+        let styles = compute_styles(&dom, &ua, &author);
+
+        let tree = build_box_tree(&dom, &styles);
+        let mut laid_out = layout_document(&tree, &styles, &fonts, settings.content_width());
+        let batched = paginate(&mut laid_out, settings.content_height()).len();
+
+        let mut items = Vec::new();
+        find_all(&dom, dom.document(), "p", &mut items);
+
+        let mut paginator = StreamingPaginator::new(settings.content_height());
+        let mut streamed = 0;
+        let mut start_y = 0.0f32;
+        for &node in &items {
+            let item_box = build_box_for_element(&dom, &styles, node)
+                .expect("p element should produce a LayoutBox");
+            let mut item_laid_out = layout_document_from(
+                &item_box,
+                &styles,
+                &fonts,
+                settings.content_width(),
+                0.0,
+                start_y,
+            );
+            start_y += item_laid_out.layout.margin_box_height();
+            streamed += paginator.push_item(&mut item_laid_out).len();
+        }
+        streamed += paginator.finish().len();
+
+        (batched, streamed)
+    }
+
+    #[test]
+    fn streaming_paginator_honors_break_after_between_items() {
+        // `place_box`が見るのは子リストの中の強制改ページだけなので、
+        // トップレベル要素同士(=`push_item`の呼び出し順)の`break-after`は
+        // 分割器の側で扱わなければ無視されてしまう。
+        let (batched, streamed) = page_counts_both_ways(
+            ".brk { height: 50px; margin: 0; break-after: always; }",
+            r#"<p class="brk">A</p><p class="brk">B</p><p class="brk">C</p>"#,
+        );
+
+        assert_eq!(
+            batched, 3,
+            "break-after: always on each of three short items should give three pages"
+        );
+        assert_eq!(
+            streamed, batched,
+            "pushing the same items one at a time must honor break-after too"
+        );
+    }
+
+    #[test]
+    fn streaming_paginator_honors_break_before_between_items() {
+        let (batched, streamed) = page_counts_both_ways(
+            ".a { height: 50px; margin: 0; } \
+             .brk { height: 50px; margin: 0; break-before: always; }",
+            r#"<p class="a">A</p><p class="brk">B</p><p class="brk">C</p>"#,
+        );
+
+        assert_eq!(batched, 3);
+        assert_eq!(
+            streamed, batched,
+            "pushing the same items one at a time must honor break-before too"
+        );
+    }
+
+    #[test]
+    fn streaming_paginator_does_not_create_blank_pages_at_the_document_edges() {
+        // 先頭の`break-before`と末尾の`break-after`は、移動先に何も無いので
+        // 空ページを作ってはいけない(一括版と同じ扱い)。
+        let (batched, streamed) = page_counts_both_ways(
+            ".first { height: 50px; margin: 0; break-before: always; } \
+             .last { height: 50px; margin: 0; break-after: always; }",
+            r#"<p class="first">A</p><p class="last">B</p>"#,
+        );
+
+        assert_eq!(
+            batched, 1,
+            "a break-before on the first item and a break-after on the last one \
+             should not create blank pages"
+        );
+        assert_eq!(streamed, batched);
     }
 
     // ===== テーブルの行単位ページ分割 =====

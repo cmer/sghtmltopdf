@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-03T01:46:16+09:00\n"
+"POT-Creation-Date: 2026-08-04T01:53:17+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -3082,13 +3082,13 @@ msgstr "\"invoice\""
 msgid "# ファイル名(.pdfは自動で付く)\n"
 msgstr "# the file name; .pdf is appended for you\n"
 
-#: src/usage/ruby_rails.md:134 src/usage/ruby_rails.md:253
+#: src/usage/ruby_rails.md:134 src/usage/ruby_rails.md:257
 #: src/migration/wicked-pdf.md:22 src/migration/wicked-pdf.md:92
 msgid "\"invoices/show\""
 msgstr "\"invoices/show\""
 
 #: src/usage/ruby_rails.md:135 src/usage/ruby_rails.md:170
-#: src/usage/ruby_rails.md:253 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:257 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:114
 msgid "\"pdf\""
 msgstr "\"pdf\""
@@ -3302,14 +3302,29 @@ msgstr ""
 
 #: src/usage/ruby_rails.md:218
 msgid ""
-"ローカル変換でもサーバ委譲でも逐次になります。 ローカルは確定したページから順"
-"に、サーバはその`?stream=1`(chunked transfer encoding)をそのまま流します。"
+"ローカル変換でもサーバ委譲でも、PDF全体が組み上がるのを待たずに書き出せま"
+"す。 ローカルは確定したページから順に、サーバはその`?stream=1`(chunked "
+"transfer encoding)をそのまま流します。"
 msgstr ""
-"This is incremental both locally and when delegating. Locally the chunks "
-"arrive page by page as each is finalised; with a server, its `?stream=1` "
-"response, sent with chunked transfer encoding, is passed straight through."
+"Both locally and when delegating to a server, writing can start before the "
+"whole PDF has been assembled. Locally the chunks arrive page by page as each "
+"is finalised; with a server, its `?stream=1` response, sent with chunked "
+"transfer encoding, is passed straight through."
 
 #: src/usage/ruby_rails.md:221
+msgid ""
+"ただし逐次になるのはPDFの書き出しだけで、HTMLのパースとレイアウトは文書全体に"
+"対して先に行います。 そのため最初のチャンクが届くのは変換の終盤で、ピークメモ"
+"リもブロックを渡さない場合と変わりません。 HTMLを読みながらページを確定させた"
+"い場合は[ストリーミングモード](#メモリを抑えたいとき)と併せて使ってください。"
+msgstr ""
+"What is incremental, however, is only the PDF output: the HTML is parsed and "
+"laid out for the whole document first. The first chunk therefore arrives "
+"late in the conversion, and peak memory is no lower than it is without a "
+"block. To have pages finalised while the HTML is still being read, combine "
+"this with [streaming mode](#when-you-need-to-keep-memory-down)."
+
+#: src/usage/ruby_rails.md:225
 msgid ""
 "1回に渡すバイト数の目安は`chunk_size:`で変えられます(既定64KiB、ローカル変換"
 "のみ)。 小さくすると細かく届きますが、そのたびにGVLを取り直すのでレンダリング"
@@ -3320,11 +3335,11 @@ msgstr ""
 "more finely, but the GVL has to be reacquired each time, which slows "
 "rendering down."
 
-#: src/usage/ruby_rails.md:228
+#: src/usage/ruby_rails.md:232
 msgid "`Thread#kill`とタイムアウトが効く"
 msgstr "`Thread#kill` and timeouts work"
 
-#: src/usage/ruby_rails.md:230
+#: src/usage/ruby_rails.md:234
 msgid ""
 "ブロックの呼び出しはRubyのメソッド呼び出しなので、その時点で保留中の割り込み"
 "が処理されます。 ブロック付きで呼んでいる限り、`Thread#kill`や`Timeout."
@@ -3334,11 +3349,11 @@ msgstr ""
 "is handled at that point. As long as you pass a block, `Thread#kill`, "
 "`Timeout.timeout`, and `Rack::Timeout` all take effect at chunk boundaries."
 
-#: src/usage/ruby_rails.md:235
+#: src/usage/ruby_rails.md:239
 msgid "# 10秒で中断できる\n"
 msgstr "# can be interrupted after 10 seconds\n"
 
-#: src/usage/ruby_rails.md:239
+#: src/usage/ruby_rails.md:243
 msgid ""
 "ブロックを渡さない`render`/`render_to_file`は変換の間まったくRubyへ戻らないた"
 "め、途中で止められません。 長い変換に上限をかけたい場合はブロック付きで呼んで"
@@ -3348,11 +3363,11 @@ msgstr ""
 "the conversion and therefore cannot be stopped part way. To put a limit on a "
 "long conversion, call them with a block."
 
-#: src/usage/ruby_rails.md:242
+#: src/usage/ruby_rails.md:246
 msgid "Railsで逐次返却する"
 msgstr "Streaming the response from Rails"
 
-#: src/usage/ruby_rails.md:244
+#: src/usage/ruby_rails.md:248
 msgid ""
 "`render pdf:`のレンダラは、組み上がったPDFを`send_data`で一括返却します。 確"
 "定したページから順に返したい場合は`ActionController::Live`と組み合わせます。"
@@ -3361,15 +3376,15 @@ msgstr ""
 "`send_data`. To send pages as they are finalised, combine it with "
 "`ActionController::Live`."
 
-#: src/usage/ruby_rails.md:252
+#: src/usage/ruby_rails.md:256
 msgid "\"Content-Type\""
 msgstr "\"Content-Type\""
 
-#: src/usage/ruby_rails.md:252 src/usage/ruby_rails.md:271
+#: src/usage/ruby_rails.md:256 src/usage/ruby_rails.md:275
 msgid "\"application/pdf\""
 msgstr "\"application/pdf\""
 
-#: src/usage/ruby_rails.md:261
+#: src/usage/ruby_rails.md:265
 msgid ""
 "途中まで書き出したあとに失敗すると、クライアントには壊れたPDFが届きます(ヘッ"
 "ダは既に送信済みなのでステータスを変えられません)。 サーバモードの`?stream=1`"
@@ -3379,11 +3394,11 @@ msgstr ""
 "broken PDF, because the headers have already gone out and the status can no "
 "longer be changed. This is the same property as `?stream=1` in server mode."
 
-#: src/usage/ruby_rails.md:264
+#: src/usage/ruby_rails.md:268
 msgid "S3へ直接上げる"
 msgstr "Uploading straight to S3"
 
-#: src/usage/ruby_rails.md:266
+#: src/usage/ruby_rails.md:270
 msgid ""
 "gemはS3向けの実装を持ちません(依存を増やさず、書き方も短いためです)。 マルチ"
 "パートアップロードは最後のパート以外は5MB以上という制約があるので、溜めてから"
@@ -3393,20 +3408,20 @@ msgstr ""
 "the code is short anyway. A multipart upload requires every part except the "
 "last to be at least 5MB, so buffer before sending."
 
-#: src/usage/ruby_rails.md:272
+#: src/usage/ruby_rails.md:276
 msgid "\"\""
 msgstr "\"\""
 
-#: src/usage/ruby_rails.md:295
+#: src/usage/ruby_rails.md:299
 msgid "小さいPDFなら`put_object(body: Sghtmltopdf.render(html))`で十分です。"
 msgstr ""
 "For a small PDF, `put_object(body: Sghtmltopdf.render(html))` is enough."
 
-#: src/usage/ruby_rails.md:297
+#: src/usage/ruby_rails.md:301
 msgid "メモリを抑えたいとき"
 msgstr "When you need to keep memory down"
 
-#: src/usage/ruby_rails.md:299
+#: src/usage/ruby_rails.md:303
 msgid ""
 "数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)"
 "を使うとメモリが大きく減ります(実測: 60,000要素で 228MB → 28MB。[メモリと処理"
@@ -3417,7 +3432,7 @@ msgstr ""
 "goes from 228MB to 28MB. See [Memory and processing time](./cli/streaming."
 "md#memory-and-processing-time)."
 
-#: src/usage/ruby_rails.md:305
+#: src/usage/ruby_rails.md:309
 msgid ""
 "その代わり、文書全体を見ないと決まらないもの(`toc`・`counter(pages)`・"
 "`<body>`より後の`<style>`など)が使えません。 制約の一覧は[ストリーミングモー"
