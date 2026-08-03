@@ -91,7 +91,14 @@ jobs:
         run: |
           docker run --rm --platform linux/arm64 \
             -v "$PWD:/work" -w /work ruby:3.4-slim \
-            bash -c 'gem install --no-document ./pkg/*.gem && ruby bindings/ruby/script/smoke.rb'
+            bash -c '
+              set -eux
+              apt-get update
+              apt-get install -y --no-install-recommends fonts-dejavu-core
+              rm -rf /var/lib/apt/lists/*
+              gem install --no-document ./pkg/*.gem
+              ruby bindings/ruby/script/smoke.rb
+            '
 
   # arm64-darwin: macOSランナーはApple Silicon
   smoke-macos-arm64:
