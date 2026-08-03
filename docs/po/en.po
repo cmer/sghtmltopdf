@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-04T03:01:04+09:00\n"
+"POT-Creation-Date: 2026-08-04T03:26:47+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -113,7 +113,7 @@ msgstr "About sghtmltopdf"
 #: src/index.md:3
 msgid ""
 "HTML をそのまま PDF として出力するための変換器/レンダラーです。 Rust で書かれ"
-"ており、Chromium/Webkit/Geckoのヘッドレスブラウザのインストールを必要とせず "
+"ており、Chromium/WebKit/Geckoのヘッドレスブラウザのインストールを必要とせず "
 "PDF を出力できます。"
 msgstr ""
 "sghtmltopdf is a converter and renderer that turns HTML directly into PDF. "
@@ -162,7 +162,7 @@ msgstr ""
 #: src/index.md:16
 msgid ""
 "しかし、[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) は依存して"
-"いた QtWebkit がメンテナンス終了になったため、それに伴い2023年1月にアーカイブ"
+"いた QtWebKit がメンテナンス終了になったため、それに伴い2023年1月にアーカイブ"
 "されてしまいました。  \n"
 "現在は、Headless Chrome等のヘッドレスブラウザを使って PDF を出力する場面が多"
 "いと思います。"
@@ -177,8 +177,8 @@ msgstr ""
 msgid ""
 "個人的にwkhtmltopdf のアプローチがとても好きだったので、使っていて感じた課題"
 "を解消させてモダナイズした wkhtmltopdf を作ろうと思いました。  \n"
-"sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf への敬意を込めて"
-"「次世代」をつけました。"
+"sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf にお世話になった"
+"敬意を込めて「第2世代」とつけました。"
 msgstr ""
 "I personally liked the approach wkhtmltopdf took, so I set out to build a "
 "modernised version of it that fixes the problems I ran into while using "
@@ -187,25 +187,29 @@ msgstr ""
 
 #: src/index.md:22
 msgid ""
-"wkhtmltopdf（QtWebkit）やヘッドレスブラウザを使ったPDF出力に感じていた課題"
+"wkhtmltopdf（QtWebKit）やヘッドレスブラウザを使ったPDF出力に感じていた課題"
 msgstr ""
 "Problems I ran into with wkhtmltopdf (QtWebKit) and with headless browsers"
 
 #: src/index.md:24
+msgid "wkhtmltopdf に特有のもの:"
+msgstr "Specific to wkhtmltopdf:"
+
+#: src/index.md:26
 msgid ""
-"QtWebkit が古く、CSS3 への対応が限定的（FlexboxやGridやカスタムプロパティに非"
+"QtWebKit が古く、CSS3 への対応が限定的（Flexbox・Grid・カスタムプロパティに非"
 "対応）"
 msgstr ""
 "QtWebKit is old, and its CSS3 support is limited (no Flexbox, Grid, or "
 "custom properties)"
 
-#: src/index.md:25
+#: src/index.md:27
 msgid "Webfont を使うと、読み込みを待たずに PDF 出力されてしまうことがある"
 msgstr ""
 "With webfonts, the PDF is sometimes written out before the fonts have "
 "finished loading"
 
-#: src/index.md:26
+#: src/index.md:28
 msgid ""
 "表（Table）の最中で改ページした場合、改ページ後のページに表のヘッダーが出せな"
 "い"
@@ -213,7 +217,11 @@ msgstr ""
 "When a table breaks across pages, the table header cannot be repeated on the "
 "following pages"
 
-#: src/index.md:27
+#: src/index.md:30
+msgid "ヘッドレスブラウザにも共通するもの:"
+msgstr "Shared with headless browsers:"
+
+#: src/index.md:32
 msgid ""
 "Webアプリとは別にバイナリをインストールする必要があり、AWS Lambda などで環境"
 "構築に手間がかかる"
@@ -221,53 +229,88 @@ msgstr ""
 "A separate binary has to be installed alongside the web application, which "
 "makes environments such as AWS Lambda awkward to set up"
 
-#: src/index.md:28
+#: src/index.md:33
 msgid ""
 "巨大な HTML が渡ってくると、出力にかかる時間やメモリ消費コストが一気に増える"
 msgstr ""
 "When a very large HTML document comes in, both the time and the memory it "
 "takes grow sharply"
 
-#: src/index.md:30
+#: src/index.md:35
 msgid "これらを解決するために、sghtmltopdf では以下のような対応を入れました。"
 msgstr "sghtmltopdf addresses these as follows."
 
-#: src/index.md:32
-msgid "CSS3 にほぼ対応（レアプロパティは一部非対応）"
-msgstr "Covers most of CSS3 (some rarely used properties are not supported)"
-
-#: src/index.md:33
-msgid "Webfont に対応。serif/sans-serif/mono それぞれ個別に指定可能に"
+#: src/index.md:37
+msgid ""
+"Flexbox・Grid・カスタムプロパティを含む CSS3 に対応（`!important` やグラデー"
+"ションなど、対応していないものは[プロパティ対応表](supports/properties.md)を"
+"参照）"
 msgstr ""
-"Supports webfonts, and lets you specify serif, sans-serif, and monospace "
-"fonts individually"
+"Supports CSS3 including Flexbox, Grid, and custom properties (for what is "
+"not supported, such as `!important` and gradients, see the [property support "
+"table](supports/properties.md))"
 
-#: src/index.md:34
-msgid "表（Table）の途中で改ページが起きてもヘッダーを表示するように"
+#: src/index.md:38
+msgid ""
+"Webfont（`@font-face`）を、非同期の読み込み待ちなしに決定論的なタイミングで解"
+"決。汎用ファミリー名の実体は`--serif-font`/`--gothic-font`/`--mono-font`で個"
+"別に指定可能"
+msgstr ""
+"Resolves webfonts (`@font-face`) at a deterministic point, with no "
+"asynchronous waiting. The face behind each generic family name can be pinned "
+"individually with `--serif-font`, `--gothic-font`, and `--mono-font`"
+
+#: src/index.md:39
+msgid ""
+"表（Table）の途中で改ページが起きても、`<thead>`の行を次のページ以降の先頭に"
+"繰り返す"
 msgstr ""
 "Repeats the table header on every page when a table breaks across pages"
 
-#: src/index.md:35
+#: src/index.md:40
 msgid ""
-"ネイティブ拡張を FFI で呼び出すことで、ブラウザプロセスの起動を必要とせず、"
-"Webアプリのプロセスに同居可能に"
+"追加のランタイムなしに動く実行ファイル1つ、または[公式Dockerイメージ]"
+"(getting-started/docker.md)で配布。Ruby からはネイティブ拡張として呼べるの"
+"で、ブラウザプロセスを起動せずWebアプリのプロセスに同居できる"
 msgstr ""
-"Runs as a native extension called over FFI, so no browser process is started "
-"and the renderer lives inside your web application process"
+"Ships as a single executable that needs no extra runtime, or as the "
+"[official Docker image](getting-started/docker.md). From Ruby it is called "
+"as a native extension, so it runs inside the web application process without "
+"starting a browser"
 
-#: src/index.md:36
+#: src/index.md:41
 msgid ""
-"HTML をチャンク単位で読み確定したページから書き出せるストリーミングモードを用"
-"意して、メモリ消費量を律速に"
+"ブラウザエンジンを載せ替えるのではなく、PDF出力に特化したレンダリングエンジン"
+"を実装。画面描画やスクリプト実行のための仕組みを持たないぶん、文書が大きいほ"
+"ど処理時間の差が開く（60,000要素の文書で wkhtmltopdf の約20倍、ヘッドレス"
+"Chromeの約59倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパ"
+"フォーマンス比較)）"
 msgstr ""
-"Offers a streaming mode that reads HTML in chunks and writes out each page "
-"as soon as it is final, which keeps memory use bounded"
+"Implements a rendering engine dedicated to PDF output, rather than swapping in "
+"another browser engine. With none of the machinery a browser needs for "
+"on-screen painting or script execution, the gap in processing time widens as "
+"the document grows (about 20 times faster than wkhtmltopdf and about 59 times "
+"faster than Headless Chrome on a 60,000 element document; see the [performance "
+"comparison](#performance-compared-with-wkhtmltopdf-and-headless-chrome))"
 
-#: src/index.md:38
+#: src/index.md:42
+msgid ""
+"HTML をチャンク単位で読み、確定したページから書き出す[ストリーミングモード]"
+"(usage/cli/streaming.md)を用意。段落が主体の文書ではメモリ消費量を大きく抑え"
+"られる（書き出しの区切りが`<body>`直下の要素単位のため、巨大な表が1つだけの文"
+"書では効果がない）"
+msgstr ""
+"Offers a [streaming mode](usage/cli/streaming.md) that reads the HTML in "
+"chunks and writes each page out as soon as it is final, which keeps memory "
+"use far lower for documents made of paragraphs (the flush boundary is one "
+"element below `<body>`, so it does not help a document that is a single huge "
+"table)"
+
+#: src/index.md:44
 msgid "wkhtmltopdf / ヘッドレスChromeとのパフォーマンス比較"
 msgstr "Performance compared with wkhtmltopdf and Headless Chrome"
 
-#: src/index.md:40
+#: src/index.md:46
 msgid ""
 "同じHTMLを同じ用紙設定で変換したときの実測値です。 用紙設定は「用紙A4・余白"
 "10mm」を`@page`で指定し、フォントは`@font-face`で同じファイルを参照していま"
@@ -277,7 +320,7 @@ msgstr ""
 "setup. The page setup is A4 with 10mm margins, given through `@page`, and "
 "every engine loads the same font file through `@font-face`."
 
-#: src/index.md:43
+#: src/index.md:49
 msgid ""
 "比較対象は、アーカイブ時点の最終版である wkhtmltopdf 0.12.6.1 と、Google "
 "Chrome 151 のヘッドレスモードです。 各セルは「ピークメモリ / 処理時間」を表し"
@@ -287,138 +330,138 @@ msgstr ""
 "was archived, and Google Chrome 151 in headless mode. Each cell shows peak "
 "memory and processing time."
 
-#: src/index.md:46
+#: src/index.md:52
 msgid ""
 "この比較は `cargo run --release --example compare_engines` で出したものです。"
 msgstr ""
 "These figures come from `cargo run --release --example compare_engines`."
 
-#: src/index.md:48
+#: src/index.md:54
 msgid "段落が主体の文書:"
 msgstr "A document made of paragraphs:"
 
-#: src/index.md:50 src/usage/cli/streaming.md:52
+#: src/index.md:56 src/usage/cli/streaming.md:52
 msgid "要素数"
 msgstr "Elements"
 
-#: src/index.md:50 src/index.md:58 src/migration/wkhtmltopdf.md:11
+#: src/index.md:56 src/index.md:64 src/migration/wkhtmltopdf.md:11
 #: src/migration/wicked-pdf.md:50 src/migration/wicked-pdf.md:100
 msgid "sghtmltopdf"
 msgstr "sghtmltopdf"
 
-#: src/index.md:50 src/index.md:58
+#: src/index.md:56 src/index.md:64
 msgid "sghtmltopdf（ストリーミング）"
 msgstr "sghtmltopdf (streaming)"
 
-#: src/index.md:50 src/index.md:58 src/migration/wkhtmltopdf.md:11
+#: src/index.md:56 src/index.md:64 src/migration/wkhtmltopdf.md:11
 msgid "wkhtmltopdf"
 msgstr "wkhtmltopdf"
 
-#: src/index.md:50 src/index.md:58
+#: src/index.md:56 src/index.md:64
 msgid "ヘッドレスChrome"
 msgstr "Headless Chrome"
 
-#: src/index.md:52 src/index.md:60 src/usage/cli/streaming.md:55
+#: src/index.md:58 src/index.md:66 src/usage/cli/streaming.md:55
 msgid "5,000"
 msgstr "5,000"
 
-#: src/index.md:52
+#: src/index.md:58
 msgid "26MB / 0.12秒"
 msgstr "26MB / 0.12s"
 
-#: src/index.md:52
+#: src/index.md:58
 msgid "9MB / 0.13秒"
 msgstr "9MB / 0.13s"
 
-#: src/index.md:52
+#: src/index.md:58
 msgid "43MB / 0.48秒"
 msgstr "43MB / 0.48s"
 
-#: src/index.md:52
+#: src/index.md:58
 msgid "563MB / 1.29秒"
 msgstr "563MB / 1.29s"
 
-#: src/index.md:53 src/index.md:61 src/usage/cli/streaming.md:56
+#: src/index.md:59 src/index.md:67 src/usage/cli/streaming.md:56
 msgid "20,000"
 msgstr "20,000"
 
-#: src/index.md:53
+#: src/index.md:59
 msgid "80MB / 0.49秒"
 msgstr "80MB / 0.49s"
 
-#: src/index.md:53
+#: src/index.md:59
 msgid "13MB / 0.48秒"
 msgstr "13MB / 0.48s"
 
-#: src/index.md:53
+#: src/index.md:59
 msgid "86MB / 2.30秒"
 msgstr "86MB / 2.30s"
 
-#: src/index.md:53
+#: src/index.md:59
 msgid "952MB / 7.40秒"
 msgstr "952MB / 7.40s"
 
-#: src/index.md:54 src/usage/cli/streaming.md:57
+#: src/index.md:60 src/usage/cli/streaming.md:57
 msgid "60,000"
 msgstr "60,000"
 
-#: src/index.md:54
+#: src/index.md:60
 msgid "228MB / 1.60秒"
 msgstr "228MB / 1.60s"
 
-#: src/index.md:54
+#: src/index.md:60
 msgid "25MB / 1.29秒"
 msgstr "25MB / 1.29s"
 
-#: src/index.md:54
+#: src/index.md:60
 msgid "200MB / 32.54秒"
 msgstr "200MB / 32.54s"
 
-#: src/index.md:54
+#: src/index.md:60
 msgid "1,649MB / 93.89秒"
 msgstr "1,649MB / 93.89s"
 
-#: src/index.md:56
+#: src/index.md:62
 msgid "表が主体の帳票:"
 msgstr "A statement made of a single large table:"
 
-#: src/index.md:58
+#: src/index.md:64
 msgid "行数"
 msgstr "Rows"
 
-#: src/index.md:60
+#: src/index.md:66
 msgid "48MB / 0.44秒"
 msgstr "48MB / 0.44s"
 
-#: src/index.md:60
+#: src/index.md:66
 msgid "48MB / 0.49秒"
 msgstr "48MB / 0.49s"
 
-#: src/index.md:60
+#: src/index.md:66
 msgid "62MB / 1.50秒"
 msgstr "62MB / 1.50s"
 
-#: src/index.md:60
+#: src/index.md:66
 msgid "1,369MB / 4.77秒"
 msgstr "1,369MB / 4.77s"
 
-#: src/index.md:61
+#: src/index.md:67
 msgid "172MB / 1.98秒"
 msgstr "172MB / 1.98s"
 
-#: src/index.md:61
+#: src/index.md:67
 msgid "171MB / 1.95秒"
 msgstr "171MB / 1.95s"
 
-#: src/index.md:61
+#: src/index.md:67
 msgid "163MB / 13.53秒"
 msgstr "163MB / 13.53s"
 
-#: src/index.md:61
+#: src/index.md:67
 msgid "6,221MB / 39.19秒"
 msgstr "6,221MB / 39.19s"
 
-#: src/index.md:63
+#: src/index.md:69
 msgid ""
 "処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約"
 "20倍、ヘッドレスChromeの約59倍の速さです。 20,000行の帳票では、それぞれ約6.8"
@@ -429,7 +472,7 @@ msgstr ""
 "faster than Headless Chrome. For the 20,000 row statement the factors are "
 "about 6.8 and about 20."
 
-#: src/index.md:67
+#: src/index.md:73
 msgid ""
 "メモリは、wkhtmltopdfとはほぼ同等です。 60,000要素と20,000行の帳票では "
 "sghtmltopdf のほうがやや多く、文書サイズに比例して増える点も変わりません。 "
@@ -447,7 +490,7 @@ msgstr ""
 "contains a single table cannot release memory until the end of that table "
 "has been written."
 
-#: src/index.md:73
+#: src/index.md:79
 msgid ""
 "ヘッドレスChromeとは桁が違い、20,000行の帳票では6.2GBに達します。 ヘッドレス"
 "Chromeはブラウザとして必要な機能が全て含まれているため、PDF出力に特化した "
@@ -457,11 +500,11 @@ msgstr ""
 "report. It carries everything a browser needs, so sghtmltopdf, which does "
 "nothing but produce PDFs, uses memory far more sparingly."
 
-#: src/index.md:76
+#: src/index.md:82
 msgid "処理の流れ"
 msgstr "How it works"
 
-#: src/index.md:78
+#: src/index.md:84
 msgid ""
 "```mermaid\n"
 "flowchart TD\n"
@@ -485,7 +528,7 @@ msgstr ""
 "    E -. \"free the memory and read on\" .-> B\n"
 "```"
 
-#: src/index.md:89
+#: src/index.md:95
 msgid ""
 "ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先"
 "へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしていま"
@@ -8356,6 +8399,28 @@ msgstr ""
 "Embedding a JavaScript engine remains something to consider if the need "
 "arises. Items above that are not deliberate non-goals, such as PDF outlines, "
 "may well be supported later."
+
+#~ msgid "CSS3 にほぼ対応（レアプロパティは一部非対応）"
+#~ msgstr "Covers most of CSS3 (some rarely used properties are not supported)"
+
+#~ msgid "Webfont に対応。serif/sans-serif/mono それぞれ個別に指定可能に"
+#~ msgstr ""
+#~ "Supports webfonts, and lets you specify serif, sans-serif, and monospace "
+#~ "fonts individually"
+
+#~ msgid ""
+#~ "ネイティブ拡張を FFI で呼び出すことで、ブラウザプロセスの起動を必要とせ"
+#~ "ず、Webアプリのプロセスに同居可能に"
+#~ msgstr ""
+#~ "Runs as a native extension called over FFI, so no browser process is "
+#~ "started and the renderer lives inside your web application process"
+
+#~ msgid ""
+#~ "HTML をチャンク単位で読み確定したページから書き出せるストリーミングモード"
+#~ "を用意して、メモリ消費量を律速に"
+#~ msgstr ""
+#~ "Offers a streaming mode that reads HTML in chunks and writes out each "
+#~ "page as soon as it is final, which keeps memory use bounded"
 
 #~ msgid "79MB / 0.89秒"
 #~ msgstr "79MB / 0.89s"

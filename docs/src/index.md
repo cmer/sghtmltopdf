@@ -1,7 +1,7 @@
 # sghtmltopdf とは
 
 HTML をそのまま PDF として出力するための変換器/レンダラーです。
-Rust で書かれており、Chromium/Webkit/Geckoのヘッドレスブラウザのインストールを必要とせず PDF を出力できます。
+Rust で書かれており、Chromium/WebKit/Geckoのヘッドレスブラウザのインストールを必要とせず PDF を出力できます。
 
 使い方は、CLI・HTTPサーバ・ライブラリの3種類から選択でき、どれも同じエンジンを同じオプションで動かします。
 ライブラリについては、現時点で Rubygems に対応しています。
@@ -13,27 +13,33 @@ PDFエンジンは、html5ever/Stylo/Taffy といった Servo が提供してい
 作者が初めてWebアプリ上で PDF を出力する機能を実装することになったとき、当時の開発環境は Ruby on Rails だったのですが、[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) と Railsから使うための [wicked_pdf gem](https://github.com/mileszs/wicked_pdf) を使っていました。  
 それまで何となく PDF は難しそうで敬遠していたのですが、HTML で見た目を確認してそのまま PDF に出力できるという快適な開発フローに感動したのを覚えています。
 
-しかし、[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) は依存していた QtWebkit がメンテナンス終了になったため、それに伴い2023年1月にアーカイブされてしまいました。  
+しかし、[wkhtmltopdf](https://github.com/wkhtmltopdf/wkhtmltopdf) は依存していた QtWebKit がメンテナンス終了になったため、それに伴い2023年1月にアーカイブされてしまいました。  
 現在は、Headless Chrome等のヘッドレスブラウザを使って PDF を出力する場面が多いと思います。
 
 個人的にwkhtmltopdf のアプローチがとても好きだったので、使っていて感じた課題を解消させてモダナイズした wkhtmltopdf を作ろうと思いました。  
-sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf への敬意を込めて「次世代」をつけました。
+sghtmltopdf の「sg」は Second Generation の略で、wkhtmltopdf にお世話になった敬意を込めて「第2世代」とつけました。
 
-## wkhtmltopdf（QtWebkit）やヘッドレスブラウザを使ったPDF出力に感じていた課題
+## wkhtmltopdf（QtWebKit）やヘッドレスブラウザを使ったPDF出力に感じていた課題
 
-- QtWebkit が古く、CSS3 への対応が限定的（FlexboxやGridやカスタムプロパティに非対応）
+wkhtmltopdf に特有のもの:
+
+- QtWebKit が古く、CSS3 への対応が限定的（Flexbox・Grid・カスタムプロパティに非対応）
 - Webfont を使うと、読み込みを待たずに PDF 出力されてしまうことがある
 - 表（Table）の最中で改ページした場合、改ページ後のページに表のヘッダーが出せない
+
+ヘッドレスブラウザにも共通するもの:
+
 - Webアプリとは別にバイナリをインストールする必要があり、AWS Lambda などで環境構築に手間がかかる
 - 巨大な HTML が渡ってくると、出力にかかる時間やメモリ消費コストが一気に増える
 
 これらを解決するために、sghtmltopdf では以下のような対応を入れました。
 
-- CSS3 にほぼ対応（レアプロパティは一部非対応）
-- Webfont に対応。serif/sans-serif/mono それぞれ個別に指定可能に
-- 表（Table）の途中で改ページが起きてもヘッダーを表示するように
-- ネイティブ拡張を FFI で呼び出すことで、ブラウザプロセスの起動を必要とせず、Webアプリのプロセスに同居可能に
-- HTML をチャンク単位で読み確定したページから書き出せるストリーミングモードを用意して、メモリ消費量を律速に
+- Flexbox・Grid・カスタムプロパティを含む CSS3 に対応（`!important` やグラデーションなど、対応していないものは[プロパティ対応表](supports/properties.md)を参照）
+- Webfont（`@font-face`）を、非同期の読み込み待ちなしに決定論的なタイミングで解決。汎用ファミリー名の実体は`--serif-font`/`--gothic-font`/`--mono-font`で個別に指定可能
+- 表（Table）の途中で改ページが起きても、`<thead>`の行を次のページ以降の先頭に繰り返す
+- 追加のランタイムなしに動く実行ファイル1つ、または[公式Dockerイメージ](getting-started/docker.md)で配布。Ruby からはネイティブ拡張として呼べるので、ブラウザプロセスを起動せずWebアプリのプロセスに同居できる
+- ブラウザエンジンを載せ替えるのではなく、PDF出力に特化したレンダリングエンジンを実装。画面描画やスクリプト実行のための仕組みを持たないぶん、文書が大きいほど処理時間の差が開く（60,000要素の文書で wkhtmltopdf の約20倍、ヘッドレスChromeの約59倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパフォーマンス比較)）
+- HTML をチャンク単位で読み、確定したページから書き出す[ストリーミングモード](usage/cli/streaming.md)を用意。段落が主体の文書ではメモリ消費量を大きく抑えられる（書き出しの区切りが`<body>`直下の要素単位のため、巨大な表が1つだけの文書では効果がない）
 
 ### wkhtmltopdf / ヘッドレスChromeとのパフォーマンス比較
 
