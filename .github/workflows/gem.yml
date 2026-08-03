@@ -1,6 +1,6 @@
 name: gem
 
-# 毎PRで回すには重い(3プラットフォーム×複数Ruby ABI)ので、タグを打ったときと手動実行のときだけ動かす
+# 毎PRで回すには重い(5プラットフォーム×複数Ruby ABI)ので、タグを打ったときと手動実行のときだけ動かす
 
 on:
   workflow_dispatch:
@@ -21,7 +21,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [x86_64-linux, aarch64-linux, arm64-darwin]
+        platform:
+          - x86_64-linux
+          - aarch64-linux
+          - x86_64-linux-musl # Alpine
+          - aarch64-linux-musl # Alpine
+          - arm64-darwin
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
@@ -100,6 +105,52 @@ jobs:
               ruby bindings/ruby/script/smoke.rb
             '
 
+  # x86_64-linux-musl: Alpineのコンテナで確かめる
+  # ローカルの.gemでも`gem install`はプラットフォーム一致を見るので、
+  # Alpine側のRubyGemsがmusl向けgemを受け付けることの確認も兼ねる
+  smoke-linux-musl:
+    needs: cross-gem
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gem-x86_64-linux-musl
+          path: pkg
+      - name: gem install して変換する(Alpine)
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work ruby:3.4-alpine \
+            sh -c '
+              set -eux
+              apk add --no-cache font-dejavu
+              gem install --no-document ./pkg/*.gem
+              ruby bindings/ruby/script/smoke.rb
+            '
+
+  # aarch64-linux-musl: QEMUでarm64のAlpineコンテナを動かす
+  smoke-linux-musl-arm64:
+    needs: cross-gem
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gem-aarch64-linux-musl
+          path: pkg
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - name: gem install して変換する(Alpine, linux/arm64)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD:/work" -w /work ruby:3.4-alpine \
+            sh -c '
+              set -eux
+              apk add --no-cache font-dejavu
+              gem install --no-document ./pkg/*.gem
+              ruby bindings/ruby/script/smoke.rb
+            '
+
   # arm64-darwin: macOSランナーはApple Silicon
   smoke-macos-arm64:
     needs: cross-gem
@@ -121,7 +172,13 @@ jobs:
   # rubygems.orgへのpublish
   # 認証はtrusted publishing(OIDC)で、APIキーはリポジトリに置かない
   publish:
-    needs: [cross-gem, smoke-linux, smoke-linux-arm64, smoke-macos-arm64]
+    needs:
+      - cross-gem
+      - smoke-linux
+      - smoke-linux-arm64
+      - smoke-linux-musl
+      - smoke-linux-musl-arm64
+      - smoke-macos-arm64
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # rubygems.orgのtrusted publisher設定でenvironmentを指定する
@@ -140,7 +197,7 @@ jobs:
           bundler-cache: true
           cargo-cache: "false"
           working-directory: bindings/ruby
-      # クロスビルドした3プラットフォーム分を`pkg/`へ集める
+      # クロスビルドした5プラットフォーム分を`pkg/`へ集める
       - uses: actions/download-artifact@v4
         with:
           pattern: gem-*

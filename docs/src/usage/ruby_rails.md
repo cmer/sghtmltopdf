@@ -20,11 +20,11 @@ gem "sghtmltopdf"
 
 | | 対応 |
 |---|---|
-| プラットフォーム | `x86_64-linux` / `aarch64-linux` / `arm64-darwin` |
+| プラットフォーム | `x86_64-linux` / `aarch64-linux` / `x86_64-linux-musl` / `aarch64-linux-musl` / `arm64-darwin` |
 | Ruby | 3.2以上 |
 
-Linuxはglibc向け(Debian/Ubuntu系)のみで、musl(Alpine)・Windows・Intel Macは対象外です。
-これらの環境ではインストールできません。
+Linuxはglibc(Debian/Ubuntu系)とmusl(Alpine)の両方があり、`gem install`が環境に合うほうを選びます。
+Windows・Intel Macは対象外で、これらの環境ではインストールできません。
 [サーバへ委譲する](#サーバへ委譲する)という手があります。
 
 ## 基本
@@ -176,7 +176,7 @@ Railtieが次の既定値を入れます。
 
 `server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く
 別プロセスへ投げます。
-アプリのCPUを使いたくない場合や、gemの対応プラットフォーム外(Alpineなど)で動かす場合に使います。
+アプリのCPUを使いたくない場合や、gemの対応プラットフォーム外(Windowsなど)で動かす場合に使います。
 
 ```ruby
 Sghtmltopdf.configure do |c|

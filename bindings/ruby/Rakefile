@@ -9,7 +9,11 @@ RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
   ext.lib_dir = "lib/sghtmltopdf"
   # 実際のビルドはoxidize-rb/cross-gem-actionがCIで行う(T348)。
   ext.cross_compile = true
-  ext.cross_platform = %w[x86_64-linux aarch64-linux arm64-darwin]
+  ext.cross_platform = %w[
+    x86_64-linux aarch64-linux
+    x86_64-linux-musl aarch64-linux-musl
+    arm64-darwin
+  ]
 end
 
 # クロスビルド(rb-sys-dockのコンテナ内)ではテスト用のgemが入っていない
@@ -26,7 +30,7 @@ end
 # `bundler/gem_tasks`の`release`は「ソースgemを1つbuild → gitタグを作る →
 # push」という純Rubyのgem向けの手順で、このgemには合わない。
 #
-# * 配布するのはprecompiled gem 3プラットフォーム + ソースgemの計4つ。
+# * 配布するのはprecompiled gem 5プラットフォーム + ソースgemの計6つ。
 #   CIがクロスビルドしたものを`pkg/`へ集めてから出す
 # * gitタグは人が打ち、そのタグのpushがリリースのトリガなので、
 #   ここでタグを作ろうとすると「既にある」で失敗する

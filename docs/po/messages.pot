@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-04T02:35:22+09:00\n"
+"POT-Creation-Date: 2026-08-04T03:01:04+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -2247,7 +2247,9 @@ msgid "プラットフォーム"
 msgstr ""
 
 #: src/usage/ruby_rails.md:23
-msgid "`x86_64-linux` / `aarch64-linux` / `arm64-darwin`"
+msgid ""
+"`x86_64-linux` / `aarch64-linux` / `x86_64-linux-musl` / "
+"`aarch64-linux-musl` / `arm64-darwin`"
 msgstr ""
 
 #: src/usage/ruby_rails.md:24
@@ -2260,8 +2262,8 @@ msgstr ""
 
 #: src/usage/ruby_rails.md:26
 msgid ""
-"Linuxはglibc向け(Debian/Ubuntu系)のみで、musl(Alpine)・Windows・Intel Macは対象外です。 "
-"これらの環境ではインストールできません。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
+"Linuxはglibc(Debian/Ubuntu系)とmusl(Alpine)の両方があり、`gem install`が環境に合うほうを選びます。 "
+"Windows・Intel Macは対象外で、これらの環境ではインストールできません。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
 msgstr ""
 
 #: src/usage/ruby_rails.md:33
@@ -2670,7 +2672,7 @@ msgstr ""
 #: src/usage/ruby_rails.md:177
 msgid ""
 "`server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く 別プロセスへ投げます。 "
-"アプリのCPUを使いたくない場合や、gemの対応プラットフォーム外(Alpineなど)で動かす場合に使います。"
+"アプリのCPUを使いたくない場合や、gemの対応プラットフォーム外(Windowsなど)で動かす場合に使います。"
 msgstr ""
 
 #: src/usage/ruby_rails.md:183 src/migration/wicked-pdf.md:142
