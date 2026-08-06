@@ -48,28 +48,36 @@ cssparser = "0.37.0"
 encoding_rs = "0.8"
 cssparser-color = "0.5.0"
 flate2 = "1.1.9"
-fontdb = "0.23.0"
+fontdb = "0.24"
+# シェイピング(harfrust)とフォントのメトリクス/cmap読み取り(skrifa)。
+# どちらもread-fontsの上に載っており、同じ`FontRef`を再パースなしで共有する。
+# そのためにはread-fontsのバージョンを揃える必要がある: harfrust 0.12は
+# read-fonts 0.41、skrifaは0.44がread-fonts 0.41(0.45は0.42で型が合わない)。
+# 上げるときは両者のread-fontsが一致するかを確認すること。
+harfrust = "0.12"
 html5ever = "0.39.0"
 image = { version = "0.25.10", default-features = false, features = ["webp"] }
 palette = { version = "0.7.6", default-features = false, features = ["std"] }
 pdf-writer = "0.15.0"
 png = "0.18.1"
 precomputed-hash = "0.1.1"
-rustybuzz = "0.20.1"
 selectors = "0.39.0"
-subsetter = "0.2.6"
+self_cell = "1.3.0"
+# バージョンの制約はharfrustのコメントを参照。
+skrifa = "0.44"
+# 既定featureの`variable-fonts`はskrifa 0.42(=read-fonts 0.39)とwrite-fonts・
+# kurboを引き込むが、これが効くのは変分座標を渡す`subset_with_variations`と
+# CFF2の変換だけで、こちらが呼ぶ`subset`は座標を渡さないため常に通常の
+# サブセット経路に落ちる。本体のskrifa 0.44(=read-fonts 0.41)と重複させる
+# 理由が無いので切る。可変フォントのインスタンス化に踏み込む際は戻すこと。
+subsetter = { version = "0.2.6", default-features = false }
 taffy = "0.12.2"
 # HTTPサーバモード(M12 Phase 7)。同期・軽量でボディを`Read`として扱える。
 tiny_http = { version = "0.12", optional = true }
-ttf-parser = "0.25.1"
 ureq = "3.3.0"
-self_cell = "1.3.0"
 
-# krillaはT1スパイクの比較対象として examples/spike_krilla.rs でのみ使用。
-# 採用はpdf-writerに決定したため本実装では使わない
 [dev-dependencies]
 dhat = "0.3.3"
-krilla = "0.8.2"
 # HTTPサーバモードのE2Eテスト(core/tests/server.rs)でクライアントとして使う。
 # 本体の依存にも同じものが入っているためビルドコストの増加はない。
 ureq = "3.3.0"

@@ -117,6 +117,7 @@ end
 | `Sghtmltopdf::UsageError` | オプションの誤り(未知のキー、値の形式、非対応オプション) |
 | `Sghtmltopdf::InputError` | 入力や出力ファイルの読み書きに失敗した |
 | `Sghtmltopdf::RenderError` | レンダリングに失敗した |
+| `Sghtmltopdf::TimeoutError` | 制限時間を超えて打ち切られた |
 | `Sghtmltopdf::InternalError` | エンジン内部の想定外の失敗(バグ) |
 | `Sghtmltopdf::ServerError` | サーバへ委譲したときの到達不能・過負荷 |
 

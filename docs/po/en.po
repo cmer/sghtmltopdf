@@ -3347,6 +3347,14 @@ msgid "レンダリングに失敗した"
 msgstr "Rendering failed"
 
 #: src/usage/ruby_rails.md:120
+msgid "`Sghtmltopdf::TimeoutError`"
+msgstr "`Sghtmltopdf::TimeoutError`"
+
+#: src/usage/ruby_rails.md:120
+msgid "制限時間を超えて打ち切られた"
+msgstr "The run exceeded its time limit and was aborted"
+
+#: src/usage/ruby_rails.md:120
 msgid "`Sghtmltopdf::InternalError`"
 msgstr "`Sghtmltopdf::InternalError`"
 

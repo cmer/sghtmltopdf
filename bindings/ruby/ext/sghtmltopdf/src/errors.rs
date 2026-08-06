@@ -11,6 +11,7 @@ pub fn define(ruby: &Ruby, module: RModule) -> Result<(), magnus::Error> {
     module.define_error("UsageError", base)?;
     module.define_error("InputError", base)?;
     module.define_error("RenderError", base)?;
+    module.define_error("TimeoutError", base)?;
     module.define_error("InternalError", base)?;
     Ok(())
 }
@@ -60,6 +61,7 @@ pub fn to_ruby(ruby: &Ruby, error: CliError) -> magnus::Error {
         CliError::Usage(message) => ("UsageError", message),
         CliError::Input(message) => ("InputError", message),
         CliError::Render(message) => ("RenderError", message),
+        CliError::Timeout(message) => ("TimeoutError", message),
     };
     magnus::Error::new(class(ruby, class_name), message)
 }

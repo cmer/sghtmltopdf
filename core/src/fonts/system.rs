@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use skrifa::MetadataProvider;
+
 use crate::html::{Dom, NodeData, NodeId};
 use crate::style::{ComputedStyle, FontStyle, FontWeight};
 
@@ -268,7 +270,7 @@ impl SystemFonts {
 
     /// DB内の全フェースを走査して`c`を描画できるものを探す(最終手段)。
     ///
-    /// グリフの有無の判定は`ttf_parser`でその場で読むだけにして
+    /// グリフの有無の判定はcmapをその場で読むだけにして
     /// [`Font`]への変換(データのコピー)を避け、当たったフェースの
     /// family名で改めて`load`する(weight/styleの面選択を`load`に任せるため)。
     /// それでもフェースの実体読み込みは全件に及ぶので、候補リストが全て
@@ -286,8 +288,8 @@ impl SystemFonts {
             let covered = self
                 .db
                 .with_face_data(info.id, |data, index| {
-                    ttf_parser::Face::parse(data, index)
-                        .map(|face| face.glyph_index(c).is_some())
+                    skrifa::FontRef::from_index(data, index)
+                        .map(|font| font.charmap().map(c).is_some())
                         .unwrap_or(false)
                 })
                 .unwrap_or(false);

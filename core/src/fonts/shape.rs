@@ -1,4 +1,4 @@
-//! rustybuzzによるテキストシェイピングとグリフ幅の取得。
+//! harfrustによるテキストシェイピングとグリフ幅の取得。
 
 use super::font::Font;
 
@@ -23,22 +23,23 @@ pub struct ShapedText {
 
 /// `font`で`text`を`font_size`(px)にシェイピングする。
 pub fn shape_text(font: &Font, text: &str, font_size: f32) -> ShapedText {
-    let face = font.face();
-    let units_per_em = face.units_per_em() as f32;
+    let units_per_em = font.units_per_em() as f32;
     let scale = if units_per_em > 0.0 {
         font_size / units_per_em
     } else {
         0.0
     };
 
-    let mut buffer = rustybuzz::UnicodeBuffer::new();
+    let mut buffer = harfrust::UnicodeBuffer::new();
     buffer.push_str(text);
     // 書字方向・スクリプト・言語をここで確定させ、それをキーに計画を引く
-    // (`rustybuzz::shape`も内部で同じ推測をしてから計画を作るため、結果は
-    // 変わらない)。
+    // (計画を渡さない場合もharfrustが内部で同じ推測をしてから計画を作るため、
+    // 結果は変わらない)。
     buffer.guess_segment_properties();
     let plan = font.shape_plan(&(buffer.direction(), buffer.script(), buffer.language()));
-    let output = rustybuzz::shape_with_plan(face, &plan, buffer);
+    let output = font
+        .shaper()
+        .shape(buffer, harfrust::ShapeOptions::new().plan(Some(&plan)));
 
     let mut glyphs = Vec::with_capacity(output.len());
     let mut width = 0.0;

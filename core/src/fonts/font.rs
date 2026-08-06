@@ -1,7 +1,4 @@
 //! フォントファイルの読み込み。
-//!
-//! M1ではローカルパス指定の最小実装のみ対応する。システムフォント探索や
-//! `@font-face`によるwebfont解決は将来のマイルストーンで扱う。
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,37 +6,73 @@ use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
+use harfrust::{FontRef, Shaper, ShaperData};
 use self_cell::self_cell;
+use skrifa::charmap::Charmap;
+use skrifa::metrics::GlyphMetrics;
+use skrifa::prelude::{LocationRef, Size};
+use skrifa::raw::TableProvider;
+use skrifa::MetadataProvider;
 
-/// `rustybuzz::Face`のライフタイムを`self_cell`へ渡すための型構築子。
-type FaceView<'a> = rustybuzz::Face<'a>;
+/// バイト列から作った借用ビュー一式。
+///
+/// harfrustの`Shaper`とskrifaの`Charmap`/`GlyphMetrics`は、いずれも
+/// フォントのバイト列を借用する。個別に作り直すとその都度テーブルを
+/// 引き直すことになるので、まとめて1度だけ構築して保持する。
+struct FaceView<'a> {
+    shaper: Shaper<'a>,
+    charmap: Charmap<'a>,
+    glyph_metrics: GlyphMetrics<'a>,
+}
+
+/// `FaceView`の借用元。
+///
+/// `ShaperData`はシェイピングで使うテーブルのキャッシュで、バイト列を
+/// 借用せず自前で持つ。`Shaper`はこの2つ(バイト列と`ShaperData`)を
+/// 借用するため、両方を`self_cell`のownerに入れる。
+struct FaceOwner {
+    bytes: Vec<u8>,
+    index: u32,
+    shaper_data: ShaperData,
+}
 
 self_cell!(
-    /// フォントのバイト列と、そこから作った`rustybuzz::Face`を一緒に持つ。
+    /// フォントのバイト列と、そこから作った借用ビューを一緒に持つ。
     ///
-    /// `Face`はバイト列を借用するため、素直に構造体へ入れると自己参照になる。
-    /// `Face`の構築はフォント全体のパースを伴い1回あたり数マイクロ秒かかるので、
-    /// 呼び出しのたびに作り直すとレイアウトが処理時間の大半を占めてしまう。
+    /// ビューはバイト列を借用するため、素直に構造体へ入れると自己参照になる。
+    /// 構築はフォントのテーブル走査を伴うので、呼び出しのたびに作り直すと
+    /// レイアウトが処理時間の大半を占めてしまう。
     struct OwnedFace {
-        owner: Vec<u8>,
+        owner: FaceOwner,
         #[covariant]
         dependent: FaceView,
     }
 );
 
-/// シェイピング計画のキャッシュキー。rustybuzzがバッファの内容から推測した
+/// シェイピング計画のキャッシュキー。harfrustがバッファの内容から推測した
 /// 書字方向・スクリプト・言語で、計画の中身はこの3つとフェイスだけで決まる。
 type PlanKey = (
-    rustybuzz::Direction,
-    rustybuzz::Script,
-    Option<rustybuzz::Language>,
+    harfrust::Direction,
+    harfrust::Script,
+    Option<harfrust::Language>,
 );
+
+/// フォント全体のグリフを囲む矩形(フォントユニット)。
+///
+/// `head`テーブルが持つ値をそのまま指す。PDFのFontDescriptorの`/FontBBox`に使う。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BoundingBox {
+    pub x_min: i16,
+    pub y_min: i16,
+    pub x_max: i16,
+    pub y_max: i16,
+}
 
 /// 読み込み済みのフォントデータ。
 ///
-/// ファイルの生バイト列と、そこから構築した`rustybuzz::Face`を保持する。
-/// 値の変わらないメトリクスは[`Metrics`]として構築時に1度だけ読み、
-/// グリフ検索は[`Font::glyphs`]でメモ化する。
+/// ファイルの生バイト列と、そこから構築したシェイピング/メトリクス用の
+/// ビューを保持する。値の変わらないメトリクスは[`Metrics`]として構築時に
+/// 1度だけ読み、グリフ検索は[`Font::glyph_id`]でメモ化する。
 pub struct Font {
     face: OwnedFace,
     index: u32,
@@ -51,11 +84,11 @@ pub struct Font {
     /// 振る舞いは変わらない。
     glyphs: RefCell<HashMap<char, Option<u16>>>,
     /// シェイピング計画のメモ([`Font::shape_plan`])。
-    plans: RefCell<HashMap<PlanKey, Rc<rustybuzz::ShapePlan>>>,
+    plans: RefCell<HashMap<PlanKey, Rc<harfrust::ShapePlan>>>,
 }
 
 impl Clone for Font {
-    /// バイト列を複製して`Face`を作り直す(`Face`は複製元のバイト列を
+    /// バイト列を複製してビューを作り直す(ビューは複製元のバイト列を
     /// 借用しているため、そのままは持ち出せない)。
     fn clone(&self) -> Self {
         Self::from_bytes(self.data().to_vec(), self.index)
@@ -64,7 +97,7 @@ impl Clone for Font {
 }
 
 impl fmt::Debug for Font {
-    /// `rustybuzz::Face`が`Debug`を実装しないため、識別に足る情報だけ出す。
+    /// ビューが`Debug`を実装しないため、識別に足る情報だけ出す。
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Font")
             .field("family_name", &self.metrics.family_name)
@@ -75,6 +108,10 @@ impl fmt::Debug for Font {
 }
 
 /// フォントから1度だけ読めば足りるメトリクス。
+///
+/// 各値はフォントユニットで持つ。`head`/`hhea`/`OS/2`/`post`の各テーブルが
+/// これらを整数で格納しているため、skrifaが`f32`で返すものも整数へ戻して
+/// 保持している(丸めは発生しない)。
 #[derive(Debug, Clone)]
 struct Metrics {
     units_per_em: u16,
@@ -90,36 +127,57 @@ struct Metrics {
     strikeout: Option<(i16, i16)>,
     is_monospaced: bool,
     weight: u16,
-    bounding_box: ttf_parser::Rect,
+    bounding_box: BoundingBox,
     family_name: Option<String>,
 }
 
 impl Metrics {
-    fn read(face: &rustybuzz::Face<'_>) -> Self {
-        let names = face.names();
-        let pick_name = |id: u16| {
-            names
-                .into_iter()
-                .find(|n| n.name_id == id && n.is_unicode())
-                .and_then(|n| n.to_string())
-        };
+    fn read(font: &FontRef<'_>) -> Self {
+        let m = font.metrics(Size::unscaled(), LocationRef::default());
+        let attributes = font.attributes();
+
+        // subscript/superscriptのYオフセットはskrifaの`Metrics`が持たないため、
+        // `OS/2`テーブルを直接読む。
+        let os2 = font.os2().ok();
+
+        let italic_angle = m.italic_angle;
+        let family_name = font
+            .localized_strings(skrifa::string::StringId::TYPOGRAPHIC_FAMILY_NAME)
+            .english_or_first()
+            .or_else(|| {
+                font.localized_strings(skrifa::string::StringId::FAMILY_NAME)
+                    .english_or_first()
+            })
+            .map(|name| name.chars().collect());
+
         Self {
-            units_per_em: face.units_per_em() as u16,
-            ascender: face.ascender(),
-            descender: face.descender(),
-            capital_height: face.capital_height(),
-            x_height: face.x_height(),
-            subscript_y_offset: face.subscript_metrics().map(|m| m.y_offset),
-            superscript_y_offset: face.superscript_metrics().map(|m| m.y_offset),
-            italic_angle: face.italic_angle(),
-            is_italic: face.is_italic(),
-            underline: face.underline_metrics().map(|m| (m.position, m.thickness)),
-            strikeout: face.strikeout_metrics().map(|m| (m.position, m.thickness)),
-            is_monospaced: face.is_monospaced(),
-            weight: face.weight().to_number(),
-            bounding_box: face.global_bounding_box(),
-            family_name: pick_name(ttf_parser::name_id::TYPOGRAPHIC_FAMILY)
-                .or_else(|| pick_name(ttf_parser::name_id::FAMILY)),
+            units_per_em: m.units_per_em,
+            ascender: m.ascent as i16,
+            descender: m.descent as i16,
+            capital_height: m.cap_height.map(|v| v as i16),
+            x_height: m.x_height.map(|v| v as i16),
+            subscript_y_offset: os2.as_ref().map(|t| t.y_subscript_y_offset()),
+            superscript_y_offset: os2.as_ref().map(|t| t.y_superscript_y_offset()),
+            italic_angle,
+            // `OS/2`がItalicを立てていなくても、`post`のitalic angleが非ゼロなら
+            // 傾いた面として扱う(斜体指定に対する疑似斜体の要否判定に使うため、
+            // 実際に傾いているかどうかで判断する)。
+            is_italic: matches!(attributes.style, skrifa::attribute::Style::Italic)
+                || italic_angle != 0.0,
+            underline: m.underline.map(|d| (d.offset as i16, d.thickness as i16)),
+            strikeout: m.strikeout.map(|d| (d.offset as i16, d.thickness as i16)),
+            is_monospaced: m.is_monospace,
+            weight: attributes.weight.value() as u16,
+            bounding_box: m
+                .bounds
+                .map(|b| BoundingBox {
+                    x_min: b.x_min as i16,
+                    y_min: b.y_min as i16,
+                    x_max: b.x_max as i16,
+                    y_max: b.y_max as i16,
+                })
+                .unwrap_or_default(),
+            family_name,
         }
     }
 }
@@ -153,11 +211,28 @@ impl Font {
     /// 読み込み済みのバイト列からフォントを構築する(TrueType Collection等、
     /// 複数フェイスを含む場合は`index`でフェイスを選択する)。
     pub fn from_bytes(data: Vec<u8>, index: u32) -> Result<Self, FontLoadError> {
-        let face = OwnedFace::try_new(data, |data| {
-            rustybuzz::Face::from_slice(data, index)
-                .ok_or_else(|| FontLoadError("不正なフォントデータです".to_string()))
+        // `ShaperData`とメトリクスはバイト列を借用しないので、ここで一度
+        // パースして作ってしまう。バイト列を借用する`Shaper`等の構築だけを
+        // この後の`self_cell`のクロージャで行う。
+        let (shaper_data, metrics) = {
+            let font = parse_font(&data, index)?;
+            (ShaperData::new(&font), Metrics::read(&font))
+        };
+
+        let owner = FaceOwner {
+            bytes: data,
+            index,
+            shaper_data,
+        };
+        let face = OwnedFace::try_new(owner, |owner| {
+            let font = parse_font(&owner.bytes, owner.index)?;
+            Ok(FaceView {
+                shaper: owner.shaper_data.shaper(&font).build(),
+                charmap: font.charmap(),
+                glyph_metrics: font.glyph_metrics(Size::unscaled(), LocationRef::default()),
+            })
         })?;
-        let metrics = Metrics::read(face.borrow_dependent());
+
         Ok(Self {
             face,
             index,
@@ -167,23 +242,27 @@ impl Font {
         })
     }
 
-    pub(crate) fn face(&self) -> &rustybuzz::Face<'_> {
+    fn view(&self) -> &FaceView<'_> {
         self.face.borrow_dependent()
+    }
+
+    pub(crate) fn shaper(&self) -> &Shaper<'_> {
+        &self.view().shaper
     }
 
     /// `key`(方向・スクリプト・言語)に対応するシェイピング計画。
     ///
-    /// `rustybuzz::shape`は呼び出しのたびに計画を構築するが、その構築は
+    /// シェイピングは呼び出しのたびに計画を要求するが、その構築は
     /// シェイピング本体より重い。レイアウトは単語(スタイル/フォントが連続
     /// する区間)ごとにシェイピングを呼ぶため、計画をフェイス単位で使い回さ
     /// ないと処理時間の大半を計画構築が占める。計画の中身はフェイスとキー
     /// だけで決まるため、キャッシュとして透過的で結果は変わらない。
-    pub(crate) fn shape_plan(&self, key: &PlanKey) -> Rc<rustybuzz::ShapePlan> {
+    pub(crate) fn shape_plan(&self, key: &PlanKey) -> Rc<harfrust::ShapePlan> {
         if let Some(cached) = self.plans.borrow().get(key) {
             return Rc::clone(cached);
         }
-        let plan = Rc::new(rustybuzz::ShapePlan::new(
-            self.face(),
+        let plan = Rc::new(harfrust::ShapePlan::new(
+            self.shaper(),
             key.0,
             Some(key.1),
             key.2.as_ref(),
@@ -197,7 +276,7 @@ impl Font {
 
     /// フォントファイルの生バイト列(PDFへのフォント埋め込み等で必要)。
     pub fn data(&self) -> &[u8] {
-        self.face.borrow_owner()
+        &self.face.borrow_owner().bytes
     }
 
     /// TrueType Collection(`.ttc`)等、複数フェイスを含むファイル内でのフェイス番号。
@@ -291,13 +370,16 @@ impl Font {
         self.metrics.weight
     }
 
-    pub fn bounding_box(&self) -> ttf_parser::Rect {
+    pub fn bounding_box(&self) -> BoundingBox {
         self.metrics.bounding_box
     }
 
     /// `glyph_id`の水平アドバンス幅(フォントユニット)。
     pub fn glyph_hor_advance(&self, glyph_id: u16) -> Option<u16> {
-        self.face().glyph_hor_advance(ttf_parser::GlyphId(glyph_id))
+        self.view()
+            .glyph_metrics
+            .advance_width(skrifa::GlyphId::from(glyph_id))
+            .map(|advance| advance as u16)
     }
 
     /// `c`に対応するグリフをこのフォントが持っているか。
@@ -307,7 +389,7 @@ impl Font {
         if let Some(cached) = self.glyphs.borrow().get(&c) {
             return *cached;
         }
-        let found = self.face().glyph_index(c).map(|id| id.0);
+        let found = self.view().charmap.map(c).map(|id| id.to_u32() as u16);
         self.glyphs.borrow_mut().insert(c, found);
         found
     }
@@ -317,10 +399,17 @@ impl Font {
     }
 
     /// フォント名(`name`テーブルの Typographic Family、無ければ Family)。
-    /// Unicodeエンコードの英語名のみ対応する。
+    /// 英語名があればそれを、無ければ最初に見つかった名前を返す。
     pub fn family_name(&self) -> Option<String> {
         self.metrics.family_name.clone()
     }
+}
+
+/// バイト列の`index`番目のフェイスを読む。TrueType Collectionでない場合、
+/// `index`が0なら単一フェイスとして扱われる。
+fn parse_font(data: &[u8], index: u32) -> Result<FontRef<'_>, FontLoadError> {
+    FontRef::from_index(data, index)
+        .map_err(|e| FontLoadError(format!("不正なフォントデータです: {e}")))
 }
 
 #[cfg(test)]
@@ -332,7 +421,7 @@ mod tests {
     #[test]
     fn loads_a_valid_font_file() {
         let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
-        assert!(font.face().units_per_em() > 0);
+        assert!(font.units_per_em() > 0);
     }
 
     #[test]
@@ -359,6 +448,54 @@ mod tests {
     fn from_bytes_rejects_invalid_font_data() {
         let result = Font::from_bytes(b"not a font file".to_vec(), 0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn reads_the_metrics_the_pdf_font_descriptor_needs() {
+        // FontDescriptorへ書く値が揃っていることを、DejaVu Sansの既知の値で確認する。
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+
+        assert_eq!(font.units_per_em(), 2048);
+        assert_eq!(font.ascender(), 1901);
+        assert_eq!(font.descender(), -483);
+        assert_eq!(font.weight(), 400);
+        assert!(!font.is_italic());
+        assert!(!font.is_monospaced());
+        assert_eq!(font.italic_angle(), 0.0);
+
+        let bbox = font.bounding_box();
+        assert_eq!(bbox.x_min, -2090);
+        assert_eq!(bbox.y_min, -948);
+        assert_eq!(bbox.x_max, 3673);
+        assert_eq!(bbox.y_max, 2524);
+
+        assert_eq!(font.underline_metrics(), Some((-40, 90)));
+        assert_eq!(font.strikeout_metrics(), Some((530, 102)));
+    }
+
+    #[test]
+    fn maps_characters_to_glyphs_with_advances() {
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+
+        let gid = font.glyph_id('A').expect("DejaVu SansはAを持つ");
+        let advance = font
+            .glyph_hor_advance(gid)
+            .expect("グリフが存在すればアドバンス幅も引ける");
+        assert!(advance > 0);
+        // 空白の方がAより狭い。
+        let space = font.glyph_id(' ').expect("DejaVu Sansは空白を持つ");
+        assert!(font.glyph_hor_advance(space).unwrap() < advance);
+    }
+
+    #[test]
+    fn selects_the_requested_face_from_a_collection() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fonts/NotoSansCJK-Regular.ttc"
+        );
+        let font = Font::load_indexed(path, 0).expect("should load face 0 of the collection");
+        assert_eq!(font.face_index(), 0);
+        assert!(font.has_glyph('日'));
     }
 
     #[test]

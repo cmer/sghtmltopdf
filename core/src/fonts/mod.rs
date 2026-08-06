@@ -1,4 +1,4 @@
-//! フォント読み込みとシェイピング(rustybuzz/ttf-parser)。
+//! フォント読み込みとシェイピング(harfrust/skrifa)。
 
 mod collection;
 mod face;
@@ -8,7 +8,7 @@ mod system;
 
 pub use collection::FontCollection;
 pub use face::{load_font_faces, LoadedFontFace};
-pub use font::{Font, FontLoadError};
+pub use font::{BoundingBox, Font, FontLoadError};
 pub use shape::{measure_text, shape_text, ShapedGlyph, ShapedText};
 pub use system::{
     ensure_cjk_fallback_font, load_fonts_for_uncovered_chars, load_missing_system_fonts,
