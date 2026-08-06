@@ -143,6 +143,39 @@ services:
 `curl` is not in the image, so the health check uses `--version`; hit `GET /healthz` from the outside (a load balancer, say) if you want the server itself checked.
 Point the Ruby side at it with `Sghtmltopdf.configure { |c| c.server_url = "http://pdf:8080" }`, and add `--font` and a mounted volume to the service's `command` if you need fonts other than the bundled ones.
 
+## Architecture
+
+CLI, HTTP server mode, and the Ruby binding (native extension, or delegating to an HTTP server) are four different doors into the same option parser (`cli/options.rs`) and the same engine (`sghtmltopdf-core`). What differs is how the call comes in, and where the resulting PDF bytes are written (the `Sink`).
+
+```mermaid
+flowchart TD
+    subgraph Entry["Entry points (core/src)"]
+        CLI["CLI<br/>sghtmltopdf"]
+        Server["HTTP server mode<br/>sghtmltopdf server<br/>(tiny_http)"]
+        FFI["Ruby native extension<br/>(magnus + rb-sys)<br/>in-process FFI call"]
+    end
+
+    CallCLI["Shell / CI"] --> CLI
+    CallHTTP["Any language (curl, ...)"] -->|"POST /pdf?options"| Server
+    CallRuby["Ruby app / Rails<br/>(gem sghtmltopdf)"] -->|"Sghtmltopdf.render"| FFI
+    CallRuby -->|"when server_url is set"| Delegate["ServerClient"]
+    Delegate -->|"POST /pdf?options<br/>(HTTP, separate process/host)"| Server
+
+    Options["Shared option parser<br/>cli/options.rs (clap)"]
+    CLI --> Options
+    Server --> Options
+    FFI --> Options
+
+    Engine["sghtmltopdf-core Engine<br/>parse HTML → cascade styles → layout → paginate → write PDF"]
+    Options --> Engine
+
+    Engine -->|"FileSink / StdoutSink"| OutCLI["PDF file / stdout"]
+    Engine -->|"MemorySink"| OutServer["HTTP response<br/>(chunked with ?stream=1)"]
+    Engine -->|"MemorySink / FileSink / CallbackSink"| OutFFI["PDF bytes / file / streamed to a Ruby block"]
+```
+
+The native extension does not spawn a subprocess it runs inside the same process as your app (Puma worker, etc.) as FFI, releasing the GVL while rendering so other threads keep going. Delegation to an HTTP server only happens when `server_url` is configured, and that server can be a sibling process on the same host or a remote one.
+
 ## Guide for developer
 
 ### Layout

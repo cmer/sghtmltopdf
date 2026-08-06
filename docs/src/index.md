@@ -93,3 +93,39 @@ flowchart TD
 ```
 
 ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしています。
+
+## 全体の構成
+
+CLI・HTTPサーバモード・Ruby（ネイティブ拡張 / HTTPサーバへの委譲）の4つの経路は、すべて同じオプション定義（`cli/options.rs`）と同じエンジン（`sghtmltopdf-core`）を通ります。
+違うのは呼び出し方と、変換後のPDFバイト列をどこへ書き出すか（Sink）だけです。
+
+```mermaid
+flowchart TD
+    subgraph Entry["エントリーポイント (core/src)"]
+        CLI["CLI<br/>sghtmltopdf"]
+        Server["HTTPサーバモード<br/>sghtmltopdf server<br/>(tiny_http)"]
+        FFI["Rubyネイティブ拡張<br/>(magnus + rb-sys)<br/>同一プロセス内でFFI呼び出し"]
+    end
+
+    CallCLI["ターミナル / CI"] --> CLI
+    CallHTTP["他言語・curl"] -->|"POST /pdf?options"| Server
+    CallRuby["Rails / Rubyアプリ<br/>(gem sghtmltopdf)"] -->|"Sghtmltopdf.render"| FFI
+    CallRuby -->|"server_url 設定時"| Delegate["ServerClient"]
+    Delegate -->|"POST /pdf?options<br/>(別プロセス・別ホストへHTTP委譲)"| Server
+
+    Options["共通オプションパーサ<br/>cli/options.rs (clap)"]
+    CLI --> Options
+    Server --> Options
+    FFI --> Options
+
+    Engine["sghtmltopdf-core Engine<br/>HTML解析 → スタイル計算 → レイアウト → ページ分割 → PDF書き出し"]
+    Options --> Engine
+
+    Engine -->|"FileSink / StdoutSink"| OutCLI["PDFファイル / 標準出力"]
+    Engine -->|"MemorySink"| OutServer["HTTPレスポンス<br/>(?stream=1でchunked転送)"]
+    Engine -->|"MemorySink / FileSink / CallbackSink"| OutFFI["PDFバイト列 / ファイル / Rubyブロックへ逐次"]
+```
+
+Rubyのネイティブ拡張はサブプロセスを起動せず、WebアプリのプロセスにFFIとして同居します（変換中はGVLを解放するため他のスレッドは止まりません）。
+`server_url`を設定した場合だけ、変換は別プロセスの `sghtmltopdf server` へHTTPで委譲されます（同じホストの別プロセスでも、ネットワーク越しの別ホストでも構いません）。
+Engine内部（HTML解析からPDF書き出しまで）の詳細は前述の「処理の流れ」を参照してください。
