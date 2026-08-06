@@ -3,7 +3,9 @@
 //! * `POST /pdf?<CLIと同名のオプション>` + ボディは生HTML
 //! * クエリ文字列は引数列へ機械変換して同じclapパーサに通すので、
 //!   CLIとサーバでオプションの解釈がずれない
-//! * ローカル/リモートの参照は既定で禁止し、リクエストからは緩められない
+//! * クエリで指定できるのは[`ALLOWED_QUERY_KEYS`]に載っているものだけ
+//!   (許可リスト方式)。ローカル/リモートの参照は既定で禁止し、
+//!   リクエストからは緩められない
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -18,11 +20,82 @@ use crate::sink::{MemorySink, Sink};
 use super::options::{Cli, ConvertArgs, ServerArgs};
 use super::CliError;
 
-/// クエリで指定させないオプション。
+/// リクエストのクエリで指定してよいオプション(許可リスト)。
 ///
-/// ローカルパスを取るもの・出力先・セキュリティ設定は、リクエストから
-/// 変更できてはならない。
-const DENIED_QUERY_KEYS: &[&str] = &[
+/// 拒否リストにすると、ローカルパスを取る新しいオプションを足したときに
+/// 追記を忘れた分がそのまま穴になる。ここに載っていないものは一律で拒否し、
+/// 分類漏れは[`tests::every_option_is_classified_as_allowed_or_server_only`]が
+/// 落とす。
+///
+/// 載せてよいのは「1リクエストごとに変わってよく、かつサーバのファイル
+/// システムにもネットワークにも触れない」オプションだけ。ページの寸法・
+/// 余白・メタデータ・ヘッダー/フッターの文字列・目次の見た目などが該当する。
+const ALLOWED_QUERY_KEYS: &[&str] = &[
+    // ページの体裁
+    "page-size",
+    "page-width",
+    "page-height",
+    "orientation",
+    "margin-top",
+    "margin-bottom",
+    "margin-left",
+    "margin-right",
+    "zoom",
+    "dpi",
+    "page-offset",
+    "minimum-font-size",
+    // 出力の見た目
+    "grayscale",
+    "no-background",
+    "no-images",
+    "no-pdf-compression",
+    // PDFメタデータ
+    "title",
+    "author",
+    "subject",
+    "keywords",
+    // ヘッダー/フッター(文字列とその体裁のみ。HTMLファイルの指定は不可)
+    "default-header",
+    "header-left",
+    "header-center",
+    "header-right",
+    "header-font-name",
+    "header-font-size",
+    "header-spacing",
+    "header-line",
+    "footer-left",
+    "footer-center",
+    "footer-right",
+    "footer-font-name",
+    "footer-font-size",
+    "footer-spacing",
+    "footer-line",
+    "replace",
+    // 目次
+    "toc",
+    "toc-header-text",
+    "toc-level-indentation",
+    "toc-text-size-shrink",
+    "disable-dotted-lines",
+    "disable-toc-links",
+    "enable-toc-back-links",
+    // リンク
+    "disable-external-links",
+    "disable-internal-links",
+    "keep-relative-links",
+    // 入力の解釈・失敗時の扱い
+    "encoding",
+    "load-error-handling",
+    "load-media-error-handling",
+    "streaming",
+];
+
+/// サーバ起動時にだけ決められるオプション。
+///
+/// [`ALLOWED_QUERY_KEYS`]に無い点では他と同じだが、「そもそも存在しない」
+/// のではなく「ここでは変えられない」ことを伝えたいので分けている。
+/// ローカルパスを取るもの・出力先・セキュリティ設定・ログ設定が該当する。
+const SERVER_ONLY_KEYS: &[&str] = &[
     "font",
     "font-index",
     "gothic-font",
@@ -74,11 +147,16 @@ pub fn run(args: &ServerArgs) -> Result<(), CliError> {
     let rx = Arc::new(std::sync::Mutex::new(rx));
 
     let mut handles = Vec::with_capacity(workers);
-    for _ in 0..workers {
+    for index in 0..workers {
         let rx = Arc::clone(&rx);
         let shared = Arc::clone(&shared);
         let timeout = Duration::from_secs(args.timeout);
-        handles.push(std::thread::spawn(move || loop {
+        // 既定の2MiBではレイアウト・描画の再帰に足りないため明示的に確保する
+        // (`super::STACK_SIZE`のdoc参照)。
+        let worker = std::thread::Builder::new()
+            .name(format!("render-{index}"))
+            .stack_size(super::STACK_SIZE);
+        let handle = worker.spawn(move || loop {
             let next = {
                 let guard = rx.lock().expect("受信キューのロックに失敗しました");
                 guard.recv()
@@ -90,8 +168,13 @@ pub fn run(args: &ServerArgs) -> Result<(), CliError> {
                 let _ = respond_text(request, 504, "キューでの待ち時間が--timeoutを超えました");
                 continue;
             }
-            handle_request(request, &shared);
-        }));
+            // 残り時間をレンダリングの期限にする(--timeoutはキュー待ちと
+            // レンダリングの合計に効く)。
+            handle_request(request, &shared, queued_at + timeout);
+        });
+        handles.push(
+            handle.map_err(|e| CliError::Input(format!("ワーカースレッドを作れません: {e}")))?,
+        );
     }
 
     for request in server.incoming_requests() {
@@ -116,7 +199,7 @@ struct ServerContext {
     max_body_size: usize,
 }
 
-fn handle_request(mut request: Request, ctx: &ServerContext) {
+fn handle_request(mut request: Request, ctx: &ServerContext, deadline: Instant) {
     let url = request.url().to_string();
     let (path, query) = match url.split_once('?') {
         Some((path, query)) => (path.to_string(), query.to_string()),
@@ -136,13 +219,13 @@ fn handle_request(mut request: Request, ctx: &ServerContext) {
             );
         }
         ("POST", "/pdf") if wants_chunked(&query) => {
-            if let Err((status, message)) = respond_chunked(request, &query, ctx) {
+            if let Err((status, message)) = respond_chunked(request, &query, ctx, deadline) {
                 // respondより前に失敗した場合のみここへ来る(requestは消費済み
                 // ではない)。ここでの`request`は使えないのでログだけ残す。
                 eprintln!("エラー: {status} {message}");
             }
         }
-        ("POST", "/pdf") => match render_request(&mut request, &query, ctx) {
+        ("POST", "/pdf") => match render_request(&mut request, &query, ctx, deadline) {
             Ok(pdf) => {
                 let header = Header::from_bytes(&b"Content-Type"[..], &b"application/pdf"[..])
                     .expect("固定のヘッダー値なので必ず作れる");
@@ -202,6 +285,7 @@ fn respond_chunked(
     mut request: Request,
     query: &str,
     ctx: &ServerContext,
+    deadline: Instant,
 ) -> Result<(), (u16, String)> {
     let too_large = || {
         (
@@ -217,7 +301,10 @@ fn respond_chunked(
     }
 
     let stripped = strip_stream_key(query);
-    let args = match build_convert_args(&stripped, &ctx.args) {
+    let args = match build_convert_args(&stripped, &ctx.args).map(|mut a| {
+        a.deadline = Some(deadline);
+        a
+    }) {
         Ok(args) => args,
         Err(message) => {
             let _ = respond_text(request, 400, &message);
@@ -261,17 +348,29 @@ fn respond_chunked(
 
     // レンダリングは別スレッドで走らせ、書き出したそばからパイプへ流す。
     // このスレッドはパイプの読み出し側をレスポンスとして返す。
-    std::thread::spawn(move || {
-        if let Err(e) = super::convert::render(
-            &args,
-            &fonts,
-            std::io::Cursor::new(html),
-            PipeSink(pipe_writer),
-        ) {
-            // ヘッダは送信済みなので、ここではログに残すことしかできない。
-            eprintln!("エラー: ストリーミング返却の途中で失敗しました: {e}");
-        }
-    });
+    // ワーカーと同様、再帰に耐えるスタックを明示的に確保する。
+    let spawned = std::thread::Builder::new()
+        .name("render-stream".to_string())
+        .stack_size(super::STACK_SIZE)
+        .spawn(move || {
+            if let Err(e) = super::convert::render(
+                &args,
+                &fonts,
+                std::io::Cursor::new(html),
+                PipeSink(pipe_writer),
+            ) {
+                // ヘッダは送信済みなので、ここではログに残すことしかできない。
+                eprintln!("エラー: ストリーミング返却の途中で失敗しました: {e}");
+            }
+        });
+    if let Err(e) = spawned {
+        let _ = respond_text(
+            request,
+            500,
+            &format!("レンダリングスレッドを作れませんでした: {e}"),
+        );
+        return Ok(());
+    }
 
     let header = Header::from_bytes(&b"Content-Type"[..], &b"application/pdf"[..])
         .expect("固定のヘッダー値なので必ず作れる");
@@ -332,6 +431,7 @@ fn render_request(
     request: &mut Request,
     query: &str,
     ctx: &ServerContext,
+    deadline: Instant,
 ) -> Result<Vec<u8>, (u16, String)> {
     let too_large = || {
         (
@@ -348,7 +448,8 @@ fn render_request(
     }
 
     // クエリのパースはボディを読む前に済ませる(不正なら読まずに400)。
-    let args = build_convert_args(query, &ctx.args).map_err(|e| (400, e))?;
+    let mut args = build_convert_args(query, &ctx.args).map_err(|e| (400, e))?;
+    args.deadline = Some(deadline);
     let fonts = ctx.args.font_specs();
 
     let mut reader = LimitedReader {
@@ -372,6 +473,7 @@ fn render_request(
         CliError::Usage(msg) => (400, msg),
         CliError::Input(msg) => (400, msg),
         CliError::Render(msg) => (500, msg),
+        CliError::Timeout(msg) => (504, msg),
     })
 }
 
@@ -415,10 +517,13 @@ fn build_convert_args(query: &str, server: &ServerArgs) -> Result<ConvertArgs, S
         if let Some(reason) = super::unsupported::unsupported_reason(&format!("--{key}")) {
             return Err(format!("{key}は対応していません。{reason}"));
         }
-        if DENIED_QUERY_KEYS.contains(&key.as_str()) {
+        if SERVER_ONLY_KEYS.contains(&key.as_str()) {
             return Err(format!(
                 "{key}はリクエストからは指定できません(サーバ起動時のオプションで設定してください)"
             ));
+        }
+        if !ALLOWED_QUERY_KEYS.contains(&key.as_str()) {
+            return Err(format!("{key}はリクエストでは指定できません"));
         }
         match value {
             // 値なし / 真を表す値はフラグとして渡す。
@@ -426,10 +531,11 @@ fn build_convert_args(query: &str, server: &ServerArgs) -> Result<ConvertArgs, S
             Some(v) if is_true(&v) => argv.push(format!("--{key}")),
             // 偽を表す値は「指定なし」と同じ。
             Some(v) if is_false(&v) => {}
-            Some(v) => {
-                argv.push(format!("--{key}"));
-                argv.push(v);
-            }
+            // 値は必ず`--key=value`の1トークンに畳む。`--key`と値を別々の
+            // トークンとして積むと、値に`--allow-remote-assets`のような
+            // フラグを書かれたときclapがそれを独立したフラグとして解釈し、
+            // DENIED_QUERY_KEYS(キーだけを見る)を迂回できてしまう。
+            Some(v) => argv.push(format!("--{key}={v}")),
         }
     }
 
@@ -600,5 +706,113 @@ mod tests {
     #[test]
     fn an_unknown_option_is_an_error() {
         assert!(build_convert_args("no-such-option=1", &server_args()).is_err());
+    }
+
+    /// すべてのオプションが「クエリで指定してよい」か「サーバ起動時のみ」の
+    /// どちらかに分類されていること。
+    ///
+    /// 新しいオプションを足したときにここが落ちる。許可リスト方式なので
+    /// 分類漏れがそのまま穴になることは無いが、意図せず使えなくなるのも
+    /// 困るので、追加時に必ず判断させるためのテスト。
+    #[test]
+    fn every_option_is_classified_as_allowed_or_server_only() {
+        let command = Cli::command();
+        let unclassified: Vec<&str> = command
+            .get_arguments()
+            .filter_map(|arg| arg.get_long())
+            // clapが自動で足すものは分類の対象外。
+            .filter(|long| !matches!(*long, "help" | "version"))
+            .filter(|long| !ALLOWED_QUERY_KEYS.contains(long) && !SERVER_ONLY_KEYS.contains(long))
+            .collect();
+
+        assert!(
+            unclassified.is_empty(),
+            "分類されていないオプションがあります: {unclassified:?}\n\
+             ALLOWED_QUERY_KEYS(リクエストごとに変えてよい)か\n\
+             SERVER_ONLY_KEYS(サーバ起動時のみ)のどちらかへ追加してください"
+        );
+    }
+
+    /// 分類リストに実在しないオプション名が残っていないこと
+    /// (オプションの改名・削除に追随できているかの確認)。
+    #[test]
+    fn the_classification_lists_only_name_real_options() {
+        let command = Cli::command();
+        let known: Vec<&str> = command
+            .get_arguments()
+            .filter_map(|a| a.get_long())
+            .collect();
+
+        let stale: Vec<&&str> = ALLOWED_QUERY_KEYS
+            .iter()
+            .chain(SERVER_ONLY_KEYS)
+            .filter(|key| !known.contains(key))
+            .collect();
+
+        assert!(
+            stale.is_empty(),
+            "存在しないオプション名が残っています: {stale:?}"
+        );
+    }
+
+    /// 2つのリストは互いに素であること(両方に載っていると意図が読めない)。
+    #[test]
+    fn the_two_classification_lists_do_not_overlap() {
+        let both: Vec<&&str> = ALLOWED_QUERY_KEYS
+            .iter()
+            .filter(|key| SERVER_ONLY_KEYS.contains(key))
+            .collect();
+        assert!(both.is_empty(), "両方のリストに載っています: {both:?}");
+    }
+
+    /// 許可リストに無いオプションは、たとえ安全そうでも拒否されること。
+    #[test]
+    fn an_option_outside_the_allowlist_is_refused() {
+        // `--base-url`はSERVER_ONLY_KEYS側なので専用の理由が返る。
+        let err = build_convert_args("base-url=/etc", &server_args()).unwrap_err();
+        assert!(err.contains("サーバ起動時"), "got: {err}");
+    }
+
+    /// オプションの値に別のフラグを書いても、それが独立した引数として
+    /// 解釈されないこと。以前は`--toc`と`--allow-remote-assets`の2トークンに
+    /// 分かれて積まれ、キーだけを見るDENIED_QUERY_KEYSを素通りしていた。
+    #[test]
+    fn a_flag_smuggled_through_a_value_does_not_reach_the_parser_as_a_flag() {
+        let args = build_convert_args("toc=--allow-remote-assets", &server_args());
+        match args {
+            // `--toc=...`は値を取らないフラグなのでclapが弾くのが正しい。
+            Err(message) => assert!(
+                !message.contains("unexpected argument"),
+                "値がフラグとして解釈されてはならない: {message}"
+            ),
+            Ok(args) => assert!(
+                !args.allow_remote_assets,
+                "クエリ値経由でリモート取得を有効化できてはならない"
+            ),
+        }
+    }
+
+    /// 値経由の注入でローカルファイルアクセスも有効化できないこと。
+    #[test]
+    fn local_file_access_cannot_be_smuggled_through_a_value_either() {
+        for query in [
+            "toc=--enable-local-file-access",
+            "grayscale=--enable-local-file-access",
+        ] {
+            match build_convert_args(query, &server_args()) {
+                Err(_) => {}
+                Ok(args) => assert!(
+                    args.disable_local_file_access,
+                    "{query}でローカルファイルアクセスが有効になってはならない"
+                ),
+            }
+        }
+    }
+
+    /// 値に`=`や空白が含まれる正当なケースが、1トークン化しても壊れないこと。
+    #[test]
+    fn a_value_containing_an_equals_sign_still_reaches_the_option_intact() {
+        let args = build_convert_args("title=a%3Db+c", &server_args()).unwrap();
+        assert_eq!(args.title.as_deref(), Some("a=b c"));
     }
 }

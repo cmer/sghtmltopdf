@@ -43,6 +43,9 @@ impl StreamingParser {
             dom: RefCell::new(Dom {
                 nodes: vec![Node::new(NodeData::Document)],
                 document: NodeId(0),
+                max_depth: 0,
+                // documentノードのぶん。
+                live_nodes: 1,
             }),
             quirks_mode: Cell::new(QuirksMode::NoQuirks),
             seen_body: Cell::new(false),
@@ -221,17 +224,18 @@ impl ElemName for OwnedElemName {
 
 impl Sink {
     fn alloc(&self, data: NodeData) -> NodeId {
-        let mut dom = self.dom.borrow_mut();
-        dom.nodes.push(Node::new(data));
-        NodeId(dom.nodes.len() - 1)
+        self.dom.borrow_mut().push_node(data)
     }
 
     /// テキストは直前の兄弟がTextノードであれば連結する(html5everの規約通り)。
+    ///
+    /// `do_append`は繋いだ部分木の最大深さを返す。木に繋ぐ経路をここ1箇所に
+    /// 集約しているので、[`Dom::max_depth`]の更新もここだけで済む。
     fn append_common(
         &self,
         child: NodeOrText<NodeId>,
         previous_sibling: impl FnOnce(&[Node]) -> Option<NodeId>,
-        do_append: impl FnOnce(&mut [Node], NodeId),
+        do_append: impl FnOnce(&mut [Node], NodeId) -> u32,
     ) {
         let mut dom = self.dom.borrow_mut();
 
@@ -243,17 +247,18 @@ impl Sink {
                         return;
                     }
                 }
-                dom.nodes.push(Node::new(NodeData::Text {
+                let id = dom.push_node(NodeData::Text {
                     contents: text.to_string(),
-                }));
-                let id = NodeId(dom.nodes.len() - 1);
-                do_append(&mut dom.nodes, id);
+                });
+                let depth = do_append(&mut dom.nodes, id);
+                dom.max_depth = dom.max_depth.max(depth);
                 return;
             }
             NodeOrText::AppendNode(id) => id,
         };
 
-        do_append(&mut dom.nodes, new_node);
+        let depth = do_append(&mut dom.nodes, new_node);
+        dom.max_depth = dom.max_depth.max(depth);
     }
 }
 
@@ -360,7 +365,8 @@ impl TreeSink for Sink {
         });
         let mut dom = self.dom.borrow_mut();
         let document = dom.document;
-        append(&mut dom.nodes, document, doctype);
+        let depth = append(&mut dom.nodes, document, doctype);
+        dom.max_depth = dom.max_depth.max(depth);
     }
 
     fn get_template_contents(&self, target: &NodeId) -> NodeId {
@@ -405,7 +411,9 @@ impl TreeSink for Sink {
         let mut next_child = dom.nodes[node.0].first_child;
         while let Some(child) = next_child {
             next_child = dom.nodes[child.0].next_sibling;
-            append(&mut dom.nodes, *new_parent, child);
+            // 部分木ごと別の親へ移るので、深さは`append`の中で振り直される。
+            let depth = append(&mut dom.nodes, *new_parent, child);
+            dom.max_depth = dom.max_depth.max(depth);
         }
     }
 }

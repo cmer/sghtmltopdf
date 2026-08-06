@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-04T03:26:47+09:00\n"
+"POT-Creation-Date: 2026-08-07T03:06:20+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -286,12 +286,13 @@ msgid ""
 "Chromeの約59倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパ"
 "フォーマンス比較)）"
 msgstr ""
-"Implements a rendering engine dedicated to PDF output, rather than swapping in "
-"another browser engine. With none of the machinery a browser needs for "
-"on-screen painting or script execution, the gap in processing time widens as "
-"the document grows (about 20 times faster than wkhtmltopdf and about 59 times "
-"faster than Headless Chrome on a 60,000 element document; see the [performance "
-"comparison](#performance-compared-with-wkhtmltopdf-and-headless-chrome))"
+"Implements a rendering engine dedicated to PDF output, rather than swapping "
+"in another browser engine. With none of the machinery a browser needs for on-"
+"screen painting or script execution, the gap in processing time widens as "
+"the document grows (about 20 times faster than wkhtmltopdf and about 59 "
+"times faster than Headless Chrome on a 60,000 element document; see the "
+"[performance comparison](#performance-compared-with-wkhtmltopdf-and-headless-"
+"chrome))"
 
 #: src/index.md:42
 msgid ""
@@ -537,6 +538,65 @@ msgstr ""
 "As soon as a page boundary is final, that page is written to the PDF and the "
 "memory it used is released before reading on, which is how large documents "
 "are processed without memory use growing."
+
+#: src/index.md:97
+msgid "全体の構成"
+msgstr ""
+
+#: src/index.md:99
+msgid ""
+"CLI・HTTPサーバモード・Ruby（ネイティブ拡張 / HTTPサーバへの委譲）の4つの経路"
+"は、すべて同じオプション定義（`cli/options.rs`）と同じエンジン（`sghtmltopdf-"
+"core`）を通ります。 違うのは呼び出し方と、変換後のPDFバイト列をどこへ書き出す"
+"か（Sink）だけです。"
+msgstr ""
+
+#: src/index.md:102
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    subgraph Entry[\"エントリーポイント (core/src)\"]\n"
+"        CLI[\"CLI<br/>sghtmltopdf\"]\n"
+"        Server[\"HTTPサーバモード<br/>sghtmltopdf server<br/>(tiny_http)\"]\n"
+"        FFI[\"Rubyネイティブ拡張<br/>(magnus + rb-sys)<br/>同一プロセス内で"
+"FFI呼び出し\"]\n"
+"    end\n"
+"\n"
+"    CallCLI[\"ターミナル / CI\"] --> CLI\n"
+"    CallHTTP[\"他言語・curl\"] -->|\"POST /pdf?options\"| Server\n"
+"    CallRuby[\"Rails / Rubyアプリ<br/>(gem sghtmltopdf)\"] -->|\"Sghtmltopdf."
+"render\"| FFI\n"
+"    CallRuby -->|\"server_url 設定時\"| Delegate[\"ServerClient\"]\n"
+"    Delegate -->|\"POST /pdf?options<br/>(別プロセス・別ホストへHTTP委譲)\"| "
+"Server\n"
+"\n"
+"    Options[\"共通オプションパーサ<br/>cli/options.rs (clap)\"]\n"
+"    CLI --> Options\n"
+"    Server --> Options\n"
+"    FFI --> Options\n"
+"\n"
+"    Engine[\"sghtmltopdf-core Engine<br/>HTML解析 → スタイル計算 → レイアウ"
+"ト → ページ分割 → PDF書き出し\"]\n"
+"    Options --> Engine\n"
+"\n"
+"    Engine -->|\"FileSink / StdoutSink\"| OutCLI[\"PDFファイル / 標準出力"
+"\"]\n"
+"    Engine -->|\"MemorySink\"| OutServer[\"HTTPレスポンス<br/>(?stream=1で"
+"chunked転送)\"]\n"
+"    Engine -->|\"MemorySink / FileSink / CallbackSink\"| OutFFI[\"PDFバイト"
+"列 / ファイル / Rubyブロックへ逐次\"]\n"
+"```"
+msgstr ""
+
+#: src/index.md:129
+msgid ""
+"Rubyのネイティブ拡張はサブプロセスを起動せず、WebアプリのプロセスにFFIとして"
+"同居します（変換中はGVLを解放するため他のスレッドは止まりません）。 "
+"`server_url`を設定した場合だけ、変換は別プロセスの `sghtmltopdf server` へ"
+"HTTPで委譲されます（同じホストの別プロセスでも、ネットワーク越しの別ホストで"
+"も構いません）。 Engine内部（HTML解析からPDF書き出しまで）の詳細は前述の「処"
+"理の流れ」を参照してください。"
+msgstr ""
 
 #: src/getting-started/install.md:3
 msgid "使い方に応じて3通りあります。"
@@ -1194,7 +1254,7 @@ msgstr "Option"
 #: src/usage/cli/reference.md:29 src/usage/cli/reference.md:41
 #: src/usage/cli/reference.md:79 src/usage/cli/reference.md:158
 #: src/usage/server.md:25 src/usage/ruby_rails.md:73
-#: src/usage/ruby_rails.md:159
+#: src/usage/ruby_rails.md:164
 msgid "既定"
 msgstr "Default"
 
@@ -1861,7 +1921,7 @@ msgstr "Link each heading back to the table of contents"
 msgid "`--page-offset <N>`"
 msgstr "`--page-offset <N>`"
 
-#: src/usage/cli/reference.md:168 src/usage/cli/reference.md:193
+#: src/usage/cli/reference.md:168 src/usage/cli/reference.md:231
 msgid "0"
 msgstr "0"
 
@@ -1936,10 +1996,95 @@ msgstr ""
 "alike."
 
 #: src/usage/cli/reference.md:187
+msgid ""
+"判定は実パス(シンボリックリンクを辿った後のパス)で行います。 指定したディレク"
+"トリが存在しない場合は起動時にエラーになります。 黙って無視すると、許可した範"
+"囲と実際に効く範囲がずれるためです。"
+msgstr "Ranges"
+
+#: src/usage/cli/reference.md:191
+msgid "基準ディレクトリの外への参照"
+msgstr "References outside the base directory"
+
+#: src/usage/cli/reference.md:193
+msgid ""
+"ローカル参照は既定で基準ディレクトリ(`--base-url`、既定は入力HTMLのあるディレ"
+"クトリ)の中に閉じます。 `../`で外へ出ようとする参照はエラーになります。 信頼"
+"できないHTMLを変換したときに`<img src=\"../../../../etc/passwd\">`のような参"
+"照で任意のファイルを読み出されるのを防ぐためです。"
+msgstr ""
+"Local references stay inside the base directory (`--base-url`, defaulting to "
+"the directory the input HTML lives in) by default. A `../` that would escape "
+"it is an error. This keeps untrusted HTML from reading arbitrary files "
+"through a reference such as `<img src=\"../../../../etc/passwd\">`."
+
+#: src/usage/cli/reference.md:197
+msgid ""
+"`assets/../images/logo.png`のように基準ディレクトリの中で完結する`../`は従来"
+"どおり使えます。"
+msgstr ""
+"A `../` that resolves within the base directory, such as `assets/../images/"
+"logo.png`, keeps working as before."
+
+#: src/usage/cli/reference.md:199
+msgid ""
+"外のファイルを意図的に参照する場合は`--allow`で範囲を明示してください。 `--"
+"allow`を指定した場合は、基準ディレクトリではなく許可したディレクトリが境界に"
+"なります。"
+msgstr "Ranges"
+
+#: src/usage/cli/reference.md:210
+msgid ""
+"判定はパス文字列に対して行うため、基準ディレクトリ配下のシンボリックリンクは"
+"辿ります。 シンボリックリンクの先まで含めて閉じたい場合は`--allow`を使ってく"
+"ださい(こちらは実パスで判定します)。"
+msgstr ""
+"The check is lexical, so symlinks under the base directory are followed. Use "
+"`--allow` when you want the boundary to hold across symlinks as well (that "
+"check resolves real paths)."
+
+#: src/usage/cli/reference.md:213
+msgid "入力の大きさの制限"
+msgstr "Limits on input size"
+
+#: src/usage/cli/reference.md:215
+msgid ""
+"要素数がおよそ50万ノードを超えるHTMLはエラーになります。 算出スタイル・ボック"
+"スツリー・レイアウト結果がノード数に比例して積み上がるためで、実測では1ノード"
+"あたり472B〜1210Bでした。"
+msgstr ""
+"HTML with more than roughly 500,000 nodes is rejected. Computed styles, the "
+"box tree and the layout result all grow in proportion to the node count; "
+"measured at 472 B to 1210 B per node."
+
+#: src/usage/cli/reference.md:218
+msgid ""
+"数千ページ規模の文書でも数十万ノードなので、実在の文書がここに当たることはま"
+"ずありません。 当たった場合は文書を分割するか、[ストリーミングモード]"
+"(streaming.md)を使ってください。 ストリーミングモードでは処理済みの部分が随時"
+"解放されるため、総量が上限を超えていても変換できます。"
+msgstr ""
+"Even a document of several thousand pages stays in the hundreds of thousands "
+"of nodes, so real documents practically never hit this. If you do hit it, "
+"split the document or use [streaming mode](streaming.md). Streaming releases "
+"each processed part as it goes, so it can convert documents whose total "
+"exceeds the limit."
+
+#: src/usage/cli/reference.md:222
+msgid ""
+"テキストの量に比例するメモリはこの上限では抑えられません(要素3個でも10MiBのテ"
+"キストなら約1.7GiB使います)。 HTTPサーバモードでは`--max-body-size`がその役割"
+"を担います。"
+msgstr ""
+"Memory that scales with the amount of text is not covered by this limit "
+"(three elements holding 10 MiB of text still use about 1.7 GiB). In HTTP "
+"server mode `--max-body-size` plays that role."
+
+#: src/usage/cli/reference.md:225
 msgid "ログとexit code"
 msgstr "Logging and exit codes"
 
-#: src/usage/cli/reference.md:189
+#: src/usage/cli/reference.md:227
 msgid ""
 "`--log-level <none|error|warn|info>`(既定`info`)、`-q`/`--quiet`(=`--log-"
 "level none`)。"
@@ -1947,34 +2092,34 @@ msgstr ""
 "`--log-level <none|error|warn|info>`, `info` by default, and `-q` or `--"
 "quiet`, which is the same as `--log-level none`."
 
-#: src/usage/cli/reference.md:191
+#: src/usage/cli/reference.md:229
 msgid "code"
 msgstr "Code"
 
-#: src/usage/cli/reference.md:191 src/usage/ruby_rails.md:54
-#: src/usage/ruby_rails.md:159 src/migration/wkhtmltopdf-options.md:6
+#: src/usage/cli/reference.md:229 src/usage/ruby_rails.md:54
+#: src/usage/ruby_rails.md:164 src/migration/wkhtmltopdf-options.md:6
 msgid "意味"
 msgstr "Meaning"
 
-#: src/usage/cli/reference.md:193
+#: src/usage/cli/reference.md:231
 msgid "成功"
 msgstr "Success"
 
-#: src/usage/cli/reference.md:194
+#: src/usage/cli/reference.md:232
 msgid "1"
 msgstr "1"
 
-#: src/usage/cli/reference.md:194
+#: src/usage/cli/reference.md:232
 msgid "使用法エラー(不明なオプション、値の形式不正、非対応オプションの指定)"
 msgstr ""
 "Usage error: an unknown option, a malformed value, or an option that is not "
 "supported"
 
-#: src/usage/cli/reference.md:195
+#: src/usage/cli/reference.md:233
 msgid "2"
 msgstr "2"
 
-#: src/usage/cli/reference.md:195
+#: src/usage/cli/reference.md:233
 msgid ""
 "入力/リソースエラー(ファイルが無い、フォントが読めない、`abort`指定での取得失"
 "敗)"
@@ -1982,14 +2127,26 @@ msgstr ""
 "Input or resource error: a missing file, a font that cannot be read, or a "
 "failed fetch under `abort`"
 
-#: src/usage/cli/reference.md:196
+#: src/usage/cli/reference.md:234
 msgid "3"
 msgstr "3"
 
-#: src/usage/cli/reference.md:196
+#: src/usage/cli/reference.md:234
 msgid "レンダリングエラー(ストリーミングモードの制約違反など)"
 msgstr ""
 "Rendering error, such as breaking one of the streaming mode restrictions"
+
+#: src/usage/cli/reference.md:235
+msgid "4"
+msgstr "4"
+
+#: src/usage/cli/reference.md:235
+msgid ""
+"制限時間超過(HTTPサーバモードの`--timeout`のみ。CLIには時間制限がないため出ま"
+"せん)"
+msgstr ""
+"Time limit exceeded (HTTP server mode's `--timeout` only; the CLI has no "
+"time limit, so this never appears)"
 
 #: src/usage/cli/streaming.md:3
 msgid ""
@@ -2387,8 +2544,8 @@ msgid "`--max-body-size <BYTES>`"
 msgstr "`--max-body-size <BYTES>`"
 
 #: src/usage/server.md:30
-msgid "10485760 (10MiB)"
-msgstr "10485760 (10MiB)"
+msgid "4194304 (4MiB)"
+msgstr "4194304 (4 MiB)"
 
 #: src/usage/server.md:30
 msgid "リクエストボディの上限"
@@ -2403,8 +2560,10 @@ msgid "30"
 msgstr "30"
 
 #: src/usage/server.md:31
-msgid "キュー待ちの上限秒数(超えると504)"
-msgstr "How long a request may wait in the queue, in seconds; beyond that, 504"
+msgid "1リクエストに与える秒数。キュー待ちと変換の合計(超えると504)"
+msgstr ""
+"Seconds granted to one request: the queue wait plus the conversion "
+"(exceeding it returns 504)"
 
 #: src/usage/server.md:32
 msgid "`--font <PATH>` ほかフォント指定"
@@ -2483,167 +2642,179 @@ msgstr ""
 "parser."
 
 #: src/usage/server.md:52
+msgid ""
+"指定できるのは許可リストに載っているものだけです。 ページの体裁・PDFのメタ"
+"データ・ヘッダー/フッターの文字列・目次の見た目など、リクエストごとに変わって"
+"よく、かつサーバのファイルシステムにもネットワークにも触れないオプションが対"
+"象です。 それ以外は`400`を返します。"
+msgstr ""
+"Only the options on the allowlist can be given. They cover things that may "
+"vary per request and touch neither the server's filesystem nor the network: "
+"page geometry, PDF metadata, header/footer text, the look of the table of "
+"contents, and so on. Anything else returns `400`."
+
+#: src/usage/server.md:56
 msgid "クエリ"
 msgstr "Query"
 
-#: src/usage/server.md:52
+#: src/usage/server.md:56
 msgid "相当するCLIオプション"
 msgstr "The equivalent CLI option"
 
-#: src/usage/server.md:54
+#: src/usage/server.md:58
 msgid "`?page-size=A4`"
 msgstr "`?page-size=A4`"
 
-#: src/usage/server.md:54
+#: src/usage/server.md:58
 msgid "`--page-size A4`"
 msgstr "`--page-size A4`"
 
-#: src/usage/server.md:55
+#: src/usage/server.md:59
 msgid "`?margin-top=20mm`"
 msgstr "`?margin-top=20mm`"
 
-#: src/usage/server.md:55
+#: src/usage/server.md:59
 msgid "`--margin-top 20mm`"
 msgstr "`--margin-top 20mm`"
 
-#: src/usage/server.md:56
+#: src/usage/server.md:60
 msgid "`?toc`"
 msgstr "`?toc`"
 
-#: src/usage/server.md:56
+#: src/usage/server.md:60
 msgid "`--toc`(値なしは真)"
 msgstr "`--toc` (no value means true)"
 
-#: src/usage/server.md:57
+#: src/usage/server.md:61
 msgid "`?grayscale=1` / `=true`"
 msgstr "`?grayscale=1` / `=true`"
 
-#: src/usage/server.md:57
+#: src/usage/server.md:61
 msgid "`--grayscale`"
 msgstr "`--grayscale`"
 
-#: src/usage/server.md:58
+#: src/usage/server.md:62
 msgid "`?grayscale=0` / `=false`"
 msgstr "`?grayscale=0` / `=false`"
 
-#: src/usage/server.md:58 src/usage/ruby_rails.md:58
+#: src/usage/server.md:62 src/usage/ruby_rails.md:58
 msgid "指定なしと同じ"
 msgstr "The same as not passing it"
 
-#: src/usage/server.md:60
+#: src/usage/server.md:64
 msgid "値はパーセントエンコードできます(`%XX`と`+`)。"
 msgstr "Values may be percent encoded, with `%XX` and `+`."
 
-#: src/usage/server.md:62
+#: src/usage/server.md:66
 msgid ""
 "各オプションの意味は[CLIリファレンス](./cli/reference.md)を参照してください。"
 msgstr ""
 "See the [CLI reference](./cli/reference.md) for what each option means."
 
-#: src/usage/server.md:64
-msgid "リクエストからは指定できないオプション"
-msgstr "Options that cannot be set per request"
+#: src/usage/server.md:68
+msgid "サーバ起動時にだけ指定できるオプション"
+msgstr "Options that can only be set when the server starts"
 
-#: src/usage/server.md:66
+#: src/usage/server.md:70
 msgid ""
-"以下を指定すると`400`を返します。 ローカルパスを取るもの・出力先・アクセス制"
-"御は サーバ起動時にだけ設定できます。"
+"以下は許可リストに含まれず、指定すると`400`を返します。 ローカルパスを取るも"
+"の・出力先・アクセス制御・ログ設定はサーバ起動時にだけ設定できます。"
 msgstr ""
-"Passing any of these returns `400`. Options that take a local path, the "
-"output destination, and the access controls can only be set when the server "
-"starts."
+"The following are not on the allowlist; passing them returns `400`. Options "
+"that take a local path, the output destination, access control and logging "
+"can only be set when the server starts."
 
-#: src/usage/server.md:77
+#: src/usage/server.md:80
 msgid "ステータスコード"
 msgstr "Status codes"
 
-#: src/usage/server.md:79
+#: src/usage/server.md:82
 msgid "コード"
 msgstr "Code"
 
-#: src/usage/server.md:79 src/appendix/limitations.md:26
+#: src/usage/server.md:82 src/appendix/limitations.md:26
 msgid "状況"
 msgstr "When"
 
-#: src/usage/server.md:81
+#: src/usage/server.md:84
 msgid "200"
 msgstr "200"
 
-#: src/usage/server.md:81
+#: src/usage/server.md:84
 msgid "成功(`Content-Type: application/pdf`)"
 msgstr "Success, with `Content-Type: application/pdf`"
 
-#: src/usage/server.md:82
+#: src/usage/server.md:85
 msgid "400"
 msgstr "400"
 
-#: src/usage/server.md:82
+#: src/usage/server.md:85
 msgid "未知/禁止のクエリキー、値の形式不正、ボディが空"
 msgstr "An unknown or forbidden query key, a malformed value, or an empty body"
 
-#: src/usage/server.md:83
+#: src/usage/server.md:86
 msgid "404"
 msgstr "404"
 
-#: src/usage/server.md:83
+#: src/usage/server.md:86
 msgid "未知のパス"
 msgstr "An unknown path"
 
-#: src/usage/server.md:84
+#: src/usage/server.md:87
 msgid "405"
 msgstr "405"
 
-#: src/usage/server.md:84
+#: src/usage/server.md:87
 msgid "使えないメソッド"
 msgstr "A method that is not allowed"
 
-#: src/usage/server.md:85
+#: src/usage/server.md:88
 msgid "413"
 msgstr "413"
 
-#: src/usage/server.md:85
+#: src/usage/server.md:88
 msgid "ボディが`--max-body-size`超過"
 msgstr "The body is larger than `--max-body-size`"
 
-#: src/usage/server.md:86
+#: src/usage/server.md:89
 msgid "500"
 msgstr "500"
 
-#: src/usage/server.md:86
+#: src/usage/server.md:89
 msgid "レンダリング失敗"
 msgstr "Rendering failed"
 
-#: src/usage/server.md:87
+#: src/usage/server.md:90
 msgid "503"
 msgstr "503"
 
-#: src/usage/server.md:87
+#: src/usage/server.md:90
 msgid "キュー溢れ(`--max-queue`超過)"
 msgstr "The queue is full, beyond `--max-queue`"
 
-#: src/usage/server.md:88
+#: src/usage/server.md:91
 msgid "504"
 msgstr "504"
 
-#: src/usage/server.md:88
-msgid "キュー待ちが`--timeout`超過"
-msgstr "The request waited in the queue longer than `--timeout`"
+#: src/usage/server.md:91
+msgid "`--timeout`超過(キュー待ち、または変換が長すぎる)"
+msgstr "`--timeout` exceeded (queue wait, or the conversion took too long)"
 
-#: src/usage/server.md:90
+#: src/usage/server.md:93
 msgid "ストリーミング"
 msgstr "Streaming"
 
-#: src/usage/server.md:92
+#: src/usage/server.md:95
 msgid "入力: リクエストボディは読み切らずに、64KiBずつエンジンへ流します。"
 msgstr ""
 "Input: the request body is not read to the end first; it is fed to the "
 "engine 64KiB at a time."
 
-#: src/usage/server.md:93
+#: src/usage/server.md:96
 msgid "大きなHTMLを丸ごとメモリに載せません"
 msgstr "A large HTML file never sits in memory as a whole"
 
-#: src/usage/server.md:94
+#: src/usage/server.md:97
 msgid ""
 "出力: 既定はバッファ返却(`Content-Length`付き)。`?stream=1`を付けるとchunked "
 "transfer encodingで、ページが確定したそばから流します"
@@ -2652,11 +2823,11 @@ msgstr ""
 "With `?stream=1` it is sent with chunked transfer encoding as each page "
 "becomes final"
 
-#: src/usage/server.md:97
+#: src/usage/server.md:100
 msgid "'http://127.0.0.1:8080/pdf?stream=1'"
 msgstr "'http://127.0.0.1:8080/pdf?stream=1'"
 
-#: src/usage/server.md:100
+#: src/usage/server.md:103
 msgid ""
 "エンジン側の[ストリーミングモード](./cli/streaming.md)(`?streaming`)と併用す"
 "ると、入力・レンダリング・出力のすべてが逐次処理になります。"
@@ -2665,20 +2836,108 @@ msgstr ""
 "selected with `?streaming`, input, rendering, and output all become "
 "incremental."
 
-#: src/usage/server.md:102
+#: src/usage/server.md:105
+msgid "メモリの見積もり"
+msgstr "Estimating memory"
+
+#: src/usage/server.md:107
+msgid ""
+"変換に必要なメモリは、入力の大きさにほぼ比例します。 実測(最適化ビルド)では次"
+"のとおりでした。"
+msgstr ""
+"The memory a conversion needs is roughly proportional to the size of the "
+"input. Measured on an optimized build:"
+
+#: src/usage/server.md:110
+msgid "要因"
+msgstr "Factor"
+
+#: src/usage/server.md:110
+msgid "単価"
+msgstr "Unit cost"
+
+#: src/usage/server.md:110
+msgid "抑えているもの"
+msgstr "What bounds it"
+
+#: src/usage/server.md:112
+msgid "要素の数"
+msgstr "Number of elements"
+
+#: src/usage/server.md:112
+msgid "472B〜1210B/ノード"
+msgstr "472 B to 1210 B per node"
+
+#: src/usage/server.md:112
+msgid "ノード数上限(50万)"
+msgstr "Node limit (500,000)"
+
+#: src/usage/server.md:113
+msgid "テキストの量"
+msgstr "Amount of text"
+
+#: src/usage/server.md:113
+msgid "約185MiB/入力1MiB"
+msgstr "About 185 MiB per 1 MiB of input"
+
+#: src/usage/server.md:113
+msgid "`--max-body-size`"
+msgstr "`--max-body-size`"
+
+#: src/usage/server.md:115
+msgid ""
+"どちらの上限も、既定では最悪およそ600〜750MiBに収まる値にしてあります。 ワー"
+"カーは同時に変換するので、プロセス全体では「ワーカー数 × この値」が必要で"
+"す。 既定(`--workers`はCPUコア数)のまま8コアの機械で動かすと最悪6GiB程度にな"
+"るため、コンテナのメモリ制限に合わせて`--workers`か`--max-body-size`を調整し"
+"てください。"
+msgstr ""
+"Both limits are set so that the worst case stays around 600 to 750 MiB by "
+"default. Workers convert concurrently, so the whole process needs that "
+"figure multiplied by the number of workers. With the defaults (`--workers` "
+"is the CPU core count) on an 8-core machine the worst case is about 6 GiB, "
+"so tune `--workers` or `--max-body-size` to your container's memory limit."
+
+#: src/usage/server.md:119
+msgid ""
+"要素数が上限を超えると`400`を返します。 `?streaming`を付けると処理済みの部分"
+"が随時解放されるため、要素数の上限には当たりにくくなります。"
+msgstr ""
+"Exceeding the node limit returns `400`. Adding `?streaming` releases each "
+"processed part as it goes, which makes the node limit much harder to hit."
+
+#: src/usage/server.md:122
 msgid "既知の限界"
 msgstr "Known limitations"
 
-#: src/usage/server.md:104
+#: src/usage/server.md:124
 msgid ""
-"`--timeout`はキュー待ち時間にしか効きません。変換処理は同期でキャンセル点を持"
-"たないため、走り始めた変換は打ち切れません"
+"`--timeout`はキュー待ちと変換の合計に効きます。変換の打ち切り判定はチャンク投"
+"入ごと・トップレベル要素ごと・ページ書き出しごとに行うため、超過に気づくのは"
+"最大でその1区間ぶん遅れます。レイアウトの1回の呼び出しの内側までは見ません"
 msgstr ""
-"`--timeout` applies only to the time spent in the queue. Conversion is "
-"synchronous and has no cancellation points, so once it starts it cannot be "
-"stopped"
+"`--timeout` covers the queue wait plus the conversion. Expiry is checked per "
+"fed chunk, per top-level element and per written page, so it is noticed at "
+"most one such interval late. It does not look inside a single layout call`--"
+"timeout` covers the queue wait plus the conversion. The conversion checks "
+"for expiry per fed chunk, per top-level element and per written page, so it "
+"notices at most one such interval late. It does not look inside a single "
+"layout call"
 
-#: src/usage/server.md:105
+#: src/usage/server.md:125
+msgid ""
+"実測では、10MiBの重いHTMLに`--timeout 2`を指定した場合の実際の応答は2.1〜5.2"
+"秒でした(打ち切り後に大きなDOMを破棄する時間も含みます)。指定より早く返ること"
+"はありません"
+msgstr ""
+"Measured: with a heavy 10 MiB HTML and `--timeout 2`, actual responses took "
+"2.1 to 5.2 seconds (including the time to drop the large DOM after "
+"aborting). It never returns sooner than the value you setMeasured: with a "
+"heavy 10 MiB HTML and `--timeout 2`, actual responses took 2.1 to 5.2 "
+"seconds (including the time to drop the large DOM after aborting). It never "
+"returns sooner than the value you set"
+
+#: src/usage/server.md:126
 msgid ""
 "`?stream=1`のとき、ヘッダ送信後に失敗してもステータスは200のままになります(パ"
 "イプが閉じ、クライアントには不完全なPDFが届きます)。クエリの不正・空ボディ・"
@@ -2689,7 +2948,7 @@ msgstr ""
 "an empty body, and an oversized body are all detected before the headers go "
 "out, so those still return 400 or 413"
 
-#: src/usage/server.md:106
+#: src/usage/server.md:127
 msgid ""
 "`?stream=1`のときは入力を先に読み切ります(HTTPライブラリの制約で、ボディ読み"
 "取りと応答が排他のため)。入力と出力のストリーミングは同時には使えません"
@@ -2699,11 +2958,11 @@ msgstr ""
 "exclusive. Streaming the input and the output at the same time is not "
 "possible"
 
-#: src/usage/server.md:108
+#: src/usage/server.md:129
 msgid "Railsから使う"
 msgstr "Using it from Rails"
 
-#: src/usage/server.md:110
+#: src/usage/server.md:131
 msgid ""
 "Ruby gemには、変換をこのサーバへ委譲する`server_url`設定があります。 [Ruby / "
 "Rails](./ruby_rails.md#サーバへ委譲する)を参照してください。"
@@ -2847,12 +3106,12 @@ msgstr ""
 "the same parser."
 
 #: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:87
-#: src/usage/ruby_rails.md:136 src/usage/ruby_rails.md:186
+#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:191
 #: src/migration/wicked-pdf.md:34
 msgid "\"A4\""
 msgstr "\"A4\""
 
-#: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:136
+#: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:141
 #: src/migration/wicked-pdf.md:35
 msgid "\"20mm\""
 msgstr "\"20mm\""
@@ -2929,8 +3188,8 @@ msgstr "Options that only exist in Ruby"
 msgid "CLIには無い、gemが解釈するキーです。"
 msgstr "These keys are interpreted by the gem and have no CLI counterpart."
 
-#: src/usage/ruby_rails.md:73 src/usage/ruby_rails.md:143
-#: src/usage/ruby_rails.md:159
+#: src/usage/ruby_rails.md:73 src/usage/ruby_rails.md:148
+#: src/usage/ruby_rails.md:164
 msgid "キー"
 msgstr "Key"
 
@@ -3088,14 +3347,35 @@ msgid "レンダリングに失敗した"
 msgstr "Rendering failed"
 
 #: src/usage/ruby_rails.md:120
+msgid "`Sghtmltopdf::InternalError`"
+msgstr "`Sghtmltopdf::InternalError`"
+
+#: src/usage/ruby_rails.md:120
+msgid "エンジン内部の想定外の失敗(バグ)"
+msgstr "An unexpected failure inside the engine (a bug)"
+
+#: src/usage/ruby_rails.md:121
 msgid "`Sghtmltopdf::ServerError`"
 msgstr "`Sghtmltopdf::ServerError`"
 
-#: src/usage/ruby_rails.md:120
+#: src/usage/ruby_rails.md:121
 msgid "サーバへ委譲したときの到達不能・過負荷"
 msgstr "The delegated server is unreachable or overloaded"
 
-#: src/usage/ruby_rails.md:122
+#: src/usage/ruby_rails.md:123
+msgid ""
+"`InternalError`はネイティブ拡張の中でRustがパニックしたときに上がります。 拡"
+"張側で捕まえて通常の例外へ変換しているため、他のエラーと同じように`rescue`で"
+"き、ワーカープロセスは動き続けます。 これが出た場合はエンジンの不具合なので、"
+"再現するHTMLを添えて報告してください。"
+msgstr ""
+"`InternalError` is raised when Rust panics inside the native extension. The "
+"extension catches it and converts it into an ordinary exception, so you can "
+"`rescue` it like the others and the worker process keeps running. If you see "
+"one it is an engine bug, so please report it with the HTML that reproduces "
+"it."
+
+#: src/usage/ruby_rails.md:127
 msgid ""
 "画像やCSSの取得失敗は既定では無視され、警告を出して続行します"
 "(`load_media_error_handling: \"abort\"`で中断できます)。"
@@ -3104,11 +3384,11 @@ msgstr ""
 "warning, and processing continues. Pass `load_media_error_handling: "
 "\"abort\"` to stop instead."
 
-#: src/usage/ruby_rails.md:124
+#: src/usage/ruby_rails.md:129
 msgid "Railsで使う"
 msgstr "Using it with Rails"
 
-#: src/usage/ruby_rails.md:126
+#: src/usage/ruby_rails.md:131
 msgid ""
 "Railsが読み込まれているときだけRailtieが読み込まれるので、素のRuby・Sinatraで"
 "の利用には影響しません。"
@@ -3116,43 +3396,43 @@ msgstr ""
 "The Railtie is only loaded when Rails is, so plain Ruby and Sinatra are "
 "unaffected."
 
-#: src/usage/ruby_rails.md:128
+#: src/usage/ruby_rails.md:133
 msgid "レンダラ"
 msgstr "The renderer"
 
-#: src/usage/ruby_rails.md:133 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:138 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:92
 msgid "\"invoice\""
 msgstr "\"invoice\""
 
-#: src/usage/ruby_rails.md:133
+#: src/usage/ruby_rails.md:138
 msgid "# ファイル名(.pdfは自動で付く)\n"
 msgstr "# the file name; .pdf is appended for you\n"
 
-#: src/usage/ruby_rails.md:134 src/usage/ruby_rails.md:257
+#: src/usage/ruby_rails.md:139 src/usage/ruby_rails.md:262
 #: src/migration/wicked-pdf.md:22 src/migration/wicked-pdf.md:92
 msgid "\"invoices/show\""
 msgstr "\"invoices/show\""
 
-#: src/usage/ruby_rails.md:135 src/usage/ruby_rails.md:170
-#: src/usage/ruby_rails.md:257 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:175
+#: src/usage/ruby_rails.md:262 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:114
 msgid "\"pdf\""
 msgstr "\"pdf\""
 
-#: src/usage/ruby_rails.md:141
+#: src/usage/ruby_rails.md:146
 msgid "オプションは3つに振り分けられます。"
 msgstr "The options are sorted into three groups."
 
-#: src/usage/ruby_rails.md:143
+#: src/usage/ruby_rails.md:148
 msgid "種類"
 msgstr "Group"
 
-#: src/usage/ruby_rails.md:145
+#: src/usage/ruby_rails.md:150
 msgid "ビューの描画へ渡す"
 msgstr "Passed to view rendering"
 
-#: src/usage/ruby_rails.md:145
+#: src/usage/ruby_rails.md:150
 msgid ""
 "`template` `partial` `inline` `file` `plain` `html` `body` `layout` `locals` "
 "`formats` `variants` `handlers` `prefixes` `object` `collection` `assigns` "
@@ -3162,31 +3442,31 @@ msgstr ""
 "`formats` `variants` `handlers` `prefixes` `object` `collection` `assigns` "
 "`action`"
 
-#: src/usage/ruby_rails.md:146
+#: src/usage/ruby_rails.md:151
 msgid "レスポンスの組み立て"
 msgstr "Used to build the response"
 
-#: src/usage/ruby_rails.md:146
+#: src/usage/ruby_rails.md:151
 msgid "`disposition`(既定`inline`) `filename` `status`"
 msgstr "`disposition` (`inline` by default), `filename`, `status`"
 
-#: src/usage/ruby_rails.md:147
+#: src/usage/ruby_rails.md:152
 msgid "デバッグ"
 msgstr "Debugging"
 
-#: src/usage/ruby_rails.md:147
+#: src/usage/ruby_rails.md:152
 msgid "`show_as_html`(PDFにせずHTMLを返す)"
 msgstr "`show_as_html`, which returns the HTML instead of a PDF"
 
-#: src/usage/ruby_rails.md:148
+#: src/usage/ruby_rails.md:153
 msgid "上記以外すべて"
 msgstr "Everything else"
 
-#: src/usage/ruby_rails.md:148
+#: src/usage/ruby_rails.md:153
 msgid "変換オプション"
 msgstr "Conversion options"
 
-#: src/usage/ruby_rails.md:150
+#: src/usage/ruby_rails.md:155
 msgid ""
 "`pdf:`の値が空ならアクション名がファイル名になります。 `filename:`があればそ"
 "ちらが勝ち、`.pdf`は二重に付きません。"
@@ -3194,11 +3474,11 @@ msgstr ""
 "If the value of `pdf:` is empty, the action name becomes the file name. A "
 "`filename:` wins over it, and `.pdf` is never appended twice."
 
-#: src/usage/ruby_rails.md:153
+#: src/usage/ruby_rails.md:158
 msgid "アセットのパス解決"
 msgstr "How asset paths are resolved"
 
-#: src/usage/ruby_rails.md:155
+#: src/usage/ruby_rails.md:160
 msgid ""
 "PDFのレンダリングはHTTPサーバを介さないため、`/assets/…`のようなURLは ローカ"
 "ルファイルとして解決されます。 Railtieが次の既定値を入れます。"
@@ -3206,34 +3486,34 @@ msgstr ""
 "Rendering does not go through an HTTP server, so a URL such as `/assets/…` "
 "is resolved as a local file. The Railtie supplies these defaults."
 
-#: src/usage/ruby_rails.md:161
+#: src/usage/ruby_rails.md:166
 msgid "`base_url`"
 msgstr "`base_url`"
 
-#: src/usage/ruby_rails.md:161
+#: src/usage/ruby_rails.md:166
 msgid "`Rails.root/public`"
 msgstr "`Rails.root/public`"
 
-#: src/usage/ruby_rails.md:161
+#: src/usage/ruby_rails.md:166
 msgid ""
 "絶対パス参照の基準。precompile済みなら素の`stylesheet_link_tag`がそのまま動く"
 msgstr ""
 "The base for absolute path references. With precompiled assets, a plain "
 "`stylesheet_link_tag` works as is"
 
-#: src/usage/ruby_rails.md:162
+#: src/usage/ruby_rails.md:167
 msgid "`allow`"
 msgstr "`allow`"
 
-#: src/usage/ruby_rails.md:162
+#: src/usage/ruby_rails.md:167
 msgid "`[Rails.root]`"
 msgstr "`[Rails.root]`"
 
-#: src/usage/ruby_rails.md:162
+#: src/usage/ruby_rails.md:167
 msgid "ローカル参照をアプリ配下に限定する"
 msgstr "Confines local references to the application directory"
 
-#: src/usage/ruby_rails.md:164
+#: src/usage/ruby_rails.md:169
 msgid ""
 "どちらも`Sghtmltopdf.configure`で上書きできます(イニシャライザの実行順に依存"
 "しません)。 `allow`の既定はテンプレートにユーザー入力が混ざっても文書外のファ"
@@ -3246,7 +3526,7 @@ msgstr ""
 "something outside the application, such as `/usr/share/fonts`, add it "
 "explicitly."
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:172
 msgid ""
 "開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、CSS"
 "の中身を`<style>`へ展開するヘルパがあります。"
@@ -3254,20 +3534,20 @@ msgstr ""
 "For cases such as development, where assets have not been written to `public/"
 "` yet, there are helpers that inline the CSS into a `<style>` element."
 
-#: src/usage/ruby_rails.md:171 src/usage/ruby_rails.md:172
+#: src/usage/ruby_rails.md:176 src/usage/ruby_rails.md:177
 #: src/supports/images.md:14
 msgid "\"logo.png\""
 msgstr "\"logo.png\""
 
-#: src/usage/ruby_rails.md:172
+#: src/usage/ruby_rails.md:177
 msgid "<%# 見つからなければnil %>"
 msgstr "<%# nil if it cannot be found %>"
 
-#: src/usage/ruby_rails.md:175
+#: src/usage/ruby_rails.md:180
 msgid "サーバへ委譲する"
 msgstr "Delegating to a server"
 
-#: src/usage/ruby_rails.md:177
+#: src/usage/ruby_rails.md:182
 msgid ""
 "`server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く "
 "別プロセスへ投げます。 アプリのCPUを使いたくない場合や、gemの対応プラット"
@@ -3278,21 +3558,21 @@ msgstr ""
 "the application's CPU on rendering, or when you run somewhere the gem does "
 "not support, such as Windows."
 
-#: src/usage/ruby_rails.md:183 src/migration/wicked-pdf.md:142
+#: src/usage/ruby_rails.md:188 src/migration/wicked-pdf.md:142
 msgid "\"http://pdf.internal:8080\""
 msgstr "\"http://pdf.internal:8080\""
 
-#: src/usage/ruby_rails.md:186
+#: src/usage/ruby_rails.md:191
 msgid "# 委譲される\n"
 msgstr "# delegated\n"
 
-#: src/usage/ruby_rails.md:189
+#: src/usage/ruby_rails.md:194
 msgid "URLは1つだけです。負荷分散はLB(nginx・k8s Service)を前段に置く前提です"
 msgstr ""
 "Only one URL is accepted. Load balancing is expected to be handled by "
 "something in front, such as nginx or a Kubernetes Service"
 
-#: src/usage/ruby_rails.md:190
+#: src/usage/ruby_rails.md:195
 msgid ""
 "到達できないときはローカルへフォールバックしません(`ServerError`)。 サーバ起"
 "動時にだけ指定できるフォントが効かず、出力が変わってしまうためです"
@@ -3301,7 +3581,7 @@ msgstr ""
 "it raises `ServerError`. Fonts can only be set when the server starts, so "
 "falling back would silently change the output"
 
-#: src/usage/ruby_rails.md:192
+#: src/usage/ruby_rails.md:197
 msgid ""
 "HTTPのステータスは上のエラー分類へ対応します(400→`UsageError`、"
 "413→`InputError`、500→`RenderError`、その他→`ServerError`)"
@@ -3309,11 +3589,11 @@ msgstr ""
 "The HTTP statuses map onto the error classes above: 400 to `UsageError`, 413 "
 "to `InputError`, 500 to `RenderError`, and anything else to `ServerError`"
 
-#: src/usage/ruby_rails.md:194
+#: src/usage/ruby_rails.md:199
 msgid "サーバでは指定できないオプション"
 msgstr "Options that cannot be set against a server"
 
-#: src/usage/ruby_rails.md:196
+#: src/usage/ruby_rails.md:201
 msgid ""
 "ローカルパスを取るものと出力先・アクセス制御はサーバ起動時にしか設定できませ"
 "ん(指定すると`UsageError`)。"
@@ -3322,7 +3602,7 @@ msgstr ""
 "controls can only be set when the server starts; passing them raises "
 "`UsageError`."
 
-#: src/usage/ruby_rails.md:206
+#: src/usage/ruby_rails.md:211
 msgid ""
 "Railtieが入れる`base_url`/`allow`の既定値は自動的に外れるので、Railsでそのま"
 "ま`server_url`を足しても400にはなりません。 `configure`で明示的に設定している"
@@ -3333,11 +3613,11 @@ msgstr ""
 "a 400. If you set them explicitly with `configure`, move them to the "
 "server's startup options."
 
-#: src/usage/ruby_rails.md:209
+#: src/usage/ruby_rails.md:214
 msgid "チャンクごとに受け取る"
 msgstr "Receiving the PDF in chunks"
 
-#: src/usage/ruby_rails.md:211
+#: src/usage/ruby_rails.md:216
 msgid ""
 "ブロックを渡すと、PDF全体を組み立ててから返す代わりにチャンクごとにブロックが"
 "呼ばれます(返り値は`nil`)。 Rackの`response.stream`へ流したり、S3のマルチパー"
@@ -3347,7 +3627,7 @@ msgstr ""
 "assembled and returned; the return value is `nil`. This is the hook for "
 "writing into Rack's `response.stream` or feeding an S3 multipart upload."
 
-#: src/usage/ruby_rails.md:218
+#: src/usage/ruby_rails.md:223
 msgid ""
 "ローカル変換でもサーバ委譲でも、PDF全体が組み上がるのを待たずに書き出せま"
 "す。 ローカルは確定したページから順に、サーバはその`?stream=1`(chunked "
@@ -3358,7 +3638,7 @@ msgstr ""
 "is finalised; with a server, its `?stream=1` response, sent with chunked "
 "transfer encoding, is passed straight through."
 
-#: src/usage/ruby_rails.md:221
+#: src/usage/ruby_rails.md:226
 msgid ""
 "ただし逐次になるのはPDFの書き出しだけで、HTMLのパースとレイアウトは文書全体に"
 "対して先に行います。 そのため最初のチャンクが届くのは変換の終盤で、ピークメモ"
@@ -3371,7 +3651,7 @@ msgstr ""
 "block. To have pages finalised while the HTML is still being read, combine "
 "this with [streaming mode](#when-you-need-to-keep-memory-down)."
 
-#: src/usage/ruby_rails.md:225
+#: src/usage/ruby_rails.md:230
 msgid ""
 "1回に渡すバイト数の目安は`chunk_size:`で変えられます(既定64KiB、ローカル変換"
 "のみ)。 小さくすると細かく届きますが、そのたびにGVLを取り直すのでレンダリング"
@@ -3382,11 +3662,11 @@ msgstr ""
 "more finely, but the GVL has to be reacquired each time, which slows "
 "rendering down."
 
-#: src/usage/ruby_rails.md:232
+#: src/usage/ruby_rails.md:237
 msgid "`Thread#kill`とタイムアウトが効く"
 msgstr "`Thread#kill` and timeouts work"
 
-#: src/usage/ruby_rails.md:234
+#: src/usage/ruby_rails.md:239
 msgid ""
 "ブロックの呼び出しはRubyのメソッド呼び出しなので、その時点で保留中の割り込み"
 "が処理されます。 ブロック付きで呼んでいる限り、`Thread#kill`や`Timeout."
@@ -3396,11 +3676,11 @@ msgstr ""
 "is handled at that point. As long as you pass a block, `Thread#kill`, "
 "`Timeout.timeout`, and `Rack::Timeout` all take effect at chunk boundaries."
 
-#: src/usage/ruby_rails.md:239
+#: src/usage/ruby_rails.md:244
 msgid "# 10秒で中断できる\n"
 msgstr "# can be interrupted after 10 seconds\n"
 
-#: src/usage/ruby_rails.md:243
+#: src/usage/ruby_rails.md:248
 msgid ""
 "ブロックを渡さない`render`/`render_to_file`は変換の間まったくRubyへ戻らないた"
 "め、途中で止められません。 長い変換に上限をかけたい場合はブロック付きで呼んで"
@@ -3410,11 +3690,11 @@ msgstr ""
 "the conversion and therefore cannot be stopped part way. To put a limit on a "
 "long conversion, call them with a block."
 
-#: src/usage/ruby_rails.md:246
+#: src/usage/ruby_rails.md:251
 msgid "Railsで逐次返却する"
 msgstr "Streaming the response from Rails"
 
-#: src/usage/ruby_rails.md:248
+#: src/usage/ruby_rails.md:253
 msgid ""
 "`render pdf:`のレンダラは、組み上がったPDFを`send_data`で一括返却します。 確"
 "定したページから順に返したい場合は`ActionController::Live`と組み合わせます。"
@@ -3423,15 +3703,15 @@ msgstr ""
 "`send_data`. To send pages as they are finalised, combine it with "
 "`ActionController::Live`."
 
-#: src/usage/ruby_rails.md:256
+#: src/usage/ruby_rails.md:261
 msgid "\"Content-Type\""
 msgstr "\"Content-Type\""
 
-#: src/usage/ruby_rails.md:256 src/usage/ruby_rails.md:275
+#: src/usage/ruby_rails.md:261 src/usage/ruby_rails.md:280
 msgid "\"application/pdf\""
 msgstr "\"application/pdf\""
 
-#: src/usage/ruby_rails.md:265
+#: src/usage/ruby_rails.md:270
 msgid ""
 "途中まで書き出したあとに失敗すると、クライアントには壊れたPDFが届きます(ヘッ"
 "ダは既に送信済みなのでステータスを変えられません)。 サーバモードの`?stream=1`"
@@ -3441,11 +3721,11 @@ msgstr ""
 "broken PDF, because the headers have already gone out and the status can no "
 "longer be changed. This is the same property as `?stream=1` in server mode."
 
-#: src/usage/ruby_rails.md:268
+#: src/usage/ruby_rails.md:273
 msgid "S3へ直接上げる"
 msgstr "Uploading straight to S3"
 
-#: src/usage/ruby_rails.md:270
+#: src/usage/ruby_rails.md:275
 msgid ""
 "gemはS3向けの実装を持ちません(依存を増やさず、書き方も短いためです)。 マルチ"
 "パートアップロードは最後のパート以外は5MB以上という制約があるので、溜めてから"
@@ -3455,20 +3735,20 @@ msgstr ""
 "the code is short anyway. A multipart upload requires every part except the "
 "last to be at least 5MB, so buffer before sending."
 
-#: src/usage/ruby_rails.md:276
+#: src/usage/ruby_rails.md:281
 msgid "\"\""
 msgstr "\"\""
 
-#: src/usage/ruby_rails.md:299
+#: src/usage/ruby_rails.md:304
 msgid "小さいPDFなら`put_object(body: Sghtmltopdf.render(html))`で十分です。"
 msgstr ""
 "For a small PDF, `put_object(body: Sghtmltopdf.render(html))` is enough."
 
-#: src/usage/ruby_rails.md:301
+#: src/usage/ruby_rails.md:306
 msgid "メモリを抑えたいとき"
 msgstr "When you need to keep memory down"
 
-#: src/usage/ruby_rails.md:303
+#: src/usage/ruby_rails.md:308
 msgid ""
 "数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)"
 "を使うとメモリが大きく減ります(実測: 60,000要素で 228MB → 28MB。[メモリと処理"
@@ -3479,7 +3759,7 @@ msgstr ""
 "goes from 228MB to 28MB. See [Memory and processing time](./cli/streaming."
 "md#memory-and-processing-time)."
 
-#: src/usage/ruby_rails.md:309
+#: src/usage/ruby_rails.md:314
 msgid ""
 "その代わり、文書全体を見ないと決まらないもの(`toc`・`counter(pages)`・"
 "`<body>`より後の`<style>`など)が使えません。 制約の一覧は[ストリーミングモー"
@@ -5021,8 +5301,7 @@ msgstr "`align-items`, `align-self`, `justify-content`, `align-content`, `gap`"
 
 #: src/supports/properties.md:220
 msgid "Flexboxと共有(値の範囲は[Flexbox](#flexbox)節を参照)"
-msgstr ""
-"Shared with flexbox; see the [Flexbox](#flexbox) section for the values"
+msgstr "Ranges"
 
 #: src/supports/properties.md:221
 msgid "`grid` / `grid-template`(ショートハンド)"
@@ -5893,10 +6172,7 @@ msgstr "`unicode-range`"
 msgid ""
 "文字の範囲ごとにフォントを切り替えられます。 英数字は欧文フォント、日本語は和"
 "文フォント、という典型的な構成がそのまま書けます。"
-msgstr ""
-"Fonts can be switched per character range, so the usual arrangement, a Latin "
-"font for letters and digits and a Japanese font for Japanese, can be written "
-"directly."
+msgstr "Ranges"
 
 #: src/supports/fonts.md:74 src/supports/fonts.md:79
 msgid "\"Mixed\""
@@ -5912,23 +6188,19 @@ msgstr "\"fonts/JP.ttf\""
 
 #: src/supports/fonts.md:80
 msgid "/* 上の範囲外はこちら */"
-msgstr "/* everything outside the range above */"
+msgstr "Ranges"
 
 #: src/supports/fonts.md:84
 msgid ""
 "単一コードポイント・範囲・ワイルドカード(`U+4??`)・カンマ区切りの複数指定に対"
 "応します"
-msgstr ""
-"Single code points, ranges, wildcards such as `U+4??`, and comma separated "
-"lists are all supported"
+msgstr "Ranges"
 
 #: src/supports/fonts.md:85
 msgid ""
 "宣言された範囲はハードフィルタとして働きます。範囲外の文字には、そのフォント"
 "が実際にグリフを持っていても使いません"
-msgstr ""
-"A declared range acts as a hard filter. Outside it the font is not used, "
-"even if it does have a glyph for the character"
+msgstr "Ranges"
 
 #: src/supports/fonts.md:86
 msgid ""
@@ -5940,7 +6212,7 @@ msgstr ""
 
 #: src/supports/fonts.md:87
 msgid "範囲が重なった場合は、CSSの中で先に宣言されたほうが優先されます"
-msgstr "Where ranges overlap, whichever is declared first in the CSS wins"
+msgstr "Ranges"
 
 #: src/supports/fonts.md:89
 msgid "太字と斜体"
@@ -6150,29 +6422,115 @@ msgstr ""
 
 #: src/supports/images.md:63
 msgid ""
-"有効にした場合も、プライベートIP・ループバック・リンクローカル(クラウドのメタ"
-"データエンドポイント`169.254.169.254`を含む)宛のリクエストは 常にブロックされ"
-"ます。 DNSリバインディングやリダイレクト経由の迂回も同じ仕組みで防いでいま"
+"有効にした場合も、グローバルに到達可能でない宛先へのリクエストは常にブロック"
+"されます。 判定は「グローバルなユニキャストだけを通す」方針で、次を拒否しま"
 "す。"
 msgstr ""
-"Even when it is on, requests to private, loopback, and link-local addresses, "
-"including the cloud metadata endpoint `169.254.169.254`, are always blocked. "
-"The same mechanism prevents attempts to get around it through DNS rebinding "
-"or redirects."
+"Even when enabled, requests to destinations that are not globally reachable "
+"are always blocked. The rule is to allow only global unicast; the following "
+"are rejected."
 
-#: src/supports/images.md:67
+#: src/supports/images.md:66
+msgid "種別"
+msgstr "Kind"
+
+#: src/supports/images.md:66
+msgid "範囲"
+msgstr "Ranges"
+
+#: src/supports/images.md:68
+msgid "ループバック"
+msgstr "Loopback"
+
+#: src/supports/images.md:68
+msgid "`127.0.0.0/8`、`::1`"
+msgstr "`127.0.0.0/8`, `::1`"
+
+#: src/supports/images.md:69
+msgid "プライベート"
+msgstr "Private"
+
+#: src/supports/images.md:69
+msgid "`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`"
+msgstr "`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`"
+
+#: src/supports/images.md:70
+msgid "リンクローカル"
+msgstr "Link-local"
+
+#: src/supports/images.md:70
+msgid "`169.254/16`(クラウドのメタデータ`169.254.169.254`を含む)、`fe80::/10`"
+msgstr ""
+"`169.254/16` (including the cloud metadata endpoint `169.254.169.254`), "
+"`fe80::/10`"
+
+#: src/supports/images.md:71
+msgid "CGNAT"
+msgstr "CGNAT"
+
+#: src/supports/images.md:71
+msgid "`100.64.0.0/10`(クラウドの内部ロードバランサ等)"
+msgstr "`100.64.0.0/10` (cloud-internal load balancers and the like)"
+
+#: src/supports/images.md:72
+msgid "その他の非グローバル"
+msgstr "Other non-global"
+
+#: src/supports/images.md:72
+msgid ""
+"`0.0.0.0/8`、`192.0.0.0/24`、`198.18.0.0/15`、`240.0.0.0/4`、マルチキャスト、"
+"ドキュメント用"
+msgstr ""
+"`0.0.0.0/8`, `192.0.0.0/24`, `198.18.0.0/15`, `240.0.0.0/4`, multicast, "
+"documentation"
+
+#: src/supports/images.md:73
+msgid "IPv6の特殊用途"
+msgstr "IPv6 special-purpose"
+
+#: src/supports/images.md:73
+msgid ""
+"Teredo `2001::/32`、`2001:db8::/32`、ORCHIDv2 `2001:20::/28`、`100::/64`"
+msgstr ""
+"Teredo `2001::/32`, `2001:db8::/32`, ORCHIDv2 `2001:20::/28`, `100::/64`"
+
+#: src/supports/images.md:75
+msgid ""
+"IPv4を埋め込むIPv6表記(IPv4-mapped `::ffff:a.b.c.d`、IPv4-compatible `::a.b."
+"c.d`、NAT64 `64:ff9b::/96`、6to4 `2002::/16`)は、埋め込まれたIPv4側で判定しま"
+"す。 これらを素通しするとIPv4側のフィルタを迂回できてしまうためです。"
+msgstr ""
+"IPv6 forms that embed an IPv4 address (IPv4-mapped `::ffff:a.b.c.d`, IPv4-"
+"compatible `::a.b.c.d`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) are judged "
+"by the embedded IPv4 address. Letting them through would allow the IPv4 "
+"filter to be bypassed."
+
+#: src/supports/images.md:78
+msgid ""
+"判定は名前解決の結果に対して行うため、DNSリバインディングやリダイレクト経由の"
+"迂回も同じ仕組みで防いでいます。"
+msgstr ""
+"The check is applied to the result of name resolution, so DNS rebinding and "
+"redirect-based bypasses are prevented by the same mechanism."
+
+#: src/supports/images.md:80
+msgid ""
+"ポート番号は制限しません。 内部サービスはプライベートIP上にあり、そこは上の判"
+"定で塞がっています。 公開IPに対する非標準ポート(CDNやAPIの`8080`など)は正当な"
+"用途があるため、塞ぐと実用を損なうわりに得るものがありません。"
+msgstr "Private"
+
+#: src/supports/images.md:84
 msgid ""
 "信頼できないHTMLを変換する場合は、`--allow`でローカル参照の範囲も併せて絞って"
 "ください。"
-msgstr ""
-"When converting HTML you do not trust, narrow local references with `--"
-"allow` as well."
+msgstr "Ranges"
 
-#: src/supports/images.md:73
+#: src/supports/images.md:90
 msgid "JPEGはそのまま埋め込まれる"
 msgstr "JPEG is embedded as is"
 
-#: src/supports/images.md:75
+#: src/supports/images.md:92
 msgid ""
 "JPEGはデコードせず、サイズ情報だけを読んでPDFへそのまま(DCTDecodeとして)埋め"
 "込みます。 再エンコードしないので画質は落ちず、変換も速くなります。"
@@ -6181,7 +6539,7 @@ msgstr ""
 "goes into the PDF unchanged, as `DCTDecode`. Nothing is re-encoded, so "
 "quality is preserved and conversion is faster."
 
-#: src/supports/images.md:78
+#: src/supports/images.md:95
 msgid ""
 "その代わり、`--grayscale`を指定してもJPEGとCMYK画像はカラーのまま残ります(デ"
 "コーダを持たないため)。 グレースケール化が必要な場合は、変換前の画像をグレー"
@@ -6191,7 +6549,7 @@ msgstr ""
 "since there is no decoder for them. If you need them in greyscale, convert "
 "the images before rendering."
 
-#: src/supports/images.md:81
+#: src/supports/images.md:98
 msgid ""
 "PNGとWebPはフルデコードし、アルファチャンネルがあれば透過画像として埋め込みま"
 "す。"
@@ -6199,11 +6557,11 @@ msgstr ""
 "PNG and WebP are fully decoded, and an alpha channel is carried through as "
 "transparency."
 
-#: src/supports/images.md:83
+#: src/supports/images.md:100
 msgid "画像を一切読み込まない"
 msgstr "Loading no images at all"
 
-#: src/supports/images.md:89
+#: src/supports/images.md:106
 msgid "`<img>`とCSSの`background-image`の両方を読み込まなくなります。"
 msgstr ""
 "This stops both `<img>` and the CSS `background-image` from being loaded."
@@ -6787,9 +7145,7 @@ msgstr "Adjustments you may need in the HTML and CSS"
 msgid ""
 "エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の3つ"
 "です。"
-msgstr ""
-"This is a different engine, so it covers a different part of CSS. These "
-"three come up most often when moving over."
+msgstr "Ranges"
 
 #: src/migration/wkhtmltopdf.md:84
 msgid "`!important`が使えません。付いた宣言は無視されます"
@@ -8104,13 +8460,7 @@ msgid ""
 "参照している場合は、`Sghtmltopdf.configure { |c| c.allow = [Rails.root.to_s, "
 "\"/usr/share/fonts\"] }`のように明示する。`--font`系(`gothic_font`など)で渡す"
 "フォントはこの制限を受けない"
-msgstr ""
-"How far local references may reach: under Rails, `--allow` defaults to "
-"`Rails.root`. If you reference files outside the application, such as `/usr/"
-"share/fonts`, from `<img>` or a `url()` in `@font-face`, state them, for "
-"example `Sghtmltopdf.configure { |c| c.allow = [Rails.root.to_s, \"/usr/"
-"share/fonts\"] }`. Fonts passed through the `--font` family of options, such "
-"as `gothic_font`, are exempt"
+msgstr "Ranges"
 
 #: src/migration/wicked-pdf.md:123
 msgid ""
@@ -8236,9 +8586,7 @@ msgstr ""
 msgid ""
 "グラフを載せたい場合は、サーバ側で画像(PNG)を生成して`<img>`で埋め込むか、CSS"
 "で描ける範囲の表現に置き換えてください。"
-msgstr ""
-"To include a chart, render it to a PNG on the server and embed it with "
-"`<img>`, or express it with what CSS can draw."
+msgstr "Ranges"
 
 #: src/appendix/limitations.md:17
 msgid "入力は1つのHTML"
@@ -8399,6 +8747,35 @@ msgstr ""
 "Embedding a JavaScript engine remains something to consider if the need "
 "arises. Items above that are not deliberate non-goals, such as PDF outlines, "
 "may well be supported later."
+
+#~ msgid ""
+#~ "有効にした場合も、プライベートIP・ループバック・リンクローカル(クラウドの"
+#~ "メタデータエンドポイント`169.254.169.254`を含む)宛のリクエストは 常にブ"
+#~ "ロックされます。 DNSリバインディングやリダイレクト経由の迂回も同じ仕組みで"
+#~ "防いでいます。"
+#~ msgstr ""
+#~ "Even when it is on, requests to private, loopback, and link-local "
+#~ "addresses, including the cloud metadata endpoint `169.254.169.254`, are "
+#~ "always blocked. The same mechanism prevents attempts to get around it "
+#~ "through DNS rebinding or redirects."
+
+#~ msgid "キュー待ちの上限秒数(超えると504)"
+#~ msgstr ""
+#~ "How long a request may wait in the queue, in seconds; beyond that, 504"
+
+#~ msgid "キュー待ちが`--timeout`超過"
+#~ msgstr "The request waited in the queue longer than `--timeout`"
+
+#~ msgid ""
+#~ "`--timeout`はキュー待ち時間にしか効きません。変換処理は同期でキャンセル点"
+#~ "を持たないため、走り始めた変換は打ち切れません"
+#~ msgstr ""
+#~ "`--timeout` applies only to the time spent in the queue. Conversion is "
+#~ "synchronous and has no cancellation points, so once it starts it cannot "
+#~ "be stopped"
+
+#~ msgid "リクエストからは指定できないオプション"
+#~ msgstr "Options that cannot be set per request"
 
 #~ msgid "CSS3 にほぼ対応（レアプロパティは一部非対応）"
 #~ msgstr "Covers most of CSS3 (some rarely used properties are not supported)"

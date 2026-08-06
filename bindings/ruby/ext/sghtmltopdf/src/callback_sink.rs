@@ -1,10 +1,31 @@
-//! 確定したPDFのバイト列を、Rubyのブロックへチャンクごとに渡す[`Sink`]。
+//! 確定したPDFのバイト列を、Rubyのブロックへチャンクごとに渡す仕組み。
 //!
-//! レンダリングは[`crate::gvl::without_gvl`]の中で走るので、ここはGVLを
-//! 解放している区間から呼ばれる。ブロックを呼ぶ瞬間だけ
-//! [`crate::gvl::with_gvl`]でGVLを取り戻す。
+//! # スレッドの分け方
+//!
+//! レンダリングはDOMの深さぶん再帰する(スタイル計算・レイアウト・描画)。
+//! Rubyのスレッドのマシンスタックは既定1MiB(`RubyVM::DEFAULT_PARAMS`の
+//! `thread_machine_stack_size`)しかなく、Pumaのワーカースレッド上でそのまま
+//! 走らせると深さ200弱でスタックを溢れさせる。しかもGVLを解放した状態で
+//! ガードページに触れるため、プロセスが落ちるのではなくスレッドが固まる。
+//!
+//! そこでレンダリングは[`sghtmltopdf_core::cli::STACK_SIZE`]のスタックを
+//! 明示的に確保した専用スレッドで走らせ、確定したチャンクはチャネル越しに
+//! 元のスレッドへ渡す。Rubyへ触れるのは元のスレッドだけに限る。
+//!
+//! ```text
+//! 元のスレッド(Rubyが作った / GVL解放中)     レンダリングスレッド(16MiB)
+//!   recv(chunk)  <---------- chunk ----------  Sink::write
+//!   with_gvl { block.call(chunk) }
+//!   send(ack)    ------------ ack ---------->  (次のチャンクへ)
+//! ```
+//!
+//! この向きでないと成立しない: [`crate::gvl::with_gvl`]の
+//! `rb_thread_call_with_gvl`は「そのスレッドが`rb_thread_call_without_gvl`で
+//! GVLを手放している」ことが前提で、Rubyの知らないスレッドから呼ぶことは
+//! できない。だからレンダリングスレッドはRubyに一切触れない。
 
 use std::io;
+use std::sync::mpsc::{Receiver, SyncSender};
 
 use magnus::rb_sys::{AsRawValue, FromRawValue};
 use magnus::{block::Proc, Error, ExceptionClass, RString, Ruby, Value};
@@ -165,94 +186,140 @@ impl PendingUnwind {
     }
 }
 
-/// 書き出されたバイト列を、`chunk_size`ごとにRubyのブロックへ渡すSink。
-pub struct CallbackSink<'a> {
-    block: BlockSlot,
-    pending: &'a mut PendingUnwind,
+/// 確定したバイト列を`chunk_size`ごとにチャネルへ流すSink。
+///
+/// レンダリングスレッド側で使う。Rubyには一切触れないので、`Send`であり
+/// GVLの制約とも無縁。1チャンク送るごとに受け取り側の応答を待つ
+/// (rendezvous)ことで、ブロックの処理より先に走ってメモリを溜め込まない。
+pub struct ChannelSink {
+    chunks: SyncSender<Vec<u8>>,
+    ack: Receiver<bool>,
     buf: Vec<u8>,
     chunk_size: usize,
 }
 
-impl<'a> CallbackSink<'a> {
-    pub fn new(block: BlockSlot, pending: &'a mut PendingUnwind, chunk_size: usize) -> Self {
+impl ChannelSink {
+    fn new(chunks: SyncSender<Vec<u8>>, ack: Receiver<bool>, chunk_size: usize) -> Self {
         Self {
-            block,
-            pending,
+            chunks,
+            ack,
             buf: Vec::new(),
             // 0だと1バイトごとにGVLを取り直すことになるため下限を設ける。
             chunk_size: chunk_size.max(1),
         }
     }
 
-    /// 溜まっているバイト列をブロックへ渡す。
+    /// 1チャンク渡して、ブロックが受け取り終えるまで待つ。
     ///
-    /// GVLを取り戻すのはこの中だけ。ブロックの呼び出しはmagnusの
-    /// `Proc::call`が内部で`rb_protect`しているので、例外が出てもlongjmpが
-    /// Rustのフレームを飛び越えない。
-    ///
-    /// エラーの保存もこの区間の中で済ませる。`with_gvl`から
-    /// Rubyのオブジェクト(例外)を持ち出すと、GVLを手放した瞬間に
-    /// GCのスコープから外れてしまうため(`gvl::with_gvl`のドキュメント)。
-    /// 持ち出すのは真偽値だけ。
-    fn call_block(&mut self, bytes: Vec<u8>) -> Result<(), io::Error> {
-        let block = self.block;
-        let pending: &mut PendingUnwind = self.pending;
-
-        let called = gvl::with_gvl(move || {
-            let ruby = Ruby::get().expect("with_gvlの内側なのでGVLを持っている");
-            let result = match block.proc() {
-                Some(proc) => {
-                    let chunk: RString = ruby.str_from_slice(&bytes);
-                    proc.call::<_, Value>((chunk,)).map(|_| ())
-                }
-                None => Err(Error::new(
-                    ruby.exception_runtime_error(),
-                    "ブロックが失われました",
-                )),
-            };
-            match result {
-                Ok(()) => true,
-                Err(error) => {
-                    // GCへの登録もGVLを持っているこの場で行う。
-                    pending.store(error);
-                    false
-                }
-            }
-        });
-
-        if called {
-            Ok(())
-        } else {
-            Err(interrupted())
+    /// 送れない(受け取り側が降りた)場合と、ブロックが中断を返した場合は
+    /// どちらも[`interrupted`]で巻き戻す。中断の本当の理由は受け取り側の
+    /// [`PendingUnwind`]に入っている。
+    fn hand_off(&mut self, chunk: Vec<u8>) -> Result<(), io::Error> {
+        if self.chunks.send(chunk).is_err() {
+            return Err(interrupted());
+        }
+        match self.ack.recv() {
+            Ok(true) => Ok(()),
+            _ => Err(interrupted()),
         }
     }
 }
 
-impl Sink for CallbackSink<'_> {
+impl Sink for ChannelSink {
     type Output = ();
     type Error = io::Error;
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), io::Error> {
-        // 一度中断したら、以降はブロックを呼ばずに巻き戻す。
-        if self.pending.is_pending() {
-            return Err(interrupted());
-        }
         self.buf.extend_from_slice(bytes);
         while self.buf.len() >= self.chunk_size {
             let chunk: Vec<u8> = self.buf.drain(..self.chunk_size).collect();
-            self.call_block(chunk)?;
+            self.hand_off(chunk)?;
         }
         Ok(())
     }
 
     fn finish(mut self) -> Result<(), io::Error> {
-        if self.pending.is_pending() {
-            return Err(interrupted());
-        }
         if self.buf.is_empty() {
             return Ok(());
         }
         let rest = std::mem::take(&mut self.buf);
-        self.call_block(rest)
+        self.hand_off(rest)
     }
+}
+
+/// 1チャンクをRubyのブロックへ渡す。中断したら`false`を返す。
+///
+/// GVLを取り戻すのはこの中だけ。ブロックの呼び出しはmagnusの`Proc::call`が
+/// 内部で`rb_protect`しているので、例外が出てもlongjmpがRustのフレームを
+/// 飛び越えない。
+///
+/// エラーの保存もこの区間の中で済ませる。`with_gvl`からRubyのオブジェクト
+/// (例外)を持ち出すと、GVLを手放した瞬間にGCのスコープから外れてしまう
+/// ため(`gvl::with_gvl`のドキュメント)。持ち出すのは真偽値だけ。
+fn call_block(block: BlockSlot, pending: &mut PendingUnwind, bytes: Vec<u8>) -> bool {
+    gvl::with_gvl(move || {
+        let ruby = Ruby::get().expect("with_gvlの内側なのでGVLを持っている");
+        let result = match block.proc() {
+            Some(proc) => {
+                let chunk: RString = ruby.str_from_slice(&bytes);
+                proc.call::<_, Value>((chunk,)).map(|_| ())
+            }
+            None => Err(Error::new(
+                ruby.exception_runtime_error(),
+                "ブロックが失われました",
+            )),
+        };
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                // GCへの登録もGVLを持っているこの場で行う。
+                pending.store(error);
+                false
+            }
+        }
+    })
+}
+
+/// `render`をレンダリング専用スレッドで走らせ、出てきたチャンクをこのスレッド
+/// からRubyのブロックへ渡し続ける。
+///
+/// GVLを解放している区間(`without_gvl`の内側)から、その解放したスレッド上で
+/// 呼ぶこと。モジュールdocの図のうち左側がこの関数にあたる。
+pub fn pump_to_block<F>(
+    block: BlockSlot,
+    pending: &mut PendingUnwind,
+    chunk_size: usize,
+    render: F,
+) -> Result<(), sghtmltopdf_core::cli::CliError>
+where
+    F: FnOnce(ChannelSink) -> Result<(), sghtmltopdf_core::cli::CliError> + Send + 'static,
+{
+    use sghtmltopdf_core::cli::{CliError, STACK_SIZE};
+
+    // どちらも容量0のrendezvous。レンダリング側は1チャンクごとに
+    // ブロックの完了を待つ。
+    let (chunk_tx, chunk_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(0);
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel::<bool>(0);
+
+    let worker = std::thread::Builder::new()
+        .name("sghtmltopdf-render".to_string())
+        .stack_size(STACK_SIZE)
+        .spawn(move || render(ChannelSink::new(chunk_tx, ack_rx, chunk_size)))
+        .map_err(|e| CliError::Input(format!("レンダリングスレッドを作れません: {e}")))?;
+
+    while let Ok(chunk) = chunk_rx.recv() {
+        let ok = call_block(block, pending, chunk);
+        // 応答を返せない(レンダリング側が既に降りた)場合も抜ける。
+        if ack_tx.send(ok).is_err() || !ok {
+            break;
+        }
+    }
+    // 中断で抜けた場合、レンダリング側が次のsendでエラーになって巻き戻れる
+    // よう、受け口を先に落とす。
+    drop(chunk_rx);
+    drop(ack_tx);
+
+    worker
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }

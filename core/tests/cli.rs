@@ -921,18 +921,43 @@ fn the_streaming_mode_can_be_selected() {
 #[test]
 fn allow_limits_local_reads_to_the_listed_directories() {
     // --allowで許可していないディレクトリのフォントは読めない。
+    let dir =
+        std::env::temp_dir().join(format!("sghtmltopdf-e2e-{}-allow-dir", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let out = Command::new(BIN)
+        .arg(SAMPLE_HTML)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .args(["--allow", dir.to_str().unwrap()])
+        .arg("-o")
+        .arg(temp_output_path("allow"))
+        .arg("--quiet")
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    // sample.htmlは外部リソースを参照しないため、--allowで絞っても成功する。
+    assert!(out.status.success());
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn an_allow_directory_that_cannot_be_resolved_is_rejected_at_startup() {
+    // 解決できない--allowを黙って受け入れると、許可範囲の判定が生のパスでの
+    // 比較に落ちる。意図しない範囲で動き続けないよう起動時に止める。
     let out = Command::new(BIN)
         .arg(SAMPLE_HTML)
         .arg("--font")
         .arg(FONT_PATH)
         .args(["--allow", "/nonexistent-allowed-dir"])
         .arg("-o")
-        .arg(temp_output_path("allow"))
-        .arg("--quiet")
+        .arg(temp_output_path("allow-missing"))
         .output()
         .expect("failed to run sghtmltopdf binary");
-    // sample.htmlは外部リソースを参照しないため、--allowを付けても成功する。
-    assert!(out.status.success());
+
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("--allow"), "got: {stderr}");
 }
 
 // ---------------------------------------------------------------------------

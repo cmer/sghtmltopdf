@@ -21,6 +21,37 @@ use options::Cli;
 #[cfg(feature = "server")]
 use options::Command;
 
+/// レンダリングを走らせるスレッドに確保するスタックサイズ。
+///
+/// スタイル計算・ボックスツリー構築・レイアウト・PDF描画はDOMの深さぶん再帰
+/// するため、必要量は[`crate::html::MAX_ELEMENT_DEPTH`]で決まる。上限256段は
+/// デバッグビルド換算で約2.8MiBなので、5倍以上の余裕を取ってこの値にしている。
+///
+/// 既定任せにしないのは、スレッドの既定スタックが実行環境で大きく変わるため
+/// (Rustの生成スレッドは2MiB、`ulimit -s`次第でmainはもっと小さくなりうる、
+/// Rubyのスレッドは1MiB程度)。ここで固定しておけば、上限の判定が
+/// 「実際に耐えられる深さ」と食い違わない。
+pub const STACK_SIZE: usize = 16 * 1024 * 1024;
+
+/// `f`を[`STACK_SIZE`]のスタックを持つスレッド上で実行し、結果を返す。
+///
+/// `f`がパニックした場合は、そのパニックを呼び出し元スレッドへ伝播させる
+/// (スレッドを挟んだことで挙動が変わらないようにする)。
+pub fn with_render_stack<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R + Send,
+    R: Send,
+{
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(STACK_SIZE)
+            .spawn_scoped(scope, f)
+            .expect("レンダリング用スレッドを作れませんでした")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
 /// CLIのエラー。バリアントがそのままexit codeに対応する。
 #[derive(Debug)]
 pub enum CliError {
@@ -30,6 +61,11 @@ pub enum CliError {
     Input(String),
     /// レンダリングエラー(エンジンの制約違反など) = 3
     Render(String),
+    /// 制限時間を超えて打ち切った = 4
+    ///
+    /// 期限を与えるのはHTTPサーバモード(`--timeout`)だけなので、CLIから
+    /// この終了コードが出ることは今のところない。
+    Timeout(String),
 }
 
 impl CliError {
@@ -38,12 +74,13 @@ impl CliError {
             Self::Usage(_) => 1,
             Self::Input(_) => 2,
             Self::Render(_) => 3,
+            Self::Timeout(_) => 4,
         }
     }
 
     fn message(&self) -> &str {
         match self {
-            Self::Usage(m) | Self::Input(m) | Self::Render(m) => m,
+            Self::Usage(m) | Self::Input(m) | Self::Render(m) | Self::Timeout(m) => m,
         }
     }
 }
@@ -114,13 +151,16 @@ pub fn run() -> ExitCode {
         }
     };
 
+    // 変換はレイアウト・描画がDOMの深さぶん再帰するため、既定のスタック
+    // (`ulimit -s`次第)に頼らず[`STACK_SIZE`]を確保したスレッドで走らせる。
+    // サーバモードはワーカーごとに同じことをするのでここでは包まない。
     #[cfg(feature = "server")]
     let result = match cli.command {
         Some(Command::Server(ref args)) => server::run(args),
-        None => convert::run(&cli.convert, &matches),
+        None => with_render_stack(|| convert::run(&cli.convert, &matches)),
     };
     #[cfg(not(feature = "server"))]
-    let result = convert::run(&cli.convert, &matches);
+    let result = with_render_stack(|| convert::run(&cli.convert, &matches));
 
     match result {
         Ok(()) => ExitCode::SUCCESS,

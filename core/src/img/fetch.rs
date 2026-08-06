@@ -80,7 +80,16 @@ impl ImageFetcher {
     /// 解決後のパスがそのいずれかの配下に無い参照を拒否する。
     pub fn with_local_access(mut self, allow_local: bool, allowed_dirs: Vec<PathBuf>) -> Self {
         self.allow_local = allow_local;
-        self.allowed_dirs = allowed_dirs;
+        // 実パスへの解決はここで1回だけ行う。参照のたびに解決すると、
+        // 失敗したときに生のパスでの比較へ落ちてしまうため。
+        //
+        // 解決できなかったものはそのまま残すが、比較相手(参照先)は必ず
+        // 実パスなので一致せず、拒否側に倒れる。CLIから来る場合は
+        // `ConvertArgs::local_access`が解決済みかつ検証済みのものを渡す。
+        self.allowed_dirs = allowed_dirs
+            .into_iter()
+            .map(|dir| dir.canonicalize().unwrap_or(dir))
+            .collect();
         self
     }
 
@@ -127,28 +136,43 @@ impl ImageFetcher {
         }
     }
 
-    /// `base_dir`相対のローカルファイルを読む。`@font-face`の`url()`解決
-    /// (`fonts/face.rs`の`load_one`)と同じ[`resolve_local_asset_path`]を
-    /// 使う(root-relativeな`/foo`もbase_dir相対として扱う、T61)。`..`に
-    /// よるディレクトリトラバーサルの制限は行っていない(既存のfont読み込み
-    /// と対称的な挙動に揃えている。より厳格にするならfont側と合わせて
-    /// 別途検討する)。
+    /// `base_dir`相対のローカルファイルを読む。`<img>`・`<link>`・`@import`・
+    /// `@font-face`の`url()`はすべてここを通る(root-relativeな`/foo`も
+    /// base_dir相対として扱う、T61)。
+    ///
+    /// `..`でbase_dirの外へ出る参照は[`resolve_local_asset_path`]が弾く。
+    /// 外を参照する必要がある場合は`--allow`で範囲を明示する。
     fn read_local(&self, path: &str) -> Result<Vec<u8>, FetchError> {
         if !self.allow_local {
             return Err(FetchError(format!(
                 "{path}: ローカルファイルの読み込みは許可されていません(--enable-local-file-access)"
             )));
         }
-        let full_path = resolve_local_asset_path(&self.base_dir, path);
+        let resolved = resolve_local_asset_path(&self.base_dir, path);
+        // `--allow`が無いときはbase_dirがそのまま境界になる。あるときは
+        // そちらが範囲を決めるので、外へ出ること自体は許して下で判定する。
+        if resolved.escapes_base_dir && self.allowed_dirs.is_empty() {
+            return Err(FetchError(format!(
+                "{path}: 基準ディレクトリ({})の外を参照しています。\n  \
+                 外部のファイルを読む場合は --allow でディレクトリを明示してください",
+                self.base_dir.display()
+            )));
+        }
+        let full_path = resolved.path;
         if !self.allowed_dirs.is_empty() {
+            // 実パスに解決できなければ「許可範囲内だと確認できなかった」として
+            // 拒否する。生のパスへフォールバックすると`..`を含んだまま
+            // `starts_with`することになり、`/var/www/../etc/passwd`が
+            // `/var/www`配下と判定されてしまう(比較はパス文字列上の
+            // コンポーネント単位で、ファイルシステムを見ないため)。
             let canonical = full_path
                 .canonicalize()
-                .unwrap_or_else(|_| full_path.clone());
-            let permitted = self.allowed_dirs.iter().any(|dir| {
-                let dir = dir.canonicalize().unwrap_or_else(|_| dir.clone());
-                canonical.starts_with(&dir)
-            });
-            if !permitted {
+                .map_err(|e| FetchError(format!("{}: {e}", full_path.display())))?;
+            if !self
+                .allowed_dirs
+                .iter()
+                .any(|dir| canonical.starts_with(dir))
+            {
                 return Err(FetchError(format!(
                     "{}: --allowで許可されたディレクトリの外です",
                     full_path.display()
@@ -196,35 +220,130 @@ impl ImageFetcher {
     }
 }
 
-/// プライベート/loopback/link-local(クラウドメタデータの169.254.169.254を
-/// 含む)/マルチキャスト/未指定等、外部公開されるべきでないIPかどうかを
-/// 判定する。IPv4-mapped IPv6(`::ffff:a.b.c.d`)は埋め込まれたIPv4側を
-/// 再帰的に判定する(素通しするとIPv4側のフィルタを迂回できてしまうため)。
+/// グローバルに到達可能でないIP、つまり取りに行かせてはいけないIPかどうかを
+/// 判定する。
 ///
-/// `core/examples/spike_image_fetch_ssrf_guard.rs`を使って実際に検証済みの
-/// ロジックをそのまま本実装へ移した。
+/// 判定の考え方は「グローバルなユニキャストだけを通す」で、プライベート・
+/// loopback・link-local(クラウドのメタデータ169.254.169.254を含む)・CGNAT・
+/// マルチキャスト・予約済みなどをすべて拒否する。IPv4を埋め込むIPv6表記
+/// (IPv4-mapped・IPv4-compatible・NAT64・6to4)は、埋め込まれたIPv4側で
+/// 判定する。素通しするとIPv4側のフィルタを迂回できてしまうため。
+///
+/// ポート番号は制限しない。内部サービスはプライベートIP上にあり、そこは
+/// この判定で塞がっている。公開IPに対する非標準ポートは正当な用途
+/// (CDNやAPIの8080等)があるため、塞ぐと実用を損なうわりに得るものがない。
+///
+/// なお`core/examples/spike_image_fetch_ssrf_guard.rs`は初期検証時のスパイク
+/// で、判定範囲はその後こちらで広げてある(同期していない)。
 fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
-        IpAddr::V4(v4) => {
-            v4.is_private()
-                || v4.is_loopback()
-                || v4.is_link_local()
-                || v4.is_multicast()
-                || v4.is_broadcast()
-                || v4.is_documentation()
-                || v4.is_unspecified()
-        }
-        IpAddr::V6(v6) => {
-            if let Some(mapped) = v6.to_ipv4_mapped() {
-                return is_blocked_ip(IpAddr::V4(mapped));
-            }
-            v6.is_loopback()
-                || v6.is_multicast()
-                || v6.is_unspecified()
-                || v6.is_unique_local()
-                || v6.is_unicast_link_local()
-        }
+        IpAddr::V4(v4) => is_blocked_ipv4(v4),
+        IpAddr::V6(v6) => is_blocked_ipv6(v6),
     }
+}
+
+/// グローバルに到達可能でないIPv4かどうか。
+///
+/// 標準ライブラリの述語だけでは足りない範囲があるので、CIDRを直接見る
+/// (`is_shared`・`is_reserved`・`is_benchmarking`等は安定化されていない)。
+fn is_blocked_ipv4(v4: std::net::Ipv4Addr) -> bool {
+    let [a, b, _, _] = v4.octets();
+
+    // 標準ライブラリで判定できるもの。
+    // private(10/8・172.16/12・192.168/16)、loopback(127/8)、
+    // link-local(169.254/16。クラウドのメタデータ169.254.169.254を含む)、
+    // multicast(224/4)、broadcast(255.255.255.255)、
+    // documentation(192.0.2/24・198.51.100/24・203.0.113/24)。
+    if v4.is_private()
+        || v4.is_loopback()
+        || v4.is_link_local()
+        || v4.is_multicast()
+        || v4.is_broadcast()
+        || v4.is_documentation()
+    {
+        return true;
+    }
+
+    // 0.0.0.0/8 "this network"。`is_unspecified`は0.0.0.0ちょうどしか見ない
+    // が、0.x.y.z全体が非グローバルで、Linuxでは0.0.0.1のような宛先が
+    // ローカルへ向かう。
+    if a == 0 {
+        return true;
+    }
+    // 100.64.0.0/10 CGNAT。クラウドの内部ロードバランサやKubernetesの
+    // ネットワークで使われるため、外形上はグローバルに見えても内部を指す。
+    if a == 100 && (64..128).contains(&b) {
+        return true;
+    }
+    // 192.0.0.0/24 IETF Protocol Assignments。
+    if v4.octets()[..3] == [192, 0, 0] {
+        return true;
+    }
+    // 198.18.0.0/15 ベンチマーク用。
+    if a == 198 && (b == 18 || b == 19) {
+        return true;
+    }
+    // 240.0.0.0/4 予約済み(255.255.255.255のbroadcastは上で弾いている)。
+    if a >= 240 {
+        return true;
+    }
+
+    false
+}
+
+/// グローバルに到達可能でないIPv6かどうか。
+///
+/// IPv4を埋め込む表記(IPv4-mapped・IPv4-compatible・NAT64・6to4)は、
+/// 埋め込まれたIPv4側を[`is_blocked_ipv4`]で判定する。素通しすると
+/// IPv4側のフィルタを迂回できてしまうため。
+fn is_blocked_ipv6(v6: std::net::Ipv6Addr) -> bool {
+    // `to_ipv4`はIPv4-mapped(`::ffff:a.b.c.d`)に加えて、非推奨の
+    // IPv4-compatible(`::a.b.c.d`)も拾う。`to_ipv4_mapped`だけだと
+    // 後者が素通りする。
+    if let Some(v4) = v6.to_ipv4() {
+        return is_blocked_ipv4(v4);
+    }
+
+    let segments = v6.segments();
+
+    // 64:ff9b::/96(NAT64のwell-known prefix)と64:ff9b:1::/48(local-use)。
+    // 下位32ビットにIPv4が埋まっており、NAT64ゲートウェイがある環境では
+    // これ経由でIPv4側へ到達できる。
+    if segments[0] == 0x0064 && segments[1] == 0xff9b {
+        let [a, b, c, d] = (((segments[6] as u32) << 16) | segments[7] as u32).to_be_bytes();
+        return is_blocked_ipv4(std::net::Ipv4Addr::new(a, b, c, d));
+    }
+    // 2002::/16(6to4)。第2〜3セグメントに埋め込まれたIPv4を見る。
+    if segments[0] == 0x2002 {
+        let [a, b, c, d] = (((segments[1] as u32) << 16) | segments[2] as u32).to_be_bytes();
+        return is_blocked_ipv4(std::net::Ipv4Addr::new(a, b, c, d));
+    }
+
+    // 2001::/32(Teredo)。クライアント側のIPv4が難読化して埋め込まれて
+    // おり、復元してまで通す価値がないのでプレフィクスごと弾く。
+    if segments[0] == 0x2001 && segments[1] == 0x0000 {
+        return true;
+    }
+    // 2001:db8::/32 ドキュメント用。
+    if segments[0] == 0x2001 && segments[1] == 0x0db8 {
+        return true;
+    }
+    // 2001:20::/28 ORCHIDv2。
+    if segments[0] == 0x2001 && (0x0020..0x0030).contains(&segments[1]) {
+        return true;
+    }
+    // 100::/64 discard-only。
+    if segments[0] == 0x0100 && segments[1..4] == [0, 0, 0] {
+        return true;
+    }
+
+    // loopback(::1)、multicast(ff00::/8)、unspecified(::)、
+    // unique local(fc00::/7)、link-local unicast(fe80::/10)。
+    v6.is_loopback()
+        || v6.is_multicast()
+        || v6.is_unspecified()
+        || v6.is_unique_local()
+        || v6.is_unicast_link_local()
 }
 
 /// 任意の`Resolver`をラップし、解決結果からブロック対象IPを除去する。
@@ -309,6 +428,121 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// 既定(`--allow`なし)では、`..`でbase_dirの外へ出る参照を拒否する。
+    /// 信頼できないHTMLからの任意ファイル読み出しを塞ぐための既定挙動。
+    #[test]
+    fn a_local_path_escaping_base_dir_is_refused_by_default() {
+        let dir = temp_dir("escape_default");
+        let inner = dir.join("pages");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(dir.join("secret.png"), b"outside").unwrap();
+        let fetcher = ImageFetcher::new(inner.clone(), false);
+
+        let err = fetcher
+            .fetch(&ImgSrc::LocalPath("../secret.png".to_string()))
+            .expect_err("base_dirの外は既定で拒否されるべき");
+        assert!(
+            err.to_string().contains("基準ディレクトリ"),
+            "封じ込めによる拒否であること: {err}"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `--allow`を指定したときは、その範囲がbase_dirより外でも読める
+    /// (逃がし口として機能し続けること)。
+    #[test]
+    fn allow_lets_a_reference_reach_outside_base_dir() {
+        let dir = temp_dir("escape_allowed");
+        let inner = dir.join("pages");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(dir.join("logo.png"), b"outside but allowed").unwrap();
+        let fetcher =
+            ImageFetcher::new(inner.clone(), false).with_local_access(true, vec![dir.clone()]);
+
+        let bytes = fetcher
+            .fetch(&ImgSrc::LocalPath("../logo.png".to_string()))
+            .expect("--allowの範囲内なら読めるべき");
+        assert_eq!(bytes, b"outside but allowed");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `--allow`があっても、その範囲の外はやはり読めない。
+    #[test]
+    fn allow_still_refuses_paths_outside_the_allowed_dirs() {
+        let dir = temp_dir("escape_allow_bounds");
+        let inner = dir.join("pages");
+        let allowed = dir.join("assets");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::create_dir_all(&allowed).unwrap();
+        std::fs::write(dir.join("secret.png"), b"outside").unwrap();
+        let fetcher =
+            ImageFetcher::new(inner.clone(), false).with_local_access(true, vec![allowed]);
+
+        let result = fetcher.fetch(&ImgSrc::LocalPath("../secret.png".to_string()));
+        assert!(result.is_err(), "--allowの範囲外は読めてはならない");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 許可ディレクトリは構築時に実パスへ解決される。`..`を含む形で
+    /// 渡しても、その中のファイルはちゃんと読める。
+    #[test]
+    fn allowed_dirs_are_canonicalized_once_at_construction() {
+        let dir = temp_dir("allow_canonical");
+        let inner = dir.join("pages");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(dir.join("logo.png"), b"allowed").unwrap();
+
+        // `<dir>/pages/..` は実体としては `<dir>`。
+        let dotted = inner.join("..");
+        let fetcher = ImageFetcher::new(inner.clone(), false).with_local_access(true, vec![dotted]);
+
+        let bytes = fetcher
+            .fetch(&ImgSrc::LocalPath("../logo.png".to_string()))
+            .expect("解決後のディレクトリ配下なので読めるべき");
+        assert_eq!(bytes, b"allowed");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 実パスに解決できない参照は、`--allow`の判定を通さず拒否する。
+    ///
+    /// 生パスへフォールバックしていた頃は`<allowed>/../secret.png`のような
+    /// パスが`starts_with`を通っていた(読み込み自体は失敗していたので実害は
+    /// 無かったが、境界判定としては素通りしていた)。
+    #[test]
+    fn a_path_that_cannot_be_resolved_is_refused_instead_of_compared_raw() {
+        let dir = temp_dir("allow_unresolvable");
+        let allowed = dir.join("assets");
+        std::fs::create_dir_all(&allowed).unwrap();
+        let fetcher = ImageFetcher::new(allowed.clone(), false)
+            .with_local_access(true, vec![allowed.clone()]);
+
+        // 許可ディレクトリ配下に見えるが実在しないパス。
+        let result = fetcher.fetch(&ImgSrc::LocalPath("../secret/none.png".to_string()));
+        assert!(result.is_err(), "解決できない参照は拒否されるべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// base_dirの中で完結する`..`(`assets/../images/x`)は従来どおり読める。
+    #[test]
+    fn a_parent_reference_that_stays_inside_base_dir_still_reads() {
+        let dir = temp_dir("escape_inside");
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+        std::fs::write(dir.join("logo.png"), b"inside").unwrap();
+        let fetcher = ImageFetcher::new(dir.clone(), false);
+
+        let bytes = fetcher
+            .fetch(&ImgSrc::LocalPath("assets/../logo.png".to_string()))
+            .expect("base_dir内で完結する..は許されるべき");
+        assert_eq!(bytes, b"inside");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn missing_local_file_is_an_error() {
         let dir = temp_dir("missing_local");
@@ -354,6 +588,118 @@ mod tests {
             bytes: b"way too big".to_vec(),
         };
         assert!(fetcher.fetch(&src).is_err());
+    }
+
+    fn blocked(ip: &str) -> bool {
+        is_blocked_ip(ip.parse().expect("テストのIPリテラルが不正"))
+    }
+
+    /// 標準ライブラリの述語で判定できる範囲。
+    #[test]
+    fn well_known_private_ranges_are_blocked() {
+        for ip in [
+            "127.0.0.1",       // loopback
+            "10.0.0.1",        // private
+            "172.16.0.1",      // private
+            "192.168.1.1",     // private
+            "169.254.169.254", // link-local(クラウドのメタデータ)
+            "224.0.0.1",       // multicast
+            "255.255.255.255", // broadcast
+            "192.0.2.1",       // documentation
+            "0.0.0.0",         // unspecified
+        ] {
+            assert!(blocked(ip), "{ip}は拒否されるべき");
+        }
+    }
+
+    /// 標準ライブラリの述語では拾えず、以前は素通りしていた範囲。
+    #[test]
+    fn ranges_missed_by_the_standard_predicates_are_blocked() {
+        for (ip, why) in [
+            ("0.1.2.3", "0.0.0.0/8 this network"),
+            ("100.64.0.1", "100.64.0.0/10 CGNAT"),
+            ("100.127.255.254", "CGNATの上端"),
+            ("192.0.0.1", "192.0.0.0/24 IETF protocol assignments"),
+            ("198.18.0.1", "198.18.0.0/15 ベンチマーク用"),
+            ("198.19.255.254", "ベンチマーク用の上端"),
+            ("240.0.0.1", "240.0.0.0/4 予約済み"),
+        ] {
+            assert!(blocked(ip), "{ip}({why})は拒否されるべき");
+        }
+    }
+
+    /// CGNATの境界。100.63.x と 100.128.x はグローバル。
+    #[test]
+    fn the_cgnat_boundaries_are_respected() {
+        assert!(!blocked("100.63.255.255"), "CGNATの手前はグローバル");
+        assert!(blocked("100.64.0.0"), "CGNATの下端");
+        assert!(blocked("100.127.255.255"), "CGNATの上端");
+        assert!(!blocked("100.128.0.0"), "CGNATの直後はグローバル");
+    }
+
+    /// 通常のグローバルアドレスは通ること(過剰に弾いていないかの確認)。
+    #[test]
+    fn ordinary_global_addresses_are_allowed() {
+        for ip in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "93.184.216.34",
+            "239.255.255.255", // multicastの上端の直後を確認するため
+            "2606:4700:4700::1111",
+            "2400:cb00::1",
+        ] {
+            if ip == "239.255.255.255" {
+                // 239/8はmulticastなので拒否が正しい。
+                assert!(blocked(ip));
+                continue;
+            }
+            assert!(!blocked(ip), "{ip}は通るべき");
+        }
+    }
+
+    /// IPv4を埋め込むIPv6表記から、IPv4側のフィルタを迂回できないこと。
+    #[test]
+    fn ipv6_forms_embedding_ipv4_are_checked_against_the_ipv4_rules() {
+        for (ip, why) in [
+            ("::ffff:127.0.0.1", "IPv4-mapped"),
+            ("::ffff:169.254.169.254", "IPv4-mappedのメタデータ"),
+            ("::127.0.0.1", "IPv4-compatible(非推奨だが解決されうる)"),
+            ("::ffff:100.64.0.1", "IPv4-mapped経由のCGNAT"),
+            ("64:ff9b::127.0.0.1", "NAT64 well-known prefix"),
+            ("64:ff9b::a00:1", "NAT64経由の10.0.0.1"),
+            ("2002:7f00:1::", "6to4経由の127.0.0.1"),
+            ("2002:a00:1::", "6to4経由の10.0.0.1"),
+        ] {
+            assert!(blocked(ip), "{ip}({why})は拒否されるべき");
+        }
+    }
+
+    /// 埋め込まれたIPv4がグローバルなら通ること(埋め込み表記を一律で
+    /// 弾いているわけではないことの確認)。
+    #[test]
+    fn embedded_ipv4_that_is_global_still_passes() {
+        assert!(!blocked("::ffff:8.8.8.8"), "IPv4-mappedのグローバル");
+        assert!(!blocked("64:ff9b::8.8.8.8"), "NAT64経由のグローバル");
+        assert!(!blocked("2002:808:808::"), "6to4経由の8.8.8.8");
+    }
+
+    /// IPv6側の非グローバル範囲。
+    #[test]
+    fn non_global_ipv6_ranges_are_blocked() {
+        for (ip, why) in [
+            ("::1", "loopback"),
+            ("::", "unspecified"),
+            ("fe80::1", "link-local"),
+            ("fc00::1", "unique local"),
+            ("fd00::1", "unique local"),
+            ("ff02::1", "multicast"),
+            ("2001::1", "Teredo"),
+            ("2001:db8::1", "ドキュメント用"),
+            ("2001:20::1", "ORCHIDv2"),
+            ("100::1", "discard-only"),
+        ] {
+            assert!(blocked(ip), "{ip}({why})は拒否されるべき");
+        }
     }
 
     #[test]

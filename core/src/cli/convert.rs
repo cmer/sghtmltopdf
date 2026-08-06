@@ -194,8 +194,9 @@ fn render_from_reader<S: Sink<Error = io::Error>>(
         allow_remote_assets: args.allow_remote_assets,
         output: args.pdf_output_options(),
         content: content_options,
-        local_access: args.local_access(),
+        local_access: args.local_access().map_err(CliError::Input)?,
         extra_page_rules,
+        deadline: args.deadline,
         header_footer_html,
         cover_html,
         toc: toc_settings,
@@ -236,6 +237,11 @@ fn engine_error(e: EngineError<io::Error>) -> CliError {
         EngineError::Io(e) => CliError::Input(format!("PDFの書き込みに失敗しました: {e}")),
         EngineError::Font(msg) => CliError::Input(msg),
         EngineError::UnsupportedInStreamingMode(msg) => CliError::Render(msg.to_string()),
+        // 入力HTML側の問題なので入力エラー扱いにする(サーバモードでは400になり、
+        // 「サーバが壊れた」ではなく「送られたHTMLが不正」として返る)。
+        e @ EngineError::DepthLimitExceeded { .. } => CliError::Input(e.to_string()),
+        e @ EngineError::NodeLimitExceeded { .. } => CliError::Input(e.to_string()),
+        e @ EngineError::TimedOut => CliError::Timeout(e.to_string()),
         EngineError::MediaLoad(msg) => {
             CliError::Input(format!("リソースの取得に失敗しました: {msg}"))
         }

@@ -17,6 +17,10 @@ pub struct Node {
     pub(crate) next_sibling: Option<NodeId>,
     pub(crate) first_child: Option<NodeId>,
     pub(crate) last_child: Option<NodeId>,
+    /// ルート([`Dom::document`])からの深さ。木に繋がれた時点で確定し、
+    /// 別の親へ移し替えられれば部分木ごと振り直される
+    /// ([`set_subtree_depth`])。深さ上限の判定に使う。
+    pub(crate) depth: u32,
     pub data: NodeData,
 }
 
@@ -28,6 +32,7 @@ impl Node {
             next_sibling: None,
             first_child: None,
             last_child: None,
+            depth: 0,
             data,
         }
     }
@@ -187,11 +192,48 @@ pub fn collect_anchor_targets(dom: &Dom) -> Vec<(NodeId, String)> {
 pub struct Dom {
     pub(crate) nodes: Vec<Node>,
     pub(crate) document: NodeId,
+    /// この木に現れた最大の深さ。木を組み立てながら更新するため、パース途中
+    /// (ストリーミング)でも参照できる。
+    pub(crate) max_depth: u32,
+    /// まだ内容を保持しているノードの数。
+    ///
+    /// `nodes`の長さではなく、[`Self::release_subtree`]で解放したぶんを
+    /// 差し引いた値。ノードは解放しても`nodes`から取り除かない(NodeIdが
+    /// 添字なので詰められない)ため、長さでは実際の保持量を表せない。
+    pub(crate) live_nodes: usize,
 }
 
 impl Dom {
     pub fn document(&self) -> NodeId {
         self.document
+    }
+
+    /// これまでに木へ繋がれたノードの最大深さ([`Node::depth`])。
+    ///
+    /// DOMを再帰的に辿る処理(スタイル計算・ボックスツリー構築・レイアウト・
+    /// PDF描画、および`LayoutBox`の再帰Drop)はいずれも深さに比例して
+    /// スタックを消費するため、それらを走らせる前にこの値を上限
+    /// ([`crate::html::MAX_ELEMENT_DEPTH`])と比べて拒否する。
+    pub fn max_depth(&self) -> u32 {
+        self.max_depth
+    }
+
+    /// まだ内容を保持しているノードの数([`Self::live_nodes`])。
+    ///
+    /// スタイル計算・ボックスツリー・レイアウト結果はこれに比例して増える
+    /// ため、メモリの上限判定に使う([`crate::html::MAX_NODES`])。
+    pub fn node_count(&self) -> usize {
+        self.live_nodes
+    }
+
+    /// ノードを1つ足して`NodeId`を返す。
+    ///
+    /// `nodes`への追加経路をここ1本にまとめ、[`Self::live_nodes`]の更新
+    /// 漏れを防ぐ。
+    pub(crate) fn push_node(&mut self, data: NodeData) -> NodeId {
+        self.nodes.push(Node::new(data));
+        self.live_nodes += 1;
+        NodeId(self.nodes.len() - 1)
     }
 
     pub fn node(&self, id: NodeId) -> &Node {
@@ -225,7 +267,11 @@ impl Dom {
         let mut stack = vec![root];
         while let Some(id) = stack.pop() {
             stack.extend(self.children(id));
-            self.nodes[id.0].data = NodeData::Released;
+            // 二重解放でも数え過ぎないよう、解放済みは飛ばす。
+            if !matches!(self.nodes[id.0].data, NodeData::Released) {
+                self.live_nodes -= 1;
+                self.nodes[id.0].data = NodeData::Released;
+            }
         }
     }
 
@@ -275,7 +321,27 @@ pub(crate) fn detach(nodes: &mut [Node], id: NodeId) {
 }
 
 /// `child`を`parent`の最後の子として追加する(既存の親からは自動的にdetachされる)。
-pub(crate) fn append(nodes: &mut [Node], parent: NodeId, child: NodeId) {
+/// `root`以下の[`Node::depth`]を`depth`起点で振り直し、部分木内の最大深さを返す。
+///
+/// 明示スタックで辿る。ここを再帰で書くと、深さ上限を判定するための処理自体が
+/// 深いDOMでスタックを溢れさせてしまい本末転倒になる。
+pub(crate) fn set_subtree_depth(nodes: &mut [Node], root: NodeId, depth: u32) -> u32 {
+    let mut max = depth;
+    let mut stack = vec![(root, depth)];
+    while let Some((id, d)) = stack.pop() {
+        nodes[id.0].depth = d;
+        max = max.max(d);
+        let mut child = nodes[id.0].first_child;
+        while let Some(c) = child {
+            stack.push((c, d + 1));
+            child = nodes[c.0].next_sibling;
+        }
+    }
+    max
+}
+
+/// `child`を`parent`の末尾に繋ぎ、繋いだ部分木の最大深さを返す。
+pub(crate) fn append(nodes: &mut [Node], parent: NodeId, child: NodeId) -> u32 {
     detach(nodes, child);
 
     nodes[child.0].parent = Some(parent);
@@ -286,10 +352,12 @@ pub(crate) fn append(nodes: &mut [Node], parent: NodeId, child: NodeId) {
         nodes[parent.0].first_child = Some(child);
     }
     nodes[parent.0].last_child = Some(child);
+
+    set_subtree_depth(nodes, child, nodes[parent.0].depth + 1)
 }
 
 /// `new_node`を`sibling`の直前に挿入する(既存の親からは自動的にdetachされる)。
-pub(crate) fn insert_before(nodes: &mut [Node], sibling: NodeId, new_node: NodeId) {
+pub(crate) fn insert_before(nodes: &mut [Node], sibling: NodeId, new_node: NodeId) -> u32 {
     detach(nodes, new_node);
 
     let parent = nodes[sibling.0].parent;
@@ -304,6 +372,9 @@ pub(crate) fn insert_before(nodes: &mut [Node], sibling: NodeId, new_node: NodeI
         nodes[parent.0].first_child = Some(new_node);
     }
     nodes[sibling.0].previous_sibling = Some(new_node);
+
+    // 兄弟として並ぶので深さは`sibling`と同じ。
+    set_subtree_depth(nodes, new_node, nodes[sibling.0].depth)
 }
 
 #[cfg(test)]

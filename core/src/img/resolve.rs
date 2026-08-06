@@ -4,7 +4,7 @@
 //! デコードのどれを行うべきかを、実際に取得を試みる前に判別する。判別のみを
 //! 行い、実際のフェッチ/読み込み(T46)は行わない。
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use base64::alphabet::STANDARD as BASE64_STANDARD_ALPHABET;
 use base64::engine::general_purpose::GeneralPurposeConfig;
@@ -158,7 +158,7 @@ fn lenient_base64() -> GeneralPurpose {
 
 /// [`ImgSrc::LocalPath`](や`@font-face`の`url()`・`<link href>`等、同じ
 /// 性質を持つ他のローカル資産参照)を`base_dir`基準で実際のファイルパスへ
-/// 解決する。
+/// 解決する。`base_dir`の外へ出る参照は`None`を返す。
 ///
 /// `raw`の先頭が`/`(root-relative、`<link href="/stylesheets/main.css" />`
 /// のようなRailsのアセットパイプラインでよくある書き方)の場合、これを
@@ -168,11 +168,62 @@ fn lenient_base64() -> GeneralPurpose {
 /// 読みに行ってしまう(意図しない・環境依存の挙動)ため、先頭の`/`を
 /// 明示的に取り除いてから結合する。
 ///
-/// `..`によるディレクトリトラバーサルの制限は行わない(`base_dir.join`を
-/// 使う既存のローカルパス解決全般と対称的な、意図的な簡略化。
-/// `core/src/img/fetch.rs`の`read_local`のドキュメント参照)。
-pub fn resolve_local_asset_path(base_dir: &Path, raw: &str) -> PathBuf {
-    base_dir.join(raw.trim_start_matches('/'))
+/// # `..`の扱い
+///
+/// `base_dir`をルートとみなし、そこから出る`..`は拒否する。信頼できない
+/// HTMLを変換したときに、`<img src="../../../../etc/passwd">`のような参照で
+/// base_dirの外を読み出せてしまうため。意図して外を参照したい場合は
+/// `--allow`で範囲を明示する。
+///
+/// 判定は字句的に行い、ファイルシステムには触れない(存在しないパスでも
+/// 同じように判定できるようにするため)。したがってbase_dir配下の
+/// シンボリックリンクは辿る。Capistranoの`public/system`のような運用を
+/// 壊さないための意図的な線引きで、シンボリックリンクまで含めて閉じたい
+/// 場合は`--allow`(実パスで判定する)を使う。
+pub fn resolve_local_asset_path(base_dir: &Path, raw: &str) -> ResolvedAssetPath {
+    let mut parts = Vec::new();
+    // base_dirより上へ出た段数。`--allow`が無ければこれが1以上で拒否になる。
+    let mut up = 0usize;
+    let mut absolute = false;
+
+    // 先頭の`/`を落として"サイトルート相対"にしてから、`.`/`..`を畳む。
+    for component in Path::new(raw.trim_start_matches('/')).components() {
+        match component {
+            Component::Normal(part) => parts.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // 畳める要素が無ければbase_dirより上へ出たということ。
+                if parts.pop().is_none() {
+                    up += 1;
+                }
+            }
+            // 絶対パスの目印(`/`やWindowsの`C:`)。先頭の`/`は落としてあるので、
+            // ここへ来るのは`raw`が別の絶対パス表記だった場合。
+            Component::RootDir | Component::Prefix(_) => absolute = true,
+        }
+    }
+
+    let mut path = base_dir.to_path_buf();
+    for _ in 0..up {
+        path.push("..");
+    }
+    path.extend(&parts);
+
+    ResolvedAssetPath {
+        path,
+        escapes_base_dir: up > 0 || absolute,
+    }
+}
+
+/// [`resolve_local_asset_path`]の結果。
+pub struct ResolvedAssetPath {
+    /// 解決後のパス。`base_dir`の外を指すこともある(`escapes_base_dir`参照)。
+    pub path: PathBuf,
+    /// `..`等で`base_dir`の外へ出ているか。
+    ///
+    /// 既定ではこれが`true`の参照を拒否する。`--allow`が指定されている場合は
+    /// そちらが範囲を決めるので、この値ではなく許可ディレクトリで判定する。
+    pub escapes_base_dir: bool,
 }
 
 #[cfg(test)]
@@ -278,10 +329,59 @@ mod tests {
         assert_eq!(classify_img_src("data:image/png;base64"), None);
     }
 
+    /// base_dir配下に収まる参照だけを取り出すヘルパ(封じ込めの確認込み)。
+    fn within(base: &str, raw: &str) -> Option<PathBuf> {
+        let resolved = resolve_local_asset_path(Path::new(base), raw);
+        (!resolved.escapes_base_dir).then_some(resolved.path)
+    }
+
     #[test]
     fn resolve_local_asset_path_joins_a_plain_relative_path() {
-        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "logo.png");
-        assert_eq!(resolved, Path::new("/var/www/app/logo.png"));
+        assert_eq!(
+            within("/var/www/app", "logo.png"),
+            Some(PathBuf::from("/var/www/app/logo.png"))
+        );
+    }
+
+    #[test]
+    fn a_parent_reference_that_escapes_base_dir_is_flagged() {
+        // 信頼できないHTMLからの`<img src="../../../../etc/passwd">`。
+        let resolved =
+            resolve_local_asset_path(Path::new("/var/www/app"), "../../../../etc/passwd");
+        assert!(
+            resolved.escapes_base_dir,
+            "base_dirの外へ出る参照は印が付くべき"
+        );
+        // `--allow`が指定されたときの判定に使えるよう、パス自体は素直に解決する。
+        assert_eq!(
+            resolved.path,
+            Path::new("/var/www/app/../../../../etc/passwd")
+        );
+    }
+
+    #[test]
+    fn a_parent_reference_that_stays_inside_base_dir_is_allowed() {
+        // `assets/../images/x.png`はbase_dirの中で完結するので許す。
+        assert_eq!(
+            within("/var/www/app", "assets/../images/x.png"),
+            Some(PathBuf::from("/var/www/app/images/x.png"))
+        );
+    }
+
+    #[test]
+    fn stacked_parent_references_are_counted_correctly() {
+        // `..`が2段続いても1段ぶんに畳まれない(数え落とすと素通りする)。
+        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "../../etc/passwd");
+        assert!(resolved.escapes_base_dir);
+        assert_eq!(resolved.path, Path::new("/var/www/app/../../etc/passwd"));
+    }
+
+    #[test]
+    fn a_parent_reference_after_descending_only_escapes_when_it_goes_too_far() {
+        // a/../.. は1段ぶん外に出る。
+        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "a/../../x");
+        assert!(resolved.escapes_base_dir);
+        assert_eq!(resolved.path, Path::new("/var/www/app/../x"));
     }
 
     #[test]
@@ -290,24 +390,28 @@ mod tests {
         // base_dirを丸ごと捨ててしまう(Unix)。root-relativeなhref
         // (`<link href="/stylesheets/main.css" />`の例)が
         // base_dirの外(OSのファイルシステムルート)へ逃げないことを確認する。
-        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "/stylesheets/main.css");
         assert_eq!(
-            resolved,
-            Path::new("/var/www/app/stylesheets/main.css"),
+            within("/var/www/app", "/stylesheets/main.css"),
+            Some(PathBuf::from("/var/www/app/stylesheets/main.css")),
             "a root-relative href must stay inside base_dir, not escape to the OS filesystem root"
         );
     }
 
     #[test]
     fn resolve_local_asset_path_strips_multiple_leading_slashes() {
-        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "//evil.example/x");
-        assert_eq!(resolved, Path::new("/var/www/app/evil.example/x"));
+        assert_eq!(
+            within("/var/www/app", "//evil.example/x"),
+            Some(PathBuf::from("/var/www/app/evil.example/x"))
+        );
     }
 
     #[test]
-    fn resolve_local_asset_path_leaves_dot_relative_paths_unchanged() {
-        let resolved = resolve_local_asset_path(Path::new("/var/www/app"), "./assets/x.css");
-        assert_eq!(resolved, Path::new("/var/www/app/./assets/x.css"));
+    fn resolve_local_asset_path_normalizes_dot_relative_paths() {
+        // `.`は畳まれる(以前は`/var/www/app/./assets/x.css`のまま残していた)。
+        assert_eq!(
+            within("/var/www/app", "./assets/x.css"),
+            Some(PathBuf::from("/var/www/app/assets/x.css"))
+        );
     }
 
     // ===== `<base href>` =====

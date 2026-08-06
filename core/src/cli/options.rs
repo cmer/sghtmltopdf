@@ -64,7 +64,12 @@ pub struct ServerArgs {
     pub max_queue: Option<usize>,
 
     /// リクエストボディの上限バイト数
-    #[arg(long, value_name = "BYTES", default_value_t = 10 * 1024 * 1024)]
+    ///
+    /// テキスト量に比例するメモリは`MAX_NODES`では抑えられないため、ここが
+    /// その担当になる。実測では入力1MiBあたり約185MiBを使う(CJKテキストを
+    /// 敷き詰めた最悪ケース)ので、4MiBで約750MiBが上限の目安。
+    /// ワーカー数を掛けた値がプロセス全体の必要メモリになる。
+    #[arg(long, value_name = "BYTES", default_value_t = 4 * 1024 * 1024)]
     pub max_body_size: usize,
 
     /// キュー待ちの上限秒数(超えると504)
@@ -423,6 +428,14 @@ pub struct ConvertArgs {
     /// --log-level noneと同じ
     #[arg(short, long, action = ArgAction::SetTrue)]
     pub quiet: bool,
+
+    /// 変換を打ち切る時刻。CLIのオプションではなく、HTTPサーバモードが
+    /// `--timeout`から算出して差し込む(`#[arg(skip)]`)。
+    ///
+    /// ここに置くのは、`render`/`render_to_memory`のシグネチャを変えずに
+    /// エンジンまで運ぶため。CLIとRuby拡張では`None`のまま。
+    #[arg(skip)]
+    pub deadline: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -665,11 +678,32 @@ impl ConvertArgs {
     }
 
     /// ローカルファイル参照の許可設定。
-    pub fn local_access(&self) -> LocalAccess {
-        LocalAccess {
-            allow: !self.disable_local_file_access,
-            allowed_dirs: self.allow.clone(),
+    ///
+    /// `--allow`のディレクトリはここで実パスへ解決しておく。参照のたびに
+    /// 解決すると、解決に失敗したときに生のパスでの比較へ落ちてしまい、
+    /// `..`を含んだままの判定になる。解決できないディレクトリは黙って
+    /// 無視せず、起動時にエラーにする。
+    pub fn local_access(&self) -> Result<LocalAccess, String> {
+        let mut allowed_dirs = Vec::with_capacity(self.allow.len());
+        for dir in &self.allow {
+            let canonical = dir.canonicalize().map_err(|e| {
+                format!(
+                    "--allowに指定したディレクトリを解決できません: {} ({e})",
+                    dir.display()
+                )
+            })?;
+            if !canonical.is_dir() {
+                return Err(format!(
+                    "--allowにはディレクトリを指定してください: {}",
+                    dir.display()
+                ));
+            }
+            allowed_dirs.push(canonical);
         }
+        Ok(LocalAccess {
+            allow: !self.disable_local_file_access,
+            allowed_dirs,
+        })
     }
 
     /// 処理モード(`--streaming`)。
@@ -1008,5 +1042,71 @@ mod tests {
     #[test]
     fn the_cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    /// `--allow`のディレクトリは起動時に実パスへ解決される。
+    #[test]
+    fn allow_dirs_are_resolved_to_real_paths() {
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-allow-test-{}-resolved",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(dir.join("assets")).unwrap();
+
+        // `<dir>/assets/..` を渡しても `<dir>` に畳まれる。
+        let dotted = dir.join("assets").join("..");
+        let (cli, _) = parse(&[
+            "sghtmltopdf",
+            "in.html",
+            "--font",
+            "a.ttf",
+            "--allow",
+            dotted.to_str().unwrap(),
+        ]);
+        let access = cli.convert.local_access().expect("実在するので解決できる");
+        assert_eq!(access.allowed_dirs, vec![dir.canonicalize().unwrap()]);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 解決できない`--allow`は黙って無視せずエラーにする
+    /// (無視すると許可範囲が意図せず変わる)。
+    #[test]
+    fn an_allow_dir_that_does_not_exist_is_an_error() {
+        let (cli, _) = parse(&[
+            "sghtmltopdf",
+            "in.html",
+            "--font",
+            "a.ttf",
+            "--allow",
+            "/definitely/not/a/real/directory",
+        ]);
+        let err = cli.convert.local_access().unwrap_err();
+        assert!(err.contains("--allow"), "got: {err}");
+    }
+
+    /// ファイルを`--allow`に渡した場合もエラーにする。
+    #[test]
+    fn an_allow_path_that_is_not_a_directory_is_an_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-allow-test-{}-not-a-dir",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        std::fs::write(&file, b"x").unwrap();
+
+        let (cli, _) = parse(&[
+            "sghtmltopdf",
+            "in.html",
+            "--font",
+            "a.ttf",
+            "--allow",
+            file.to_str().unwrap(),
+        ]);
+        let err = cli.convert.local_access().unwrap_err();
+        assert!(err.contains("ディレクトリ"), "got: {err}");
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

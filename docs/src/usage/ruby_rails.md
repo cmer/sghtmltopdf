@@ -117,7 +117,12 @@ end
 | `Sghtmltopdf::UsageError` | オプションの誤り(未知のキー、値の形式、非対応オプション) |
 | `Sghtmltopdf::InputError` | 入力や出力ファイルの読み書きに失敗した |
 | `Sghtmltopdf::RenderError` | レンダリングに失敗した |
+| `Sghtmltopdf::InternalError` | エンジン内部の想定外の失敗(バグ) |
 | `Sghtmltopdf::ServerError` | サーバへ委譲したときの到達不能・過負荷 |
+
+`InternalError`はネイティブ拡張の中でRustがパニックしたときに上がります。
+拡張側で捕まえて通常の例外へ変換しているため、他のエラーと同じように`rescue`でき、ワーカープロセスは動き続けます。
+これが出た場合はエンジンの不具合なので、再現するHTMLを添えて報告してください。
 
 画像やCSSの取得失敗は既定では無視され、警告を出して続行します(`load_media_error_handling: "abort"`で中断できます)。
 

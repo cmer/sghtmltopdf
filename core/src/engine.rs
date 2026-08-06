@@ -180,6 +180,15 @@ pub struct EngineOptions {
     /// CSSのページルールより前に置かれるため、同じmargin boxを著者が
     /// 宣言していればそちらが勝つ。
     pub extra_page_rules: Vec<PageRule>,
+    /// 変換を打ち切る時刻。`None`なら無制限(CLIの既定)。
+    ///
+    /// HTTPサーバモードが`--timeout`から与える。1リクエストが際限なく
+    /// ワーカーを占有するのを防ぐためのもの。
+    ///
+    /// 判定はチャンク投入ごと・トップレベル要素ごと・ページ書き出しごとに
+    /// 行う。レイアウトの1回の呼び出しの内側までは見ないので、超過に
+    /// 気づくのは最大でその1区間ぶん遅れる。
+    pub deadline: Option<std::time::Instant>,
 }
 
 /// ローカルファイル参照の許可設定。
@@ -718,6 +727,24 @@ pub enum EngineError<E> {
     Io(E),
     UnsupportedInStreamingMode(&'static str),
     Font(String),
+    /// DOMのネストが[`crate::html::MAX_ELEMENT_DEPTH`]を超えた。
+    ///
+    /// 以降のスタイル計算・レイアウト・描画はいずれも深さぶん再帰するため、
+    /// ここで止めないとスタックオーバーフローでプロセスごと落ちる。
+    DepthLimitExceeded {
+        depth: u32,
+        limit: u32,
+    },
+    /// 保持しているノード数が[`crate::html::MAX_NODES`]を超えた。
+    ///
+    /// スタイル・ボックスツリー・レイアウト結果がノード数に比例して積み上がる
+    /// ため、ここで止めないとメモリを食い潰す。
+    NodeLimitExceeded {
+        nodes: usize,
+        limit: usize,
+    },
+    /// [`EngineOptions::deadline`]を過ぎたため打ち切った。
+    TimedOut,
     /// `--load-media-error-handling abort`のときに、画像・外部CSS等の
     /// 取得に失敗した(M12 T300)。
     MediaLoad(String),
@@ -735,12 +762,51 @@ impl<E: std::fmt::Display> std::fmt::Display for EngineError<E> {
             Self::Io(e) => write!(f, "{e}"),
             Self::UnsupportedInStreamingMode(msg) => write!(f, "{msg}"),
             Self::Font(msg) => write!(f, "{msg}"),
+            Self::DepthLimitExceeded { depth, limit } => write!(
+                f,
+                "HTMLのネストが深すぎます(深さ{depth}、上限{limit})。\n  \
+                 入れ子を浅くするか、閉じタグの抜けがないか確認してください"
+            ),
+            Self::NodeLimitExceeded { nodes, limit } => write!(
+                f,
+                "HTMLの要素数が多すぎます(ノード数{nodes}、上限{limit})。\n  \
+                 文書を分割するか、--streamingで逐次処理してください"
+            ),
+            Self::TimedOut => write!(f, "変換が制限時間を超えました"),
             Self::MediaLoad(msg) => write!(f, "リソースの取得に失敗しました: {msg}"),
         }
     }
 }
 
 impl<E: std::fmt::Debug + std::fmt::Display> std::error::Error for EngineError<E> {}
+
+/// 深さとノード数の上限をまとめて確認する。
+///
+/// `Engine`のメソッドからも、`self`を持てない`finish_batch`の途中からも
+/// 呼べるように独立した関数にしてある。
+fn check_document_limits<E>(depth: u32, nodes: usize) -> Result<(), EngineError<E>> {
+    if depth > crate::html::MAX_ELEMENT_DEPTH {
+        return Err(EngineError::DepthLimitExceeded {
+            depth,
+            limit: crate::html::MAX_ELEMENT_DEPTH,
+        });
+    }
+    if nodes > crate::html::MAX_NODES {
+        return Err(EngineError::NodeLimitExceeded {
+            nodes,
+            limit: crate::html::MAX_NODES,
+        });
+    }
+    Ok(())
+}
+
+/// `deadline`を過ぎていれば[`EngineError::TimedOut`]を返す。
+fn check_deadline<E>(deadline: Option<std::time::Instant>) -> Result<(), EngineError<E>> {
+    match deadline {
+        Some(deadline) if std::time::Instant::now() >= deadline => Err(EngineError::TimedOut),
+        _ => Ok(()),
+    }
+}
 
 /// `Mode::Streaming`でのトップレベル要素処理に必要な、`<head>`閉じ時点
 /// (`<body>`検出時点)で一度だけ確定する状態。
@@ -834,6 +900,24 @@ impl<S: Sink> Engine<S> {
         }
     }
 
+    /// パース済みの範囲のネストが上限に収まっているか確認する。
+    ///
+    /// DOMを再帰的に辿る処理より前に必ず通す。`feed`のたびに呼ぶが、深さは
+    /// 木を組み立てながら更新済みの値を読むだけなのでコストはかからない。
+    /// [`EngineOptions::deadline`]を過ぎていないか確認する。
+    ///
+    /// レイアウトの内側までは辿らないので、置けるのは「区切りのよい場所」
+    /// だけになる。チャンク投入ごと・トップレベル要素ごと・ページ書き出し
+    /// ごとに呼ぶ。
+    fn check_deadline(&self) -> Result<(), EngineError<S::Error>> {
+        check_deadline(self.options.deadline)
+    }
+
+    fn ensure_depth_within_limit(&self) -> Result<(), EngineError<S::Error>> {
+        let dom = self.parser.dom();
+        check_document_limits(dom.max_depth(), dom.node_count())
+    }
+
     /// HTMLバイト列のチャンクを1つ投入する。何度でも呼べる。
     ///
     /// `Mode::Streaming`では、投入後に`<body>`より後の`<style>`タグが
@@ -843,6 +927,10 @@ impl<S: Sink> Engine<S> {
     /// 要素をこの中で処理する。
     pub fn feed(&mut self, chunk: &[u8]) -> Result<(), EngineError<S::Error>> {
         self.parser.feed(chunk);
+        // DOMを辿る処理(この後の`find_base_href`等も含めて再帰する)より前に、
+        // 積み上がった深さを確認する。パース自体はアリーナなので深くても安全。
+        self.ensure_depth_within_limit()?;
+        self.check_deadline()?;
         if self.options.mode == Mode::Streaming && self.parser.has_late_css_source() {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "<body>より後の<style>/<link rel=stylesheet>はストリーミングモードでは使えません\n  \
@@ -960,7 +1048,7 @@ impl<S: Sink> Engine<S> {
         let mut fonts = FontCollection::new(load_explicit_fonts(&self.options.fonts)?);
 
         register_generic_fonts(&mut fonts, &self.options.generic_fonts)?;
-        for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
+        for loaded in load_font_faces(&author.font_faces, &css_fetcher, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
                 Some(loaded.weight),
@@ -1108,6 +1196,8 @@ impl<S: Sink> Engine<S> {
     /// 確定した1つのトップレベル要素(`<body>`直下の子)を、スタイル計算・
     /// レイアウト・ページ分割・PDF書き出し・DOM解放まで処理する。
     fn process_top_level_element(&mut self, node: NodeId) -> Result<(), EngineError<S::Error>> {
+        // 1要素ぶんのレイアウトと書き出しに入る前に確認する。
+        self.check_deadline()?;
         let Engine {
             parser,
             streaming,
@@ -1254,6 +1344,8 @@ impl<S: Sink> Engine<S> {
             return self.finish_batch();
         }
 
+        self.ensure_depth_within_limit()?;
+        self.check_deadline()?;
         self.ensure_streaming_state_initialized()?;
         let remaining = self.parser.take_all_remaining_top_level_children();
         for node in remaining {
@@ -1320,6 +1412,13 @@ impl<S: Sink> Engine<S> {
             ..
         } = self;
         let mut dom = parser.finish();
+        // `parser.finish()`は未閉のタグを閉じる過程でノードを足すことがあるため、
+        // `feed`時の確認とは別にここでも見る(この直後からDOMの再帰走査が始まる)。
+        // この先はスタイル計算・レイアウトと重い処理が続く。入る前に一度見る
+        // (`finish`の入口の確認はストリーミング側の分岐にあるため、
+        // バッチはここが最初の関門になる)。
+        check_deadline(options.deadline)?;
+        check_document_limits(dom.max_depth(), dom.node_count())?;
         let sink = sink.expect("Mode::Batchではsinkがfinishまでそのまま保持される");
 
         let system_fonts = SystemFonts::scan();
@@ -1351,7 +1450,7 @@ impl<S: Sink> Engine<S> {
         let page_settings = apply_page_rule_settings_override(options.settings, &page_rules);
 
         register_generic_fonts(&mut fonts, &options.generic_fonts)?;
-        for loaded in load_font_faces(&author.font_faces, base_dir, &system_fonts) {
+        for loaded in load_font_faces(&author.font_faces, &css_fetcher, &system_fonts) {
             fonts.push_font_face(
                 loaded.family,
                 Some(loaded.weight),
@@ -1397,6 +1496,10 @@ impl<S: Sink> Engine<S> {
         // ページ確定後でないとできないため、`paginate_document_streaming`(逐
         // 次解放)ではなくこちらを使う。
         //
+        // ここから先(レイアウト+ページ分割)は1回の呼び出しで、途中では
+        // 打ち切れない。入る前に一度確認しておく。
+        check_deadline(options.deadline)?;
+
         // cover/TOCのために、writerを作る前に本文のページを確定させる。
         // 見出しへ自動で振るアンカー名を
         // `LinkSettings`へ載せる必要があるため。
@@ -1485,6 +1588,7 @@ impl<S: Sink> Engine<S> {
 
         let mut overlay_cache: Option<Vec<PageOverlay>> = None;
         for page in pages.iter() {
+            check_deadline(options.deadline)?;
             if !options.header_footer_html.is_empty() {
                 let overlays = build_page_overlays(
                     &options.header_footer_html,
@@ -2115,6 +2219,233 @@ mod tests {
             Err(EngineError::UnsupportedInStreamingMode(_)) => {}
             other => panic!("expected UnsupportedInStreamingMode, got {other:?}"),
         }
+    }
+
+    /// 深くネストしたHTMLを組み立てる。
+    fn deeply_nested_html(depth: usize) -> String {
+        format!(
+            "<html><body>{}x{}</body></html>",
+            "<div>".repeat(depth),
+            "</div>".repeat(depth)
+        )
+    }
+
+    /// 上限を超えるネストは、DOMを再帰的に辿る処理へ進む前にエラーで拒否
+    /// されること。これが無いとスタイル計算・レイアウト・描画・`LayoutBox`の
+    /// 再帰Dropのいずれかでスタックオーバーフローし、プロセスごとabortする。
+    #[test]
+    fn html_nested_beyond_the_depth_limit_is_rejected_in_batch_mode() {
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        let html = deeply_nested_html(crate::html::MAX_ELEMENT_DEPTH as usize + 10);
+
+        let result = engine.feed(html.as_bytes()).and_then(|()| {
+            engine.finish()?;
+            Ok(())
+        });
+        match result {
+            Err(EngineError::DepthLimitExceeded { depth, limit }) => {
+                assert!(depth > limit, "深さ{depth}は上限{limit}を超えているはず");
+            }
+            other => panic!("expected DepthLimitExceeded, got {other:?}"),
+        }
+    }
+
+    /// ストリーミングモードでも同じく拒否されること(こちらは`feed`の途中で
+    /// 部分木の処理が始まるため、`finish`を待たずに止める必要がある)。
+    #[test]
+    fn html_nested_beyond_the_depth_limit_is_rejected_in_streaming_mode() {
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        let html = deeply_nested_html(crate::html::MAX_ELEMENT_DEPTH as usize + 10);
+
+        let result = engine.feed(html.as_bytes()).and_then(|()| {
+            engine.finish()?;
+            Ok(())
+        });
+        assert!(
+            matches!(result, Err(EngineError::DepthLimitExceeded { .. })),
+            "ストリーミングでも深さ超過は拒否されるべき: {result:?}"
+        );
+    }
+
+    /// ノード数が上限を超える入力は拒否すること。
+    ///
+    /// スタイル・ボックスツリー・レイアウト結果がノード数に比例して積み
+    /// 上がるため、ここで止めないとメモリを食い潰す(実測で1ノードあたり
+    /// 最悪1210B)。
+    #[test]
+    fn html_with_too_many_nodes_is_rejected() {
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        // `<p>a</p>`は要素+テキストで2ノード。
+        let body = "<p>a</p>".repeat(crate::html::MAX_NODES);
+        let html = format!("<html><body>{body}</body></html>");
+
+        let result = engine.feed(html.as_bytes()).and_then(|()| {
+            engine.finish()?;
+            Ok(())
+        });
+        match result {
+            Err(EngineError::NodeLimitExceeded { nodes, limit }) => {
+                assert!(
+                    nodes > limit,
+                    "ノード数{nodes}は上限{limit}を超えているはず"
+                );
+            }
+            other => panic!("expected NodeLimitExceeded, got {other:?}"),
+        }
+    }
+
+    /// 上限内の文書はこれまでどおり通ること。
+    #[test]
+    fn html_within_the_node_limit_still_renders() {
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        let body = "<p>a</p>".repeat(1000);
+        let html = format!("<html><body>{body}</body></html>");
+
+        engine.feed(html.as_bytes()).expect("上限内なので通る");
+        let pdf = engine.finish().expect("上限内なので書き出せる");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    /// ストリーミングモードでは解放したノードが数に戻ること。
+    ///
+    /// 逐次解放しながら進む限り、総ノード数が上限を超えていても変換できる
+    /// (ストリーミングの低メモリという利点を上限で潰さないため)。
+    ///
+    /// 解放はトップレベル要素の処理時に起きるので、確認にはCLIと同じく
+    /// チャンクに分けて投入する必要がある。一度に全部投入すると、解放が
+    /// 走る前にDOMが積み上がってしまい、実際にメモリも使う。
+    #[test]
+    fn released_nodes_do_not_count_towards_the_node_limit() {
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+        // 総ノード数は上限の2倍を超えるが、逐次解放されるので当たらない。
+        let body = "<p>a</p>".repeat(crate::html::MAX_NODES);
+        let html = format!("<html><body>{body}</body></html>");
+
+        // `cli::convert`のFEED_CHUNKと同じ64KiB刻み。
+        for chunk in html.as_bytes().chunks(64 * 1024) {
+            engine.feed(chunk).expect("解放が効くので上限に当たらない");
+        }
+        let pdf = engine.finish().expect("ストリーミングなら書き出せる");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    /// 期限を過ぎていれば変換を打ち切ること(バッチ)。
+    #[test]
+    fn a_deadline_that_has_already_passed_stops_the_conversion() {
+        // `check_deadline`は`>=`で見るので、今の時刻をそのまま期限にすれば
+        // 判定時点では必ず過ぎている。
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            deadline: Some(std::time::Instant::now()),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+
+        let result = engine
+            .feed(b"<html><body><p>x</p></body></html>")
+            .and_then(|()| {
+                engine.finish()?;
+                Ok(())
+            });
+        assert!(
+            matches!(result, Err(EngineError::TimedOut)),
+            "期限切れはTimedOutで返るべき: {result:?}"
+        );
+    }
+
+    /// ストリーミングモードでも同じく打ち切ること。
+    #[test]
+    fn a_passed_deadline_stops_the_conversion_in_streaming_mode() {
+        let options = EngineOptions {
+            mode: Mode::Streaming,
+            fonts: vec![font_spec()],
+            deadline: Some(std::time::Instant::now()),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+
+        let result = engine
+            .feed(b"<html><body><p>x</p></body></html>")
+            .and_then(|()| {
+                engine.finish()?;
+                Ok(())
+            });
+        assert!(
+            matches!(result, Err(EngineError::TimedOut)),
+            "ストリーミングでも期限切れはTimedOut: {result:?}"
+        );
+    }
+
+    /// 期限が先ならこれまでどおり最後まで走ること。
+    #[test]
+    fn a_deadline_in_the_future_does_not_interfere() {
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            deadline: Some(std::time::Instant::now() + std::time::Duration::from_secs(300)),
+            ..EngineOptions::default()
+        };
+        let mut engine = Engine::new(options, MemorySink::new());
+
+        engine
+            .feed(b"<html><body><p>x</p></body></html>")
+            .expect("期限内なので通る");
+        let pdf = engine.finish().expect("期限内なので書き出せる");
+        assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    /// 期限を指定しなければ無制限(CLIの既定)。
+    #[test]
+    fn no_deadline_means_no_limit() {
+        let options = EngineOptions {
+            fonts: vec![font_spec()],
+            ..EngineOptions::default()
+        };
+        assert!(options.deadline.is_none());
+    }
+
+    /// 上限のすぐ内側は通ること(上限が実用的な文書を巻き込まない確認)。
+    ///
+    /// テストスレッドの既定スタックは2MiBで、デバッグビルドの1段あたり約11KiB
+    /// では上限ぶんの再帰に足りない。CLI・サーバと同じく
+    /// [`crate::cli::with_render_stack`]で確保してから走らせる
+    /// (上限とスタックが対で意味を持つことの確認でもある)。
+    #[test]
+    fn html_just_within_the_depth_limit_still_renders() {
+        let pdf = crate::cli::with_render_stack(|| {
+            let options = EngineOptions {
+                fonts: vec![font_spec()],
+                ..EngineOptions::default()
+            };
+            let mut engine = Engine::new(options, MemorySink::new());
+            // <html>/<body>ぶんの数段を見込んで少し余裕を取る。
+            let html = deeply_nested_html(crate::html::MAX_ELEMENT_DEPTH as usize - 10);
+
+            engine.feed(html.as_bytes()).expect("上限内なら通るはず");
+            engine.finish().expect("上限内なら書き出せるはず")
+        });
+        assert!(pdf.starts_with(b"%PDF-"));
     }
 
     #[test]

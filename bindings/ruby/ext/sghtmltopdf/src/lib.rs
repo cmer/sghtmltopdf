@@ -16,7 +16,7 @@ use magnus::{block::Proc, function, prelude::*, Error, RString, Ruby};
 use sghtmltopdf_core::cli::{self, convert};
 use sghtmltopdf_core::sink::{FileSink, MemorySink};
 
-use callback_sink::{BlockSlot, CallbackSink, PendingUnwind, ValueSlot};
+use callback_sink::{pump_to_block, BlockSlot, PendingUnwind, ValueSlot};
 
 /// HTMLを変換してPDFのバイト列を返す。
 fn render(html: RString, argv: Vec<String>) -> Result<RString, Error> {
@@ -24,10 +24,21 @@ fn render(html: RString, argv: Vec<String>) -> Result<RString, Error> {
     // GVLを解放する前にRust側へコピーする。解放中はRubyのオブジェクトに
     // 触れないため、`RString`のままでは持ち込めない。
     let html = unsafe { html.as_slice() }.to_vec();
+    errors::catch_panic(&ruby, move || render_inner(html, argv))
+}
+
+fn render_inner(html: Vec<u8>, argv: Vec<String>) -> Result<RString, Error> {
+    let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
     let (args, fonts) = cli::parse_convert_argv(&argv).map_err(|e| errors::to_ruby(&ruby, e))?;
 
+    // GVLを解放したうえで、さらにレンダリング専用のスタックを確保した
+    // スレッドへ移す。Rubyのスレッドのマシンスタックは既定1MiBしかなく、
+    // レイアウト・描画の再帰に耐えられないため(`callback_sink`のモジュール
+    // doc参照)。この経路はRubyへコールバックしないので、そのまま移せる。
     let pdf = gvl::without_gvl(move || {
-        convert::render_to_memory(&args, &fonts, Cursor::new(html), MemorySink::new())
+        cli::with_render_stack(move || {
+            convert::render_to_memory(&args, &fonts, Cursor::new(html), MemorySink::new())
+        })
     })
     .map_err(|e| errors::to_ruby(&ruby, e))?;
 
@@ -42,6 +53,11 @@ fn render(html: RString, argv: Vec<String>) -> Result<RString, Error> {
 fn render_to_file(html: RString, argv: Vec<String>, path: String) -> Result<(), Error> {
     let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
     let html = unsafe { html.as_slice() }.to_vec();
+    errors::catch_panic(&ruby, move || render_to_file_inner(html, argv, path))
+}
+
+fn render_to_file_inner(html: Vec<u8>, argv: Vec<String>, path: String) -> Result<(), Error> {
+    let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
     let (args, fonts) = cli::parse_convert_argv(&argv).map_err(|e| errors::to_ruby(&ruby, e))?;
 
     let path = PathBuf::from(path);
@@ -52,8 +68,10 @@ fn render_to_file(html: RString, argv: Vec<String>, path: String) -> Result<(), 
         )
     })?;
 
-    gvl::without_gvl(move || convert::render(&args, &fonts, Cursor::new(html), sink))
-        .map_err(|e| errors::to_ruby(&ruby, e))?;
+    gvl::without_gvl(move || {
+        cli::with_render_stack(move || convert::render(&args, &fonts, Cursor::new(html), sink))
+    })
+    .map_err(|e| errors::to_ruby(&ruby, e))?;
     Ok(())
 }
 
@@ -70,6 +88,18 @@ fn render_each(
 ) -> Result<(), Error> {
     let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
     let html = unsafe { html.as_slice() }.to_vec();
+    errors::catch_panic(&ruby, move || {
+        render_each_inner(html, argv, block, chunk_size)
+    })
+}
+
+fn render_each_inner(
+    html: Vec<u8>,
+    argv: Vec<String>,
+    block: Proc,
+    chunk_size: usize,
+) -> Result<(), Error> {
+    let ruby = Ruby::get().expect("GVLを保持したまま呼ばれるはず");
     let (args, fonts) = cli::parse_convert_argv(&argv).map_err(|e| errors::to_ruby(&ruby, e))?;
 
     // ブロックはGVL解放区間をまたいで生きる必要があるため、GCへ登録する
@@ -81,8 +111,12 @@ fn render_each(
         let slot = BlockSlot::new(&block);
         let pending = &mut pending;
         gvl::without_gvl(move || {
-            let sink = CallbackSink::new(slot, pending, chunk_size);
-            convert::render(&args, &fonts, Cursor::new(html), sink)
+            // レンダリングは専用スタックのスレッドで走り、確定したチャンクだけが
+            // ここへ戻ってくる。ブロックの呼び出し(=GVLの再取得)は、GVLを
+            // 手放したこのスレッドで行う必要があるため`pump_to_block`に任せる。
+            pump_to_block(slot, pending, chunk_size, move |sink| {
+                convert::render(&args, &fonts, Cursor::new(html), sink)
+            })
         })
     };
     drop(block);

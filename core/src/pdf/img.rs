@@ -32,6 +32,30 @@ impl std::fmt::Display for ImageDecodeError {
 
 impl std::error::Error for ImageDecodeError {}
 
+/// デコード後の生ピクセルバッファの上限(128MiB)。
+///
+/// PNG/WebPはヘッダに書かれた寸法だけでバッファを確保するため、これが無いと
+/// 数十バイトのファイルにギガバイト級の確保をさせられる(展開爆弾)。Rustは
+/// 確保に失敗するとabortするので、確保を試みる前に弾く必要がある。
+///
+/// 128MiBは32メガピクセルのRGBAに相当し、A4を300dpiで敷き詰めた写真
+/// (約8.7メガピクセル)の3倍以上にあたるため、実用上の画像で当たることはない。
+const MAX_DECODED_IMAGE_BYTES: u64 = 128 * 1024 * 1024;
+
+/// 展開後のバイト数が[`MAX_DECODED_IMAGE_BYTES`]に収まるか、確保する前に確認する。
+fn ensure_decoded_size_within_limit(
+    decoded_bytes: u64,
+    width: u32,
+    height: u32,
+) -> Result<(), ImageDecodeError> {
+    if decoded_bytes > MAX_DECODED_IMAGE_BYTES {
+        return Err(ImageDecodeError(format!(
+            "画像が大きすぎます({width}x{height}、展開後{decoded_bytes}バイトで上限{MAX_DECODED_IMAGE_BYTES}バイトを超えます)"
+        )));
+    }
+    Ok(())
+}
+
 /// PDF Image XObjectとして埋め込む直前のデータ(1ストリーム分)。
 #[derive(Debug, Clone)]
 pub struct ImagePlane {
@@ -106,9 +130,14 @@ fn parse_jpeg_dimensions(data: &[u8]) -> Option<(u16, u16, u8)> {
         }
         let marker = data[i + 1];
         if marker == 0xC0 || marker == 0xC2 {
-            let height = u16::from_be_bytes([data[i + 5], data[i + 6]]);
-            let width = u16::from_be_bytes([data[i + 7], data[i + 8]]);
-            let components = data[i + 9];
+            // SOFセグメントは「長さ2 + 精度1 + 高さ2 + 幅2 + コンポーネント数1」で、
+            // マーカー2バイトと合わせて最低10バイト必要。切り詰められたJPEGでは
+            // ここに届かないことがあるため、スライスで取り出してから読む
+            // (添字アクセスだと境界外でパニックする)。
+            let fields = data.get(i + 5..i + 10)?;
+            let height = u16::from_be_bytes([fields[0], fields[1]]);
+            let width = u16::from_be_bytes([fields[2], fields[3]]);
+            let components = fields[4];
             return Some((width, height, components));
         }
         if marker == 0xD8 || marker == 0xD9 || (0xD0..=0xD7).contains(&marker) {
@@ -157,6 +186,10 @@ fn decode_png(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
     let buffer_size = reader
         .output_buffer_size()
         .ok_or_else(|| ImageDecodeError("frame情報が取得できません".to_string()))?;
+    // `png`クレートの`Limits`は自前のこのバッファには効かないため、
+    // 確保する前に自分で上限を確認する。
+    let declared = reader.info();
+    ensure_decoded_size_within_limit(buffer_size as u64, declared.width, declared.height)?;
     let mut buf = vec![0u8; buffer_size];
     let info = reader
         .next_frame(&mut buf)
@@ -210,7 +243,10 @@ fn decode_webp(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
         .map_err(|e| ImageDecodeError(e.to_string()))?;
     let (width, height) = decoder.dimensions();
     let color_type = decoder.color_type();
-    let mut buf = vec![0u8; decoder.total_bytes() as usize];
+    // ヘッダの寸法だけで決まる値なので、`as usize`で切り詰める前に上限を見る。
+    let total_bytes = decoder.total_bytes();
+    ensure_decoded_size_within_limit(total_bytes, width, height)?;
+    let mut buf = vec![0u8; total_bytes as usize];
     decoder
         .read_image(&mut buf)
         .map_err(|e| ImageDecodeError(e.to_string()))?;
@@ -690,5 +726,72 @@ mod tests {
     fn truncated_jpeg_header_is_rejected() {
         let result = decode_image(&[0xFF, 0xD8, 0xFF]);
         assert!(result.is_err());
+    }
+
+    /// SOFマーカーの直後でバイト列が尽きるJPEG。以前はSOFセグメントの中身を
+    /// 添字で読んでいたため境界外アクセスでパニックしていた(サーバモードでは
+    /// ワーカースレッドが死んで復帰しなくなる)。
+    #[test]
+    fn a_jpeg_truncated_inside_the_sof_segment_is_rejected_without_panicking() {
+        // FFD8(SOI) FFC0(SOF0) 0011(セグメント長) までで終わる6バイト。
+        let result = decode_image(&[0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11]);
+        assert!(result.is_err(), "切り詰められたSOFは拒否されるべき");
+    }
+
+    /// SOFセグメントが「あと1バイト足りない」ケースも同様に拒否する
+    /// (境界の off-by-one 回帰検出)。
+    #[test]
+    fn a_jpeg_one_byte_short_of_a_complete_sof_is_rejected() {
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08];
+        bytes.extend_from_slice(&[0x00, 0x10, 0x00]); // 高さ2バイト + 幅の1バイト目まで
+        let result = decode_image(&bytes);
+        assert!(result.is_err(), "コンポーネント数まで届かないSOFは拒否");
+    }
+
+    /// ヘッダに巨大な寸法だけを書いた小さなPNG(展開爆弾)。上限検査が無いと
+    /// `vec![0u8; w*h*4]`で確保に失敗してプロセスごとabortする。
+    #[test]
+    fn a_png_declaring_huge_dimensions_is_rejected_before_allocating() {
+        fn chunk(kind: &[u8], data: &[u8]) -> Vec<u8> {
+            let mut out = Vec::new();
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(kind);
+            out.extend_from_slice(data);
+            let mut crc_input = kind.to_vec();
+            crc_input.extend_from_slice(data);
+            out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+            out
+        }
+
+        // 20000x20000のRGBA = 1.6GB を宣言する68バイトのPNG。
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&20000u32.to_be_bytes());
+        ihdr.extend_from_slice(&20000u32.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // bit depth 8 / color type 6(RGBA)
+
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        png.extend_from_slice(&chunk(b"IHDR", &ihdr));
+        png.extend_from_slice(&chunk(b"IDAT", &deflate(&[0u8; 10])));
+        png.extend_from_slice(&chunk(b"IEND", b""));
+
+        assert!(png.len() < 200, "爆弾側のファイルは小さい: {}", png.len());
+        let err = decode_image(&png).expect_err("展開後サイズが上限を超えるPNGは拒否されるべき");
+        assert!(
+            err.to_string().contains("大きすぎます"),
+            "サイズ上限による拒否であること: {err}"
+        );
+    }
+
+    /// PNGのCRC32(テストでヘッダを組み立てるためだけの実装)。
+    fn crc32(data: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for &byte in data {
+            crc ^= byte as u32;
+            for _ in 0..8 {
+                let mask = (crc & 1).wrapping_neg();
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        !crc
     }
 }

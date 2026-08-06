@@ -21,6 +21,25 @@ RSpec.describe "Sghtmltopdf.render" do
     expect(a4).not_to eq(a5)
   end
 
+  describe "例外クラス" do
+    # ネイティブ拡張の中でRustがパニックした場合、magnusに任せるとRubyの
+    # `fatal`になり、`rescue Exception`でも捕まえられずワーカーごと落ちる。
+    # 拡張側で捕まえてこのクラスへ変換しているので、アプリが普通の`rescue`で
+    # 受けて1リクエストぶんの失敗として扱える。
+    it "InternalErrorは通常のrescueで捕まえられる" do
+      expect(Sghtmltopdf::InternalError.ancestors).to include(Sghtmltopdf::Error)
+      expect(Sghtmltopdf::InternalError.ancestors).to include(StandardError)
+    end
+
+    it "すべての例外がSghtmltopdf::Errorの子孫になっている" do
+      %i[UsageError InputError RenderError InternalError].each do |name|
+        klass = Sghtmltopdf.const_get(name)
+        expect(klass.ancestors).to include(Sghtmltopdf::Error), "#{name}がError配下でない"
+        expect(klass.ancestors).to include(StandardError), "#{name}がStandardError配下でない"
+      end
+    end
+  end
+
   describe "エラー" do
     it "未知のオプションはUsageErrorにする(判定はclap側)" do
       expect { Sghtmltopdf.render(html, no_such_option: "x") }

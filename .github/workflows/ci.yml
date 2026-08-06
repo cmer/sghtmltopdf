@@ -24,6 +24,25 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
+  # 依存クレートのアドバイザリ照合(RustSec)
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo install cargo-audit
+        run: cargo install cargo-audit --locked
+      # `--deny warnings`が無いと、unmaintained/yankedはexit 0で素通りする。
+      # 判断済みのアドバイザリは`.cargo/audit.toml`にIDを明記して除外している。
+      #
+      # coreとRuby拡張はCargo.lockが別なので両方見る。`--file`でルートから
+      # 指すことで、設定ファイル1つが両方に効く。
+      - name: cargo audit (core)
+        run: cargo audit --deny warnings
+      - name: cargo audit (bindings/ruby)
+        run: cargo audit --deny warnings --file bindings/ruby/Cargo.lock
+
   # Ruby gem(bindings/ruby)
   ruby:
     name: ruby ${{ matrix.ruby }}

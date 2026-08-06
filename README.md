@@ -48,6 +48,9 @@ docker run --rm -p 8080:8080 ghcr.io/waka/sghtmltopdf
 pdf = Sghtmltopdf.render("<h1>Invoice</h1>", page_size: "A4")
 ```
 
+Local references (`<img src>`, external CSS, `@font-face`) stay inside the base directory (`--base-url`, defaulting to the input HTML's own directory); a `../` that would escape it is an error, so untrusted HTML cannot read arbitrary files.
+Pass `--allow <DIR>` to widen the boundary, or `--disable-local-file-access` to close it entirely (the HTTP server does the latter by default, and never lets a request loosen it).
+
 The CLI flags are the ones you already know: most of them keep the same name and meaning as [wkhtmltopdf](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt) (`--page-size`, `--margin-top`, `--orientation`, `--header-html`, `--toc`, …).
 Flags that will not be implemented exit 1 with the reason and an alternative instead of being silently ignored — see the [option table](https://waka.github.io/sghtmltopdf/migration/wkhtmltopdf-options.html) for the full list, and [migrating from wkhtmltopdf](https://waka.github.io/sghtmltopdf/migration/wkhtmltopdf.html) for the cases where the same name behaves differently (CSS `@page` wins over the CLI, the default margin is 1in, cover and TOC are options rather than positional arguments).
 
