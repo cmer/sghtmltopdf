@@ -9,6 +9,18 @@ An HTML-to-PDF renderer written in Rust that does not depend on Chromium, WebKit
 sghtmltopdf turns HTML into PDF without starting a browser process.
 It is aimed at documents that flow top to bottom with explicit breaks invoices, receipts, reports rather than at rendering arbitrary web pages.
 
+![A Japanese receipt rendered by sghtmltopdf](examples/screenshot.png)
+
+That receipt is [`examples/receipt.html`](examples/receipt.html) plus [`examples/main.css`](examples/main.css), rendered with one command and no browser:
+
+```sh
+sghtmltopdf examples/receipt.html -o receipt.pdf
+```
+
+The result is committed as [`examples/receipt.pdf`](examples/receipt.pdf).
+The stylesheet is ordinary CSS Flexbox, tables, custom properties, `counter-increment` for the row numbers, `border-radius`, and CJK text shaped from a system font.
+The `1 / 1` and the document number along the bottom edge are margin boxes: `@page { @bottom-center { content: counter(page) " / " counter(pages) } }`.
+
 Compared with the common headless-Chrome approach:
 
 * No browser process. One binary, or a native extension living inside your Ruby process.
@@ -16,7 +28,7 @@ Compared with the common headless-Chrome approach:
 * Streaming. HTML is read in chunks and each page is written out as soon as its layout is final, so memory does not grow with document size (measured: 228MB → 28MB on a 60,000-element document).
 * Page breaks are first class. CSS Fragmentation (`break-before`, `break-inside`, `orphans`, `widows`) and `@page` are implemented directly.
 
-Non-goals: executing JavaScript, pixel-perfect parity with browsers, and full CSS coverage. See [what is not supported](https://waka.github.io/sghtmltopdf/appendix/limitations.html).
+Future-goals: executing JavaScript, pixel-perfect parity with browsers, and full CSS coverage. See [what is not supported](https://waka.github.io/sghtmltopdf/appendix/limitations.html).
 
 ### Where the name comes from
 

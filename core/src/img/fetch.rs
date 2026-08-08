@@ -1,4 +1,8 @@
-//! `<img>`のバイト列取得。ローカルファイル/HTTP(S)/`data:` URIを[`ImgSrc`]の分類に従って統一的に扱う。
+//! 外部リソースのバイト列取得。ローカルファイル/HTTP(S)/`data:` URIを[`ImgSrc`]の分類に従って統一的に扱う。
+//!
+//! `<img src>`のほか、`<link rel=stylesheet>`・`@import`・`@font-face`の
+//! `url()`もすべてここを通る(取得元の信頼境界とサイズ上限を1箇所に集約
+//! するため)。
 
 use std::fmt;
 use std::net::{IpAddr, SocketAddr};
@@ -18,12 +22,15 @@ use super::{resolve_local_asset_path, ImgSrc};
 /// 経由だからといって無制限にする理由が無いため)。
 const DEFAULT_MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 
+/// 取得の失敗理由。何を取りに行って失敗したのかは呼び出し側が知っている
+/// (画像・外部スタイルシート・`@import`・`@font-face`)ので、ここでは
+/// 理由だけを持ち、種別を表す前置きは付けない。
 #[derive(Debug)]
 pub struct FetchError(String);
 
 impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "画像の取得に失敗しました: {}", self.0)
+        f.write_str(&self.0)
     }
 }
 
@@ -133,16 +140,17 @@ impl ImageFetcher {
     /// 外を参照する必要がある場合は`--allow`で範囲を明示する。
     fn read_local(&self, path: &str) -> Result<Vec<u8>, FetchError> {
         if !self.allow_local {
-            return Err(FetchError(format!(
-                "{path}: ローカルファイルの読み込みは許可されていません(--enable-local-file-access)"
-            )));
+            return Err(FetchError(
+                "ローカルファイルの読み込みは許可されていません(--enable-local-file-access)"
+                    .to_string(),
+            ));
         }
         let resolved = resolve_local_asset_path(&self.base_dir, path);
         // `--allow`が無いときはbase_dirがそのまま境界になる。あるときは
         // そちらが範囲を決めるので、外へ出ること自体は許して下で判定する。
         if resolved.escapes_base_dir && self.allowed_dirs.is_empty() {
             return Err(FetchError(format!(
-                "{path}: 基準ディレクトリ({})の外を参照しています。\n  \
+                "基準ディレクトリ({})の外を参照しています。\n  \
                  外部のファイルを読む場合は --allow でディレクトリを明示してください",
                 self.base_dir.display()
             )));
@@ -181,21 +189,21 @@ impl ImageFetcher {
 
     fn fetch_remote(&self, url: &str) -> Result<Vec<u8>, FetchError> {
         if !self.allow_remote {
-            return Err(FetchError(format!(
-                "リモート画像フェッチは既定で無効です(オプトインが必要): {url}"
-            )));
+            return Err(FetchError(
+                "リモート取得は既定で無効です(--allow-remote-assetsで許可してください)".to_string(),
+            ));
         }
         let mut response = self
             .agent
             .get(url)
             .call()
-            .map_err(|e| FetchError(format!("{url}: {e}")))?;
+            .map_err(|e| FetchError(e.to_string()))?;
         response
             .body_mut()
             .with_config()
             .limit(self.max_bytes)
             .read_to_vec()
-            .map_err(|e| FetchError(format!("{url}: {e}")))
+            .map_err(|e| FetchError(e.to_string()))
     }
 
     fn ensure_within_limit(&self, len: u64) -> Result<(), FetchError> {

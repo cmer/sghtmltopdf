@@ -31,6 +31,13 @@ class InvoicesController < ActionController::Base
     render pdf: "invoice", template: "invoices/with_stylesheet"
   end
 
+  # `examples/receipt.html`をそのままビューにしたもの。CLIの出力と
+  # 突き合わせるために使う(CSSは`<link>`のまま。`public/main.css`を
+  # `--base-url`経由で解決する)。
+  def receipt
+    render pdf: "receipt", template: "invoices/receipt"
+  end
+
   # 未知のオプションはclapが弾く(Sghtmltopdf::UsageError)。
   def bad_option
     render pdf: "invoice", template: "invoices/show", no_such_option: "x"

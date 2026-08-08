@@ -10,7 +10,7 @@
 //! 独立して保持する(`layout::page::PageSize`の同名定数と値を同期させる
 //! 必要がある)。
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, QualifiedRuleParser,
@@ -32,7 +32,10 @@ pub enum PageSelector {
 }
 
 /// margin boxの領域(16個)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+///
+/// `Ord`はバリアントの宣言順(CSS仕様の並び)になる。margin boxを
+/// `BTreeMap`に持つことで、描画順を実行ごとに揺れない順序に固定する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MarginBoxArea {
     TopLeftCorner,
     TopLeft,
@@ -116,7 +119,7 @@ pub struct PageRule {
     /// 意味を持つのはmargin系のみだが、パースは`parse_declaration`を
     /// そのまま再利用するため他のプロパティも構文上は受理される
     pub margin: Vec<PropertyDeclaration>,
-    pub margin_boxes: HashMap<MarginBoxArea, Vec<PropertyDeclaration>>,
+    pub margin_boxes: BTreeMap<MarginBoxArea, Vec<PropertyDeclaration>>,
 }
 
 /// `@page`ブロック内の1アイテム。`RuleBodyItemParser`が要求する
@@ -301,7 +304,7 @@ pub struct ResolvedPageRule {
     pub margin_right: Option<LengthPercentageOrAuto>,
     pub margin_bottom: Option<LengthPercentageOrAuto>,
     pub margin_left: Option<LengthPercentageOrAuto>,
-    pub margin_boxes: HashMap<MarginBoxArea, Vec<PropertyDeclaration>>,
+    pub margin_boxes: BTreeMap<MarginBoxArea, Vec<PropertyDeclaration>>,
 }
 
 /// 簡易カスケード。無条件`@page{}`ルールをスタイルシート順に畳み込んだ後、
@@ -379,7 +382,7 @@ fn apply_margin_declarations(result: &mut ResolvedPageRule, decls: &[PropertyDec
 
 fn merge_margin_boxes(
     result: &mut ResolvedPageRule,
-    margin_boxes: &HashMap<MarginBoxArea, Vec<PropertyDeclaration>>,
+    margin_boxes: &BTreeMap<MarginBoxArea, Vec<PropertyDeclaration>>,
 ) {
     for (area, decls) in margin_boxes {
         result

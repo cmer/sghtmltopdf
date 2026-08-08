@@ -30,6 +30,31 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
+  # `examples/`のサンプルをdummyアプリのビューとpublic/へ複製してあるので、
+  # Rails経由の出力とCLIが書き出したゴールデンPDFを直接比べられる。両者が
+  # 食い違うのは、Rails統合層がHTMLかオプションを取りこぼしたとき。
+  #
+  # symlinkではなく複製にしているのは、`--allow`がsymlinkを辿った先の実体
+  # パスで判定するため。`Rails.root`の外を指すsymlinkはCSSごと弾かれる。
+  describe "examples/receipt.htmlの再現" do
+    def example(name)
+      File.binread(File.expand_path("../../../examples/#{name}", __dir__))
+    end
+
+    it "ビューとpublic/main.cssがexamples/と同じ内容である" do
+      expect(File.binread(Rails.root.join("app/views/invoices/receipt.html.erb")))
+        .to eq(example("receipt.html"))
+      expect(File.binread(Rails.root.join("public/main.css"))).to eq(example("main.css"))
+    end
+
+    it "CLIが書き出したPDFとバイト単位で一致する" do
+      get "/invoices/receipt"
+
+      expect(last_response.status).to eq(200)
+      expect(normalize(last_response.body)).to eq(normalize(example("receipt.pdf")))
+    end
+  end
+
   describe "オプションの受け渡し" do
     it "filename/dispositionがレスポンスに出る" do
       get "/invoices/download"
