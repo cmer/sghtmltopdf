@@ -106,23 +106,47 @@ fn main() {
 
             let mut cells = Vec::new();
             let mut pages = Vec::new();
-            let (cell, page_count) =
-                best_of(&work, |out| sg_command(&sghtmltopdf, &html, out, false));
-            cells.push(cell);
-            pages.push(page_count);
-            let (cell, _) = best_of(&work, |out| sg_command(&sghtmltopdf, &html, out, true));
-            cells.push(cell);
+            // 変換できなかったエンジンは、そこだけセルを`-`にして続ける
+            // (ストリーミングで使えないCSSを含む文書など)。
+            let mut measure =
+                |label: &str, command: &dyn Fn(&Path) -> Command, count_it: bool| match best_of(
+                    &work, command,
+                ) {
+                    Some((cell, page_count)) => {
+                        cells.push(cell);
+                        if count_it {
+                            pages.push(page_count.to_string());
+                        }
+                    }
+                    None => {
+                        eprintln!("{name}{count}: {label} は変換に失敗したので `-` にします");
+                        cells.push("-".to_string());
+                        if count_it {
+                            pages.push("-".to_string());
+                        }
+                    }
+                };
+
+            measure(
+                "sghtmltopdf",
+                &|out| sg_command(&sghtmltopdf, &html, out, false),
+                true,
+            );
+            measure(
+                "sghtmltopdf（ストリーミング）",
+                &|out| sg_command(&sghtmltopdf, &html, out, true),
+                false,
+            );
             if let Some(wk) = &wkhtmltopdf {
-                let (cell, page_count) = best_of(&work, |out| wk_command(wk, &html, out));
-                cells.push(cell);
-                pages.push(page_count);
+                measure("wkhtmltopdf", &|out| wk_command(wk, &html, out), true);
             }
             if let Some(chrome) = &chrome {
-                let (cell, page_count) = best_of(&work, |out| chrome_command(chrome, &html, out));
-                cells.push(cell);
-                pages.push(page_count);
+                measure(
+                    "ヘッドレスChrome",
+                    &|out| chrome_command(chrome, &html, out),
+                    true,
+                );
             }
-            let pages: Vec<String> = pages.iter().map(usize::to_string).collect();
             println!(
                 "| {} | {} | {} |",
                 group_digits(count),
@@ -135,24 +159,27 @@ fn main() {
 
 /// `build`が返すコマンドを[`RUNS`]回動かし、「ピークメモリ / 処理時間」と
 /// 生成されたPDFのページ数を返す。
-fn best_of(work: &Path, build: impl Fn(&Path) -> Command) -> (String, usize) {
+///
+/// 1回でも変換に失敗したら`None`。失敗した回の数値は当てにならないので、
+/// 成功した回だけで平均を取るようなことはしない。
+fn best_of(work: &Path, build: &dyn Fn(&Path) -> Command) -> Option<(String, usize)> {
     let out = work.join("out.pdf");
     let mut best_kib = f64::MAX;
     let mut best_secs = f64::MAX;
     for _ in 0..RUNS {
         let _ = std::fs::remove_file(&out);
-        let (kib, secs) = run_and_measure(build(&out));
+        let (kib, secs) = run_and_measure(build(&out))?;
         best_kib = best_kib.min(kib);
         best_secs = best_secs.min(secs);
     }
-    (
+    Some((
         format!("{:.0}MB / {:.2}秒", best_kib / 1024.0, best_secs),
         count_pages(&out),
-    )
+    ))
 }
 
-/// コマンドを動かし、`(ピークPSS[KiB], 秒)`を返す。
-fn run_and_measure(mut command: Command) -> (f64, f64) {
+/// コマンドを動かし、`(ピークPSS[KiB], 秒)`を返す。変換が失敗したら`None`。
+fn run_and_measure(mut command: Command) -> Option<(f64, f64)> {
     let started = Instant::now();
     let mut child = command
         .stdout(Stdio::null())
@@ -164,7 +191,9 @@ fn run_and_measure(mut command: Command) -> (f64, f64) {
     loop {
         match child.try_wait().expect("子プロセスの状態を取得できません") {
             Some(status) => {
-                assert!(status.success(), "変換に失敗しました: {status}");
+                if !status.success() {
+                    return None;
+                }
                 break;
             }
             None => {
@@ -173,7 +202,7 @@ fn run_and_measure(mut command: Command) -> (f64, f64) {
             }
         }
     }
-    (peak as f64, started.elapsed().as_secs_f64())
+    Some((peak as f64, started.elapsed().as_secs_f64()))
 }
 
 /// `root`とその子孫プロセスの`Pss`の合計(KiB)。

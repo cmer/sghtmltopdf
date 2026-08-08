@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-07T13:15:02+09:00\n"
+"POT-Creation-Date: 2026-08-08T20:14:25+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -217,7 +217,7 @@ msgstr ""
 msgid ""
 "ブラウザエンジンを載せ替えるのではなく、PDF出力に特化したレンダリングエンジンを実装。画面描画やスクリプト実行のための仕組みを持たないぶん、文書が大きいほど処理時間の差が開く（60,000要素の文書で "
 "wkhtmltopdf "
-"の約19倍、ヘッドレスChromeの約51倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパフォーマンス比較)）"
+"の約21倍、ヘッドレスChromeの約53倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパフォーマンス比較)）"
 msgstr ""
 
 #: src/index.md:42
@@ -288,7 +288,7 @@ msgid "44MB / 0.49秒"
 msgstr ""
 
 #: src/index.md:58
-msgid "551MB / 1.37秒"
+msgid "543MB / 1.32秒"
 msgstr ""
 
 #: src/index.md:59 src/index.md:67 src/usage/cli/streaming.md:56
@@ -296,19 +296,19 @@ msgid "20,000"
 msgstr ""
 
 #: src/index.md:59
-msgid "80MB / 0.62秒"
+msgid "80MB / 0.46秒"
 msgstr ""
 
 #: src/index.md:59
-msgid "14MB / 0.42秒"
+msgid "14MB / 0.34秒"
 msgstr ""
 
 #: src/index.md:59
-msgid "86MB / 3.04秒"
+msgid "86MB / 2.60秒"
 msgstr ""
 
 #: src/index.md:59
-msgid "944MB / 10.83秒"
+msgid "943MB / 7.45秒"
 msgstr ""
 
 #: src/index.md:60 src/usage/cli/streaming.md:57
@@ -316,19 +316,19 @@ msgid "60,000"
 msgstr ""
 
 #: src/index.md:60
-msgid "229MB / 1.85秒"
+msgid "230MB / 1.99秒"
 msgstr ""
 
 #: src/index.md:60
-msgid "25MB / 1.03秒"
+msgid "25MB / 1.31秒"
 msgstr ""
 
 #: src/index.md:60
-msgid "200MB / 35.77秒"
+msgid "199MB / 42.02秒"
 msgstr ""
 
 #: src/index.md:60
-msgid "1,484MB / 94.97秒"
+msgid "1,525MB / 105.77秒"
 msgstr ""
 
 #: src/index.md:62
@@ -340,37 +340,41 @@ msgid "行数"
 msgstr ""
 
 #: src/index.md:66
-msgid "48MB / 0.53秒"
+msgid "49MB / 0.56秒"
 msgstr ""
 
 #: src/index.md:66
-msgid "63MB / 1.50秒"
+msgid "48MB / 0.60秒"
 msgstr ""
 
 #: src/index.md:66
-msgid "1,309MB / 4.95秒"
+msgid "62MB / 1.55秒"
+msgstr ""
+
+#: src/index.md:66
+msgid "1,372MB / 5.12秒"
 msgstr ""
 
 #: src/index.md:67
-msgid "173MB / 2.07秒"
+msgid "173MB / 2.44秒"
 msgstr ""
 
 #: src/index.md:67
-msgid "173MB / 2.14秒"
+msgid "173MB / 2.36秒"
 msgstr ""
 
 #: src/index.md:67
-msgid "163MB / 13.73秒"
+msgid "163MB / 14.60秒"
 msgstr ""
 
 #: src/index.md:67
-msgid "6,167MB / 39.45秒"
+msgid "6,222MB / 39.94秒"
 msgstr ""
 
 #: src/index.md:69
 msgid ""
-"処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約19倍、ヘッドレスChromeの約51倍の速さです。 "
-"20,000行の帳票では、それぞれ約6.6倍・約19倍になります。"
+"処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約21倍、ヘッドレスChromeの約53倍の速さです。 "
+"20,000行の帳票では、それぞれ約6.0倍・約16倍になります。"
 msgstr ""
 
 #: src/index.md:73
