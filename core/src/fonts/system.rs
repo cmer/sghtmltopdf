@@ -29,7 +29,7 @@ use std::rc::Rc;
 use skrifa::MetadataProvider;
 
 use crate::html::{Dom, NodeData, NodeId};
-use crate::style::{ComputedStyle, FontStyle, FontWeight};
+use crate::style::{ComputedStyle, Display, FontStyle, FontWeight};
 
 use super::collection::FontCollection;
 use super::font::Font;
@@ -466,27 +466,57 @@ fn document_chars<'a>(
     dom: &'a Dom,
     styles: &'a HashMap<NodeId, Rc<ComputedStyle>>,
 ) -> impl Iterator<Item = (char, &'a ComputedStyle)> {
-    let mut node_ids: Vec<NodeId> = styles.keys().copied().collect();
-    node_ids.sort_by_key(|id| id.0);
+    let mut out = Vec::new();
+    collect_rendered_chars(dom, dom.document(), styles, &mut out);
+    out.into_iter()
+}
 
-    node_ids
-        .into_iter()
-        .filter_map(move |id| styles.get(&id).map(|style| (id, style.as_ref())))
-        .flat_map(move |(id, style)| {
-            let text = match &dom.node(id).data {
-                NodeData::Text { contents } => Some(contents.as_str()),
-                _ => None,
-            };
-            let generated = [
-                style.pseudo_before_content.as_deref(),
-                style.pseudo_after_content.as_deref(),
-            ];
-            text.into_iter()
-                .chain(generated.into_iter().flatten())
-                .flat_map(|chunk| chunk.chars())
-                .map(move |c| (c, style))
-        })
-        .filter(|(c, _)| !c.is_whitespace() && !c.is_control())
+/// `node`以下のテキストと生成内容を文書順に集める。
+///
+/// `display: none`の要素はサブツリーごと飛ばす([`crate::layout::box_tree`]が
+/// 同じ位置で再帰を止めるのに合わせる)。描かれない文字までフォント選択の
+/// 対象にすると、`<script>`や`<style>`に日本語が1文字あるだけで使われない
+/// CJKフォントが埋め込まれ、さらに本文に使うフォントの選択まで変わってしまう。
+///
+/// テキストノードは親の計算スタイルをそのまま引き継ぐため`display`も見えるが、
+/// `display: none`の要素と対象のテキストの間に要素が挟まると(`<div
+/// style="display:none"><span>…`)そちらは`inline`に計算されるので、
+/// ノード単位のフィルタでは足りず木を辿る必要がある。
+///
+/// `visibility: hidden`は対象外。描画されないだけで領域は占めるため、
+/// 行の高さを決めるのにフォントが要る。
+fn collect_rendered_chars<'a>(
+    dom: &'a Dom,
+    node: NodeId,
+    styles: &'a HashMap<NodeId, Rc<ComputedStyle>>,
+    out: &mut Vec<(char, &'a ComputedStyle)>,
+) {
+    let Some(style) = styles.get(&node).map(Rc::as_ref) else {
+        return;
+    };
+    if style.display == Display::None {
+        return;
+    }
+
+    let text = match &dom.node(node).data {
+        NodeData::Text { contents } => Some(contents.as_str()),
+        _ => None,
+    };
+    let generated = [
+        style.pseudo_before_content.as_deref(),
+        style.pseudo_after_content.as_deref(),
+    ];
+    out.extend(
+        text.into_iter()
+            .chain(generated.into_iter().flatten())
+            .flat_map(str::chars)
+            .filter(|c| !c.is_whitespace() && !c.is_control())
+            .map(|c| (c, style)),
+    );
+
+    for child in dom.children(node) {
+        collect_rendered_chars(dom, child, styles, out);
+    }
 }
 
 /// `c`を`weight`/`style`で描画できるフォントが`fonts`に無ければ、システムから
@@ -856,6 +886,46 @@ mod tests {
         assert!(system
             .load_covering('\u{E000}', FontWeight::Normal, FontStyle::Normal)
             .is_none());
+    }
+
+    #[test]
+    fn load_fonts_for_uncovered_chars_ignores_text_that_is_not_rendered() {
+        // 描かれない文字までカバレッジの対象にすると、`<script>`に日本語が
+        // 1文字あるだけで使われないCJKフォントが埋め込まれ、さらに本文に
+        // 使うフォントの選択まで変わってしまう。
+        let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
+
+        let count_for = |body: &str| {
+            let dom = html::parse(format!("<p>a</p>{body}").as_bytes());
+            let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+            let latin = system
+                .load("DejaVu Sans", FontWeight::Normal, FontStyle::Normal)
+                .expect("fixture");
+            let mut fonts = FontCollection::new(vec![latin]);
+            load_fonts_for_uncovered_chars(&mut fonts, &dom, &styles, &system);
+            fonts.len()
+        };
+
+        let baseline = count_for("");
+        for hidden in [
+            r#"<script>var s = "領収書";</script>"#,
+            "<style>/* 領収書 */</style>",
+            "<title>領収書</title>",
+            r#"<div style="display: none">領収書</div>"#,
+            // `display: none`とテキストの間に要素を挟むと、その要素自身の
+            // `display`は`inline`に計算される。ノード単位のフィルタでは
+            // 漏れるので、木を辿って落とせているかをここで見る。
+            r#"<div style="display: none"><span>領収書</span></div>"#,
+        ] {
+            assert_eq!(
+                count_for(hidden),
+                baseline,
+                "描画されない日本語でフォントが増えた: {hidden}"
+            );
+        }
+
+        // 実際に描画される日本語なら、従来どおりカバレッジから補完する。
+        assert_eq!(count_for("<p>領収書</p>"), baseline + 1);
     }
 
     #[test]
