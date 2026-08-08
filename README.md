@@ -1,6 +1,6 @@
 # sghtmltopdf
 
-An HTML-to-PDF renderer written in Rust that does not depend on Chromium, WebKit, or Gecko.
+An HTML-to-PDF renderer like wkhtmltopdf written in Rust that does not depend on Chromium, WebKit, or Gecko.
 
 [Documentation](https://waka.github.io/sghtmltopdf/) ([English](https://waka.github.io/sghtmltopdf/en/))
 
@@ -133,7 +133,7 @@ If the gem cannot run where your app runs (Windows, Intel Mac) or you would rath
 Sghtmltopdf.configure { |c| c.server_url = "http://{REMOTE_SERVER_URL}:8080" }
 ```
 
-Everything else the full option reference, the HTTP API, CSS support tables, and migration guides from wkhtmltopdf and wicked_pdf lives in the [documentation site](https://waka.github.io/sghtmltopdf/) ([Ruby / Rails](https://waka.github.io/sghtmltopdf/ruby/index.html)).
+Everything else the full option reference, the HTTP API, CSS support tables, and migration guides from wkhtmltopdf and wicked_pdf lives in the [documentation site](https://waka.github.io/sghtmltopdf/) ([Ruby / Rails](https://waka.github.io/sghtmltopdf/usage/ruby_rails.html)).
 
 The Docker image (`linux/amd64` and `linux/arm64`) bundles BIZ UDPGothic and BIZ UDPMincho, so Japanese documents render without supplying a font, and the same HTML always produces the same PDF regardless of the host's fonts.
 `ENTRYPOINT` is the binary itself: no arguments starts the server, arguments run the CLI.
