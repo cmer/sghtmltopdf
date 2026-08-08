@@ -1,4 +1,4 @@
-//! Color Level 4(`lab()`/`lch()`/`oklab()`/`oklch()`)のE2Eテスト(M9 Phase 2)。
+//! Color Level 4(`lab()`/`lch()`/`oklab()`/`oklch()`)のE2Eテスト。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイルカスケード
 //! →ページ分割→PDFエンコード)を通して回帰を検知する。

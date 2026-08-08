@@ -1,4 +1,4 @@
-//! CSSプロパティ値の型。M1で対応する最小セットのみ。
+//! CSSプロパティ値の型。
 //!
 //! `Length`/`LengthPercentage`/`LengthPercentageOrAuto`は、カスケード解決後の
 //! 計算値(常にpx単位に解決済み)を表す。パース直後の指定値は
@@ -30,7 +30,7 @@ pub enum Display {
     ListItem,
     /// `flex`要素専用。Flexboxフォーマッティングコンテキストを確立する
     /// (子要素ごとに1個のflexアイテムを生成し、taffyへレイアウトを委譲する)。
-    /// `inline-flex`は非対応(既知の簡略化)。
+    /// `inline-flex`は非対応。
     Flex,
     /// `display: grid`。`inline-grid`は非対応(`inline-flex`と同じ理由)。
     Grid,
@@ -117,7 +117,7 @@ pub enum Clear {
     Both,
 }
 
-/// `position`。`absolute`/`fixed`はM11 T270で対応(`Mode::Streaming`では
+/// `position`。`absolute`/`fixed`にも対応する(`Mode::Streaming`では
 /// 無視)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Position {
@@ -261,7 +261,7 @@ pub enum WordBreak {
 /// `overflow-wrap`(別名`word-wrap`)。改行機会は増やさず、「行頭に置いてもなお
 /// 収まらない」場合のフォールバックとして働く。`anywhere`は`break-word`と
 /// 同一視する(min-content幅への影響の違いだけで、本エンジンはその区別を
-/// 持たない。既知の簡略化)。
+/// 持たない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OverflowWrap {
     #[default]
@@ -947,8 +947,7 @@ pub enum BackgroundRepeat {
     NoRepeat,
 }
 
-/// `background-attachment`。`fixed`は`scroll`と同一視して描画する
-/// (既知の簡略化)。
+/// `background-attachment`。`fixed`は`scroll`と同一視して描画する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BackgroundAttachment {
     #[default]
@@ -956,7 +955,7 @@ pub enum BackgroundAttachment {
     Fixed,
 }
 
-/// 色。`currentcolor`の解決や継承は計算スタイル(T4)の役割なので、
+/// 色。`currentcolor`の解決や継承は計算スタイルの役割なので、
 /// ここではパース結果をそのまま保持する。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Color {
@@ -992,7 +991,7 @@ pub struct SpecifiedBoxShadow {
     pub spread_radius: SpecifiedLength,
     /// 省略時は`currentcolor`相当(`None`のまま計算スタイル側で解決する)。
     pub color: Option<Color>,
-    /// `inset`キーワード。パースはするが描画は非対応(既知の簡略化)。
+    /// `inset`キーワード。パースはするが描画は非対応。
     pub inset: bool,
 }
 
@@ -1040,8 +1039,7 @@ pub enum FlexWrap {
     WrapReverse,
 }
 
-/// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフロー
-/// キーワードは非対応(既知の簡略化、実務上ほぼ使われない)。
+/// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフローは非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JustifyContent {
     #[default]
@@ -1093,7 +1091,7 @@ pub enum AlignSelf {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SpecifiedFlexBasis {
     Auto,
-    /// `content`キーワード。本実装では`Auto`と同一視する(既知の簡略化)。
+    /// `content`キーワード。`Auto`と同一視する。
     Content,
     LengthPercentage(SpecifiedLengthPercentage),
 }

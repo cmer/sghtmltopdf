@@ -5,7 +5,6 @@ use std::panic::AssertUnwindSafe;
 use magnus::{prelude::*, ExceptionClass, RModule, Ruby};
 use sghtmltopdf_core::cli::CliError;
 
-/// `Sghtmltopdf::Error`とその子クラスを定義する。
 pub fn define(ruby: &Ruby, module: RModule) -> Result<(), magnus::Error> {
     let base = module.define_error("Error", ruby.exception_standard_error())?;
     module.define_error("UsageError", base)?;

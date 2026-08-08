@@ -1,10 +1,4 @@
-//! `<img>`のバイト列取得。ローカルファイル/HTTP(S)/`data:` URIを
-//! [`ImgSrc`]の分類(T45)に従って統一的に扱う。
-//!
-//! セキュリティポリシー(プライベートIPブロック・許可スキーム・リダイレクト
-//! 制限・サイズ上限・タイムアウト・既定無効のオプトイン)をここで実装する。
-//! 実際にどのタイミングで呼ぶか(「box tree構築時に
-//! 遅延して1回だけ」)は呼び出し側(T52)の責務。
+//! `<img>`のバイト列取得。ローカルファイル/HTTP(S)/`data:` URIを[`ImgSrc`]の分類に従って統一的に扱う。
 
 use std::fmt;
 use std::net::{IpAddr, SocketAddr};
@@ -53,7 +47,6 @@ pub struct ImageFetcher {
     /// 共有するため、ここ1箇所で3種類すべてに効く。
     base_href: Option<String>,
     /// ローカルファイル参照を許すか(`--disable-local-file-access`でfalse)。
-    /// HTTPサーバモード(Phase 7)では既定でfalseにする想定。
     allow_local: bool,
     /// 空でなければ、ローカル参照をこのディレクトリ配下に限定する
     /// (`--allow`)。
@@ -72,8 +65,7 @@ impl ImageFetcher {
         self
     }
 
-    /// ローカルファイルの読み込み可否と、許可ディレクトリ(`--allow`)を
-    /// 設定する(M12 Phase 4・T301)。
+    /// ローカルファイルの読み込み可否と、許可ディレクトリ(`--allow`)を設定する。
     ///
     /// `allow_local`が`false`のとき、ローカルパス参照はすべて拒否する
     /// (HTTPサーバモードの既定を想定)。`allowed_dirs`が空でなければ、
@@ -136,10 +128,7 @@ impl ImageFetcher {
         }
     }
 
-    /// `base_dir`相対のローカルファイルを読む。`<img>`・`<link>`・`@import`・
-    /// `@font-face`の`url()`はすべてここを通る(root-relativeな`/foo`も
-    /// base_dir相対として扱う、T61)。
-    ///
+    /// `base_dir`相対のローカルファイルを読む。
     /// `..`でbase_dirの外へ出る参照は[`resolve_local_asset_path`]が弾く。
     /// 外を参照する必要がある場合は`--allow`で範囲を明示する。
     fn read_local(&self, path: &str) -> Result<Vec<u8>, FetchError> {
@@ -220,21 +209,7 @@ impl ImageFetcher {
     }
 }
 
-/// グローバルに到達可能でないIP、つまり取りに行かせてはいけないIPかどうかを
-/// 判定する。
-///
-/// 判定の考え方は「グローバルなユニキャストだけを通す」で、プライベート・
-/// loopback・link-local(クラウドのメタデータ169.254.169.254を含む)・CGNAT・
-/// マルチキャスト・予約済みなどをすべて拒否する。IPv4を埋め込むIPv6表記
-/// (IPv4-mapped・IPv4-compatible・NAT64・6to4)は、埋め込まれたIPv4側で
-/// 判定する。素通しするとIPv4側のフィルタを迂回できてしまうため。
-///
-/// ポート番号は制限しない。内部サービスはプライベートIP上にあり、そこは
-/// この判定で塞がっている。公開IPに対する非標準ポートは正当な用途
-/// (CDNやAPIの8080等)があるため、塞ぐと実用を損なうわりに得るものがない。
-///
-/// なお`core/examples/spike_image_fetch_ssrf_guard.rs`は初期検証時のスパイク
-/// で、判定範囲はその後こちらで広げてある(同期していない)。
+/// グローバルに到達可能でないIPかどうかを判定する。
 fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_blocked_ipv4(v4),
@@ -242,7 +217,7 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
     }
 }
 
-/// グローバルに到達可能でないIPv4かどうか。
+/// グローバルに到達可能でないIPv4かどうかを判定する。
 ///
 /// 標準ライブラリの述語だけでは足りない範囲があるので、CIDRを直接見る
 /// (`is_shared`・`is_reserved`・`is_benchmarking`等は安定化されていない)。
@@ -291,11 +266,7 @@ fn is_blocked_ipv4(v4: std::net::Ipv4Addr) -> bool {
     false
 }
 
-/// グローバルに到達可能でないIPv6かどうか。
-///
-/// IPv4を埋め込む表記(IPv4-mapped・IPv4-compatible・NAT64・6to4)は、
-/// 埋め込まれたIPv4側を[`is_blocked_ipv4`]で判定する。素通しすると
-/// IPv4側のフィルタを迂回できてしまうため。
+/// グローバルに到達可能でないIPv6かどうかを判定する。
 fn is_blocked_ipv6(v6: std::net::Ipv6Addr) -> bool {
     // `to_ipv4`はIPv4-mapped(`::ffff:a.b.c.d`)に加えて、非推奨の
     // IPv4-compatible(`::a.b.c.d`)も拾う。`to_ipv4_mapped`だけだと
@@ -349,9 +320,6 @@ fn is_blocked_ipv6(v6: std::net::Ipv6Addr) -> bool {
 /// 任意の`Resolver`をラップし、解決結果からブロック対象IPを除去する。
 /// 1件も残らなければ`Error::HostNotFound`で拒否する(「ブロックされた」と
 /// 「そもそも存在しない」を呼び出し元から区別させない)。
-///
-/// `ureq`はリダイレクト追従のたびに`resolve`を呼び直すため、このフック1箇所で
-/// 初回・リダイレクト経由の両方のSSRF対策になる。
 #[derive(Debug)]
 struct PolicyResolver<R> {
     inner: R,
@@ -412,7 +380,7 @@ mod tests {
 
     #[test]
     fn a_root_relative_local_path_stays_inside_base_dir() {
-        // T61: `/logo.png`のようなroot-relativeなsrc(`<link
+        // `/logo.png`のようなroot-relativeなsrc(`<link
         // href="/stylesheets/main.css" />`と同種の書き方)が
         // base_dirの外(OSのファイルシステムルート)へ逃げず、base_dir配下の
         // ファイルとして読めることを確認する。
@@ -450,7 +418,6 @@ mod tests {
     }
 
     /// `--allow`を指定したときは、その範囲がbase_dirより外でも読める
-    /// (逃がし口として機能し続けること)。
     #[test]
     fn allow_lets_a_reference_reach_outside_base_dir() {
         let dir = temp_dir("escape_allowed");
@@ -508,10 +475,6 @@ mod tests {
     }
 
     /// 実パスに解決できない参照は、`--allow`の判定を通さず拒否する。
-    ///
-    /// 生パスへフォールバックしていた頃は`<allowed>/../secret.png`のような
-    /// パスが`starts_with`を通っていた(読み込み自体は失敗していたので実害は
-    /// 無かったが、境界判定としては素通りしていた)。
     #[test]
     fn a_path_that_cannot_be_resolved_is_refused_instead_of_compared_raw() {
         let dir = temp_dir("allow_unresolvable");
@@ -527,7 +490,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// base_dirの中で完結する`..`(`assets/../images/x`)は従来どおり読める。
+    /// base_dirの中で完結する`..`(`assets/../images/x`)は読める。
     #[test]
     fn a_parent_reference_that_stays_inside_base_dir_still_reads() {
         let dir = temp_dir("escape_inside");
@@ -725,10 +688,6 @@ mod tests {
 
     #[test]
     fn remote_fetch_succeeds_against_a_public_looking_loopback_server_once_allowed_and_unblocked() {
-        // ポリシーresolver自体はloopbackを常にブロックするため
-        // (上のテストの通り)、`ImageFetcher`のHTTP応答パース経路そのものは
-        // ポリシーを持たない生の`ureq`呼び出しで検証する
-        // (T42のspike同様、外部ネットワークには依存しない)。
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {

@@ -1,5 +1,4 @@
 //! `float`の配置を追跡する簡易コンテキスト(CSS2.1 9.5.1のshelf-packing簡略版)。
-//! 厳密な「最小限の隙間を探す」アルゴリズムではない。
 //!
 //! `layout_document`/`layout_document_from`1回の呼び出し全体で1つの
 //! [`FloatContext`]を共有する(このリポジトリは`float`以外にBlock Formatting

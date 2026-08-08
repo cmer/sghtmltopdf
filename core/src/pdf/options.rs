@@ -60,7 +60,7 @@ impl PdfOutputOptions {
     /// `--dpi`と`--zoom`から換算係数を求める。
     ///
     /// `dpi`は「CSS pxを何dpiとして解釈するか」。既定の96dpiで0.75になり、
-    /// 72を渡すと1 CSS px = 1 pt(M12以前と同じ紙サイズ)になる。
+    /// 72を渡すと1 CSS px = 1 ptになる。
     pub fn scale_from_dpi_and_zoom(dpi: f32, zoom: f32) -> f32 {
         72.0 / dpi * zoom
     }

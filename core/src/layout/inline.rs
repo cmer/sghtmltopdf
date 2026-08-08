@@ -1,18 +1,4 @@
 //! Inline Formatting Context: 単純な貪欲法によるテキストの行分割と行ボックスの配置。
-//!
-//! 既知の簡略化(将来のマイルストーンで見直す):
-//! - `white-space: normal`相当の折り返し(連続する空白の畳み込み、単語単位の折り返し)
-//!   のみ対応。長い単語1つで行幅を超える場合でも単語内では分割しない(ただし
-//!   CJK文字が絡む境界は例外、後述)
-//! - 単語間の空白の幅は、直前のテキストランのフォント・サイズを基準に測る
-//!   (前後で大きくフォントサイズが異なる境界では厳密ではない)
-//! - CJK文字(ひらがな・カタカナ・漢字・ハングル)が絡む境界は、空白が無くても
-//!   改行可能とみなす(分かち書きをしない言語のため)。この判定のためだけに
-//!   `split_word_into_runs`はスタイル/フォントが同じでもCJK境界では別ランに
-//!   分ける(1文字ごとの個別シェイピングになる分の非効率とのトレードオフ)。
-//!   UAX#14(Unicode Line Breaking Algorithm)の全面実装ではなく、
-//!   「CJK文字が隣接する境界は改行可、それ以外はスタイル変更のみでは改行不可」
-//!   という単純化した判定にとどめる
 
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
@@ -215,7 +201,6 @@ pub(crate) fn layout_inline_content(
     // 扱いにしてしまう)。箱しか無いIFC(`<p><input></p>`等)ではテキスト由来の
     // 代表値が存在しないため、初期値
     // (`white-space: normal`/`text-align: left`/`text-indent: 0`)を使う
-    // (既知の簡略化: この場合コンテナの`text-align`は効かない)。
     let representative = spans
         .iter()
         .position(|span| span.atomic.is_none())
@@ -874,7 +859,7 @@ fn apply_first_letter_style(style: &mut ComputedStyle) {
 
 /// `text-transform`を1文字に適用する。`uppercase`/`lowercase`は
 /// `char::to_uppercase()`等の最初の1文字のみ採用する(独語ß等の複数文字展開は
-/// 非対応、既知の簡略化)。`capitalize`は語頭の文字のみ変換する。
+/// 非対応)。`capitalize`は語頭の文字のみ変換する。
 fn apply_text_transform(ch: char, transform: TextTransform, is_word_start: bool) -> char {
     match transform {
         TextTransform::None => ch,
@@ -1440,7 +1425,6 @@ pub(super) fn shape_run(
 /// 任意の文字列を、折り返しなしの単一行として`(origin_x, origin_y)`起点で
 /// シェイピングする。通常のDOMテキストノードを経由しない用途(`@page`のmargin
 /// box)向け。文字ごとに`fonts.select_for_char`でフォントを選び直す
-/// (`split_word_into_runs`と同じ考え方だが、折り返し判定が不要な分単純)。
 pub fn shape_standalone_line(
     text: &str,
     style: &ComputedStyle,
@@ -1565,7 +1549,6 @@ pub(super) fn finish_line(
     // ずらされたランだけを、行ボックスからはみ出す分について考慮する。
     // `baseline_shift`が0のランは行の高さに影響しないため、`vertical-align`を
     // 使わない文書の行の高さ・ベースラインは従来と完全に一致する。
-    // `top`/`bottom`は行の高さを増やさない(既知の簡略化)。
     for run in runs.iter().filter(|r| {
         r.baseline_shift != 0.0
             && !matches!(r.vertical_align, VerticalAlign::Top | VerticalAlign::Bottom)
@@ -2069,10 +2052,6 @@ mod tests {
 
     #[test]
     fn cafe_nihongo_wraps_between_the_script_boundary_when_narrow() {
-        // タスクで名指しされていた具体例: "café日本語"のようにスペースが無い
-        // まま行幅を超える場合、Latin/CJKの境界(または日本語文字の間)で
-        // 改行できるはず(以前は1つの分割不能な単語として扱われ、行幅を
-        // 超えてもはみ出したまま単一行に配置されていた)。
         let (_, spans, styles) = spans_for("café日本語", "");
         let fonts = dejavu_and_cjk();
 
@@ -2137,10 +2116,7 @@ mod tests {
     fn bold_span_prefers_the_real_bold_face_even_without_a_matching_font_family() {
         // font-familyを一切指定しない(既定値"sans-serif")場合でも、familyの
         // 一致を問わないグローバルフォールバック側でweight/style一致を優先し、
-        // 本物のBold面を選べるはず(family一致だけを見ていた旧実装だと、
-        // "sans-serif"はどのフォント名にも一致せずグリフ網羅性のみによる
-        // フォールバックに落ちてしまい、太字要求を無視して先頭のRegular面が
-        // 選ばれてしまっていた)。
+        // 本物のBold面を選べるはず
         let (_, spans, styles) = spans_for("bo<b>ld</b>", "");
         let fonts = dejavu_regular_and_bold();
         let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
@@ -2347,7 +2323,6 @@ mod tests {
     #[test]
     fn text_align_justify_with_a_single_word_line_does_not_panic_or_shift() {
         // 単語境界が無い行(1単語だけ)はjustifyしても伸縮しない
-        // (word_boundariesが空、既知の簡略化)。
         let (_, spans, styles) = spans_for(
             "supercalifragilisticexpialidocious",
             "p { text-align: justify; }",

@@ -1,4 +1,4 @@
-//! `min-width`/`max-width`/`min-height`/`max-height`のE2Eテスト(M11 T273)。
+//! `min-width`/`max-width`/`min-height`/`max-height`のE2Eテスト。
 //!
 //! `box_model.rs`/`flexbox.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を検知する。

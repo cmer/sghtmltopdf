@@ -1,4 +1,4 @@
-//! `<colgroup>`/`<col>`(列幅指定)のE2Eテスト(M10 カテゴリD、T223〜T226)。
+//! `<colgroup>`/`<col>`(列幅指定)のE2Eテスト。
 //!
 //! `table_rowspan.rs`/`table_caption.rs`と同じ方針: 実際のパイプライン
 //! (HTMLパース→スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を

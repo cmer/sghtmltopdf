@@ -75,7 +75,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # タグは 0.1.0 / 0.1 / latest / sha-<short> の4つ
+      # タグは <major>.<minor>.<patch> / <major>.<minor> / latest / sha-<short> の4つ
       # `latest`はsemverタグのときだけ付く(mainへのpushでは`edge`になる)
       - uses: docker/metadata-action@v5
         id: meta

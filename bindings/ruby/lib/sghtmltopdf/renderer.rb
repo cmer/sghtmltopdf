@@ -8,12 +8,6 @@ module Sghtmltopdf
   # * PDF変換(`Sghtmltopdf.render`)へ渡すもの
   #
   # の3つに振り分ける。
-  #
-  # 振り分けは「Railsのキーとレスポンスのキーだけを列挙し、残りは全部変換
-  # オプションとみなす」方式にしている。変換オプションのホワイトリストを
-  # 持たないのは、オプション定義をRust側(`cli/options.rs`)の1箇所に集約する
-  # 方針のため。未知のキーはclapが`UsageError`として報告する。
-  #
   # Railsに依存しないpure Rubyのクラスなので、Rails無しでも単体テストできる。
   class Renderer
     # `render_to_string`へそのまま渡すキー。
@@ -57,8 +51,7 @@ module Sghtmltopdf
       options.select { |key, _| RAILS_RENDER_KEYS.include?(key) }
     end
 
-    # PDF変換に使うオプション。グローバル設定とのマージは
-    # `Sghtmltopdf.render`側で行う(マージ順はグローバル → ここ)。
+    # PDF変換に使うオプション。
     def convert_options
       known = RAILS_RENDER_KEYS + RESPONSE_KEYS + RENDERER_KEYS
       options.reject { |key, _| known.include?(key) }

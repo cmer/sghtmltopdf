@@ -1,4 +1,4 @@
-//! `float`/`clear`/`position:relative`のE2Eテスト(M8 Phase 1)。
+//! `float`/`clear`/`position:relative`のE2Eテスト。
 //!
 //! `fragmentation.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
 //! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。テキスト

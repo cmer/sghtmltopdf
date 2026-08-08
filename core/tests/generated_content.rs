@@ -1,5 +1,5 @@
 //! `content`(attr()/counter()/counters())/CSSカウンタ/`quotes`/`::first-letter`の
-//! E2Eテスト(M8 Phase 2 Generated content)。
+//! E2Eテスト。
 //!
 //! `list_style.rs`/`box_model.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を検知する。

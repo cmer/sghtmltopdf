@@ -2,7 +2,7 @@
 
 require "open3"
 
-# T341: Railtieの読み込みは`defined?(Rails::Railtie)`でガードしてある。
+# Railtieの読み込みは`defined?(Rails::Railtie)`でガードしてある。
 # 「Railsが無い場合」を同一プロセスでは作れない(他のspecがRailsを読み込む)
 # ため、別プロセスで確かめる。
 RSpec.describe "Railtieの読み込みガード" do

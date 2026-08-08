@@ -3,7 +3,7 @@
 require "rails_helper"
 require "tmpdir"
 
-# T345: ダミーのRailsアプリ(spec/dummy)のコントローラからPDFが返ること。
+# ダミーのRailsアプリ(spec/dummy)のコントローラからPDFが返ること。
 RSpec.describe "Railsのコントローラ", type: :rails do
   describe "render pdf:" do
     it "PDFを返す" do
@@ -30,7 +30,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
-  describe "オプションの受け渡し(T343)" do
+  describe "オプションの受け渡し" do
     it "filename/dispositionがレスポンスに出る" do
       get "/invoices/download"
 
@@ -72,7 +72,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
-  describe "Rails向けの既定オプション(T344)" do
+  describe "Rails向けの既定オプション" do
     it "Railtieがbase_urlとallowを入れる" do
       expect(CONFIG_AFTER_BOOT[:base_url]).to eq(Rails.root.join("public").to_s)
       expect(CONFIG_AFTER_BOOT[:allow]).to eq([Rails.root.to_s])
@@ -107,7 +107,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
-  # T355: ブロック付きrenderをActionController::Liveと組み合わせて、
+  # ブロック付きrenderをActionController::Liveと組み合わせて、
   # 確定したページから順にRackのレスポンスへ流せること。
   #
   # Rack::Testの`last_response.body`は使えない。`MockResponse`は
@@ -157,7 +157,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
-  describe "ビューヘルパ(T344)" do
+  describe "ビューヘルパ" do
     it "public/のCSSを<style>へ展開する" do
       get "/invoices/with_stylesheet"
       inlined = last_response.body

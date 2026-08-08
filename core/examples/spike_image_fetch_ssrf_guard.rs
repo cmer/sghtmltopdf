@@ -1,4 +1,4 @@
-//! T42スパイク: ureqの`Resolver`フックにSSRF対策(プライベート/loopback/
+//! スパイク: ureqの`Resolver`フックにSSRF対策(プライベート/loopback/
 //! link-local等のIPを拒否するフィルタ)を差し込み、実際の`Agent`+リクエスト
 //! 経路で機能することを検証するPoC。
 //!

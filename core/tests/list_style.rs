@@ -1,5 +1,5 @@
 //! `list-style-type`/`list-style-position`/`list-style-image`/`list-style`
-//! ショートハンドのE2Eテスト(M8 Phase 1 Lists)。
+//! ショートハンドのE2Eテスト。
 //!
 //! `typography.rs`/`table_caption.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を検知する。

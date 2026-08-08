@@ -4,18 +4,6 @@
 //! block-levelとinline-level/テキストの混在になる場合は、CSSの無名ボックス生成
 //! 規則(CSS2.1 9.2.1.1)に従い、連続するinline-levelの内容を無名ブロックボックスに
 //! まとめる。無名ボックスは対応するDOMノードを持たないため`node: None`とする。
-//!
-//! インライン要素内部の行分割・実際の描画はT6の責務。ここでは、`<b>`/`<span>`
-//! 等のインライン要素境界をテキストノード単位の[`InlineSpan`]として保持したまま
-//! 平坦化する(要素そのものを畳み込みはするが、どの計算スタイルが適用される
-//! テキストかという情報は失わない)。
-//!
-//! `<img>`(マイルストーン5)は`build_box_tree`/`build_box_for_element`の
-//! 時点では他のブロック要素と同様に組み込むだけで、実際のフェッチ・デコード
-//! (I/Oを伴う)は行わない。[`resolve_images`]がbox tree構築後に別パスとして
-//! 呼ばれ、`<img>`要素に対応するボックスの中身を[`BoxContent::Image`]に差し
-//! 替える。構築と分離しているのは、`build_box_tree`/`build_box_for_element`を
-//! 「DOM+スタイルのみから決まる純粋な処理」のままに保ちたいため。
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -75,10 +63,9 @@ pub struct GridBox {
 pub struct ImageBoxContent {
     /// フェッチ・デコードに成功した場合の画像データ。失敗
     /// (ネットワークエラー・SSRFブロック・デコード不能等、いずれも同列)した
-    /// 場合は`None`になり、レイアウト(T53)はこれを空の置換要素として扱う。
+    /// 場合は`None`になり、レイアウトはこれを空の置換要素として扱う。
     pub image: Option<std::rc::Rc<crate::pdf::PreparedImage>>,
-    /// `width`/`height`属性の値(px、HTML属性由来)。CSSの`width`/`height`
-    /// より弱い優先度のヒントとしてレイアウト(T53)が使う。
+    /// `width`/`height`属性の値(px、HTML属性由来)
     pub attr_width: Option<u32>,
     pub attr_height: Option<u32>,
 }
@@ -128,7 +115,7 @@ pub struct TableCell {
     /// `colspan`属性の値(未指定または不正な値は1)。
     pub colspan: usize,
     /// `rowspan`属性の値(未指定または不正な値は1)。`rowspan="0"`(HTML5の
-    /// 「以降の行末まで拡張」特殊値)は非対応、1として扱う(既知の簡略化)。
+    /// 「以降の行末まで拡張」特殊値)は非対応、1として扱う。
     pub rowspan: usize,
     /// セル自身の内容(通常のブロック/インラインボックスと同じ構造)。
     pub content: LayoutBox,
@@ -252,7 +239,7 @@ pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>) ->
 }
 
 /// `node`単体(とその子孫)から[`LayoutBox`]を構築する。`build_box_tree`が
-/// 文書全体を辿る際の内部処理だが、マイルストーン3のストリーミング処理では
+/// 文書全体を辿る際の内部処理だが、ストリーミング処理では
 /// 「切り出したトップレベル要素1つ分だけ」の`LayoutBox`を作るために直接使う
 /// (`build_box_tree`のように`dom.document()`の子全部を辿るのではなく、
 /// 特定の`node`だけを対象にする)。
@@ -816,25 +803,40 @@ fn read_span(dom: &Dom, node: NodeId) -> usize {
         .unwrap_or(1)
 }
 
-/// flexコンテナ(`node`)の子要素ごとに1個ずつflexアイテムを構築する。CSS仕様上
+/// flexコンテナ(`node`)の子ごとに1個ずつflexアイテムを構築する。CSS仕様上
 /// flexアイテムは各子要素ごとに独立して生成され、隣接するinline-level要素を
 /// 1つの無名ボックスへまとめる規則(`build_children_boxes`)はflexコンテナの
-/// 子には適用されないため、`build_box_for_element`を子要素ごとに直接呼ぶ。
+/// 子要素には適用されないため、`build_box_for_element`を子要素ごとに直接呼ぶ。
 /// 子要素自身の`display`値(`block`/`table`/入れ子の`flex`等)はそのまま
 /// 尊重され、そのアイテムの中身のレイアウトに使われる(ネスト無制限)。
-/// `display: none`の子・裸のテキストノード(要素で包まれていないもの)は
-/// 無視する(後者は既知の簡略化、実務上flexコンテナの子は要素で
-/// ラップされることがほとんどのため)。
+///
+/// 要素で包まれていない裸のテキストは、連続する並びをまとめて1個の無名
+/// flexアイテムにする(CSS Flexbox §4)。空白だけの並びからはアイテムを
+/// 作らない。`display: none`の子はボックスを生成しないので、それを挟んだ
+/// 前後のテキストは連続しているものとして1個にまとまる。
 fn build_flex_box(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>, node: NodeId) -> FlexBox {
-    let items = dom
-        .children(node)
-        // `build_box_for_element`は要素ノードを前提にしている(`styles`は
-        // 継承のためテキストノードにも計算スタイルを持つので、要素以外を
-        // 弾かずに渡すと空の`BoxContent::Inline(vec![])`という幽霊アイテムが
-        // 生成されてしまう)。裸のテキストノード(空白等)は明示的に除外する。
-        .filter(|&child| matches!(dom.node(child).data, NodeData::Element { .. }))
-        .filter_map(|child| build_box_for_element(dom, styles, child))
-        .collect();
+    let mut items = Vec::new();
+    let mut pending_spans: Vec<InlineSpan> = Vec::new();
+
+    for child in dom.children(node) {
+        match &dom.node(child).data {
+            NodeData::Element { .. } => {
+                if styles.get(&child).map(|s| s.display) == Some(Display::None) {
+                    continue;
+                }
+                // 要素は必ず独立したアイテムになるので、ここまでに溜めた
+                // テキストの並びを先に無名アイテムとして確定させる。
+                flush_pending_spans(&mut pending_spans, &mut items);
+                if let Some(item) = build_box_for_element(dom, styles, child) {
+                    items.push(item);
+                }
+            }
+            NodeData::Text { .. } => collect_spans(dom, styles, child, &mut pending_spans),
+            _ => {}
+        }
+    }
+    flush_pending_spans(&mut pending_spans, &mut items);
+
     FlexBox { items }
 }
 
@@ -954,7 +956,6 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
     // 空白のみのテキストからは無名ブロックを作らない(CSS2.1 9.2.2.1)。
     // ただしアトミックボックス(インラインの`<img>`・`display: inline-block`)は
     // `text`が空でも意味のある内容なので、1つでもあれば無名ブロックを作る
-    // (インライン画像が消えていた原因)。
     let has_meaningful_content = pending
         .iter()
         .any(|span| span.atomic.is_some() || !span.text.trim().is_empty());
@@ -1307,9 +1308,6 @@ mod tests {
 
     #[test]
     fn display_none_inside_an_inline_context_contributes_no_spans() {
-        // 回帰テスト: `collect_spans`が`display: none`を見ていなかったため、
-        // インライン要素の子孫にある非表示要素(ここでは`<select>`の
-        // `<option>`)のテキストが本文へ漏れていた。
         let dom = html::parse(br#"<p>a <select><option>LEAK</option></select> b</p>"#);
         let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
         let tree = build_box_tree(&dom, &styles);
@@ -1781,6 +1779,90 @@ mod tests {
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].text, "Hello");
         assert!(!spans[0].is_first_letter);
+    }
+
+    fn flex_items(html_src: &str, css: &str) -> Vec<LayoutBox> {
+        let dom = html::parse(html_src.as_bytes());
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(css));
+        let container = find(&dom, dom.document(), "div").expect("div not found");
+        build_flex_box(&dom, &styles, container).items
+    }
+
+    fn item_text(item: &LayoutBox) -> String {
+        find_inline_spans(item)
+            .map(|spans| spans.iter().map(|s| s.text.as_str()).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn bare_text_in_a_flex_container_becomes_an_anonymous_item() {
+        // 回帰テスト: 以前は要素で包まれていないテキストを捨てていたため、
+        // `<div class="seal">サンプル</div>`のような中身が消えていた。
+        let items = flex_items(r#"<div class="f">bare text</div>"#, ".f { display: flex; }");
+
+        assert_eq!(items.len(), 1, "expected one anonymous flex item");
+        assert!(items[0].node.is_none(), "the item should be anonymous");
+        assert_eq!(item_text(&items[0]), "bare text");
+    }
+
+    #[test]
+    fn whitespace_only_text_in_a_flex_container_creates_no_item() {
+        let items = flex_items(
+            r#"<div class="f">   <p>x</p>   </div>"#,
+            ".f { display: flex; }",
+        );
+
+        assert_eq!(items.len(), 1, "only the <p> should become an item");
+        assert!(items[0].node.is_some());
+    }
+
+    #[test]
+    fn a_text_run_next_to_an_element_becomes_a_separate_anonymous_item() {
+        // 要素は必ず独立したアイテムになるので、その前後のテキストは
+        // 別々の無名アイテムへ分かれる。
+        let items = flex_items(
+            r#"<div class="f">left<p>mid</p>right</div>"#,
+            ".f { display: flex; }",
+        );
+
+        assert_eq!(items.len(), 3);
+        assert_eq!(item_text(&items[0]), "left");
+        assert!(items[1].node.is_some(), "the <p> keeps its own node");
+        assert_eq!(item_text(&items[2]), "right");
+    }
+
+    #[test]
+    fn contiguous_text_runs_merge_into_one_anonymous_item() {
+        // `display: none`の子はボックスを作らないので、それを挟んだ前後の
+        // テキストは連続しているものとして1つのアイテムにまとまる。
+        let items = flex_items(
+            r#"<div class="f">before<span class="hide">gone</span>after</div>"#,
+            ".f { display: flex; } .hide { display: none; }",
+        );
+
+        assert_eq!(items.len(), 1);
+        assert!(items[0].node.is_none());
+        assert_eq!(item_text(&items[0]), "beforeafter");
+    }
+
+    #[test]
+    fn bare_text_in_a_grid_container_becomes_an_anonymous_item() {
+        // gridも`build_flex_box`でアイテムを集めるので同じ規則が効く。
+        let dom = html::parse(r#"<div class="g">cellA<p>cellB</p></div>"#.as_bytes());
+        let styles = compute_styles(
+            &dom,
+            &user_agent_stylesheet(),
+            &parse_stylesheet(".g { display: grid; }"),
+        );
+        let tree = build_box_tree(&dom, &styles);
+        let container = find(&dom, dom.document(), "div").expect("div not found");
+        let container_box = find_box(&tree, container).expect("div box not found");
+
+        let BoxContent::Grid(grid) = &container_box.content else {
+            panic!("expected a grid container");
+        };
+        assert_eq!(grid.items.len(), 2);
+        assert_eq!(item_text(&grid.items[0]), "cellA");
     }
 
     #[test]

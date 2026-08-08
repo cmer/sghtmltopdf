@@ -7,11 +7,6 @@
 //! で検証済みの方式)。PNG/WebPはそれぞれ`png`クレート/`image`クレート(webp
 //! 機能のみ)でフルデコードし、アルファチャンネルがあれば色本体から分離して別
 //! XObjectの`/SMask`とする
-//! (`spike_image_png_decode.rs`/`spike_image_webp_decode.rs`で検証済み)。
-//!
-//! ここで作る[`PreparedImage`]は`pdf-writer`の`Ref`をまだ持たない
-//! (実際のRef割当・`Chunk`書き出しはbox tree構築時にsrcごとに1回行う
-//! T51以降の責務)。
 
 use std::io::Cursor;
 
@@ -117,7 +112,6 @@ pub fn decode_image(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
 
 /// SOF0(ベースライン)/SOF2(プログレッシブ)マーカーだけを読んでwidth/height/
 /// コンポーネント数を取り出す。ピクセルデータのデコードは一切行わない
-/// (`spike_image_jpeg_passthrough.rs`の`parse_jpeg_dimensions`と同一)。
 fn parse_jpeg_dimensions(data: &[u8]) -> Option<(u16, u16, u8)> {
     if data.len() < 4 || data[0..2] != [0xFF, 0xD8] {
         return None;
@@ -295,18 +289,17 @@ fn split_interleaved_alpha(buf: &[u8], stride: usize) -> (Vec<u8>, Vec<u8>) {
     (color, alpha)
 }
 
-// --- 文書内での「取得→デコード」結果の共有、およびPDF Image XObjectとしての
-// 書き出し(T51〜T54)。 ---
+// 文書内での「取得→デコード」結果の共有、およびPDF Image XObjectとしての書き出し
 //
-// 当初は「文書内キャッシュはRef+内在サイズだけを持つ」設計だったが、実装を
-// 進める過程で「デコード結果(`PreparedImage`)自体を`Rc`で共有し、Ref割当・
+// 「デコード結果(`PreparedImage`)自体を`Rc`で共有し、Ref割当・
 // 実際のXObject書き出しはPDFエンコード時点(レイアウト後、フォントの
 // `embed_font`/`embed_font_streaming_chunks`と同じタイミング)まで遅延する」
-// 方式に変更した。理由: box tree構築(`layout::box_tree`)の時点でRefを払い
+// 方式にした。
+// 理由: box tree構築(`layout::box_tree`)の時点でRefを払い
 // 出してPDFへ書き出そうとすると、box tree構築が`Sink`への書き込み権限を持つ
 // 必要が生じ、既存の「box tree構築は純粋にDOM+スタイルから決まる」という設計
-// (バッチ/ストリーミング両モードで共有)を壊してしまう。`Rc<PreparedImage>`を
-// 文書内キャッシュ(このモジュールの`ImageAssetCache`)で共有する方式なら、
+// (バッチ/ストリーミング両モードで共有)を壊してしまう。
+// `Rc<PreparedImage>`を文書内キャッシュ(このモジュールの`ImageAssetCache`)で共有する方式なら、
 // フェッチ・デコードは同じくsrcごとに1回で済み(要素数ではなく異なる画像の
 // 種類数にメモリが比例するという0014の核心的な要件は満たされる)、かつRef
 // 割当・書き出しはフォントと同じ既存のタイミング(レイアウト確定後)に置ける。
@@ -327,7 +320,7 @@ type CachedDecodedImage = Result<Rc<PreparedImage>, Rc<str>>;
 
 /// `<img>`のフェッチ→デコードまでを文書内でメモ化するキャッシュ。
 ///
-/// `img::DocumentImageCache`(生バイト列のメモ化、T47)の上に、デコード結果
+/// `img::DocumentImageCache`(生バイト列のメモ化)の上に、デコード結果
 /// (`PreparedImage`)のメモ化をもう1段重ねる。同じ`src`が同一文書内で
 /// 何度参照されても、フェッチ・デコードいずれも初回の1回で済む。
 pub struct ImageAssetCache {
@@ -360,7 +353,7 @@ impl ImageAssetCache {
     }
 
     /// 取得・デコードに失敗した参照が1つでもあるか
-    /// (`--load-media-error-handling abort`の判定用、M12 T300)。
+    /// (`--load-media-error-handling abort`の判定用)。
     pub fn had_errors(&self) -> Option<String> {
         self.decoded
             .borrow()
@@ -498,7 +491,7 @@ pub fn embed_image_streaming_chunks(
 ///
 /// 変換できるのはピクセルデータを持てる`Rgb`プレーン(無圧縮または
 /// `/FlateDecode`)だけ。JPEGパススルー(`/DCTDecode`)とCMYKは
-/// デコーダを持たないため変換できず、そのまま返す(既知の限界)。
+/// デコーダを持たないため変換できず、そのまま返す。
 /// 変換しなかった場合に`false`を返すので、呼び出し側が警告を出せる。
 pub fn to_grayscale_plane(plane: &ImagePlane) -> (ImagePlane, bool) {
     if plane.color_space != PlaneColorSpace::Rgb || plane.bits_per_component != 8 {
@@ -728,9 +721,7 @@ mod tests {
         assert!(result.is_err());
     }
 
-    /// SOFマーカーの直後でバイト列が尽きるJPEG。以前はSOFセグメントの中身を
-    /// 添字で読んでいたため境界外アクセスでパニックしていた(サーバモードでは
-    /// ワーカースレッドが死んで復帰しなくなる)。
+    /// SOFマーカーの直後でバイト列が尽きるJPEG。
     #[test]
     fn a_jpeg_truncated_inside_the_sof_segment_is_rejected_without_panicking() {
         // FFD8(SOI) FFC0(SOF0) 0011(セグメント長) までで終わる6バイト。

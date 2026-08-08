@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
-# インストール済みのgemが実際に動くかだけを見る最小の確認
-# precompiled gemを`gem install`したあと、リポジトリのlibを使わずに
-# 実行すること(`bundle exec`や`-Ilib`を付けない)。
+# インストール済みのgemが実際に動くかのチェック
+# precompiled gemを`gem install`したあと、リポジトリのlibを使わずに実行すること(`bundle exec`や`-Ilib`を付けない)。
 
 require "sghtmltopdf"
 

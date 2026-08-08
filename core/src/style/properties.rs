@@ -2010,8 +2010,7 @@ fn parse_flex_wrap<'i>(input: &mut Parser<'i, '_>) -> Result<FlexWrap, ParseErro
     })
 }
 
-/// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフロー
-/// キーワードは非対応(既知の簡略化)。
+/// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフローキーワードは非対応。
 fn parse_justify_content<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<JustifyContent, ParseError<'i, ()>> {
@@ -2077,8 +2076,7 @@ fn parse_non_negative_number<'i>(input: &mut Parser<'i, '_>) -> Result<f32, Pars
     Ok(value)
 }
 
-/// `flex-basis: auto | content | <length-percentage>`。`content`は`auto`と
-/// 同一視する(既知の簡略化)。
+/// `flex-basis: auto | content | <length-percentage>`。`content`は`auto`と同一視する。
 fn parse_flex_basis<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedFlexBasis, ParseError<'i, ()>> {

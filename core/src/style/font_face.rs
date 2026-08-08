@@ -164,7 +164,7 @@ fn parse_font_face_src<'i>(
 /// `unicode-range`ディスクリプタ: `<urange>`のカンマ区切りリスト
 /// (`unicode-range: U+0-24F, U+1E00-1EFF;`)。`<urange>`自体の構文
 /// (単一コードポイント/範囲/ワイルドカード)の妥当性検証は
-/// `cssparser::UnicodeRange::parse`に委ねる(0011参照。独自の型・
+/// `cssparser::UnicodeRange::parse`に委ねる(独自の型・
 /// 手書きパーサは持たない)。1つでも不正なレンジがあれば
 /// `parse_comma_separated`がクロージャの`Err`でリスト全体の
 /// パースを打ち切るため、記述子全体が無効になる。

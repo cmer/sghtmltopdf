@@ -1,10 +1,4 @@
 //! CLIオプションの定義。
-//!
-//! オプション定義はこのファイル1箇所だけに置く。HTTPサーバモード
-//! (Phase 7)はクエリ文字列を引数列へ機械変換して同じパーサへ通すため、
-//! CLIとサーバで解釈がずれない。
-//!
-//! オプション名はwkhtmltopdf互換を優先する。
 
 use std::path::PathBuf;
 
@@ -413,7 +407,7 @@ pub struct ConvertArgs {
     #[arg(long, value_name = "PATH")]
     pub allow: Vec<PathBuf>,
 
-    /// ストリーミングモードで処理する(制約は docs/decisions/0006 を参照)
+    /// ストリーミングモードで処理する(一部のオプション・CSSは使えず、その場合はエラーになる)
     #[arg(long, action = ArgAction::SetTrue)]
     pub streaming: bool,
 
@@ -506,7 +500,7 @@ impl ConvertArgs {
 
     /// ページサイズ・マージンのCLI指定を[`PageSettings`]へまとめる。
     ///
-    /// ここで返すのは初期値であり、著者CSSに`@page`の宣言があれば
+    /// ここで返すのは初期値であり、CSSに`@page`の宣言があれば
     /// プロパティ単位でそちらが優先される(合成は
     /// `engine::apply_page_rule_settings_override`が行う)。
     ///

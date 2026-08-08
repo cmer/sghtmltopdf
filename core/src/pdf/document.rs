@@ -1,9 +1,7 @@
 //! レイアウト結果(ページごとの[`LaidOutBox`]木)をPDFへエンコードする。
 //!
-//! M1は一括変換(ストリーミングなし)なので、文書全体を`pdf_writer::Pdf`で
-//! 組み立てて最後に1回だけ[`Sink`]へ書き出す。ページ確定ごとに部分的な
-//! バイト列を書き出すインクリメンタル対応は、T1のスパイクで実現可能性を
-//! 確認済みだが、本実装への組み込みはマイルストーン3(ストリーミング対応)で行う。
+//! 一括変換(ストリーミングなし)では、文書全体を`pdf_writer::Pdf`で
+//! 組み立てて最後に1回だけ[`Sink`]へ書き出す。
 //!
 //! エンコードは2パスで行う: (1) 全ページを走査し、フォントごとに実際に使われた
 //! グリフを集める、(2) 使用グリフだけにサブセット化したフォントを埋め込み、
@@ -32,7 +30,6 @@
 //! 継続中の辺(分割位置に接する辺)に`border-radius`を適用しない
 //! (レイアウト側で`Layout::fragment`として渡された情報を見て角丸を抑制する)。
 //!
-//! 既知の簡略化:
 //! - 太字・イタリックは対応する字形を持つフォントファイルを別途要求せず、
 //!   通常字形に対して塗り+縁取り(疑似太字)・テキスト行列のせん断(疑似
 //!   イタリック)で代用する
@@ -41,8 +38,7 @@
 //! - `border-radius`が指定されていても4辺の太さ・スタイル・色が不揃いな場合は
 //!   角丸を諦め、直線4辺のストロークにフォールバックする(角ごとの複雑な
 //!   ブレンド処理は非対応)
-//! - `border-style`の`groove`/`ridge`/`inset`/`outset`(2階調の疑似立体陰影)は
-//!   非対応。請求書・帳票用途での実用性に対して実装コストが見合わないため
+//! - `border-style`の`groove`/`ridge`/`inset`/`outset`(2階調の疑似立体陰影)は非対応
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -351,8 +347,7 @@ pub fn encode_pdf_with_options(
         // opacityグループのForm XObjectを実際に書き出す。`/BBox`はページの
         // content area全体(box-shadowのにじみ出し・`overflow: visible`・
         // transformとの組み合わせでborder-boxを超える描画がある可能性を
-        // 考慮し、安全側に倒す、既知の簡略化)。`/Resources`はページと同じ内容
-        // (全ての名前は文書全体で一意なため絞り込みはしない)。
+        // 考慮し、安全側に倒す。
         for (form_ref, bytes) in &pending_forms {
             let mut form = pdf.form_xobject(*form_ref, bytes);
             form.bbox(PdfRect::new(
@@ -1173,7 +1168,7 @@ fn render_box_opacity_wrapped(
 /// 絶対座標)へ変換した上で基準点として適用する。原点の平行移動を先にCSS
 /// 座標側で行ってしまうと、ページ高さのオフセットが変形行列の回転・拡大成分と
 /// 混ざり込み誤った結果になるため、「原点調整はPDF座標に変換した後で行う」
-/// という順序が重要(スパイクで検算済み)。
+/// という順序が重要。
 fn transform_matrix_pdf_space(
     b: &LaidOutBox,
     style: &ComputedStyle,
@@ -1735,7 +1730,6 @@ fn border_edge(width: f32, style: BorderStyle, color: RgbaColor) -> (f32, Border
 /// スタイルの優先順位(仕様通りの強さの見た目順: double > solid > dashed >
 /// dotted > ridge > outset > groove > inset > none)で決める。`hidden`は
 /// [`BorderStyle`]に無いため非対応。幅・スタイルとも同着の場合は`a`を採用する
-/// (既知の簡略化、見た目には影響しない)。
 fn resolve_border_conflict(
     a: (f32, BorderStyle, RgbaColor),
     b: (f32, BorderStyle, RgbaColor),
@@ -1819,7 +1813,7 @@ fn render_box_decoration(
 const BOX_SHADOW_BLUR_STEPS: u32 = 4;
 
 /// `box-shadow`を描画する(要素本体の背景・枠線より前に呼ぶこと)。リストの
-/// 先頭が最前面になるよう後ろから塗る。`inset`は非対応(既知の簡略化)。
+/// 先頭が最前面になるよう後ろから塗る。`inset`は非対応。
 fn render_box_shadows(
     content: &mut RenderTarget<'_>,
     layout: &Layout,
@@ -2301,9 +2295,7 @@ fn render_background_image(
 /// 隙間も行の背景で塗られる。これはCSS2.1 17.5.1の描画順=行の背景がセルの
 /// 背景の下に敷かれる、という規定と同じ見え方になる)。CSSの
 /// `tr { background-color: ... }`とレガシー表示属性の`<tr bgcolor>`のどちらも
-/// この経路で描画される。`<thead>`/`<tbody>`は透過的な入れ物としてボックスを
-/// 持たない([`crate::style::user_agent_stylesheet`])ため、それらへの
-/// 背景指定は引き続き効かない(既知の制約)。
+/// この経路で描画される。
 fn render_row_background(
     content: &mut RenderTarget<'_>,
     row: &LaidOutTableRow,
@@ -2357,7 +2349,7 @@ fn render_row_background(
 /// 背景は各角の半径に従った角丸矩形として塗りつぶす。枠線は、4辺すべての
 /// 太さ・スタイル・色が同一の場合のみ角丸パスをストロークする
 /// (辺ごとに異なる太さ・色・スタイルと角丸の組み合わせは、角での複雑な
-/// ブレンド処理が必要になるためM1では非対応。その場合は角丸を諦め、
+/// ブレンド処理が必要になるため非対応。その場合は角丸を諦め、
 /// 直線4辺の[`render_border`]にフォールバックする)。
 #[allow(clippy::too_many_arguments)]
 fn render_rounded_decoration(
@@ -2651,15 +2643,6 @@ fn render_outline(
 }
 
 /// 4辺それぞれの`border-width`/`border-style`/`border-color`に従って枠線を描く。
-///
-/// `solid`/`double`は、外形(border-box外周)から内形(border-box内周)まで
-/// 各辺を四角形(太さが辺ごとに異なれば台形)として直接塗りつぶす。隣接する
-/// 2辺は角の頂点(例: 右上なら`(x1, y_top)`と`(x1 - border.right, y_top -
-/// border.top)`)を共有するため、太さ・色が異なっていても角が斜めに
-/// ミトー結合される(ピクチャーフレームと同じ要領)。`dashed`/`dotted`は
-/// ダッシュパターンをストロークで表現する都合上、従来通り太さの中心線を
-/// ストロークする(ダッシュの境界はどのみち辺ごとに揃わないため、ミトー結合の
-/// 恩恵が薄く実装コストに見合わない簡略化)。
 fn render_border(
     content: &mut RenderTarget<'_>,
     layout: &Layout,
@@ -2930,7 +2913,7 @@ fn render_border_side(
 }
 
 /// 単純な実線を太さ・色を指定してストロークする(text-decorationの下線・
-/// 取り消し線用。border描画とは異なりミトー結合等は関係ない単発の直線)。
+/// 取り消し線用)。
 fn stroke_line(
     content: &mut RenderTarget<'_>,
     thickness: f32,
@@ -3084,8 +3067,7 @@ fn render_line(
             continue;
         }
         // `remaps`が`Some`(一括処理)ならサブセット後のグリフIDへの変換表を
-        // 引く。`None`(ストリーミング処理)ならCIDは常に元のグリフIDのまま
-        // 使う([`super::font::embed_font_streaming_chunks`]参照)。
+        // 引く。`None`(ストリーミング処理)ならCIDは常に元のグリフIDのまま使う。
         let remap = match remaps {
             Some(remaps) => match remaps.get(run.font_index) {
                 Some(remap) => Some(remap),
@@ -3345,7 +3327,7 @@ fn render_emphasis_mark(
 }
 
 /// `text-emphasis-style: <string>`のマークを、そのランのフォントのグリフとして描く。
-/// 字形を持たないフォントでは何も描かれない(既知の限界)。
+/// 字形を持たないフォントでは何も描かれない。
 #[allow(clippy::too_many_arguments)]
 fn render_emphasis_glyph(
     content: &mut RenderTarget<'_>,
@@ -3581,7 +3563,6 @@ enum VAlign {
 /// x/yが負の値やcontent_width/content_heightを超える値になるのが正しい。
 ///
 /// 角の4boxは固定サイズ、残り12boxは辺のマージン幅を3等分する簡易配分
-/// (著者の`width`指定は無視する既知の簡略化)。
 fn margin_box_area_rect(area: MarginBoxArea, settings: &PageSettings) -> (Rect, HAlign, VAlign) {
     let m = settings.margin;
     let content_width = settings.content_width();
@@ -5151,11 +5132,7 @@ mod tests {
 
     #[test]
     fn list_item_marker_glyphs_are_embedded_in_the_font_subset() {
-        // 回帰テスト: 実装当初`collect_usage`が`LaidOutBox.marker`を
-        // 素通りしていたため、マーカー専用の文字(ここでは`decimal`マーカー
-        // "1."の'1')が使用グリフ収集に含まれず、`/ToUnicode`CMapに載らない
-        // (結果としてCID 0=notdefへ丸められ豆腐(tofu)描画になる)
-        // 不具合があった。本文中に一切数字が登場しない文書でも、マーカーの
+        // 本文中に一切数字が登場しない文書でも、マーカーの
         // '1'(U+0031)が`/ToUnicode`CMapに実際に埋め込まれることを確認する。
         let dom = html::parse(br#"<ol><li>apple</li></ol>"#);
         let ua = user_agent_stylesheet();
@@ -5181,7 +5158,7 @@ mod tests {
         // テキストスパンと同じ`BoxContent::Inline`経路(collect_line_usage)を
         // 通るため、マーカーの時とは異なり専用の収集漏れは生じないはずだが、
         // 本文中に一切登場しない数字(counter由来の'1')が実際に埋め
-        // 込まれることを回帰確認する。
+        // 込まれることを確認する。
         let dom = html::parse(br#"<div><h2>intro</h2></div>"#);
         let ua = user_agent_stylesheet();
         let author = parse_stylesheet(

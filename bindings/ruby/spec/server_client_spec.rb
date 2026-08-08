@@ -66,7 +66,7 @@ RSpec.describe "server_url" do
 
     it "流し込まれた既定値はサーバへ送らない(サーバでは指定できないキーのため)" do
       FakeServer.run do |server|
-        # Railtieが入れる既定値と同じ形(T344)。
+        # Railtieが入れる既定値と同じ形。
         Sghtmltopdf.config.apply_defaults(base_url: "/app/public", allow: ["/app"])
         Sghtmltopdf.render(html, server_url: server.url, page_size: "A4")
 
@@ -208,7 +208,7 @@ RSpec.describe "実サーバとの結合" do
 
     require "open3"
     @stdin, @stdout, @wait = Open3.popen2(CLI_BINARY, "server", "--listen", "127.0.0.1:0")
-    # 起動時に`listening on 127.0.0.1:<port>`を出す(M12 Phase 7)。
+    # 起動時に`listening on 127.0.0.1:<port>`を出す。
     line = @stdout.gets
     @server_url = "http://#{line[/listening on (\S+)/, 1]}"
   end

@@ -1,4 +1,4 @@
-//! CSS Grid(`display: grid`)のE2Eテスト(M11 T276)。
+//! CSS Grid(`display: grid`)のE2Eテスト。
 //!
 //! `flexbox.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイルカスケード→
 //! レイアウト→ページ分割→PDFエンコード)を通して回帰を検知する。

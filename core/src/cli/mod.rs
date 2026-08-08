@@ -184,8 +184,6 @@ mod tests {
 
     #[test]
     fn parse_convert_argv_binds_each_font_index_to_the_preceding_font() {
-        // Ruby bindingは`--font-index`を対応する`--font`の直後に置く。その
-        // 並びが期待どおり解決されること。
         let (_, fonts) = parse_convert_argv(&argv(&[
             "--font",
             "a.ttf",

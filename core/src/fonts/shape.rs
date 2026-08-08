@@ -32,9 +32,7 @@ pub fn shape_text(font: &Font, text: &str, font_size: f32) -> ShapedText {
 
     let mut buffer = harfrust::UnicodeBuffer::new();
     buffer.push_str(text);
-    // 書字方向・スクリプト・言語をここで確定させ、それをキーに計画を引く
-    // (計画を渡さない場合もharfrustが内部で同じ推測をしてから計画を作るため、
-    // 結果は変わらない)。
+    // 書字方向・スクリプト・言語をここで確定させ、それをキーに計画させる
     buffer.guess_segment_properties();
     let plan = font.shape_plan(&(buffer.direction(), buffer.script(), buffer.language()));
     let output = font

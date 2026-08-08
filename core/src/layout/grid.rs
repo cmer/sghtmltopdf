@@ -1,5 +1,4 @@
-//! CSS Grid(`display: grid`)を、既存box treeのサブツリーとしてtaffyへ
-//! ブリッジする。
+//! CSS Grid(`display: grid`)を、既存box treeのサブツリーとしてtaffyへブリッジする。
 //!
 //! taffyへの橋渡し(採寸コールバック・座標変換の2パス方式)はFlexboxと完全に
 //! 共通で、[`super::flex::layout_taffy_subtree`]に集約してある。この
@@ -41,7 +40,7 @@ pub struct LaidOutGridRow {
 }
 
 /// グリッドコンテナのcontent box内でアイテムをレイアウトする。
-/// 返り値はレイアウト済みのグリッドと、コンテナの自然なcontent-box高さ。
+/// 返り値はレイアウト済みのグリッドと、コンテナのcontent-boxの高さ。
 pub(super) fn layout_grid(
     grid: &GridBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,

@@ -1,15 +1,5 @@
 //! Block Formatting Context: containing blockに基づく幅計算と、
 //! ブロック要素の縦積み配置(CSS2.1 §10.3.3, §9.4.1の簡略版)。
-//!
-//! 既知の簡略化(将来のマイルストーンで見直す):
-//! - マージン相殺(margin collapsing)は隣接兄弟間のみ対応する(CSS2.1 §8.3.1)。
-//!   親子間の相殺(親の上/下マージンと最初/最後の子のマージンの相殺)、および
-//!   高さ0・border/paddingなしの空ブロックを上下マージンが素通りする相殺は
-//!   未対応
-//! - `direction: rtl`は未対応(常にltr前提。over-constrained時に再計算する辺は
-//!   margin-right固定)
-//! - 高さのパーセンテージ指定はcontaining blockの高さが不定なため`auto`として扱う
-//! - インラインコンテンツの行分割・実際の行数に応じた高さはT6([`super::inline`])が担う
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -42,31 +32,22 @@ pub struct LaidOutBox {
     /// 初期値=`auto`/`auto`/`auto`/2/2)。
     pub fragmentation: FragmentationHints,
     /// このボックスが実際に描画される背景色・枠線を持つか。
-    ///
     /// `paginate.rs`が、ページをまたいで分割されるコンテナの装飾フラグメント
     /// (背景・枠線の再現、モジュールdoc参照)を生成する必要があるかどうかの
-    /// 判断に使う。`border-radius`の有無はここでは無関係(角丸があっても
-    /// 背景色・枠線が両方なければ何も描画されないため、`pdf::document`側の
-    /// 描画ロジックとは独立に判定してよい)。装飾フラグメント自体・行の
-    /// 合成ラッパーなど無名ボックスは常に`false`(それ自体が再帰的に装飾
-    /// フラグメントを持つことはない)。
+    /// 判断に使う。
     pub has_visible_decoration: bool,
     /// `float: left/right`が指定されている要素かどうか。`paginate.rs`が
     /// フロー外要素として特別扱いする判定に使う。
     pub is_float: bool,
     pub content: LaidOutContent,
-    /// `display: list-item`のマーカー(箇条書きの記号・番号)。シェイピング済み
-    /// `TextRun`1つを持つ`LineBox`として表現し、`pdf::document::render_line`
-    /// をそのまま再利用して描画する。ページ分割でこのボックスが複数
-    /// ページにまたがる場合、先頭フラグメントにのみ残す(`paginate.rs`)。
-    /// `display: list-item`のマーカー。箇条書き以外では常に`None`なのに
-    /// [`LineBox`]は72バイトあり、全ボックスがその分を抱えることになるため
-    /// `Box`に逃がす(ボックスは大きな文書で10万個単位になる)。
+    /// `display: list-item`のマーカー(箇条書きの記号・番号)。
+    /// シェイピング済みの`TextRun`1つを持つ`LineBox`として表現し、
+    /// `pdf::document::render_line`をそのまま再利用して描画する。
+    /// ページ分割でこのボックスが複数ページにまたがる場合、先頭フラグメントにのみ残す(`paginate.rs`)。
     pub marker: Option<Box<LineBox>>,
 }
 
-/// [`LaidOutBox`]が持つCSS Fragmentation関連の計算値。ページ分割(`paginate.rs`)が
-/// どこで分割するかを決める際に参照する(レイアウト自体には影響しない)。
+/// [`LaidOutBox`]が持つCSS Fragmentation関連の計算値。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FragmentationHints {
     pub break_before: BreakBetween,
@@ -99,14 +80,11 @@ pub enum LaidOutContent {
     Blocks(Vec<LaidOutBox>),
     Inline(Vec<LineBox>),
     Table(LaidOutTable),
-    /// `display: flex`。`Blocks`と同じ形(taffyが確定した位置・サイズで
-    /// 既にレイアウト済みの`LaidOutBox`の並び)で十分なため、`Table`のような
-    /// 専用構造体は作らない。
+    /// `display: flex`
     Flex(Vec<LaidOutBox>),
     /// `display: grid`。ページ分割の単位である行帯を持つ。
     Grid(LaidOutGrid),
-    /// `<img>`。フェッチ・デコードに失敗していれば`None`
-    /// (空の置換要素として扱い、何も描画しない)。
+    /// `<img>`。フェッチ・デコードに失敗していれば`None`(空の置換要素として扱い、何も描画しない)。
     Image(Option<Rc<PreparedImage>>),
 }
 
@@ -114,7 +92,7 @@ pub enum LaidOutContent {
 #[derive(Debug, Clone)]
 pub struct LaidOutTable {
     /// `Box`は`LaidOutBox`→`LaidOutContent::Table`→`LaidOutTable`の再帰を
-    /// 間接参照で断ち切るために必要(`box_tree::TableBox.caption`と同じ理由)。
+    /// 間接参照で断ち切るために必要。
     pub caption: Option<Box<LaidOutBox>>,
     pub caption_side: CaptionSide,
     pub rows: Vec<LaidOutTableRow>,
@@ -130,9 +108,9 @@ pub struct LaidOutTableRow {
     pub section: TableSection,
 }
 
-/// 絶対配置されたボックス1つ分。`laid`はcontaining block基準(絶対座標)で
-/// レイアウト済みで、ページ分割層がこれを
-/// 属するページへオーバーレイとして配置する。
+/// 絶対配置されたボックス1つ分。
+/// `laid`はcontaining block基準(絶対座標)でレイアウト済みで、
+/// ページ分割層がこれを属するページへオーバーレイとして配置する。
 #[derive(Debug, Clone)]
 pub struct PositionedBox {
     pub laid: LaidOutBox,
@@ -217,14 +195,6 @@ pub fn layout_document(
 
 /// [`layout_document`]のバリアント: 原点`(0.0, 0.0)`からではなく、
 /// `(start_x, start_y)`からレイアウトを開始する。
-///
-/// マイルストーン3のストリーミング処理で、`<body>`直下のトップレベル要素を
-/// 1つずつレイアウトする際、前の要素までの累積高さを`start_y`として渡す
-/// ことで、複数回の呼び出しにまたがって「上から下に流れる」通常のブロック
-/// レイアウトを継続する。`start_x`/`containing_width`には、`<body>`自身の
-/// `margin`/`border`/`padding`を反映した値を渡すことを想定する(`<body>`
-/// 自体は個々のトップレベル要素とは別に扱われ、その内側がこの関数の
-/// containing blockになるため)。
 pub fn layout_document_from(
     root: &LayoutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -446,9 +416,6 @@ pub(super) fn layout_box_with_forced_size_ignoring_positioned(
 /// `b`のcontent幅・margin・padding・borderを解決する(置換要素のauto-size
 /// 適用込み)。`layout_box_impl`本体と、float配置のための事前幅計算
 /// (`layout_float_child`)の両方から呼ばれる共通ロジック。
-/// `position: absolute`/`fixed`の子を、containing block基準でレイアウトして
-/// `pos.out`へ集める。bottom/rightのうち、`bottom`はcontaining blockの高さが
-/// 確定しないため`top`へフォールバックする(既知の限界)。
 fn layout_out_of_flow_child(
     child: &LayoutBox,
     child_style: &ComputedStyle,
@@ -560,9 +527,7 @@ fn layout_out_of_flow_child(
     );
 
     // `bottom`指定(かつ`top`未指定)は、レイアウト後の高さが分かってから
-    // 下端合わせで再配置する。cb高さが確定している`fixed`・initial
-    // containing block・明示heightのabsoluteで効く。positioned祖先のcb高さは
-    // 0(未確定)なのでこのケースには入らない(既知の限界)。
+    // 下端合わせで再配置する。
     if !has_top && has_bottom && cb_rect.height > 0.0 {
         let mbh = laid.layout.margin_box_height();
         let target_y = cb_rect.y + cb_rect.height - mbh - bottom;
@@ -1046,8 +1011,6 @@ fn layout_float_child(
 
 /// `position: relative`のtop/right/bottom/leftから視覚的オフセット`(dx, dy)`を
 /// 解決する。優先順位はCSS仕様通り`top` > `bottom`、`left` > `right`。
-/// `top`/`bottom`のパーセンテージ指定はcontaining blockの高さが不定なため`0`を
-/// 基準に解決する(既知の簡略化)。
 fn resolve_relative_offset(style: &ComputedStyle, containing_width: f32) -> (f32, f32) {
     let resolve =
         |primary: LengthPercentageOrAuto, secondary: LengthPercentageOrAuto, basis: f32| {
@@ -1067,8 +1030,7 @@ fn resolve_relative_offset(style: &ComputedStyle, containing_width: f32) -> (f32
 /// `style`/`border`(計算済みの太さ)の組み合わせが、実際に何か描画するか。
 /// 背景色があるか、4辺のいずれかで太さが正かつ`border-style`が`none`でない
 /// 場合に`true`(`pdf::document::render_box_decoration`が実際に描画する
-/// 条件と同じ)。マイルストーン3の`Engine`が、`<body>`自身に装飾がないか
-/// 判定する際にも使うため`pub(crate)`にしている。
+/// 条件と同じ)。
 pub(crate) fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) -> bool {
     if style.background_color.alpha > 0.0 {
         return true;

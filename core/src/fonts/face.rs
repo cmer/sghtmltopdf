@@ -14,8 +14,7 @@ use crate::style::{FontFaceRule, FontFaceSource, FontStyle, FontWeight};
 use super::font::Font;
 use super::system::SystemFonts;
 
-/// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style・
-/// unicode-range。
+/// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style・unicode-range。
 pub struct LoadedFontFace {
     pub family: String,
     pub weight: FontWeight,
@@ -48,14 +47,7 @@ fn load_one(
 ) -> Option<LoadedFontFace> {
     for src in &rule.src {
         let font = match src {
-            // 読み込みは`<img>`・`<link>`・`@import`と同じ[`ImageFetcher`]を
-            // 通す。直接`fs::read`すると、ローカルアクセスの可否
-            // (`--disable-local-file-access`)・許可ディレクトリ(`--allow`)・
-            // サイズ上限のいずれも効かない抜け道になる。
-            //
-            // T61: root-relativeな`url("/fonts/brand.ttf")`をbase_dir相対と
-            // して扱う挙動は、フェッチャ側の`resolve_local_asset_path`が
-            // 引き続き担う。
+            // 読み込みは`<img>`・`<link>`・`@import`と同じ[`ImageFetcher`]を通す。
             FontFaceSource::Url(path) => fetcher
                 .fetch(&ImgSrc::LocalPath(path.clone()))
                 .ok()
@@ -87,8 +79,8 @@ mod tests {
 
     const DEJAVU_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts");
 
-    /// テスト用のフェッチャ。既定はCLIと同じ「ローカル読み込み可・許可
-    /// ディレクトリの限定なし」。
+    /// テスト用のフェッチャ。
+    /// 既定はCLIと同じ「ローカル読み込み可・許可ディレクトリの限定なし」。
     fn fetcher() -> ImageFetcher {
         ImageFetcher::new(Path::new(DEJAVU_PATH).to_path_buf(), false)
     }
@@ -123,9 +115,6 @@ mod tests {
 
     #[test]
     fn resolves_a_root_relative_url_within_base_dir() {
-        // T61: `url("/DejaVuSans.ttf")`のようなroot-relativeな書き方も
-        // base_dir配下のファイルとして解決されるはず(OSのファイルシステム
-        // ルートへ逃げない)。
         let rules = vec![rule(
             "Custom Brand",
             vec![FontFaceSource::Url("/DejaVuSans.ttf".to_string())],
@@ -176,8 +165,6 @@ mod tests {
     }
 
     /// `--disable-local-file-access`が`@font-face`の`url()`にも効くこと。
-    /// 以前はここだけフェッチャを通さず直接`fs::read`していたため、
-    /// ローカルアクセスを禁止していても読めてしまっていた。
     #[test]
     fn a_url_source_is_refused_when_local_file_access_is_disabled() {
         let rules = vec![rule(
@@ -194,8 +181,7 @@ mod tests {
         );
     }
 
-    /// `--allow`で許可したディレクトリの外にあるフォントは、`..`で辿っても
-    /// 読めないこと。
+    /// `--allow`で許可したディレクトリの外にあるフォントは、`..`で辿っても読めないこと。
     #[test]
     fn a_url_source_outside_the_allowed_dirs_is_refused() {
         let base = Path::new(DEJAVU_PATH).to_path_buf();

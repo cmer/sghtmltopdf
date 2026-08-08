@@ -7,7 +7,7 @@ GEMSPEC = Gem::Specification.load("sghtmltopdf.gemspec")
 
 RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
   ext.lib_dir = "lib/sghtmltopdf"
-  # 実際のビルドはoxidize-rb/cross-gem-actionがCIで行う(T348)。
+  # oxidize-rb/cross-gem-action
   ext.cross_compile = true
   ext.cross_platform = %w[
     x86_64-linux aarch64-linux
@@ -16,8 +16,6 @@ RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
   ]
 end
 
-# クロスビルド(rb-sys-dockのコンテナ内)ではテスト用のgemが入っていない
-# ことがある。`rake native:<platform> gem`だけは動くようにしておく。
 begin
   require "rspec/core/rake_task"
   RSpec::Core::RakeTask.new(:spec)
@@ -27,18 +25,11 @@ rescue LoadError
   task default: :compile
 end
 
-# `bundler/gem_tasks`の`release`は「ソースgemを1つbuild → gitタグを作る →
-# push」という純Rubyのgem向けの手順で、このgemには合わない。
-#
-# * 配布するのはprecompiled gem 5プラットフォーム + ソースgemの計6つ。
-#   CIがクロスビルドしたものを`pkg/`へ集めてから出す
-# * gitタグは人が打ち、そのタグのpushがリリースのトリガなので、
-#   ここでタグを作ろうとすると「既にある」で失敗する
-#
-# `rubygems/release-gem`が実行するのはこの`rake release`なので、中身を
-# 差し替えることで、公式アクションの利点(trusted publishingの設定・
-# sigstore attestations・反映待ち)をそのまま使える。attestationsは
-# `RUBYOPT`で挿し込まれるため、ここで呼ぶ`gem push`すべてに効く。
+# `bundler/gem_tasks`の`release`は
+# 「ソースgemを1つbuild → gitタグを作る → push」という処理になっているが、
+# CIでのクロスビルドでは
+# 「ソースgemを1つbuild → gitタグを作る → push → precompiled gemを5つbuild → push」という流れにしたいので、
+# `release`タスクを差し替える。
 Rake::Task["release"].clear
 
 desc "pkg/配下のgemをすべてrubygems.orgへpushする(CIから使う)"

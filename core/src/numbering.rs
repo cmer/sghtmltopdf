@@ -3,7 +3,7 @@
 //! `style::computed`(`content: counter`)の両方から使われる共通ロジック。
 
 /// アラビア数字からローマ数字(大文字)へ変換する。CSS2.1の慣習上意味を持つ
-/// 1〜3999の範囲外はアラビア数字のまま返す(既知の簡略化)。
+/// 1〜3999の範囲外はアラビア数字のまま返す。
 pub fn to_roman(n: usize) -> String {
     const VALUES: [(usize, &str); 13] = [
         (1000, "M"),

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Rails統合(T341〜T345)のテスト用。`spec/dummy`を`Rails.root`にした最小の
+# Rails統合のテスト用。`spec/dummy`を`Rails.root`にした最小の
 # アプリを起動する。
 ENV["RAILS_ENV"] ||= "test"
 
@@ -31,7 +31,7 @@ end
 
 Rails.application.initialize!
 
-# Railtieのイニシャライザが流し込んだ既定値(T344)。ブート直後の状態を
+# Railtieのイニシャライザが流し込んだ既定値。ブート直後の状態を
 # 控えてから設定を戻し、Railsを使わないspecへ影響させない
 # (specの実行順はランダムで、他のspecは`reset_config!`で設定を空にする)。
 CONFIG_AFTER_BOOT = Sghtmltopdf.config.to_h.freeze

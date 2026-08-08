@@ -45,8 +45,6 @@ fn interrupted() -> io::Error {
 
 /// `rb_gc_register_address`でGCから守った`VALUE`の置き場。
 ///
-/// # なぜ必要か
-///
 /// Rubyの保守的GCはマシンスタックを走査してVALUEを見つけるが、
 /// GVLを解放した時点のスタック位置までしか走査しない
 /// (解放時にマシンコンテキストが保存されるため)。`without_gvl`の内側で

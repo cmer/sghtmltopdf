@@ -284,7 +284,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         // 色変換を挟むラッパー。
         let mut target = RenderTarget::new(&mut content, self.output.grayscale);
         for b in &page.boxes {
-            // `remaps: None` — CIDは常に元のグリフIDのまま使う(モジュールdoc参照)。
+            // `remaps: None` — CIDは常に元のグリフIDのまま使う。
             render_box(
                 &mut target,
                 b,
@@ -615,9 +615,7 @@ mod tests {
 
     #[test]
     fn streaming_writer_output_is_readable_by_pdf_parsing_via_pymupdf_equivalent_checks() {
-        // PyMuPDFのような外部ツールでの実描画確認はspikeで別途行い済み
-        // (spike_streaming_font_subset.rs)。ここでは複数ページ・複数フォント
-        // (ページをまたいでグリフ集合が変わるケース)でも構造的に妥当な
+        // 複数ページ・複数フォント(ページをまたいでグリフ集合が変わるケース)でも構造的に妥当な
         // PDFになることを確認する。
         let mut html_src = String::from("<div>");
         for i in 0..20 {
@@ -776,7 +774,7 @@ mod tests {
 
     #[test]
     fn streaming_writer_works_through_a_buffered_s3_style_sink() {
-        // T26: `StreamingPdfWriter`が`BufferedSink`(S3マルチパート
+        // `StreamingPdfWriter`が`BufferedSink`(S3マルチパート
         // アップロード想定)を通しても、`Sink::write`が細切れ・多数回に
         // 分けて呼ばれることに正しく対応できることを確認する。実際の
         // S3向けバッファ付きSinkと同じ`crate::sink::BufferedSink`をここでも

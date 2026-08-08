@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# `render pdf:`の結合テスト用(T345)。
+# `render pdf:`の結合テスト用。
 class InvoicesController < ActionController::Base
   # 既定のテンプレート(invoices/show)をPDFにする。
   def show

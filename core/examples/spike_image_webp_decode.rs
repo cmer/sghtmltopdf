@@ -1,4 +1,4 @@
-//! T41追加スパイク: WebPを`image`crate(webp機能のみ有効化)でデコードし、
+//! 追加スパイク: WebPを`image`crate(webp機能のみ有効化)でデコードし、
 //! PNGスパイク(`spike_image_png_decode.rs`)と同じRGB本体+SMask分離方式で
 //! PDFへ埋め込むPoC。
 //!

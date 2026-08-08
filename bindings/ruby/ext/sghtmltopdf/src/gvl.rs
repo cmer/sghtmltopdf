@@ -1,10 +1,6 @@
 //! GVL(Global VM Lock)の解放。
 //!
 //! レンダリングの間はGVLを解放し、Pumaの他スレッドを止めないようにする。
-//!
-//! magnus 0.8にこのラッパは無い(`magnus`の`lib.rs`が挙げる未実装API一覧に
-//! `rb_thread_call_without_gvl`が入っている)ため、rb-sysのバインディングを
-//! 直接呼ぶ。
 
 use std::ffi::c_void;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
@@ -28,7 +24,7 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 ///
 /// UBF(unblock function)は`None`＝割り込み不可。`Kernel#trap`やCtrl-Cでの
 /// 中断は初期スコープ外とする。
-#[allow(dead_code)] // Phase 2(T338)で使う
+#[allow(dead_code)] // 将来のGVL解放実装で使う
 pub fn without_gvl<F, R>(func: F) -> R
 where
     F: FnOnce() -> R + Send,

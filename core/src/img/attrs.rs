@@ -1,8 +1,6 @@
 //! `<img>`要素のDOM属性抽出。
 //!
 //! `width`/`height`はCSSの値ではなくHTML属性(単位なしの整数px)を指す。
-//! CSSの`width`/`height`との優先順位解決や内在サイズとの突き合わせは
-//! box tree構築(T52)側の責務であり、ここでは属性の生の値をそのまま返す。
 //!
 //! HTML仕様の"rules for parsing non-negative integers"は、先頭の空白を
 //! 読み飛ばした後、数字が続く限り読んで残りは無視する(文字列全体が数字列
@@ -69,9 +67,8 @@ fn read_pixel_attr(attrs: &[Attribute], name: &str) -> Option<u32> {
 
 /// HTML仕様の"rules for parsing non-negative integers"を簡略化して適用する:
 /// 先頭の空白を読み飛ばし、後続の数字列を読めるだけ読んで10進数として
-/// 解釈する(以降の非数字はすべて無視する)。数字が1つも無ければ`None`。
-/// 先頭が`-`なら数字の収集そのものが始まらないため自然に`None`になり、
-/// 「非負整数以外は無効」という仕様の要件も満たす。
+/// 解釈する(以降の非数字はすべて無視する)。
+/// 数字が1つも無ければ`None`。先頭が`-`なら数字の収集そのものが始まらないため自然に`None`になる。
 fn parse_non_negative_integer_prefix(value: &str) -> Option<u32> {
     let digits: String = value
         .trim_start()

@@ -14,7 +14,7 @@ use super::dom::{append, detach, insert_before, Dom, Node, NodeData, NodeId};
 /// HTMLバイト列をパースして[`Dom`]を構築する(一括変換)。
 ///
 /// 内部的には[`StreamingParser`]に全バイト列を1回で`feed`するだけの
-/// 薄いラッパー。M1由来の一括処理APIとチャンク投入APIでロジックを
+/// 薄いラッパー。一括処理APIとチャンク投入APIでロジックを
 /// 共有するための構成。
 pub fn parse(html: &[u8]) -> Dom {
     let mut parser = StreamingParser::new();
@@ -101,12 +101,6 @@ impl StreamingParser {
     /// 要素が2回返されることはない。`<body>`がまだ存在しない、または
     /// 対象がなければ空のベクタを返す。
     ///
-    /// 安全性の前提: 正しくネストされたHTML(不正なタグの入れ子や、
-    /// テーブル内の不正な要素がテーブルの外へ移動する「foster
-    /// parenting」等のhtml5everのエラー回復動作が発生しないこと)を想定
-    /// する。エラー回復によって`<body>`直下の要素構成が後から変わる
-    /// 場合、この判定は不正確になりうる(既知の限界)。
-    ///
     /// 末尾の要素は「まだ子要素が追加され続けている可能性がある」ため、
     /// 対象に含めない(次回以降の呼び出し、または[`Self::finish`]まで
     /// 待つ)。
@@ -188,12 +182,12 @@ impl Default for StreamingParser {
 struct Sink {
     dom: RefCell<Dom>,
     quirks_mode: Cell<QuirksMode>,
-    /// `<body>`要素の開始タグを見たかどうか([`StreamingParser::has_late_css_source`]参照)。
+    /// `<body>`要素の開始タグを見たかどうか
     seen_body: Cell<bool>,
     /// `<body>`より後にCSSソース(`<style>`または`<link rel=stylesheet>`)が
     /// 出現したかどうか。
     late_css_source_detected: Cell<bool>,
-    /// `<body>`要素の`NodeId`([`StreamingParser::body_node`]参照)。
+    /// `<body>`要素の`NodeId`
     body_id: Cell<Option<NodeId>>,
 }
 
@@ -208,7 +202,6 @@ fn is_late_css_source(local_name: &str, attrs: &[Attribute]) -> bool {
 ///
 /// アリーナは1つの`RefCell`にまとめているため、`&'a QualName`のように
 /// 借用をそのまま返すことができない(borrowガードの寿命が合わない)。
-/// `QualName`は内部がアトム(参照カウント)なのでクローンのコストは小さい。
 #[derive(Debug)]
 struct OwnedElemName(QualName);
 
@@ -494,9 +487,7 @@ mod tests {
         assert_eq!(text_of(&dom, lis[2]), "three");
     }
 
-    /// バイト列を1バイトずつ`feed`しても、一括`parse`と同じDOMになることを
-    /// 確認する。タグの途中(`<p`/`>`)・属性の途中・テキストの途中など、
-    /// あらゆる位置でチャンクが分割されるケースを網羅する最も厳しい検証。
+    /// バイト列を1バイトずつ`feed`しても、一括`parse`と同じDOMになることを確認する。
     #[test]
     fn streaming_parser_byte_by_byte_matches_one_shot_parse() {
         let html = br#"<div class="a"><p>Hello <b>world</b></p></div>"#;

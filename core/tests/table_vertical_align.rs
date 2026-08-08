@@ -1,5 +1,4 @@
-//! テーブルセルの`vertical-align`(top/middle/bottom/baseline)のE2Eテスト
-//! (M8 Phase 1 Table layout完全対応)。
+//! テーブルセルの`vertical-align`(top/middle/bottom/baseline)のE2Eテスト。
 //!
 //! `table_caption.rs`と同じ方針: 実際のパイプラインを通して回帰を検知する。
 //! 座標の詳細な検証は`layout_document`(ページ分割前)の結果に対して行う。

@@ -4,23 +4,12 @@ require "net/http"
 require "uri"
 
 module Sghtmltopdf
-  # サーバへ到達できない・サーバ側が過負荷などで変換を受け付けられない。
-  # レンダリングそのものの失敗(500)は`RenderError`、オプションの誤り(400)は
-  # `UsageError`になる。
   class ServerError < Error; end
 
   # HTTPサーバモード(`sghtmltopdf server`)へ変換を委譲するクライアント。
   #
   #   Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
   #   pdf = Sghtmltopdf.render(html, page_size: "A4")
-  #
-  # オプションは`Options.to_query`でクエリ文字列になり、サーバ側で
-  # CLIとまったく同じclapパーサへ通される。負荷分散は前段のLB
-  # (nginx・k8s Serviceなど)に任せる前提で、URLは1つだけ受ける。
-  #
-  # サーバへ到達できないときにローカルのネイティブ拡張へフォールバック
-  # しない。サーバ起動時にだけ指定できるフォント(`--font`など)が効かず
-  # 出力が変わるうえ、障害に気づけなくなるため。
   class ServerClient
     DEFAULT_OPEN_TIMEOUT = 5
     DEFAULT_READ_TIMEOUT = 120

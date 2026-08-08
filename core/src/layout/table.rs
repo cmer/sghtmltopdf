@@ -7,7 +7,6 @@
 //! containing widthいっぱいに広がる。`width: auto`のテーブルがcontaining
 //! blockを埋める通常のCSS挙動と一致する)。
 //!
-//! 既知の簡略化(将来のマイルストーンで見直す):
 //! - `rowspan="0"`(HTML5の「以降の行末まで拡張」特殊値)は非対応、1として扱う
 //! - `border-collapse: collapse`は見た目の枠線描画のみ統合し、レイアウト計算は
 //!   separateモデルと同一
@@ -135,7 +134,7 @@ pub(super) fn layout_table(
 
     // `table-layout: fixed`は`<col>`と最初の行の明示`width`指定のみを見て、
     // 内容測定(`compute_column_widths`のセル自然幅計算)を完全にスキップする
-    // 高速パス(仕様上もこれがfixedモードの目的そのもの)。
+    // 高速パス
     let col_widths = if table_layout == TableLayout::Fixed {
         compute_fixed_column_widths(
             &grid,
@@ -662,7 +661,7 @@ pub(super) fn measure_natural_content_width(
                     + border.right
             })
             .fold(0.0f32, f32::max),
-        // ネストしたテーブル・flex・gridの自然幅測定は非対応(既知の簡略化)。
+        // ネストしたテーブル・flex・gridの自然幅測定は非対応。
         BoxContent::Table(_) | BoxContent::Flex(_) | BoxContent::Grid(_) => 0.0,
         BoxContent::Image(image_content) => image_content
             .attr_width

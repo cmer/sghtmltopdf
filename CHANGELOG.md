@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- flexコンテナ・gridコンテナの直下にある、要素で包まれていないテキストが出力から消えていた問題を修正。
+  CSS Flexbox仕様どおり、連続するテキストの並びを1個の無名アイテムとしてレイアウトするようになった(空白だけの並びからはアイテムを作らない)。
+
+## 0.2.0 - 2026-08-07
+
 ### Security
 
 - HTMLのネストが深すぎる入力でスタックオーバーフローし、プロセスごと落ちる問題を修正。
@@ -40,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ruby gemに`Sghtmltopdf::InternalError`を追加。
   ネイティブ拡張の中でRustがパニックした場合、これまではRubyの`fatal`になり`rescue Exception`でも捕まえられずワーカープロセスごと終了していた。
   通常の`rescue`で受けられる例外に変換するようにした。
+- Alpine(musl)向けのprecompiled gemを追加。
+  `x86_64-linux-musl`と`aarch64-linux-musl`が増え、Alpineでもビルドツールチェーン無しでインストールできる。
 
 ### Changed
 
@@ -51,6 +60,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ローカル参照が基準ディレクトリ(`--base-url`)の外へ出ることを既定で許さなくなった(破壊的変更)。
   `../`で外のファイルを参照していた場合は`--allow`で範囲を明示する必要がある。
   基準ディレクトリの中で完結する`../`はこれまでどおり使える。
+- スタイル計算とテキストシェイピングのチューニングで、変換時間が約2倍速くなった。
+  セレクタのマッチングをルール索引で絞り込み、同じフォント・言語の組み合わせに対するシェイピング計画を使い回すようにした。
+  メモリ使用量と出力PDFは変わらない。
+- テキストシェイピングをrustybuzz/ttf-parserからharfrust/skrifaへ移行した。
+  出力PDFはバイト単位で同一で、依存クレートが139から122へ、バイナリが10.9MBから9.5MBへ減った。
+  移行前の2クレートはメンテナンスが終了しており、アドバイザリ(RUSTSEC-2026-0206 / RUSTSEC-2026-0192)が出続けていた。
+
+### Fixed
+
+- ストリーミングモード(`--streaming`)で、トップレベル要素の`break-before`/`break-after`が無視されていた問題を修正。
+- paddingやborderを持つflex/gridアイテムが、内容を1行分少なく採寸していた問題を修正。
+  折り返したテキストがアイテムの箱からはみ出していた。
+- 最初のランが太字だと、以降そのスクリプト全体が太字のフォントにフォールバックする問題を修正。
+  太字の見出しで始まる文書では、本文の日本語まで太字で描画されていた。
+- floatが後続ブロックの背景より先に描かれ、背景に隠れてしまう問題を修正。
+- 合字のグリフが`/ToUnicode` CMapで1文字にしか対応づけられず、テキスト抽出や検索で文字が落ちる問題を修正。
+  `float`が`foat`として抽出されていた。
 
 ## 0.1.0
 

@@ -1,8 +1,4 @@
 //! `<img src>`のURL/パス分類。
-//!
-//! ネットワークフェッチ・ローカルファイル読み込み・`data:` URIの
-//! デコードのどれを行うべきかを、実際に取得を試みる前に判別する。判別のみを
-//! 行い、実際のフェッチ/読み込み(T46)は行わない。
 
 use std::path::{Component, Path, PathBuf};
 
@@ -21,12 +17,11 @@ pub enum ImgSrc {
     /// パスとURLスキームを取り違えさせない」方針通り)。
     LocalPath(String),
     /// `http`/`https`の絶対URL。実際のフェッチは
-    /// T46がセキュリティポリシーに従って行う。
+    /// フェッチャがセキュリティポリシーに従って行う。
     RemoteUrl(String),
     /// `data:`URI(base64エンコードされたペイロードのみ対応。
     /// パーセントエンコードされた非base64ペイロードは画像用途では
-    /// 実質使われないため未対応)。ネットワークもファイルI/Oも介さないため、
-    /// T42のセキュリティポリシーの対象外。
+    /// 実質使われないため未対応)。
     DataUri { mime_type: String, bytes: Vec<u8> },
 }
 
@@ -92,8 +87,7 @@ pub fn resolve_against_base_href(base: Option<&str>, raw: &str) -> String {
 }
 
 /// `src`属性の値を分類する。デコード不能な`data:`URI・`file:`スキームなど
-/// 「そもそも取得を試みるべきでない」値は`None`を返す(呼び出し側は
-/// 画像なしの置換要素として扱う)。
+/// 「そもそも取得を試みるべきでない」値は`None`を返す(呼び出し側は画像なしの置換要素として扱う)。
 pub fn classify_img_src(src: &str) -> Option<ImgSrc> {
     let trimmed = src.trim();
 
@@ -121,8 +115,7 @@ fn strip_prefix_ignore_ascii_case<'a>(value: &'a str, prefix: &str) -> Option<&'
     starts_with_ignore_ascii_case(value, prefix).then(|| &value[prefix.len()..])
 }
 
-/// `data:`の直後(`data:`自体は含まない)を`[<mediatype>][;base64],<data>`
-/// として解釈する(RFC 2397)。
+/// `data:`の直後(`data:`自体は含まない)を`[<mediatype>][;base64],<data>`として解釈する(RFC 2397)。
 fn parse_data_uri(rest: &str) -> Option<ImgSrc> {
     let (meta, data) = rest.split_once(',')?;
 
@@ -217,10 +210,9 @@ pub fn resolve_local_asset_path(base_dir: &Path, raw: &str) -> ResolvedAssetPath
 
 /// [`resolve_local_asset_path`]の結果。
 pub struct ResolvedAssetPath {
-    /// 解決後のパス。`base_dir`の外を指すこともある(`escapes_base_dir`参照)。
+    /// 解決後のパス。
     pub path: PathBuf,
     /// `..`等で`base_dir`の外へ出ているか。
-    ///
     /// 既定ではこれが`true`の参照を拒否する。`--allow`が指定されている場合は
     /// そちらが範囲を決めるので、この値ではなく許可ディレクトリで判定する。
     pub escapes_base_dir: bool,
@@ -407,7 +399,7 @@ mod tests {
 
     #[test]
     fn resolve_local_asset_path_normalizes_dot_relative_paths() {
-        // `.`は畳まれる(以前は`/var/www/app/./assets/x.css`のまま残していた)。
+        // `.`は畳まれる
         assert_eq!(
             within("/var/www/app", "./assets/x.css"),
             Some(PathBuf::from("/var/www/app/assets/x.css"))

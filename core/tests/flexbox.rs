@@ -1,4 +1,4 @@
-//! Flexbox(`display: flex`)のE2Eテスト(M9 Phase 3)。
+//! Flexbox(`display: flex`)のE2Eテスト。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
 //! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
@@ -323,4 +323,130 @@ fn flexbox_renders_a_valid_pdf_end_to_end() {
          .invoice-header { display: flex; justify-content: space-between; align-items: center; }",
     );
     assert!(count_occurrences(&bytes, b"%%EOF") > 0);
+}
+
+// ===== 裸のテキストから作られる無名flexアイテム =====
+
+/// レイアウト済みツリーの行テキストを出現順に連結して返す。
+fn laid_out_text(b: &LaidOutBox) -> String {
+    fn walk(b: &LaidOutBox, out: &mut String) {
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                for child in children {
+                    walk(child, out);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for child in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(child, out);
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    for run in &line.runs {
+                        out.push_str(&run.text);
+                    }
+                }
+            }
+            LaidOutContent::Table(_) | LaidOutContent::Image(_) => {}
+        }
+    }
+    let mut out = String::new();
+    walk(b, &mut out);
+    out
+}
+
+/// 無名ボックス(`node`が`None`)である最初のflexアイテムを返す。
+fn first_anonymous_flex_item(b: &LaidOutBox) -> Option<&LaidOutBox> {
+    match &b.content {
+        LaidOutContent::Flex(children) => children
+            .iter()
+            .find(|item| item.node.is_none())
+            .or_else(|| children.iter().find_map(first_anonymous_flex_item)),
+        LaidOutContent::Blocks(children) => children.iter().find_map(first_anonymous_flex_item),
+        LaidOutContent::Grid(grid) => grid
+            .rows
+            .iter()
+            .flat_map(|row| &row.items)
+            .find_map(first_anonymous_flex_item),
+        _ => None,
+    }
+}
+
+#[test]
+fn bare_text_in_a_flex_container_is_rendered() {
+    // 回帰テスト: 要素で包まれていないテキストがflexアイテムにならず、
+    // まるごと出力から消えていた(`<div style="display:flex">印</div>`のような
+    // 中身が空の枠だけになる)。
+    let (_, laid) = layout(
+        r#"<div class="container">bare</div>"#,
+        "body { margin: 0; } .container { display: flex; width: 200px; }",
+    );
+
+    let text = laid_out_text(&laid);
+    assert!(
+        text.contains("bare"),
+        "the bare text should be rendered, got {text:?}"
+    );
+
+    // PDFまで通ることも確認する。
+    build_pdf(
+        r#"<div class="container">bare</div>"#,
+        "body { margin: 0; } .container { display: flex; width: 200px; }",
+    );
+}
+
+#[test]
+fn bare_text_is_positioned_by_the_flex_alignment_properties() {
+    // 無名アイテムも通常のflexアイテムと同じく整列の対象になる。
+    let (_, laid) = layout(
+        r#"<div class="container">x</div>"#,
+        "body { margin: 0; } \
+         .container { display: flex; justify-content: flex-end; width: 200px; }",
+    );
+
+    let item = first_anonymous_flex_item(&laid).expect("expected an anonymous flex item");
+    assert!(
+        item.layout.border_box().x > 0.0,
+        "an end-aligned item should not sit at the container's left edge"
+    );
+}
+
+#[test]
+fn whitespace_between_flex_items_does_not_become_an_item() {
+    // 要素の間の改行・インデントから無名アイテムを作ってしまうと、
+    // 幅ゼロのアイテムが混ざって間隔が狂う。
+    let (dom, laid) = layout(
+        "<div class=\"container\">\n  <div class=\"a\">a</div>\n  <div class=\"b\">b</div>\n</div>",
+        "body { margin: 0; } \
+         .container { display: flex; width: 300px; } \
+         .a, .b { width: 50px; height: 20px; }",
+    );
+    let d = divs(&dom);
+    let a = find_laid_out(&laid, d[1]).unwrap();
+    let b = find_laid_out(&laid, d[2]).unwrap();
+
+    assert_eq!(a.layout.border_box().x, 0.0);
+    assert_eq!(b.layout.border_box().x, 50.0);
+    assert!(first_anonymous_flex_item(&laid).is_none());
+}
+
+#[test]
+fn a_text_run_and_an_element_become_separate_items() {
+    let (dom, laid) = layout(
+        r#"<div class="container">left<div class="e">e</div></div>"#,
+        "body { margin: 0; } \
+         .container { display: flex; width: 300px; } \
+         .e { width: 50px; height: 20px; }",
+    );
+    let d = divs(&dom);
+    let element_item = find_laid_out(&laid, d[1]).unwrap();
+    let anonymous = first_anonymous_flex_item(&laid).expect("expected an anonymous flex item");
+
+    assert_eq!(anonymous.layout.border_box().x, 0.0);
+    assert!(
+        element_item.layout.border_box().x > 0.0,
+        "the element item should follow the anonymous text item"
+    );
+    assert_eq!(laid_out_text(anonymous), "left");
 }

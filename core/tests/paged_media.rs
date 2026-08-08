@@ -1,7 +1,6 @@
 //! `@page`(`size`/`margin`の文書全体上書き・`:first`/`:left`/`:right`による
 //! margin box出し分け)・`@media`(print/all常時適用・screen常時無視)・
-//! margin box(16個)・`counter(page)`/`counter(pages)`のE2Eテスト
-//! (M9 Phase 1 Paged media)。
+//! margin box(16個)・`counter(page)`/`counter(pages)`のE2Eテスト。
 //!
 //! `background.rs`/`box_sizing.rs`と同じ方針: 実際のパイプラインを通して
 //! 回帰を検知する。この機能は`Engine`(`core/src/engine.rs`)に直接配線されて

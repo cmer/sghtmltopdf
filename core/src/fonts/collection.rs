@@ -1,9 +1,7 @@
 //! 複数フォントのコレクションと、`font-family`/weight/style/グリフカバレッジに
 //! 基づくフォールバック選択。
 //!
-//! システムフォント探索(OSのフォントディレクトリを走査すること)は
-//! [`super::system`]が担う。ここでは呼び出し側が明示的に読み込んだフォントの
-//! 中から選ぶだけの、いわば「手動フォールバックチェーン」を提供する。
+//! システムフォント探索(OSのフォントディレクトリを走査すること)は[`super::system`]が担う。
 
 use cssparser::UnicodeRange;
 
@@ -24,13 +22,12 @@ pub struct FontCollection {
     declared_families: Vec<Option<String>>,
     /// `@font-face`のweight/styleディスクリプタによる上書き。`None`の要素は
     /// フォント自身の`OS/2`/`post`テーブルの実メトリクス(`Font::weight`/
-    /// `Font::is_italic`)で判定する(`--font`/システムフォントはこちら)。
+    /// `Font::is_italic`)で判定する。
     declared_weights: Vec<Option<FontWeight>>,
     declared_styles: Vec<Option<FontStyle>>,
     /// `@font-face`の`unicode-range`ディスクリプタ。空`Vec`の要素
     /// (`--font`/システムフォント、または`unicode-range`未指定の
     /// `@font-face`)は全域(U+0-10FFFF)を暗黙にカバーするものとして扱う
-    /// (0011参照)。
     declared_unicode_ranges: Vec<Vec<UnicodeRange>>,
     /// 文字カバレッジから自動で見つけたフォールバックとして追加された要素か。
     /// 利用者が明示したフォント(`--font`/`@font-face`)やfamily名から解決した
@@ -77,9 +74,7 @@ impl FontCollection {
     }
 
     /// 文字カバレッジから自動で見つけたフォールバックフォントを追加する
-    /// (`super::system::load_fonts_for_uncovered_chars`用)。family名を手掛かりに
-    /// できない文字を救うために勝手に足す面なので、利用者が明示したフォントとは
-    /// 区別して覚えておく([`Self::can_render_with_matching_face`]参照)。
+    /// (`super::system::load_fonts_for_uncovered_chars`用)。
     pub fn push_fallback_font_face(&mut self, family: String, font: Font) {
         self.push_font_face(family, None, None, Vec::new(), font);
         if let Some(flag) = self.auto_fallbacks.last_mut() {
@@ -152,7 +147,7 @@ impl FontCollection {
     ///
     /// `unicode-range`はハードフィルタとして働く: 宣言されたrangeに`c`が
     /// 含まれない場合、そのフォントが実際に`c`のグリフを持っていても候補
-    /// から除外する(0011参照)。走査順(=登録順=CSSソース順)で最初に
+    /// から除外する。走査順(=登録順=CSSソース順)で最初に
     /// 条件を満たしたフォントを採用するため、同じfamily/weight/styleで
     /// rangeが重複する場合は自然に「宣言順(先勝ち)」になる。
     fn best_match(
@@ -592,7 +587,7 @@ mod tests {
 
     #[test]
     fn unicode_range_unspecified_covers_the_whole_unicode_range() {
-        // 既存(M1)の挙動の後方互換確認: unicode_rangeを指定しない登録は
+        // 既存の挙動の後方互換確認: unicode_rangeを指定しない登録は
         // これまで通り全域をカバーする。
         let collection = FontCollection::new(vec![dejavu()]);
         let index = select(
@@ -646,8 +641,6 @@ mod tests {
 
     #[test]
     fn falls_back_to_tofu_when_every_font_excludes_the_char_by_range() {
-        // 対象文字をカバーするフォントが1つも無い(rangeで全滅)場合でも、
-        // 既存の安全弁(先頭フォントへのtofuフォールバック)は維持される。
         let mut collection = FontCollection::new(vec![]);
         collection.push_font_face(
             "Brand".to_string(),
@@ -674,7 +667,7 @@ mod tests {
     #[test]
     fn unicode_range_splits_a_latin_and_a_cjk_face_declared_under_the_same_family() {
         // 典型的なwebfont配信パターン: 英数字用フォントとCJK用フォントを
-        // 同じfamily名でunicode-range分けして併用する(0004 T38)。
+        // 同じfamily名でunicode-range分けして併用する。
         let mut collection = FontCollection::new(vec![]);
         collection.push_font_face(
             "Brand".to_string(),

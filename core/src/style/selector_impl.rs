@@ -27,7 +27,7 @@ impl SelectorImpl for SgSelectorImpl {
     type PseudoElement = PseudoElement;
 }
 
-/// セレクタパーサ本体。M1では`:is`/`:where`等の拡張構文は扱わない。
+/// セレクタパーサ本体。`:is`/`:where`等の拡張構文は扱わない。
 #[derive(Clone, Copy, Debug)]
 pub struct SelectorParser;
 
@@ -69,9 +69,7 @@ impl<'i> parser::Parser<'i> for SelectorParser {
         })
     }
 
-    /// `::before`/`::after`/`::first-letter`に対応する。`::first-line`は
-    /// 非対応(行分割結果に依存するスタイル
-    /// 適用の実装コストが突出するため見送り)。
+    /// `::before`/`::after`/`::first-letter`に対応する。`::first-line`は非対応
     fn parse_pseudo_element(
         &self,
         location: SourceLocation,

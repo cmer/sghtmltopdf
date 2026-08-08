@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# 確定したページから順にRackのレスポンスへ流す(T355)。
+# 確定したページから順にRackのレスポンスへ流す。
 #
 # `render pdf:`のレンダラは組み上がったPDFを`send_data`で一括返却するので、
 # 逐次で返したい場合は`ActionController::Live`とブロック付き`render`を

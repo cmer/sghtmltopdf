@@ -1,4 +1,4 @@
-//! HTML5要素のUAデフォルトスタイルのE2Eテスト(M10 カテゴリA、T211〜T216)。
+//! HTML5要素のUAデフォルトスタイルのE2Eテスト。
 //!
 //! `generated_content.rs`/`box_sizing.rs`と同じ方針: 実際のパイプライン
 //! (HTMLパース→スタイルカスケード→レイアウト→PDFエンコード)を通して回帰を
@@ -148,7 +148,7 @@ fn option_text_does_not_leak_into_the_document() {
 #[test]
 fn a_form_control_inside_a_paragraph_does_not_leak_text_into_the_flow() {
     // 元は「`collect_spans`が`display: none`を見ていなかったためコントロールの
-    // 中身が本文に漏れる」回帰テスト。M10カテゴリIでフォーム要素は
+    // 中身が本文に漏れる」回帰テスト。フォーム要素は
     // `display: inline-block`の箱になったため、選択肢のテキストは箱の中に
     // 入り、本文の行(runs)には現れない。
     let text = text_of(r#"<p>a <select><option>INSIDE</option></select> b</p>"#);

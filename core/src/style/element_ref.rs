@@ -242,7 +242,7 @@ mod tests {
     /// 積極的にマッチしないため、要素として振る舞わなくなる(タグ名・属性・
     /// クラス等の照会がすべて非マッチになる)ことを確認する。ストリーミング
     /// 処理が前提とする「解放済みノードは以後のセレクタマッチングで安全に
-    /// 無視される」という性質の裏付け。
+    /// 無視される」
     #[test]
     fn released_node_no_longer_behaves_like_an_element() {
         let mut dom = parse(br#"<div id="x" class="c"><p>text</p></div>"#);

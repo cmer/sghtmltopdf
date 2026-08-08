@@ -1,4 +1,4 @@
-//! テーブルセルの`rowspan`のE2Eテスト(M8 Phase 1 Table layout完全対応)。
+//! テーブルセルの`rowspan`のE2Eテスト。
 //!
 //! `table_caption.rs`/`table_vertical_align.rs`と同じ方針: 実際の
 //! パイプラインを通して回帰を検知する。座標の詳細な検証は`layout_document`

@@ -1,8 +1,7 @@
 //! カスケード済み宣言(T3)から、要素ごとの計算スタイルを算出する。
 //!
 //! プロパティごとに「宣言があればそれを採用(カスケード順で最後に勝ったもの)、
-//! なければ継承プロパティは親から継承、そうでなければ初期値」という
-//! CSSの計算値算出手順を実装する。
+//! なければ継承プロパティは親から継承、そうでなければ初期値」= CSSの計算値算出手順
 
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -137,13 +136,13 @@ pub struct ComputedStyle {
     pub pseudo_before_content: Option<String>,
     /// `::after { content: "..." }`の生成コンテンツ。
     pub pseudo_after_content: Option<String>,
-    /// CSS Fragmentation。非継承プロパティ(仕様通り)。
+    /// CSS Fragmentation。非継承プロパティ(仕様)。
     pub break_before: BreakBetween,
     pub break_after: BreakBetween,
     pub break_inside: BreakInside,
-    /// ページ末尾に残せる最小行数。非継承プロパティ、初期値2(仕様通り)。
+    /// ページ末尾に残せる最小行数。非継承プロパティ、初期値2(仕様)。
     pub orphans: u32,
-    /// ページ先頭に送れる最小行数。非継承プロパティ、初期値2(仕様通り)。
+    /// ページ先頭に送れる最小行数。非継承プロパティ、初期値2(仕様)。
     pub widows: u32,
     /// `float`。非継承プロパティ。`none`以外なら`display`はblock-levelとして
     /// 計算される(CSS2.1 9.7、下記`compute_element_style`で適用)。
@@ -175,7 +174,7 @@ pub struct ComputedStyle {
     pub text_transform: TextTransform,
     /// `text-shadow`。継承プロパティ、空のVecは`none`。色は解決済み。
     pub text_shadow: Vec<ComputedTextShadow>,
-    /// `text-overflow`。非継承プロパティ(仕様通り)。`overflow`が
+    /// `text-overflow`。非継承プロパティ(仕様)。`overflow`が
     /// `visible`以外のときにのみ効く。
     pub text_overflow: TextOverflow,
     /// `word-break`。継承プロパティ。
@@ -213,7 +212,7 @@ pub struct ComputedStyle {
     /// `border-collapse`。継承プロパティ。見た目の枠線描画のみ統合する。
     pub border_collapse: BorderCollapse,
     /// `border-spacing`の水平方向。継承プロパティ、`border-collapse: collapse`
-    /// 時は無視され0として扱う(仕様通り、`layout::table`側で解決)。
+    /// 時は無視され0として扱う(仕様、`layout::table`側で解決)。
     pub border_spacing_horizontal: Length,
     /// `border-spacing`の垂直方向。継承プロパティ。
     pub border_spacing_vertical: Length,
@@ -239,7 +238,7 @@ pub struct ComputedStyle {
     /// `box-sizing`。非継承プロパティ。
     pub box_sizing: BoxSizing,
     /// `z-index`。非継承プロパティ。`position: static`の要素には効果を持たない
-    /// (仕様通り、`layout`/`pdf`側で判定する)。
+    /// (仕様、`layout`/`pdf`側で判定する)。
     pub z_index: ZIndex,
     /// `visibility`。継承プロパティ。`collapse`は`hidden`と同一視する。
     pub visibility: Visibility,
@@ -615,16 +614,12 @@ pub fn compute_styles(
 /// ではなく、任意の`root`(とその子孫)を、既知の親スタイル`parent_style`・
 /// 確定済みの`root_font_size`(`rem`の基準)を起点に計算する。
 ///
-/// マイルストーン3のストリーミング処理で、`<body>`直下のトップレベル要素が
+/// ストリーミング処理で、`<body>`直下のトップレベル要素が
 /// 確定するたびに、そのノードだけを対象に、事前に計算済みの`<body>`の
 /// スタイルを引き継いでスタイル計算するために使う。`dom`自体は文書全体の
 /// ものをそのまま渡してよい(`root`とその子孫だけが辿られる)。`root`は
 /// `<html>`のようなルート候補ではないため、`rem`基準を上書きしない
 /// (`is_root_candidate: false`で呼ぶ)。
-///
-/// `counters`/`quote_depth`はドキュメント順に依存する状態なので、呼び出し側
-/// (ストリーミング処理では`Engine::StreamingState`)がトップレベル
-/// 要素をまたいで永続させ、都度`&mut`で渡すこと。
 #[allow(clippy::too_many_arguments)]
 pub fn compute_styles_with_parent(
     dom: &Dom,
@@ -658,17 +653,11 @@ pub fn compute_styles_with_parent(
 
 /// `element`単体の計算スタイルを、既知の親スタイルを起点に計算する。
 ///
-/// マイルストーン3のストリーミング処理で、`<html>`/`<body>`要素自身の
+/// ストリーミング処理で、`<html>`/`<body>`要素自身の
 /// スタイルを(それぞれの子孫全体を再帰的に辿ることなく)個別に確定させる
 /// ために使う。[`compute_element_style`]をそのまま公開したもの
 /// (この要素がpushしたカウンタ名の一覧はpop対象として追跡しない。
 /// `<html>`/`<body>`レベルの`counter-reset`は文書全体に永続して構わないため)。
-///
-/// 既知の簡略化: この要素の`::after`(`content`)は解決されない
-/// (常に`None`)。`::after`の解決には子孫の処理完了後の状態が必要
-/// (`compute_recursive`参照)だが、この関数は子孫を辿らないため。
-/// `<html>`/`<body>`要素自身に`::after`生成コンテンツを使うケースは
-/// 実務上稀と判断した。
 #[allow(clippy::too_many_arguments)]
 pub fn compute_single_element_style(
     dom: &Dom,
@@ -1589,9 +1578,9 @@ pub(crate) fn format_counter_value(style: ListStyleType, n: i32) -> String {
 }
 
 /// margin box(`@top-left`等)の`content`を解決する。本文の`content:
-/// counter`(DOM順カウンタスコープ、`compute_recursive`)とはタイミングが根本的に異なる(ページ分割後)ため、別経路として実装する。`counter(page)`/`counter(pages)`(`counters`形式も含む、区切り文字は意味を持たない)のみ値を持ち、それ以外の名前付きカウンタ・`attr`・
-/// 引用符は常に空文字列になる(margin boxにはDOM要素・カウンタスコープ・引用符
-/// ネスト深度という概念が無いため、既知の簡略化)。
+/// counter`(DOM順カウンタスコープ、`compute_recursive`)とはタイミングが根本的に異なる(ページ分割後)ため、別経路として実装する。
+/// `counter(page)`/`counter(pages)`(`counters`形式も含む、区切り文字は意味を持たない)のみ値を持ち、
+/// それ以外の名前付きカウンタ・`attr`・引用符は常に空文字列になる
 pub fn resolve_margin_box_content(
     parts: &[ContentPart],
     page_number: usize,
@@ -3246,7 +3235,6 @@ mod tests {
 
     #[test]
     fn position_absolute_and_fixed_parse() {
-        // M11 T270で対応。以前は非対応で`Static`に落としていた。
         let dom = html::parse(br#"<div>a</div>"#);
         let div = find(&dom, dom.document(), "div").expect("div not found");
 
@@ -4147,9 +4135,8 @@ mod tests {
 
     #[test]
     fn nested_quotes_use_the_pair_matching_their_nesting_depth() {
-        // 回帰テスト: `::after`(close-quote)の深度更新が子孫の処理より先に
-        // 行われてしまい、ネストした`<q>`が常に深度0のペアを使ってしまう
-        // バグがあった。
+        // `::after`(close-quote)の深度更新が子孫の処理より先に
+        // 行われてしまい、ネストした`<q>`が常に深度0のペアを使ってしまわないように
         let dom = html::parse(br#"<div><q class="outer">a<q class="inner">b</q>c</q></div>"#);
         let outer = find(&dom, dom.document(), "q").expect("outer q not found");
         let mut qs = Vec::new();
@@ -4225,7 +4212,7 @@ mod tests {
                 alpha: 1.0
             })
         );
-        // `float`はサポート対象外のプロパティなので無視される(既知の簡略化)。
+        // `float`はサポート対象外のプロパティなので無視される。
         assert_eq!(fl.font_weight, None);
     }
 

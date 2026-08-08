@@ -1,9 +1,9 @@
-//! T19スパイク: flush boundaryを表現するコアAPIの型シグネチャが、既存の
+//! flush boundaryを表現するコアAPIの型シグネチャが、既存の
 //! `Sink` traitと矛盾なく成立するかを確認するPoC。
 //!
-//! ここではAPIの「形」だけを検証する。ストリーミングパース(T21)・
-//! レイアウトのflush化(T23)・フォント埋め込みの後処理(T18で決定済みの
-//! CIDToGIDMap方式、T25で本実装)はまだ組み込まず、`feed`/`finish`の中身は
+//! ここではAPIの「形」だけを検証する。ストリーミングパース・
+//! レイアウトのflush化・フォント埋め込みの後処理(CIDToGIDMap方式)は
+//! まだ組み込まず、`feed`/`finish`の中身は
 //! ダミー実装にとどめる。
 //!
 //! 検証したいこと:
@@ -38,7 +38,7 @@ enum Mode {
 }
 
 /// エンジンの初期化オプション(ページサイズ・マージン等)のプレースホルダ。
-/// 実際のフィールドはT21以降、CLI/bindings層のオプションと揃えて決める。
+/// 実際のフィールドは、CLI/bindings層のオプションと揃えて決める。
 #[derive(Default)]
 struct EngineOptions {
     mode: Mode,
@@ -61,7 +61,7 @@ impl<E> From<E> for EngineError<E> {
 }
 
 /// flush boundary(ページ確定)ごとに`sink.write`を呼びながらHTMLを消費する
-/// ストリーミングエンジンの型シグネチャ。中身はT21〜T25で埋める。
+/// ストリーミングエンジンの型シグネチャ。中身は本実装で埋める。
 struct Engine<S: Sink> {
     sink: S,
     options: EngineOptions,
@@ -69,7 +69,7 @@ struct Engine<S: Sink> {
     /// 本実装ではストリーミングパーサ+レイアウトの内部状態に置き換わる。
     pending: Vec<u8>,
     /// ダミー実装用: `<body`を見たかどうか(本実装ではTreeSinkのフックで
-    /// 判定する。T21のスコープ)。
+    /// 判定する)。
     seen_body: bool,
 }
 
@@ -85,10 +85,10 @@ impl<S: Sink> Engine<S> {
 
     /// HTMLチャンクを1つ投入する。内部で新たにflush boundary(ページ確定)に
     /// 到達した分があれば、そのつど`sink.write`を呼ぶ(このダミー実装では
-    /// 呼ばない。T23でレイアウトのflush化と合わせて実装する)。
+    /// 呼ばない。本実装でレイアウトのflush化と合わせて実装する)。
     ///
     /// `Mode::Streaming`では、`<body`より後に`<style`が現れたらエラーを返す。
-    /// 実際の判定はT21でTreeSinkのフックとして実装する(ここでは検証用にバイト
+    /// 実際の判定はTreeSinkのフックとして実装する(ここでは検証用にバイト
     /// 列の雑な走査で代用している)。
     fn feed(&mut self, html_chunk: &[u8]) -> Result<(), EngineError<S::Error>> {
         if self.options.mode == Mode::Streaming {
@@ -106,7 +106,7 @@ impl<S: Sink> Engine<S> {
     }
 
     /// 残りの内容を最後のページとして確定させ、フォント埋め込み等の
-    /// 全ページ後処理(T18のCIDToGIDMap方式、T25で本実装)を行ってから
+    /// 全ページ後処理(CIDToGIDMap方式)を行ってから
     /// `sink.finish()`を呼ぶ。
     fn finish(mut self) -> Result<S::Output, EngineError<S::Error>> {
         // ダミー実装: 溜めたチャンクをそのまま1回書き出すだけ。

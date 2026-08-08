@@ -1,4 +1,4 @@
-//! レガシーHTML表示属性のE2Eテスト(M10 カテゴリE、T227〜T232)。
+//! レガシーHTML表示属性のE2Eテスト。
 //!
 //! wkhtmltopdf時代の帳票HTML(`<table border cellpadding>`ベース)がそれらしく
 //! 出ることを、実際のパイプラインを通して確認する。

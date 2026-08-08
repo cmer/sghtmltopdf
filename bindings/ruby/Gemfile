@@ -10,13 +10,10 @@ gem "rake-compiler", "~> 1.2"
 gem "rb_sys", "~> 0.9.128"
 gem "rspec", "~> 3.13"
 
-# Rails統合(Railtie・pdfレンダラ)のテスト用。gem本体はRailsに依存しない
-# (`defined?(Rails::Railtie)`でガードして読み込む)。
 group :test do
   gem "actionpack", ">= 7.0"
   gem "rack-test", "~> 2.1"
   gem "railties", ">= 7.0"
-  # 手動確認用。`bundle exec rackup spec/dummy/config.ru`でdummyアプリを
-  # ブラウザから触るためだけに使う(specはRack::Test経由なので不要)。
+  # `bundle exec rackup spec/dummy/config.ru` でdummyアプリを手動確認する用
   gem "webrick", "~> 1.9"
 end

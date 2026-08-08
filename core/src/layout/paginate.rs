@@ -235,8 +235,7 @@ pub fn paginate_streaming(
 /// [`paginate_streaming`]は「1つの完成した`LaidOutBox`ツリー全体」を一度に
 /// 処理する前提だが、`StreamingPaginator`は複数回の呼び出しにまたがって、
 /// 上から下へ流れる通常のページ分割(`cursor`・[`PaginationBuffer`]の
-/// flush判定を含む)を継続できる。マイルストーン3の「真のストリーミング
-/// 入力」で、`<body>`直下のトップレベル要素が確定するたびに、その要素
+/// flush判定を含む)を継続できる。真のストリーミング入力で、`<body>`直下のトップレベル要素が確定するたびに、その要素
 /// だけを`layout::layout_document_from`でレイアウトして`push_item`する、
 /// という使い方を想定する。
 ///
@@ -302,8 +301,7 @@ impl StreamingPaginator {
     }
 }
 
-/// DOM+計算スタイルから、ボックスツリー構築・レイアウト・ページ分割までを
-/// 一括で行う(一括版)。
+/// DOM+計算スタイルから、ボックスツリー構築・レイアウト・ページ分割までを一括で行う。
 pub fn paginate_document(
     dom: &Dom,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -410,8 +408,7 @@ fn find_node_padding_origin(b: &LaidOutBox, node: NodeId) -> Option<(f32, f32)> 
 
 /// `Mode::Batch`用: 全ページを確定させてから絶対配置をオーバーレイして返す。
 /// `fixed`の全ページ複製・`absolute`の祖先ページ解決は全ページが
-/// 揃ってからでないとできないため、ストリーミング解放は行わない(batchは全体を
-/// メモリに載せてよい前提)。
+/// 揃ってからでないとできないため、ストリーミング解放は行わない
 pub fn paginate_document_with_absolutes(
     dom: &mut Dom,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -442,9 +439,6 @@ pub fn paginate_document_with_absolutes(
 /// 両方とも完了済みで、以後どのページの処理も`dom`を読み返すことはない。
 /// そのため「兄弟・子孫セレクタの参照範囲を跨がない」制約は、ここでは常に
 /// 満たされている(まだパースされていない後続要素が存在しないため)。
-/// 将来ストリーミングHTMLパース([`crate::html::StreamingParser`])と統合し、
-/// スタイル計算自体も段階的に行うようになった場合は、この前提が崩れるため
-/// 解放タイミングを再検討する必要がある。
 #[allow(clippy::too_many_arguments)]
 pub fn paginate_document_streaming(
     dom: &mut Dom,
@@ -641,7 +635,7 @@ fn margin_box_top(b: &LaidOutBox) -> f32 {
 ///
 /// これが`true`の場合、`b`自身がページ残り高さに収まっていても「丸ごと1個の
 /// リーフとして配置する」高速経路は使えない(強制改ページの位置を見逃して
-/// しまうため)。テーブルの内部行・インライン行の分割はM2のスコープ外
+/// しまうため)。テーブルの内部行・インライン行はここでの分割対象外
 /// なので、`Blocks`のみ再帰する。
 fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
     match &b.content {
@@ -721,9 +715,7 @@ fn compute_orphans_widows_breaks(
         }
 
         if force_break_before[page_start] {
-            // このページ開始位置では既に一度調整を試みたが解消できなかった
-            // (行が大きすぎる等)。無限ループを避けるため、これ以上は
-            // best-effortで自然な分割点を受け入れる。
+            // 無限ループを避けるため、これ以上はbest-effortで自然な分割点を受け入れる。
             page_start = i;
             cursor = 0.0;
             continue;
@@ -758,7 +750,7 @@ fn compute_orphans_widows_breaks(
 /// `b`が1ページに収まらない(または内部に強制改ページを内包する)ため、子要素
 /// (`items`、`place_one`で1つずつ配置)単位で分割配置する。分割後、`b`自身の
 /// 背景・枠線を各ページの実際の内容範囲に対して再現する装飾フラグメントを
-/// 追加で挿入する(モジュールdoc参照)。
+/// 追加で挿入する。
 ///
 /// `items`は`LaidOutBox`(ブロック子要素)または[`LineBox`](インライン行)のどちらか。
 /// `break_hints`は各要素(とそのインデックス)について`(直前に強制改ページが
@@ -821,7 +813,7 @@ fn place_split<T>(
 
     // 最初のフラグメントの前に、コンテナ自身の上マージン/枠線/パディング分の
     // スペースを確保する(この余白がページの残りを超える極端なケースの調整は
-    // 行わない: M1の機械的改ページの簡略化の範囲内)。
+    // 行わない
     *cursor += top_extra;
 
     // 絶対Y座標(`b.layout.content.y`)→ページ内相対Y座標(`*cursor`)への
@@ -840,7 +832,6 @@ fn place_split<T>(
     let needs_decoration = container.has_visible_decoration;
     if needs_decoration {
         // このコンテナが最初に触れる絶対ページインデックスを記録する
-        // (`PaginationState`のflush判定に使う。モジュールdoc参照)。
         state.enter_split();
     }
 
@@ -891,9 +882,7 @@ fn place_split<T>(
             // `shift_reference`でシードした一時カーソルを使うことで、
             // `place_one`(=`place_box`)内部の
             // `shift = margin_box_top -*cursor`計算が周囲の通常フローと同じ
-            // 平行移動になり、正しいページ内相対位置に配置される。floatの
-            // 配置自体が改ページを誘発した場合、以降の
-            // 通常フローにも影響し得るのは既知の限界。
+            // 平行移動になり、正しいページ内相対位置に配置される。
             let mut local_cursor = item_margin_box_top(item) - shift_reference;
             place_one(item, page_height, state, &mut local_cursor);
         } else {
@@ -1835,10 +1824,6 @@ mod tests {
     #[test]
     fn split_container_without_visible_decoration_gets_no_decoration_fragment() {
         // 背景色も枠線もないコンテナは、装飾フラグメント自体を生成しない
-        // (ストリーミング時のflush頻度を上げるための最適化。
-        // `has_visible_decoration`参照)。かつては「装飾の有無を判断せず
-        // 常にゼロサイズのフラグメントを追加する」設計だったが、この
-        // テストが検証する仕様はその逆に変わった。
         let mut html_src = String::from("<div>");
         for i in 0..20 {
             html_src.push_str(&format!(r#"<p class="item">item {i}</p>"#));
@@ -2613,8 +2598,8 @@ mod tests {
     fn streaming_paginator_multiple_push_item_calls_match_a_single_combined_tree() {
         // 20個の<p>を「1つのツリーとして一括で処理する」場合と「1個ずつ
         // push_itemする」場合とで、最終的なページ数・内容が一致することを
-        // 確認する(マイルストーン3の「トップレベル要素単位のストリーミング
-        // 入力」で、この2つの経路が同じ結果になることの土台となる検証)。
+        // 確認する(トップレベル要素単位のストリーミング入力で、
+        // この2つの経路が同じ結果になることの土台となる検証)。
         let author = parse_stylesheet(".item { height: 100px; margin: 0; }");
         let ua = user_agent_stylesheet();
         let fonts = test_fonts();
@@ -2682,8 +2667,6 @@ mod tests {
     ///
     /// DOMを1つだけ作って両方で使い回すのは、要素ごとに`html::parse`すると
     /// 補完される`<body>`のUAマージンが要素数ぶん累積してしまうため
-    /// (`streaming_paginator_multiple_push_item_calls_match_a_single_combined_tree`
-    /// と同じ理由)。
     fn page_counts_both_ways(author_css: &str, items_html: &str) -> (usize, usize) {
         let author = parse_stylesheet(author_css);
         let ua = user_agent_stylesheet();

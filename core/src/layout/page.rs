@@ -1,8 +1,4 @@
-//! ページサイズ・マージンの定義。ページの内側(コンテンツ領域)が
-//! containing blockとなる。
-//!
-//! 単位は他のレイアウト計算と同様CSS px(96dpi基準)。PDFのポイント単位への
-//! 変換はPDF出力(T9)の責務とする。
+//! ページサイズ・マージンの定義。ページの内側(コンテンツ領域)がcontaining blockとなる。
 
 use super::geometry::EdgeSizes;
 

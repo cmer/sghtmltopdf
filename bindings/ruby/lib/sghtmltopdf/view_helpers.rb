@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 module Sghtmltopdf
-  # PDF用のビューでアセットを参照するためのヘルパ(T344)。
-  # RailtieがAction Viewへ`include`する。
+  # Action View用のヘルパ。
   #
   # PDFのレンダリングはHTTPサーバを介さないため、`/assets/…`のようなURLは
   # ローカルファイルとして解決される(`--base-url`の既定は

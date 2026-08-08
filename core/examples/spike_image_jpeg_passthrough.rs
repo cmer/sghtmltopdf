@@ -1,4 +1,4 @@
-//! T41スパイク: JPEGをHTTP経由で取得し、デコードせずにDCTDecodeフィルタとして
+//! スパイク: JPEGをHTTP経由で取得し、デコードせずにDCTDecodeフィルタとして
 //! そのままPDFへ埋め込むPoC。
 //!
 //! 検証したいこと:
@@ -56,7 +56,7 @@ fn parse_jpeg_dimensions(data: &[u8]) -> Option<(u16, u16, u8)> {
 }
 
 /// 外部ネットワークに依存せず、ループバック上に1回だけ応答するHTTPサーバを起動する。
-/// 実運用のフェッチ(T46)はこれと同じ`ureq`の同期API呼び出しで置き換わる想定。
+/// 実運用のフェッチはこれと同じ`ureq`の同期API呼び出しで置き換わる想定。
 fn spawn_single_response_server(body: Vec<u8>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("ループバックへのbindに失敗");
     let addr = listener.local_addr().unwrap();
@@ -81,7 +81,7 @@ fn main() {
     let jpeg_bytes = std::fs::read(JPEG_PATH).expect("テスト用JPEGフィクスチャの読み込みに失敗");
     let url = spawn_single_response_server(jpeg_bytes.clone());
 
-    // T46で作る実際のfetch抽象化と同じく、ureqの同期APIで完結する
+    // 実際のfetch抽象化と同じく、ureqの同期APIで完結する
     // (asyncランタイムやスレッドプールを別途持ち込む必要が無い)。
     let fetched: Vec<u8> = ureq::get(&url)
         .call()

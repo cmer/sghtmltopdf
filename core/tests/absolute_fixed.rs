@@ -1,4 +1,4 @@
-//! `position: absolute`/`fixed`のE2Eテスト(M11 Phase 2、T270)。
+//! `position: absolute`/`fixed`のE2Eテスト。
 //!
 //! 絶対配置は`Mode::Batch`でのみ有効。オーバーレイは全ページ確定後に
 //! 足すため、ページ分割結果(`paginate_document`)とレイアウト結果で検証する。

@@ -1,7 +1,7 @@
 //! DOM中の`<style>`/`<link rel=stylesheet>`要素からauthorスタイルシートを
 //! 組み立てる。
 //!
-//! `style="..."`属性(インラインスタイル)の抽出は未対応(T3参照)。
+//! `style="..."`属性(インラインスタイル)の抽出は未対応。
 //!
 //! DOM走査(I/O無し、[`collect_css_sources`])とhref解決(I/Oあり)を分離する。全
 //! CSSソース(インライン・外部いずれも)をdocument順に連結してから

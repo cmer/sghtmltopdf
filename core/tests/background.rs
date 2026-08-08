@@ -1,5 +1,5 @@
 //! `background-position`/`-size`/`-repeat`/`-attachment`と`background`
-//! ショートハンドのE2Eテスト(M8 Phase 2 Background詳細)。
+//! ショートハンドのE2Eテスト。
 //!
 //! `typography.rs`/`box_model.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→背景画像デコード→ページ分割→PDFエンコード)を通して
@@ -28,7 +28,7 @@ fn test_fonts() -> FontCollection {
     ])
 }
 
-/// `spike_opaque.png`(20x16、M5から流用の既存フィクスチャ)をdata URIへ
+/// `spike_opaque.png`(20x16、既存フィクスチャ)をdata URIへ
 /// エンコードする。ネットワーク/ファイルI/Oに依存せず`ImageAssetCache`で
 /// 実際にデコードされるパスを通すため。
 fn png_data_uri() -> String {

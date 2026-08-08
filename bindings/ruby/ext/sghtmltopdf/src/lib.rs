@@ -134,7 +134,7 @@ fn render_each_inner(
     result.map_err(|e| errors::to_ruby(&ruby, e))
 }
 
-/// coreへリンクできていることの確認用(Phase 0の疎通確認)。
+/// coreへリンクできていることの確認用(疎通確認)。
 fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

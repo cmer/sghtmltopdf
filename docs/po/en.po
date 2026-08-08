@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-07T03:06:20+09:00\n"
+"POT-Creation-Date: 2026-08-07T13:15:02+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -282,14 +282,14 @@ msgstr ""
 msgid ""
 "ブラウザエンジンを載せ替えるのではなく、PDF出力に特化したレンダリングエンジン"
 "を実装。画面描画やスクリプト実行のための仕組みを持たないぶん、文書が大きいほ"
-"ど処理時間の差が開く（60,000要素の文書で wkhtmltopdf の約20倍、ヘッドレス"
-"Chromeの約59倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパ"
+"ど処理時間の差が開く（60,000要素の文書で wkhtmltopdf の約19倍、ヘッドレス"
+"Chromeの約51倍。[パフォーマンス比較](#wkhtmltopdf--ヘッドレスchromeとのパ"
 "フォーマンス比較)）"
 msgstr ""
 "Implements a rendering engine dedicated to PDF output, rather than swapping "
 "in another browser engine. With none of the machinery a browser needs for on-"
 "screen painting or script execution, the gap in processing time widens as "
-"the document grows (about 20 times faster than wkhtmltopdf and about 59 "
+"the document grows (about 19 times faster than wkhtmltopdf and about 51 "
 "times faster than Headless Chrome on a 60,000 element document; see the "
 "[performance comparison](#performance-compared-with-wkhtmltopdf-and-headless-"
 "chrome))"
@@ -367,60 +367,60 @@ msgid "5,000"
 msgstr "5,000"
 
 #: src/index.md:58
-msgid "26MB / 0.12秒"
-msgstr "26MB / 0.12s"
+msgid "26MB / 0.11秒"
+msgstr "26MB / 0.11s"
 
 #: src/index.md:58
-msgid "9MB / 0.13秒"
-msgstr "9MB / 0.13s"
+msgid "9MB / 0.10秒"
+msgstr "9MB / 0.10s"
 
 #: src/index.md:58
-msgid "43MB / 0.48秒"
-msgstr "43MB / 0.48s"
+msgid "44MB / 0.49秒"
+msgstr "44MB / 0.49s"
 
 #: src/index.md:58
-msgid "563MB / 1.29秒"
-msgstr "563MB / 1.29s"
+msgid "551MB / 1.37秒"
+msgstr "551MB / 1.37s"
 
 #: src/index.md:59 src/index.md:67 src/usage/cli/streaming.md:56
 msgid "20,000"
 msgstr "20,000"
 
 #: src/index.md:59
-msgid "80MB / 0.49秒"
-msgstr "80MB / 0.49s"
+msgid "80MB / 0.62秒"
+msgstr "80MB / 0.62s"
 
 #: src/index.md:59
-msgid "13MB / 0.48秒"
-msgstr "13MB / 0.48s"
+msgid "14MB / 0.42秒"
+msgstr "14MB / 0.42s"
 
 #: src/index.md:59
-msgid "86MB / 2.30秒"
-msgstr "86MB / 2.30s"
+msgid "86MB / 3.04秒"
+msgstr "86MB / 3.04s"
 
 #: src/index.md:59
-msgid "952MB / 7.40秒"
-msgstr "952MB / 7.40s"
+msgid "944MB / 10.83秒"
+msgstr "944MB / 10.83s"
 
 #: src/index.md:60 src/usage/cli/streaming.md:57
 msgid "60,000"
 msgstr "60,000"
 
 #: src/index.md:60
-msgid "228MB / 1.60秒"
-msgstr "228MB / 1.60s"
+msgid "229MB / 1.85秒"
+msgstr "229MB / 1.85s"
 
 #: src/index.md:60
-msgid "25MB / 1.29秒"
-msgstr "25MB / 1.29s"
+msgid "25MB / 1.03秒"
+msgstr "25MB / 1.03s"
 
 #: src/index.md:60
-msgid "200MB / 32.54秒"
-msgstr "200MB / 32.54s"
+msgid "200MB / 35.77秒"
+msgstr "200MB / 35.77s"
 
 #: src/index.md:60
-msgid "1,649MB / 93.89秒"
-msgstr "1,649MB / 93.89s"
+msgid "1,484MB / 94.97秒"
+msgstr "1,484MB / 94.97s"
 
 #: src/index.md:62
 msgid "表が主体の帳票:"
@@ -431,47 +431,43 @@ msgid "行数"
 msgstr "Rows"
 
 #: src/index.md:66
-msgid "48MB / 0.44秒"
-msgstr "48MB / 0.44s"
+msgid "48MB / 0.53秒"
+msgstr "48MB / 0.53s"
 
 #: src/index.md:66
-msgid "48MB / 0.49秒"
-msgstr "48MB / 0.49s"
+msgid "63MB / 1.50秒"
+msgstr "63MB / 1.50s"
 
 #: src/index.md:66
-msgid "62MB / 1.50秒"
-msgstr "62MB / 1.50s"
-
-#: src/index.md:66
-msgid "1,369MB / 4.77秒"
-msgstr "1,369MB / 4.77s"
+msgid "1,309MB / 4.95秒"
+msgstr "1,309MB / 4.95s"
 
 #: src/index.md:67
-msgid "172MB / 1.98秒"
-msgstr "172MB / 1.98s"
+msgid "173MB / 2.07秒"
+msgstr "173MB / 2.07s"
 
 #: src/index.md:67
-msgid "171MB / 1.95秒"
-msgstr "171MB / 1.95s"
+msgid "173MB / 2.14秒"
+msgstr "173MB / 2.14s"
 
 #: src/index.md:67
-msgid "163MB / 13.53秒"
-msgstr "163MB / 13.53s"
+msgid "163MB / 13.73秒"
+msgstr "163MB / 13.73s"
 
 #: src/index.md:67
-msgid "6,221MB / 39.19秒"
-msgstr "6,221MB / 39.19s"
+msgid "6,167MB / 39.45秒"
+msgstr "6,167MB / 39.45s"
 
 #: src/index.md:69
 msgid ""
 "処理時間は文書が大きくなるほど差が開きます。 60,000要素では wkhtmltopdf の約"
-"20倍、ヘッドレスChromeの約59倍の速さです。 20,000行の帳票では、それぞれ約6.8"
-"倍・約20倍になります。"
+"19倍、ヘッドレスChromeの約51倍の速さです。 20,000行の帳票では、それぞれ約6.6"
+"倍・約19倍になります。"
 msgstr ""
 "The gap in processing time widens as the document grows. At 60,000 elements "
-"sghtmltopdf is about 20 times faster than wkhtmltopdf and about 59 times "
+"sghtmltopdf is about 19 times faster than wkhtmltopdf and about 51 times "
 "faster than Headless Chrome. For the 20,000 row statement the factors are "
-"about 6.8 and about 20."
+"about 6.6 and about 19."
 
 #: src/index.md:73
 msgid ""
@@ -502,56 +498,23 @@ msgstr ""
 "nothing but produce PDFs, uses memory far more sparingly."
 
 #: src/index.md:82
-msgid "処理の流れ"
-msgstr "How it works"
+msgid "全体の構成"
+msgstr "Architecture"
 
 #: src/index.md:84
-msgid ""
-"```mermaid\n"
-"flowchart TD\n"
-"    A[\"HTMLチャンク\"] --> B[\"ストリーミングパーサ\"]\n"
-"    B --> C[\"スタイルカスケード\"]\n"
-"    C --> D[\"レイアウト + ページ分割\"]\n"
-"    D --> E[\"PDFライター\"]\n"
-"    E --> F[\"PDF出力\"]\n"
-"    D -. \"ページが確定するたび\" .-> E\n"
-"    E -. \"メモリを解放して読み進む\" .-> B\n"
-"```"
-msgstr ""
-"```mermaid\n"
-"flowchart TD\n"
-"    A[\"HTML chunk\"] --> B[\"Streaming parser\"]\n"
-"    B --> C[\"Style cascade\"]\n"
-"    C --> D[\"Layout + pagination\"]\n"
-"    D --> E[\"PDF writer\"]\n"
-"    E --> F[\"PDF output\"]\n"
-"    D -. \"on every settled page\" .-> E\n"
-"    E -. \"free the memory and read on\" .-> B\n"
-"```"
-
-#: src/index.md:95
-msgid ""
-"ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先"
-"へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしていま"
-"す。"
-msgstr ""
-"As soon as a page boundary is final, that page is written to the PDF and the "
-"memory it used is released before reading on, which is how large documents "
-"are processed without memory use growing."
-
-#: src/index.md:97
-msgid "全体の構成"
-msgstr ""
-
-#: src/index.md:99
 msgid ""
 "CLI・HTTPサーバモード・Ruby（ネイティブ拡張 / HTTPサーバへの委譲）の4つの経路"
 "は、すべて同じオプション定義（`cli/options.rs`）と同じエンジン（`sghtmltopdf-"
 "core`）を通ります。 違うのは呼び出し方と、変換後のPDFバイト列をどこへ書き出す"
 "か（Sink）だけです。"
 msgstr ""
+"CLI, HTTP server mode, and the Ruby binding (native extension, or delegating "
+"to an HTTP server) are four different doors into the same option parser "
+"(`cli/options.rs`) and the same engine (`sghtmltopdf-core`). What differs is "
+"how the call comes in, and where the resulting PDF bytes are written (the "
+"`Sink`)."
 
-#: src/index.md:102
+#: src/index.md:87
 msgid ""
 "```mermaid\n"
 "flowchart TD\n"
@@ -587,16 +550,56 @@ msgid ""
 "列 / ファイル / Rubyブロックへ逐次\"]\n"
 "```"
 msgstr ""
+"```mermaid\n"
+"flowchart TD\n"
+"    subgraph Entry[\"Entry points (core/src)\"]\n"
+"        CLI[\"CLI<br/>sghtmltopdf\"]\n"
+"        Server[\"HTTP server mode<br/>sghtmltopdf server<br/>(tiny_http)\"]\n"
+"        FFI[\"Ruby native extension<br/>(magnus + rb-sys)<br/>in-process FFI "
+"call\"]\n"
+"    end\n"
+"\n"
+"    CallCLI[\"Shell / CI\"] --> CLI\n"
+"    CallHTTP[\"Any language (curl, ...)\"] -->|\"POST /pdf?options\"| "
+"Server\n"
+"    CallRuby[\"Ruby app / Rails<br/>(gem sghtmltopdf)\"] -->|\"Sghtmltopdf."
+"render\"| FFI\n"
+"    CallRuby -->|\"when server_url is set\"| Delegate[\"ServerClient\"]\n"
+"    Delegate -->|\"POST /pdf?options<br/>(HTTP, separate process/host)\"| "
+"Server\n"
+"\n"
+"    Options[\"Shared option parser<br/>cli/options.rs (clap)\"]\n"
+"    CLI --> Options\n"
+"    Server --> Options\n"
+"    FFI --> Options\n"
+"\n"
+"    Engine[\"sghtmltopdf-core Engine<br/>parse HTML → cascade styles → "
+"layout → paginate → write PDF\"]\n"
+"    Options --> Engine\n"
+"\n"
+"    Engine -->|\"FileSink / StdoutSink\"| OutCLI[\"PDF file / stdout\"]\n"
+"    Engine -->|\"MemorySink\"| OutServer[\"HTTP response<br/>(chunked with ?"
+"stream=1)\"]\n"
+"    Engine -->|\"MemorySink / FileSink / CallbackSink\"| OutFFI[\"PDF "
+"bytes / file / streamed to a Ruby block\"]\n"
+"```"
 
-#: src/index.md:129
+#: src/index.md:114
 msgid ""
 "Rubyのネイティブ拡張はサブプロセスを起動せず、WebアプリのプロセスにFFIとして"
 "同居します（変換中はGVLを解放するため他のスレッドは止まりません）。 "
 "`server_url`を設定した場合だけ、変換は別プロセスの `sghtmltopdf server` へ"
 "HTTPで委譲されます（同じホストの別プロセスでも、ネットワーク越しの別ホストで"
-"も構いません）。 Engine内部（HTML解析からPDF書き出しまで）の詳細は前述の「処"
-"理の流れ」を参照してください。"
+"も構いません）。 Engine内部（HTML解析からPDF書き出しまで）をページ単位で流す"
+"仕組みは[ストリーミングモード](usage/cli/streaming.md)を参照してください。"
 msgstr ""
+"The native extension does not spawn a subprocess: it runs inside your web "
+"app's process as FFI (it releases the GVL while rendering, so other threads "
+"keep going). Only when `server_url` is configured is the conversion "
+"delegated over HTTP to a separate `sghtmltopdf server` process, which may be "
+"a sibling process on the same host or a remote one. For how the engine "
+"streams that pipeline page by page, from parsing the HTML to writing the "
+"PDF, see [streaming mode](usage/cli/streaming.md)."
 
 #: src/getting-started/install.md:3
 msgid "使い方に応じて3通りあります。"
@@ -1254,7 +1257,7 @@ msgstr "Option"
 #: src/usage/cli/reference.md:29 src/usage/cli/reference.md:41
 #: src/usage/cli/reference.md:79 src/usage/cli/reference.md:158
 #: src/usage/server.md:25 src/usage/ruby_rails.md:73
-#: src/usage/ruby_rails.md:164
+#: src/usage/ruby_rails.md:165
 msgid "既定"
 msgstr "Default"
 
@@ -2097,7 +2100,7 @@ msgid "code"
 msgstr "Code"
 
 #: src/usage/cli/reference.md:229 src/usage/ruby_rails.md:54
-#: src/usage/ruby_rails.md:164 src/migration/wkhtmltopdf-options.md:6
+#: src/usage/ruby_rails.md:165 src/migration/wkhtmltopdf-options.md:6
 msgid "意味"
 msgstr "Meaning"
 
@@ -2345,48 +2348,48 @@ msgid "46KB"
 msgstr "46KB"
 
 #: src/usage/cli/streaming.md:54
-msgid "11MB / 0.04秒"
-msgstr "11MB / 0.04s"
+msgid "11MB / 0.02秒"
+msgstr "11MB / 0.02s"
 
 #: src/usage/cli/streaming.md:54
-msgid "9MB / 0.05秒"
-msgstr "9MB / 0.05s"
+msgid "8MB / 0.02秒"
+msgstr "8MB / 0.02s"
 
 #: src/usage/cli/streaming.md:55
 msgid "233KB"
 msgstr "233KB"
 
 #: src/usage/cli/streaming.md:55
-msgid "27MB / 0.19秒"
-msgstr "27MB / 0.19s"
+msgid "26MB / 0.08秒"
+msgstr "26MB / 0.08s"
 
 #: src/usage/cli/streaming.md:55
-msgid "10MB / 0.22秒"
-msgstr "10MB / 0.22s"
+msgid "10MB / 0.10秒"
+msgstr "10MB / 0.10s"
 
 #: src/usage/cli/streaming.md:56
 msgid "946KB"
 msgstr "946KB"
 
 #: src/usage/cli/streaming.md:56
-msgid "81MB / 0.82秒"
-msgstr "81MB / 0.82s"
+msgid "81MB / 0.35秒"
+msgstr "81MB / 0.35s"
 
 #: src/usage/cli/streaming.md:56
-msgid "15MB / 0.88秒"
-msgstr "15MB / 0.88s"
+msgid "15MB / 0.38秒"
+msgstr "15MB / 0.38s"
 
 #: src/usage/cli/streaming.md:57
 msgid "2.8MB"
 msgstr "2.8MB"
 
 #: src/usage/cli/streaming.md:57
-msgid "228MB / 2.53秒"
-msgstr "228MB / 2.53s"
+msgid "228MB / 1.05秒"
+msgstr "228MB / 1.05s"
 
 #: src/usage/cli/streaming.md:57
-msgid "28MB / 2.51秒"
-msgstr "28MB / 2.51s"
+msgid "28MB / 1.07秒"
+msgstr "28MB / 1.07s"
 
 #: src/usage/cli/streaming.md:59
 msgid ""
@@ -2403,13 +2406,15 @@ msgstr ""
 
 #: src/usage/cli/streaming.md:63
 msgid ""
-"処理時間は両モードでほぼ変わりません。 この計測での差は数パーセントで、実行ご"
-"とのばらつきと同程度でした。 メモリを大きく減らす代わりに時間を損なう、という"
-"関係にはなっていません。"
+"処理時間は両モードでほぼ変わりません。 `--streaming`のほうがわずかに遅く出ま"
+"すが、差はどの規模でも0.03秒以内で、文書が大きくなるほど相対差は縮まります"
+"(60,000要素では2%)。 メモリを大きく減らす代わりに時間を損なう、という関係には"
+"なっていません。"
 msgstr ""
-"Processing time is much the same in both modes. The difference here was a "
-"few per cent, on the order of the variation between runs. You are not "
-"trading time away for the large drop in memory."
+"Processing time is much the same in both modes. `--streaming` comes out "
+"slightly slower, but the difference stays within 0.03 seconds at every size, "
+"and shrinks in relative terms as the document grows (2% at 60,000 elements). "
+"You are not trading time away for the large drop in memory."
 
 #: src/usage/cli/streaming.md:67
 msgid "測定条件は次のとおりです。"
@@ -2417,10 +2422,10 @@ msgstr "The measurements were taken as follows."
 
 #: src/usage/cli/streaming.md:69
 msgid ""
-"sghtmltopdf 0.1.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / "
+"sghtmltopdf 0.2.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / "
 "WSL2(Linux 5.15)"
 msgstr ""
-"A release build of sghtmltopdf 0.1.0, on an Intel Core Ultra 7 258V with "
+"A release build of sghtmltopdf 0.2.0, on an Intel Core Ultra 7 258V with "
 "16GB of memory, under WSL2 (Linux 5.15)"
 
 #: src/usage/cli/streaming.md:70
@@ -2472,6 +2477,44 @@ msgstr ""
 #: src/usage/cli/streaming.md:85
 msgid "'http://127.0.0.1:8080/pdf?stream=1&streaming'"
 msgstr "'http://127.0.0.1:8080/pdf?stream=1&streaming'"
+
+#: src/usage/cli/streaming.md:88
+msgid "ストリーミング時の処理の流れ"
+msgstr "How streaming works"
+
+#: src/usage/cli/streaming.md:90
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    A[\"HTMLチャンク\"] --> B[\"ストリーミングパーサ\"]\n"
+"    B --> C[\"スタイルカスケード\"]\n"
+"    C --> D[\"レイアウト + ページ分割\"]\n"
+"    D --> E[\"PDFライター\"]\n"
+"    E --> F[\"PDF出力\"]\n"
+"    D -. \"ページが確定するたび\" .-> E\n"
+"    E -. \"メモリを解放して読み進む\" .-> B\n"
+"```"
+msgstr ""
+"```mermaid\n"
+"flowchart TD\n"
+"    A[\"HTML chunk\"] --> B[\"Streaming parser\"]\n"
+"    B --> C[\"Style cascade\"]\n"
+"    C --> D[\"Layout + pagination\"]\n"
+"    D --> E[\"PDF writer\"]\n"
+"    E --> F[\"PDF output\"]\n"
+"    D -. \"on every settled page\" .-> E\n"
+"    E -. \"free the memory and read on\" .-> B\n"
+"```"
+
+#: src/usage/cli/streaming.md:101
+msgid ""
+"ページの区切りが確定した時点でPDFを書き出し、そのページ分のメモリを解放して先"
+"へ読み進めることで、大きな文書でも消費メモリを増やさず処理を可能にしていま"
+"す。"
+msgstr ""
+"As soon as a page boundary is final, that page is written to the PDF and the "
+"memory it used is released before reading on, which is how large documents "
+"are processed without memory use growing."
 
 #: src/usage/server.md:1 src/migration/wkhtmltopdf-options.md:162
 msgid "HTTPサーバモード"
@@ -3106,12 +3149,12 @@ msgstr ""
 "the same parser."
 
 #: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:87
-#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:191
+#: src/usage/ruby_rails.md:142 src/usage/ruby_rails.md:192
 #: src/migration/wicked-pdf.md:34
 msgid "\"A4\""
 msgstr "\"A4\""
 
-#: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:141
+#: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:142
 #: src/migration/wicked-pdf.md:35
 msgid "\"20mm\""
 msgstr "\"20mm\""
@@ -3188,8 +3231,8 @@ msgstr "Options that only exist in Ruby"
 msgid "CLIには無い、gemが解釈するキーです。"
 msgstr "These keys are interpreted by the gem and have no CLI counterpart."
 
-#: src/usage/ruby_rails.md:73 src/usage/ruby_rails.md:148
-#: src/usage/ruby_rails.md:164
+#: src/usage/ruby_rails.md:73 src/usage/ruby_rails.md:149
+#: src/usage/ruby_rails.md:165
 msgid "キー"
 msgstr "Key"
 
@@ -3354,23 +3397,23 @@ msgstr "`Sghtmltopdf::TimeoutError`"
 msgid "制限時間を超えて打ち切られた"
 msgstr "The run exceeded its time limit and was aborted"
 
-#: src/usage/ruby_rails.md:120
+#: src/usage/ruby_rails.md:121
 msgid "`Sghtmltopdf::InternalError`"
 msgstr "`Sghtmltopdf::InternalError`"
 
-#: src/usage/ruby_rails.md:120
+#: src/usage/ruby_rails.md:121
 msgid "エンジン内部の想定外の失敗(バグ)"
 msgstr "An unexpected failure inside the engine (a bug)"
 
-#: src/usage/ruby_rails.md:121
+#: src/usage/ruby_rails.md:122
 msgid "`Sghtmltopdf::ServerError`"
 msgstr "`Sghtmltopdf::ServerError`"
 
-#: src/usage/ruby_rails.md:121
+#: src/usage/ruby_rails.md:122
 msgid "サーバへ委譲したときの到達不能・過負荷"
 msgstr "The delegated server is unreachable or overloaded"
 
-#: src/usage/ruby_rails.md:123
+#: src/usage/ruby_rails.md:124
 msgid ""
 "`InternalError`はネイティブ拡張の中でRustがパニックしたときに上がります。 拡"
 "張側で捕まえて通常の例外へ変換しているため、他のエラーと同じように`rescue`で"
@@ -3383,7 +3426,7 @@ msgstr ""
 "one it is an engine bug, so please report it with the HTML that reproduces "
 "it."
 
-#: src/usage/ruby_rails.md:127
+#: src/usage/ruby_rails.md:128
 msgid ""
 "画像やCSSの取得失敗は既定では無視され、警告を出して続行します"
 "(`load_media_error_handling: \"abort\"`で中断できます)。"
@@ -3392,11 +3435,11 @@ msgstr ""
 "warning, and processing continues. Pass `load_media_error_handling: "
 "\"abort\"` to stop instead."
 
-#: src/usage/ruby_rails.md:129
+#: src/usage/ruby_rails.md:130
 msgid "Railsで使う"
 msgstr "Using it with Rails"
 
-#: src/usage/ruby_rails.md:131
+#: src/usage/ruby_rails.md:132
 msgid ""
 "Railsが読み込まれているときだけRailtieが読み込まれるので、素のRuby・Sinatraで"
 "の利用には影響しません。"
@@ -3404,43 +3447,43 @@ msgstr ""
 "The Railtie is only loaded when Rails is, so plain Ruby and Sinatra are "
 "unaffected."
 
-#: src/usage/ruby_rails.md:133
+#: src/usage/ruby_rails.md:134
 msgid "レンダラ"
 msgstr "The renderer"
 
-#: src/usage/ruby_rails.md:138 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:139 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:92
 msgid "\"invoice\""
 msgstr "\"invoice\""
 
-#: src/usage/ruby_rails.md:138
+#: src/usage/ruby_rails.md:139
 msgid "# ファイル名(.pdfは自動で付く)\n"
 msgstr "# the file name; .pdf is appended for you\n"
 
-#: src/usage/ruby_rails.md:139 src/usage/ruby_rails.md:262
+#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:263
 #: src/migration/wicked-pdf.md:22 src/migration/wicked-pdf.md:92
 msgid "\"invoices/show\""
 msgstr "\"invoices/show\""
 
-#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:175
-#: src/usage/ruby_rails.md:262 src/migration/wicked-pdf.md:22
+#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:176
+#: src/usage/ruby_rails.md:263 src/migration/wicked-pdf.md:22
 #: src/migration/wicked-pdf.md:114
 msgid "\"pdf\""
 msgstr "\"pdf\""
 
-#: src/usage/ruby_rails.md:146
+#: src/usage/ruby_rails.md:147
 msgid "オプションは3つに振り分けられます。"
 msgstr "The options are sorted into three groups."
 
-#: src/usage/ruby_rails.md:148
+#: src/usage/ruby_rails.md:149
 msgid "種類"
 msgstr "Group"
 
-#: src/usage/ruby_rails.md:150
+#: src/usage/ruby_rails.md:151
 msgid "ビューの描画へ渡す"
 msgstr "Passed to view rendering"
 
-#: src/usage/ruby_rails.md:150
+#: src/usage/ruby_rails.md:151
 msgid ""
 "`template` `partial` `inline` `file` `plain` `html` `body` `layout` `locals` "
 "`formats` `variants` `handlers` `prefixes` `object` `collection` `assigns` "
@@ -3450,31 +3493,31 @@ msgstr ""
 "`formats` `variants` `handlers` `prefixes` `object` `collection` `assigns` "
 "`action`"
 
-#: src/usage/ruby_rails.md:151
+#: src/usage/ruby_rails.md:152
 msgid "レスポンスの組み立て"
 msgstr "Used to build the response"
 
-#: src/usage/ruby_rails.md:151
+#: src/usage/ruby_rails.md:152
 msgid "`disposition`(既定`inline`) `filename` `status`"
 msgstr "`disposition` (`inline` by default), `filename`, `status`"
 
-#: src/usage/ruby_rails.md:152
+#: src/usage/ruby_rails.md:153
 msgid "デバッグ"
 msgstr "Debugging"
 
-#: src/usage/ruby_rails.md:152
+#: src/usage/ruby_rails.md:153
 msgid "`show_as_html`(PDFにせずHTMLを返す)"
 msgstr "`show_as_html`, which returns the HTML instead of a PDF"
 
-#: src/usage/ruby_rails.md:153
+#: src/usage/ruby_rails.md:154
 msgid "上記以外すべて"
 msgstr "Everything else"
 
-#: src/usage/ruby_rails.md:153
+#: src/usage/ruby_rails.md:154
 msgid "変換オプション"
 msgstr "Conversion options"
 
-#: src/usage/ruby_rails.md:155
+#: src/usage/ruby_rails.md:156
 msgid ""
 "`pdf:`の値が空ならアクション名がファイル名になります。 `filename:`があればそ"
 "ちらが勝ち、`.pdf`は二重に付きません。"
@@ -3482,11 +3525,11 @@ msgstr ""
 "If the value of `pdf:` is empty, the action name becomes the file name. A "
 "`filename:` wins over it, and `.pdf` is never appended twice."
 
-#: src/usage/ruby_rails.md:158
+#: src/usage/ruby_rails.md:159
 msgid "アセットのパス解決"
 msgstr "How asset paths are resolved"
 
-#: src/usage/ruby_rails.md:160
+#: src/usage/ruby_rails.md:161
 msgid ""
 "PDFのレンダリングはHTTPサーバを介さないため、`/assets/…`のようなURLは ローカ"
 "ルファイルとして解決されます。 Railtieが次の既定値を入れます。"
@@ -3494,34 +3537,34 @@ msgstr ""
 "Rendering does not go through an HTTP server, so a URL such as `/assets/…` "
 "is resolved as a local file. The Railtie supplies these defaults."
 
-#: src/usage/ruby_rails.md:166
+#: src/usage/ruby_rails.md:167
 msgid "`base_url`"
 msgstr "`base_url`"
 
-#: src/usage/ruby_rails.md:166
+#: src/usage/ruby_rails.md:167
 msgid "`Rails.root/public`"
 msgstr "`Rails.root/public`"
 
-#: src/usage/ruby_rails.md:166
+#: src/usage/ruby_rails.md:167
 msgid ""
 "絶対パス参照の基準。precompile済みなら素の`stylesheet_link_tag`がそのまま動く"
 msgstr ""
 "The base for absolute path references. With precompiled assets, a plain "
 "`stylesheet_link_tag` works as is"
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:168
 msgid "`allow`"
 msgstr "`allow`"
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:168
 msgid "`[Rails.root]`"
 msgstr "`[Rails.root]`"
 
-#: src/usage/ruby_rails.md:167
+#: src/usage/ruby_rails.md:168
 msgid "ローカル参照をアプリ配下に限定する"
 msgstr "Confines local references to the application directory"
 
-#: src/usage/ruby_rails.md:169
+#: src/usage/ruby_rails.md:170
 msgid ""
 "どちらも`Sghtmltopdf.configure`で上書きできます(イニシャライザの実行順に依存"
 "しません)。 `allow`の既定はテンプレートにユーザー入力が混ざっても文書外のファ"
@@ -3534,7 +3577,7 @@ msgstr ""
 "something outside the application, such as `/usr/share/fonts`, add it "
 "explicitly."
 
-#: src/usage/ruby_rails.md:172
+#: src/usage/ruby_rails.md:173
 msgid ""
 "開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、CSS"
 "の中身を`<style>`へ展開するヘルパがあります。"
@@ -3542,20 +3585,20 @@ msgstr ""
 "For cases such as development, where assets have not been written to `public/"
 "` yet, there are helpers that inline the CSS into a `<style>` element."
 
-#: src/usage/ruby_rails.md:176 src/usage/ruby_rails.md:177
+#: src/usage/ruby_rails.md:177 src/usage/ruby_rails.md:178
 #: src/supports/images.md:14
 msgid "\"logo.png\""
 msgstr "\"logo.png\""
 
-#: src/usage/ruby_rails.md:177
+#: src/usage/ruby_rails.md:178
 msgid "<%# 見つからなければnil %>"
 msgstr "<%# nil if it cannot be found %>"
 
-#: src/usage/ruby_rails.md:180
+#: src/usage/ruby_rails.md:181
 msgid "サーバへ委譲する"
 msgstr "Delegating to a server"
 
-#: src/usage/ruby_rails.md:182
+#: src/usage/ruby_rails.md:183
 msgid ""
 "`server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く "
 "別プロセスへ投げます。 アプリのCPUを使いたくない場合や、gemの対応プラット"
@@ -3566,21 +3609,21 @@ msgstr ""
 "the application's CPU on rendering, or when you run somewhere the gem does "
 "not support, such as Windows."
 
-#: src/usage/ruby_rails.md:188 src/migration/wicked-pdf.md:142
+#: src/usage/ruby_rails.md:189 src/migration/wicked-pdf.md:142
 msgid "\"http://pdf.internal:8080\""
 msgstr "\"http://pdf.internal:8080\""
 
-#: src/usage/ruby_rails.md:191
+#: src/usage/ruby_rails.md:192
 msgid "# 委譲される\n"
 msgstr "# delegated\n"
 
-#: src/usage/ruby_rails.md:194
+#: src/usage/ruby_rails.md:195
 msgid "URLは1つだけです。負荷分散はLB(nginx・k8s Service)を前段に置く前提です"
 msgstr ""
 "Only one URL is accepted. Load balancing is expected to be handled by "
 "something in front, such as nginx or a Kubernetes Service"
 
-#: src/usage/ruby_rails.md:195
+#: src/usage/ruby_rails.md:196
 msgid ""
 "到達できないときはローカルへフォールバックしません(`ServerError`)。 サーバ起"
 "動時にだけ指定できるフォントが効かず、出力が変わってしまうためです"
@@ -3589,7 +3632,7 @@ msgstr ""
 "it raises `ServerError`. Fonts can only be set when the server starts, so "
 "falling back would silently change the output"
 
-#: src/usage/ruby_rails.md:197
+#: src/usage/ruby_rails.md:198
 msgid ""
 "HTTPのステータスは上のエラー分類へ対応します(400→`UsageError`、"
 "413→`InputError`、500→`RenderError`、その他→`ServerError`)"
@@ -3597,11 +3640,11 @@ msgstr ""
 "The HTTP statuses map onto the error classes above: 400 to `UsageError`, 413 "
 "to `InputError`, 500 to `RenderError`, and anything else to `ServerError`"
 
-#: src/usage/ruby_rails.md:199
+#: src/usage/ruby_rails.md:200
 msgid "サーバでは指定できないオプション"
 msgstr "Options that cannot be set against a server"
 
-#: src/usage/ruby_rails.md:201
+#: src/usage/ruby_rails.md:202
 msgid ""
 "ローカルパスを取るものと出力先・アクセス制御はサーバ起動時にしか設定できませ"
 "ん(指定すると`UsageError`)。"
@@ -3610,7 +3653,7 @@ msgstr ""
 "controls can only be set when the server starts; passing them raises "
 "`UsageError`."
 
-#: src/usage/ruby_rails.md:211
+#: src/usage/ruby_rails.md:212
 msgid ""
 "Railtieが入れる`base_url`/`allow`の既定値は自動的に外れるので、Railsでそのま"
 "ま`server_url`を足しても400にはなりません。 `configure`で明示的に設定している"
@@ -3621,11 +3664,11 @@ msgstr ""
 "a 400. If you set them explicitly with `configure`, move them to the "
 "server's startup options."
 
-#: src/usage/ruby_rails.md:214
+#: src/usage/ruby_rails.md:215
 msgid "チャンクごとに受け取る"
 msgstr "Receiving the PDF in chunks"
 
-#: src/usage/ruby_rails.md:216
+#: src/usage/ruby_rails.md:217
 msgid ""
 "ブロックを渡すと、PDF全体を組み立ててから返す代わりにチャンクごとにブロックが"
 "呼ばれます(返り値は`nil`)。 Rackの`response.stream`へ流したり、S3のマルチパー"
@@ -3635,7 +3678,7 @@ msgstr ""
 "assembled and returned; the return value is `nil`. This is the hook for "
 "writing into Rack's `response.stream` or feeding an S3 multipart upload."
 
-#: src/usage/ruby_rails.md:223
+#: src/usage/ruby_rails.md:224
 msgid ""
 "ローカル変換でもサーバ委譲でも、PDF全体が組み上がるのを待たずに書き出せま"
 "す。 ローカルは確定したページから順に、サーバはその`?stream=1`(chunked "
@@ -3646,7 +3689,7 @@ msgstr ""
 "is finalised; with a server, its `?stream=1` response, sent with chunked "
 "transfer encoding, is passed straight through."
 
-#: src/usage/ruby_rails.md:226
+#: src/usage/ruby_rails.md:227
 msgid ""
 "ただし逐次になるのはPDFの書き出しだけで、HTMLのパースとレイアウトは文書全体に"
 "対して先に行います。 そのため最初のチャンクが届くのは変換の終盤で、ピークメモ"
@@ -3659,7 +3702,7 @@ msgstr ""
 "block. To have pages finalised while the HTML is still being read, combine "
 "this with [streaming mode](#when-you-need-to-keep-memory-down)."
 
-#: src/usage/ruby_rails.md:230
+#: src/usage/ruby_rails.md:231
 msgid ""
 "1回に渡すバイト数の目安は`chunk_size:`で変えられます(既定64KiB、ローカル変換"
 "のみ)。 小さくすると細かく届きますが、そのたびにGVLを取り直すのでレンダリング"
@@ -3670,11 +3713,11 @@ msgstr ""
 "more finely, but the GVL has to be reacquired each time, which slows "
 "rendering down."
 
-#: src/usage/ruby_rails.md:237
+#: src/usage/ruby_rails.md:238
 msgid "`Thread#kill`とタイムアウトが効く"
 msgstr "`Thread#kill` and timeouts work"
 
-#: src/usage/ruby_rails.md:239
+#: src/usage/ruby_rails.md:240
 msgid ""
 "ブロックの呼び出しはRubyのメソッド呼び出しなので、その時点で保留中の割り込み"
 "が処理されます。 ブロック付きで呼んでいる限り、`Thread#kill`や`Timeout."
@@ -3684,11 +3727,11 @@ msgstr ""
 "is handled at that point. As long as you pass a block, `Thread#kill`, "
 "`Timeout.timeout`, and `Rack::Timeout` all take effect at chunk boundaries."
 
-#: src/usage/ruby_rails.md:244
+#: src/usage/ruby_rails.md:245
 msgid "# 10秒で中断できる\n"
 msgstr "# can be interrupted after 10 seconds\n"
 
-#: src/usage/ruby_rails.md:248
+#: src/usage/ruby_rails.md:249
 msgid ""
 "ブロックを渡さない`render`/`render_to_file`は変換の間まったくRubyへ戻らないた"
 "め、途中で止められません。 長い変換に上限をかけたい場合はブロック付きで呼んで"
@@ -3698,11 +3741,11 @@ msgstr ""
 "the conversion and therefore cannot be stopped part way. To put a limit on a "
 "long conversion, call them with a block."
 
-#: src/usage/ruby_rails.md:251
+#: src/usage/ruby_rails.md:252
 msgid "Railsで逐次返却する"
 msgstr "Streaming the response from Rails"
 
-#: src/usage/ruby_rails.md:253
+#: src/usage/ruby_rails.md:254
 msgid ""
 "`render pdf:`のレンダラは、組み上がったPDFを`send_data`で一括返却します。 確"
 "定したページから順に返したい場合は`ActionController::Live`と組み合わせます。"
@@ -3711,15 +3754,15 @@ msgstr ""
 "`send_data`. To send pages as they are finalised, combine it with "
 "`ActionController::Live`."
 
-#: src/usage/ruby_rails.md:261
+#: src/usage/ruby_rails.md:262
 msgid "\"Content-Type\""
 msgstr "\"Content-Type\""
 
-#: src/usage/ruby_rails.md:261 src/usage/ruby_rails.md:280
+#: src/usage/ruby_rails.md:262 src/usage/ruby_rails.md:281
 msgid "\"application/pdf\""
 msgstr "\"application/pdf\""
 
-#: src/usage/ruby_rails.md:270
+#: src/usage/ruby_rails.md:271
 msgid ""
 "途中まで書き出したあとに失敗すると、クライアントには壊れたPDFが届きます(ヘッ"
 "ダは既に送信済みなのでステータスを変えられません)。 サーバモードの`?stream=1`"
@@ -3729,11 +3772,11 @@ msgstr ""
 "broken PDF, because the headers have already gone out and the status can no "
 "longer be changed. This is the same property as `?stream=1` in server mode."
 
-#: src/usage/ruby_rails.md:273
+#: src/usage/ruby_rails.md:274
 msgid "S3へ直接上げる"
 msgstr "Uploading straight to S3"
 
-#: src/usage/ruby_rails.md:275
+#: src/usage/ruby_rails.md:276
 msgid ""
 "gemはS3向けの実装を持ちません(依存を増やさず、書き方も短いためです)。 マルチ"
 "パートアップロードは最後のパート以外は5MB以上という制約があるので、溜めてから"
@@ -3743,20 +3786,20 @@ msgstr ""
 "the code is short anyway. A multipart upload requires every part except the "
 "last to be at least 5MB, so buffer before sending."
 
-#: src/usage/ruby_rails.md:281
+#: src/usage/ruby_rails.md:282
 msgid "\"\""
 msgstr "\"\""
 
-#: src/usage/ruby_rails.md:304
+#: src/usage/ruby_rails.md:305
 msgid "小さいPDFなら`put_object(body: Sghtmltopdf.render(html))`で十分です。"
 msgstr ""
 "For a small PDF, `put_object(body: Sghtmltopdf.render(html))` is enough."
 
-#: src/usage/ruby_rails.md:306
+#: src/usage/ruby_rails.md:307
 msgid "メモリを抑えたいとき"
 msgstr "When you need to keep memory down"
 
-#: src/usage/ruby_rails.md:308
+#: src/usage/ruby_rails.md:309
 msgid ""
 "数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)"
 "を使うとメモリが大きく減ります(実測: 60,000要素で 228MB → 28MB。[メモリと処理"
@@ -3767,7 +3810,7 @@ msgstr ""
 "goes from 228MB to 28MB. See [Memory and processing time](./cli/streaming."
 "md#memory-and-processing-time)."
 
-#: src/usage/ruby_rails.md:314
+#: src/usage/ruby_rails.md:315
 msgid ""
 "その代わり、文書全体を見ないと決まらないもの(`toc`・`counter(pages)`・"
 "`<body>`より後の`<style>`など)が使えません。 制約の一覧は[ストリーミングモー"
@@ -8755,6 +8798,33 @@ msgstr ""
 "Embedding a JavaScript engine remains something to consider if the need "
 "arises. Items above that are not deliberate non-goals, such as PDF outlines, "
 "may well be supported later."
+
+#~ msgid "563MB / 1.29秒"
+#~ msgstr "563MB / 1.29s"
+
+#~ msgid "952MB / 7.40秒"
+#~ msgstr "952MB / 7.40s"
+
+#~ msgid "172MB / 1.98秒"
+#~ msgstr "172MB / 1.98s"
+
+#~ msgid "171MB / 1.95秒"
+#~ msgstr "171MB / 1.95s"
+
+#~ msgid "9MB / 0.05秒"
+#~ msgstr "9MB / 0.05s"
+
+#~ msgid "27MB / 0.19秒"
+#~ msgstr "27MB / 0.19s"
+
+#~ msgid "228MB / 2.53秒"
+#~ msgstr "228MB / 2.53s"
+
+#~ msgid "28MB / 2.51秒"
+#~ msgstr "28MB / 2.51s"
+
+#~ msgid "処理の流れ"
+#~ msgstr "How it works"
 
 #~ msgid ""
 #~ "有効にした場合も、プライベートIP・ループバック・リンクローカル(クラウドの"

@@ -1,5 +1,5 @@
 //! `text-align`/`line-height`/`text-indent`/`white-space`/`letter-spacing`/
-//! `word-spacing`/`text-transform`のE2Eテスト(M8 Phase 1 Typography詳細)。
+//! `word-spacing`/`text-transform`のE2Eテスト。
 //!
 //! `fragmentation.rs`/`float_position.rs`と同じ方針: 実際のパイプライン
 //! (HTMLパース→スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を

@@ -9,7 +9,7 @@
 //!
 //! `Mode::Batch`は、`finish`が呼ばれた時点でDOM全体を一括して
 //! (`compute_styles`/`build_box_tree`/`layout_document`/
-//! `paginate_document_streaming`で)処理する、M1由来の一括APIの薄いラッパー。
+//! `paginate_document_streaming`で)処理する、一括APIの薄いラッパー。
 //!
 //! `Mode::Streaming`は、`<body>`直下のトップレベルブロック要素が確定する
 //! たびに、そのサブツリーだけをスタイル計算・レイアウト・ページ分割・
@@ -51,11 +51,6 @@ use crate::style::{
 use crate::style::{FontStyle, FontWeight};
 
 /// 一括処理かストリーミング処理かを選択する。
-///
-/// `Batch`はDOM全体が揃ってから処理する前提を明示する選択であり、
-/// CSSの非局所性の制約を一切課さない。`Streaming`は非局所性の制約
-/// (`<body>`より後の`<style>`タグをエラーにする、非局所セレクタが常に
-/// 非マッチになる)を適用し、モジュールdocに挙げた既知の限界も伴う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
     #[default]
@@ -307,7 +302,7 @@ fn overlay_area(settings: &PageSettings, top: bool) -> (PageSettings, Rect) {
 /// ヘッダー/フッターHTMLを1つ、余白領域向けにレイアウトして
 /// [`PageOverlay`]にする。
 ///
-/// 画像は非対応(既知の限界。`ImageAssetCache`を渡していないため
+/// 画像は非対応(`ImageAssetCache`を渡していないため
 /// `<img>`は空のボックスになる)。テキスト・枠線・背景色は本文と同じ
 /// パイプラインで描かれる。
 fn layout_overlay(
@@ -745,8 +740,7 @@ pub enum EngineError<E> {
     },
     /// [`EngineOptions::deadline`]を過ぎたため打ち切った。
     TimedOut,
-    /// `--load-media-error-handling abort`のときに、画像・外部CSS等の
-    /// 取得に失敗した(M12 T300)。
+    /// `--load-media-error-handling abort`のときに、画像・外部CSS等の取得に失敗した。
     MediaLoad(String),
 }
 
@@ -1007,8 +1001,6 @@ impl<S: Sink> Engine<S> {
         };
         let page_rules = page_rules_with_cli(&self.options.extra_page_rules, &author.page_rules);
         let page_settings = apply_page_rule_settings_override(self.options.settings, &page_rules);
-        // `counter(pages)`は文書全体のページ分割完了まで値が定まらないため、
-        // 真のストリーミング処理とは原理的に相容れない(ユーザー確認済み)。
         if rules_use_page_count(&page_rules) {
             return Err(EngineError::UnsupportedInStreamingMode(
                 "@pageのマージンボックスの counter(pages) はストリーミングモードでは使えません\n  \
@@ -1059,8 +1051,8 @@ impl<S: Sink> Engine<S> {
         }
         // `load_missing_system_fonts`・`load_fonts_for_uncovered_chars`は
         // 文書全体のスタイル(や文字)を必要とするが、真のストリーミング処理では
-        // 文書全体を一度に持たないため、ここでは呼ばない(モジュールdocの
-        // 既知の限界を参照)。代わりに、フォントが何も与えられていない場合は
+        // 文書全体を一度に持たないため、ここでは呼ばない。
+        // 代わりに、フォントが何も与えられていない場合は
         // 既定フォント(ラテン)に加えてCJKカバー用のフォントを先回りで足す。
         // `--font`/`@font-face`でフォントが供給されている場合に勝手に足さない
         // のは、フェースの並び順(`unicode-range`先勝ち)と「`--font`で渡した
@@ -1414,9 +1406,6 @@ impl<S: Sink> Engine<S> {
         let mut dom = parser.finish();
         // `parser.finish()`は未閉のタグを閉じる過程でノードを足すことがあるため、
         // `feed`時の確認とは別にここでも見る(この直後からDOMの再帰走査が始まる)。
-        // この先はスタイル計算・レイアウトと重い処理が続く。入る前に一度見る
-        // (`finish`の入口の確認はストリーミング側の分岐にあるため、
-        // バッチはここが最初の関門になる)。
         check_deadline(options.deadline)?;
         check_document_limits(dom.max_depth(), dom.node_count())?;
         let sink = sink.expect("Mode::Batchではsinkがfinishまでそのまま保持される");
@@ -1495,14 +1484,10 @@ impl<S: Sink> Engine<S> {
         // 順に書き出す。`fixed`の全ページ複製・`absolute`の祖先ページ解決が全
         // ページ確定後でないとできないため、`paginate_document_streaming`(逐
         // 次解放)ではなくこちらを使う。
-        //
-        // ここから先(レイアウト+ページ分割)は1回の呼び出しで、途中では
-        // 打ち切れない。入る前に一度確認しておく。
         check_deadline(options.deadline)?;
 
         // cover/TOCのために、writerを作る前に本文のページを確定させる。
-        // 見出しへ自動で振るアンカー名を
-        // `LinkSettings`へ載せる必要があるため。
+        // 見出しへ自動で振るアンカー名を`LinkSettings`へ載せる必要があるため。
         let pages = paginate_document_with_absolutes(
             &mut dom,
             &styles,
@@ -1539,9 +1524,7 @@ impl<S: Sink> Engine<S> {
             (Vec::new(), HashMap::new())
         };
 
-        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」。本文の
-        // ページ分割はすでに済んでいるので、
-        // 事前カウント用パスはもう要らない。
+        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」。
         let total_pages = if rules_use_page_count(&page_rules) {
             Some(toc_pages.len() + pages.len())
         } else {
@@ -2112,8 +2095,8 @@ mod tests {
     fn margin_box_content_glyphs_are_embedded_in_the_font_subset_in_batch_mode() {
         // margin boxのcontentは通常のBoxContent::Inline経路(collect_usage)を
         // 通らない独立した経路(collect_margin_box_usage)なので、専用の収集漏れが
-        // 起きていないかを回帰確認する(M8のマーカーグリフ収集漏れと同種のバグ
-        // クラス)。本文には登場しない数字を`@bottom-right`のページ番号として
+        // 起きていないかを回帰確認する(リストのマーカーグリフ収集漏れと同種の
+        // バグクラス)。本文には登場しない数字を`@bottom-right`のページ番号として
         // 表示させ、そのグリフが実際にToUnicode CMapへ埋め込まれることを確認する。
         let options = EngineOptions {
             mode: Mode::Batch,
@@ -2488,7 +2471,7 @@ mod tests {
         // フィルタで除外されるはず。2つ目の`@font-face`(index 1)は同じ
         // DejaVu Sansをrange指定なしで再登録したもので、こちらが
         // 選ばれるはず。CSSパース→`Engine`→`FontCollection`の実際の
-        // パイプラインを通した回帰検知(0011のT39)。
+        // パイプラインを通した回帰検知。
         let base_dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts"));
         let html = r#"<html><head><style>
             @font-face { font-family: "Brand"; src: url("DejaVuSans.ttf"); unicode-range: U+0-7F; }
@@ -2520,9 +2503,8 @@ mod tests {
 
     #[test]
     fn unicode_range_split_between_latin_and_cjk_faces_matches_in_batch_and_streaming_mode() {
-        // 典型的な「英数字用+CJK用を同一family名でunicode-range分けして
-        // 併用」パターン(0004 T38/T39)。`Mode::Batch`/`Mode::Streaming`
-        // 両方で同じ結果になることも確認する。
+        // 典型的な「英数字用+CJK用を同一family名でunicode-range分けして併用」パターン。
+        // `Mode::Batch`/`Mode::Streaming`両方で同じ結果になることも確認する。
         let base_dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts"));
         let html_src = r#"<style>
             @font-face { font-family: "Brand"; src: url("DejaVuSans.ttf"); unicode-range: U+0-24F; }
@@ -2579,7 +2561,7 @@ mod tests {
 
     #[test]
     fn image_data_uri_is_embedded_as_a_dctdecode_xobject_end_to_end() {
-        // M5(画像埋め込み)のパイプライン全体(DOM属性抽出→data:URI分類→
+        // 画像埋め込みのパイプライン全体(DOM属性抽出→data:URI分類→
         // デコード→box tree→レイアウト→PDF XObject書き出し)を、
         // fetchを一切経由しないdata:URI経由で検証する。
         let html = format!(
@@ -2634,7 +2616,7 @@ mod tests {
         assert!(count_occurrences(&bytes, b"/Height 16") > 0);
     }
 
-    /// `object-fit`/`object-position`のE2Eテスト(M9 Phase 2)。
+    /// `object-fit`/`object-position`のE2Eテスト。
     /// `object_fit_rect`自体の幾何計算は`pdf/document.rs`の単体テストで
     /// 網羅済みのため、ここでは実際のパイプライン(data:URIデコード→box tree
     /// →レイアウト→PDFエンコード)を通した疎通・クリップ発行の確認に絞る。
@@ -2734,12 +2716,9 @@ mod tests {
 
     #[test]
     fn background_image_on_a_plain_div_is_embedded_as_a_dctdecode_xobject_end_to_end() {
-        // M7(T80-83)のパイプライン全体(パース→カスケード→
+        // パイプライン全体(パース→カスケード→
         // `resolve_background_images`→PDF XObject書き出し)を検証する。
-        // `<div>`は`background-color`も枠線も持たない
-        // (`has_visible_decoration`がbackground-imageも見るよう修正した
-        // 効果を確認する。修正前は装飾フラグメントが生成されず、この
-        // 背景画像は`page.boxes`に一切現れなかった)。
+        // `<div>`は`background-color`も枠線も持たない。
         let html = format!(
             r#"<html><body><div style="background-image: url('{}'); width: 32px; height: 24px;"></div></body></html>"#,
             data_uri(JPEG_FIXTURE_PATH, "image/jpeg")
@@ -2849,7 +2828,7 @@ mod tests {
 
     #[test]
     fn external_stylesheet_via_link_is_applied_end_to_end() {
-        // M6のパイプライン全体(<link>検出→fetch→parse→cascade)を、
+        // 外部スタイルシートのパイプライン全体(<link>検出→fetch→parse→cascade)を、
         // 実際にfont-sizeの違いとしてPDFコンテンツストリームに現れるかで
         // 検証する。
         let dir = std::env::temp_dir().join(format!(
@@ -2924,7 +2903,7 @@ mod tests {
 
     #[test]
     fn at_import_inside_an_external_stylesheet_is_applied_end_to_end() {
-        // M7のパイプライン全体(<link>のfetch→@importの検出・再帰フェッチ→
+        // @importのパイプライン全体(<link>のfetch→@importの検出・再帰フェッチ→
         // 展開→parse→cascade)を、実際にfont-sizeの違いとしてPDFコンテンツ
         // ストリームに現れるかで検証する。
         let dir = std::env::temp_dir().join(format!(
@@ -3033,7 +3012,7 @@ mod tests {
 
     #[test]
     fn a_failed_external_stylesheet_does_not_fail_the_whole_document() {
-        // T66: 外部スタイルシートの取得失敗はそのスタイルシートだけを無視し、
+        // 外部スタイルシートの取得失敗はそのスタイルシートだけを無視し、
         // 文書生成全体は止めない(画像と同じ方針)。
         let html = r#"<html><head><link rel="stylesheet" href="does-not-exist.css"></head>
             <body><p>hello</p></body></html>"#;

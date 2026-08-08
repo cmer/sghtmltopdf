@@ -8,7 +8,7 @@
 //! ([`crate::layout`]が[`crate::style`]に依存する一方向)のため、ページ
 //! サイズの実ピクセル値([`NamedPageSize`]の変換テーブル)はこのファイルに
 //! 独立して保持する(`layout::page::PageSize`の同名定数と値を同期させる
-//! 必要がある、既知の重複)。
+//! 必要がある)。
 
 use std::collections::HashMap;
 
@@ -22,7 +22,7 @@ use super::stylesheet::DeclarationBlockParser;
 use super::values::{ContentPart, LengthPercentageOrAuto, SpecifiedLength};
 
 /// `@page`のページセレクタ(prelude)。名前付きページ(`@page intro`)・
-/// `:blank`は非対応(非目標)。
+/// `:blank`は非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageSelector {
     All,
@@ -53,7 +53,7 @@ pub enum MarginBoxArea {
 }
 
 impl MarginBoxArea {
-    /// 16個のmargin box at-rule名との単純な対応表(素直な文字列比較で実装)。
+    /// 16個のmargin box at-rule名との対応表。
     fn from_at_rule_name(name: &str) -> Option<Self> {
         use MarginBoxArea::*;
         let table: &[(&str, MarginBoxArea)] = &[
@@ -81,8 +81,7 @@ impl MarginBoxArea {
     }
 }
 
-/// `size`プロパティの名前付きページサイズ。`b4`/`b5`/`ledger`は想定用途
-/// (請求書・帳票)での実用性を踏まえ非対応。
+/// `size`プロパティの名前付きページサイズ。`b4`/`b5`/`ledger`は非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NamedPageSize {
     A4,
@@ -107,7 +106,7 @@ pub enum PageSizeValue {
     Explicit(SpecifiedLength, SpecifiedLength),
 }
 
-/// 1つの`@page`ルール(パース結果そのまま、まだ他ルールとの併合前)。
+/// 1つの`@page`ルール(パース結果そのまま)。
 #[derive(Debug, Clone, Default)]
 pub struct PageRule {
     pub selector_is_all: bool,
@@ -115,8 +114,7 @@ pub struct PageRule {
     pub size: Option<PageSizeValue>,
     /// `margin`/`margin-top`等(`size`以外の`@page`直下の宣言)。実際に
     /// 意味を持つのはmargin系のみだが、パースは`parse_declaration`を
-    /// そのまま再利用するため他のプロパティも構文上は受理される(未使用のまま
-    /// 無視される、既知の簡略化)。
+    /// そのまま再利用するため他のプロパティも構文上は受理される
     pub margin: Vec<PropertyDeclaration>,
     pub margin_boxes: HashMap<MarginBoxArea, Vec<PropertyDeclaration>>,
 }
@@ -297,7 +295,7 @@ fn parse_page_size<'i>(input: &mut Parser<'i, '_>) -> Result<PageSizeValue, Pars
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedPageRule {
     /// 幅・高さ(px)。文書全体で1回だけ解決する(`:first`/`:left`/`:right`の
-    /// size宣言は今回反映されない)。
+    /// size宣言は反映されない)。
     pub size_px: Option<(f32, f32)>,
     pub margin_top: Option<LengthPercentageOrAuto>,
     pub margin_right: Option<LengthPercentageOrAuto>,
@@ -358,7 +356,7 @@ pub fn rules_use_page_count(rules: &[PageRule]) -> bool {
 
 fn apply_margin_declarations(result: &mut ResolvedPageRule, decls: &[PropertyDeclaration]) {
     // `@page`のmargin宣言に`em`/`rem`が使われるのは稀だが、要素という概念が
-    // 無いため基準フォントサイズは初期値(16px)固定にする(既知の簡略化)。
+    // 無いため基準フォントサイズは初期値(16px)固定にする。
     const NOMINAL_FONT_SIZE: f32 = 16.0;
     for decl in decls {
         match decl {
@@ -394,7 +392,7 @@ fn merge_margin_boxes(
 
 /// `layout::page::PageSize`の同名定数と同じ値(96dpi換算)。この関数は
 /// `style`クレートが`layout`に依存しない設計方針を保つため、値をここに
-/// 複製して持つ(モジュールdoc参照、既知の重複)。
+/// 複製して持つ。
 fn resolve_page_size_px(size: PageSizeValue) -> (f32, f32) {
     const NOMINAL_FONT_SIZE: f32 = 16.0;
     let (w, h) = match size {

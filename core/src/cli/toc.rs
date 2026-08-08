@@ -1,11 +1,9 @@
 //! 目次(`--toc`)のHTML組み立て。
 //!
 //! 生成する構造と既定スタイルはwkhtmltopdfの既定TOC XSL
-//! (`src/lib/tocstylesheet.cc`)の出力に合わせてある。階層は入れ子の
-//! `<ul>`で表現し、各項目は
+//! (`src/lib/tocstylesheet.cc`)の出力に合わせる。
+//! 階層は入れ子の`<ul>`で表現し、各項目は
 //! `<li><div><a>見出し</a><span>ページ番号</span></div><ul>子</ul></li>`。
-//! class属性は付けない(TOCは独立ドキュメントとしてレンダリングするため、
-//! 要素セレクタが本文と衝突しない)。
 
 use std::fmt::Write as _;
 

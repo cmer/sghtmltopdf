@@ -1,11 +1,7 @@
 //! `server`サブコマンド(HTTPサーバモード)。
 //!
 //! * `POST /pdf?<CLIと同名のオプション>` + ボディは生HTML
-//! * クエリ文字列は引数列へ機械変換して同じclapパーサに通すので、
-//!   CLIとサーバでオプションの解釈がずれない
 //! * クエリで指定できるのは[`ALLOWED_QUERY_KEYS`]に載っているものだけ
-//!   (許可リスト方式)。ローカル/リモートの参照は既定で禁止し、
-//!   リクエストからは緩められない
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -20,16 +16,7 @@ use crate::sink::{MemorySink, Sink};
 use super::options::{Cli, ConvertArgs, ServerArgs};
 use super::CliError;
 
-/// リクエストのクエリで指定してよいオプション(許可リスト)。
-///
-/// 拒否リストにすると、ローカルパスを取る新しいオプションを足したときに
-/// 追記を忘れた分がそのまま穴になる。ここに載っていないものは一律で拒否し、
-/// 分類漏れは[`tests::every_option_is_classified_as_allowed_or_server_only`]が
-/// 落とす。
-///
-/// 載せてよいのは「1リクエストごとに変わってよく、かつサーバのファイル
-/// システムにもネットワークにも触れない」オプションだけ。ページの寸法・
-/// 余白・メタデータ・ヘッダー/フッターの文字列・目次の見た目などが該当する。
+/// クエリで許可するオプション。
 const ALLOWED_QUERY_KEYS: &[&str] = &[
     // ページの体裁
     "page-size",
@@ -91,10 +78,6 @@ const ALLOWED_QUERY_KEYS: &[&str] = &[
 ];
 
 /// サーバ起動時にだけ決められるオプション。
-///
-/// [`ALLOWED_QUERY_KEYS`]に無い点では他と同じだが、「そもそも存在しない」
-/// のではなく「ここでは変えられない」ことを伝えたいので分けている。
-/// ローカルパスを取るもの・出力先・セキュリティ設定・ログ設定が該当する。
 const SERVER_ONLY_KEYS: &[&str] = &[
     "font",
     "font-index",
@@ -132,8 +115,6 @@ pub fn run(args: &ServerArgs) -> Result<(), CliError> {
         .to_ip()
         .map(|a| a.to_string())
         .unwrap_or_else(|| args.listen.clone());
-    // `--listen 127.0.0.1:0`で起動したときに実ポートを知るため、
-    // 待ち受け開始を標準出力へ1行で出す(E2Eテストもこれを使う)。
     println!("listening on {addr}");
 
     let server = Arc::new(server);
@@ -168,8 +149,7 @@ pub fn run(args: &ServerArgs) -> Result<(), CliError> {
                 let _ = respond_text(request, 504, "キューでの待ち時間が--timeoutを超えました");
                 continue;
             }
-            // 残り時間をレンダリングの期限にする(--timeoutはキュー待ちと
-            // レンダリングの合計に効く)。
+            // 残り時間をレンダリングの期限にする
             handle_request(request, &shared, queued_at + timeout);
         });
         handles.push(
@@ -220,8 +200,6 @@ fn handle_request(mut request: Request, ctx: &ServerContext, deadline: Instant) 
         }
         ("POST", "/pdf") if wants_chunked(&query) => {
             if let Err((status, message)) = respond_chunked(request, &query, ctx, deadline) {
-                // respondより前に失敗した場合のみここへ来る(requestは消費済み
-                // ではない)。ここでの`request`は使えないのでログだけ残す。
                 eprintln!("エラー: {status} {message}");
             }
         }
@@ -256,8 +234,7 @@ fn wants_chunked(query: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// `std::io::PipeWriter`へ書き出すSink。レンダリング
-/// 側(push)とHTTPレスポンス側(pull)をつなぐ。
+/// `std::io::PipeWriter`へ書き出すSink。レンダリング側(push)とHTTPレスポンス側(pull)をつなぐ。
 struct PipeSink(std::io::PipeWriter);
 
 impl Sink for PipeSink {
@@ -274,13 +251,6 @@ impl Sink for PipeSink {
 }
 
 /// `?stream=1`のときの応答。ページが確定したそばからchunkedで流す。
-///
-/// `tiny_http`の`Request`はボディ読み取り(`as_reader`が`&mut self`)と
-/// 応答(`respond`が`self`)が排他なので、入力は先に読み切ってから
-/// 出力を流す(入力ストリーミングとは同時に使えない)。
-///
-/// 既にヘッダを送ってしまうため、途中で失敗してもステータスは変えられない。
-/// その場合はパイプを閉じるだけになり、クライアントには不完全なPDFが届く。
 fn respond_chunked(
     mut request: Request,
     query: &str,
@@ -575,7 +545,7 @@ fn parse_query(query: &str) -> Result<Vec<(String, Option<String>)>, String> {
     Ok(out)
 }
 
-/// `%XX`と`+`をデコードする(依存を増やさないための自前実装)。
+/// `%XX`と`+`をdecodeする。
 fn percent_decode(text: &str) -> Result<String, String> {
     let bytes = text.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -710,10 +680,6 @@ mod tests {
 
     /// すべてのオプションが「クエリで指定してよい」か「サーバ起動時のみ」の
     /// どちらかに分類されていること。
-    ///
-    /// 新しいオプションを足したときにここが落ちる。許可リスト方式なので
-    /// 分類漏れがそのまま穴になることは無いが、意図せず使えなくなるのも
-    /// 困るので、追加時に必ず判断させるためのテスト。
     #[test]
     fn every_option_is_classified_as_allowed_or_server_only() {
         let command = Cli::command();

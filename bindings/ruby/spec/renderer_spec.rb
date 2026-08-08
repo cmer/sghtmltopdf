@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Renderer単体のテスト(T343)。Railsを読み込まずに振り分けだけを確かめる。
+# Renderer単体のテスト。Railsを読み込まずに振り分けだけを確かめる。
 RSpec.describe Sghtmltopdf::Renderer do
   def renderer(name = "invoice", **options)
     described_class.new(name, options)

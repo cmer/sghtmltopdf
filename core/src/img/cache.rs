@@ -1,15 +1,4 @@
 //! 文書内での画像取得結果のメモ化。
-//!
-//! 同じ`src`が同一文書内で何度参照されても、URL/パス分類
-//! ([`classify_img_src`])から実際のフェッチ/読み込み([`ImageFetcher`])までを
-//! 初回の1回だけで済ませる。単一スレッド前提で`Rc`/`RefCell`により共有する
-//! (このプロジェクトのDOM構築・エンジン処理は一貫して単一スレッドであり、
-//! `html/parse.rs`の`Sink`も同様の前提で`RefCell`を使っている)。
-//!
-//! 成功したバイト列だけでなく失敗(取得不能・非対応srcなど)も記録する。
-//! 同じ壊れた`src`が文書中に何百回出てきても、毎回ネットワークタイムアウトを
-//! 待ち直したりはしない(「ブロック対象URLを埋め込むことで処理全体を
-//! 遅延させる」可用性上の懸念への対処を兼ねる)。
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -21,11 +10,6 @@ use super::ImageFetcher;
 type CachedFetch = Result<Rc<[u8]>, Rc<str>>;
 
 /// 文書1つ分の画像取得結果キャッシュ。
-///
-/// 現時点(T47)ではフェッチ結果の生バイト列をキャッシュする。デコード
-/// 結果やPDF `Ref`の共有(box tree構築時にRefを払い出すT51以降の話)は
-/// このキャッシュの上位で扱う想定で、ここでは「同じ`src`に対して
-/// フェッチ処理を繰り返さない」という最小限の役割に留める。
 #[derive(Default)]
 pub struct DocumentImageCache {
     entries: RefCell<HashMap<String, CachedFetch>>,
@@ -36,7 +20,7 @@ impl DocumentImageCache {
         Self::default()
     }
 
-    /// 取得に失敗した参照が1つでもあるか(M12 T300)。
+    /// 取得に失敗した参照が1つでもあるか。
     pub fn had_errors(&self) -> Option<String> {
         self.entries
             .borrow()

@@ -1,4 +1,4 @@
-//! `box-sizing`のE2Eテスト(M9 Phase 1)。
+//! `box-sizing`のE2Eテスト。
 //!
 //! `box_model.rs`/`typography.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を検知する。

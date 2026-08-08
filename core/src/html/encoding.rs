@@ -1,7 +1,7 @@
-//! 入力HTMLの文字エンコーディング判定とデコード(M12 T299)。
+//! 入力HTMLの文字エンコーディング判定とデコード。
 //!
-//! sghtmltopdfの内部表現はUTF-8だが、入力が常にUTF-8とは限らない
-//! (M10 Phase 5の積み残し)。優先順位は
+//! sghtmltopdfの内部表現はUTF-8だが、入力が常にUTF-8とは限らない。
+//! 優先順位は
 //! BOM > `--encoding`の明示 > `<meta charset>` > UTF-8 とする。
 //! BOMを最優先にするのはHTML Standardのsniffing手順に合わせるため。
 //!

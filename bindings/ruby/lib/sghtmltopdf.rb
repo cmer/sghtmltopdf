@@ -15,28 +15,9 @@ rescue LoadError
   require "sghtmltopdf/sghtmltopdf"
 end
 
-# `Error`(ネイティブ拡張が定義)を継承するため、拡張の読み込みより後。
+# `Error`(ネイティブ拡張が定義)を継承するため、拡張の読み込みより後に書く。
 require_relative "sghtmltopdf/server_client"
 
-# Chromium/WebKit/Geckoに依存しないHTML→PDFレンダラー。
-#
-#   pdf = Sghtmltopdf.render("<h1>請求書</h1>", page_size: "A4")
-#   Sghtmltopdf.render_to_file(html, "invoice.pdf", margin_top: "20mm")
-#
-# オプション名はCLI(`sghtmltopdf --help`)と同じで、`_`が`-`に対応する
-# (`page_size:` → `--page-size`)。
-#
-# `server_url`を指定すると、変換をHTTPサーバモードで動く別プロセス
-# (`sghtmltopdf server`)へ委譲する。負荷分散は前段のLBに任せる前提でURLは
-# 1つだけ受け、サーバへ到達できないときは
-# `ServerError`にする(ローカルへフォールバックしない)。
-#
-#   Sghtmltopdf.configure { |c| c.server_url = "http://pdf.internal:8080" }
-#
-# 例外は`Sghtmltopdf::Error`を基底に、`UsageError`(オプションの誤り)・
-# `InputError`(入力やファイルの読み書き)・`RenderError`(レンダリング失敗)の
-# 3つ(ネイティブ拡張側で定義)と、サーバへ委譲したときだけ起きる
-# `ServerError`(到達不能・過負荷)。
 module Sghtmltopdf
   # ブロック付き`render`で1回に渡すバイト数の目安(ローカル変換のみ)。
   # ページ確定ごとにブロックを呼ぶとGVLの取り直しが増えるため、ここまで
@@ -137,8 +118,4 @@ module Sghtmltopdf
   end
 end
 
-# Rails統合(Railtie・`render pdf:`・ビューヘルパ)は、Railsが読み
-# 込まれているときだけ有効にする。通常のRailsアプリでは`config/application.rb`
-# の`rails/all`が先に走るため、Bundler.requireでこの
-# ファイルが読まれた時点で定数が揃っている。
 require_relative "sghtmltopdf/railtie" if defined?(::Rails::Railtie)

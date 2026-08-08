@@ -1,4 +1,4 @@
-//! CSS Custom Properties(`--foo`/`var()`)のE2Eテスト(M9 Phase 2)。
+//! CSS Custom Properties(`--foo`/`var()`)のE2Eテスト。
 //!
 //! `box_sizing.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
 //! カスケード→ページ分割→PDFエンコード)を通して回帰を検知する。

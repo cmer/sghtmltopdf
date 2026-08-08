@@ -1,5 +1,5 @@
 //! `text-shadow`/`text-overflow`/`word-break`/`overflow-wrap`/`hyphens`/
-//! `text-emphasis`のE2Eテスト(M11 T275)。
+//! `text-emphasis`のE2Eテスト。
 //!
 //! `typography.rs`と同じ方針: 実際のパイプライン(HTMLパース→スタイル
 //! カスケード→レイアウト→PDFエンコード)を通して回帰を検知する。

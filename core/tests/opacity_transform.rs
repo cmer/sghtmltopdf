@@ -1,4 +1,4 @@
-//! `opacity`/`transform`のE2Eテスト(M9完了後の追加機能)。
+//! `opacity`/`transform`のE2Eテスト。
 //!
 //! `paged_media.rs`と同じ方針で`Engine` APIを直接使い、バッチ・
 //! ストリーミング両モードを検証する(`opacity`はPDFの透明グループ

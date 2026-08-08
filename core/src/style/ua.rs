@@ -14,7 +14,7 @@
 //! `Inline`なので、UA規則の無い要素はインラインとして扱われ、その子孫テキストが
 //! 本文に流れ込む。描画できない埋め込みコンテンツ(`svg`/`canvas`/`video`等)や
 //! フォームコントロールは、代替内容・選択肢のテキストが本文に漏れないよう
-//! 明示的に`display: none`にする。フォームコントロールはM10カテゴリIで
+//! 明示的に`display: none`にする。フォームコントロールは
 //! `display: inline-block`の静的な見た目に置き換えた。
 
 use super::stylesheet::{parse_stylesheet, Stylesheet};
@@ -99,8 +99,7 @@ dialog:not([open]) {
 }
 
 /* `<details>`は`open`属性が無ければ`summary`以外の子要素を隠す。
-   直下の裸テキストノードはセレクタで指定できないため隠せない
-   (既知の限界)。 */
+   直下の裸テキストノードはセレクタで指定できないため隠せない。 */
 details:not([open]) > *:not(summary) {
   display: none;
 }
@@ -296,7 +295,7 @@ fieldset {
   min-width: 0;
 }
 
-/* `<q>`の自動引用符。`quotes`の初期値はM8で実装済みなので、
+/* `<q>`の自動引用符。`quotes`の初期値を実装済みなので、
    入れ子の深さに応じた引用符がこれだけで出る。 */
 q::before {
   content: open-quote;

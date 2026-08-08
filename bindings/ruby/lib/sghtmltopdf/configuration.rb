@@ -12,8 +12,7 @@ module Sghtmltopdf
   # (マージ順はグローバル → 呼び出し時)。
   #
   # キー名の妥当性は検査しない。オプション定義はRust側(`cli/options.rs`)の
-  # 1箇所に集約する方針のため、未知のキーはレンダリング時にclapが
-  # `UsageError`として報告する。
+  # 1箇所に集約する方針のため、未知のキーはレンダリング時にclapが`UsageError`をraiseする。
   class Configuration
     def initialize(options = {})
       @options = {}
@@ -41,7 +40,7 @@ module Sghtmltopdf
       with_defaults ? @defaults.merge(@options) : @options.dup
     end
 
-    # 既定値を流し込む。Railtieが Rails向けの既定値を入れるのに使う(T344)。
+    # 既定値を流し込む。Railtieが Rails向けの既定値を入れるのに使う。
     # 明示的に設定された値より弱い(順序に関係なく`[]=`が勝つ)。
     def apply_defaults(defaults)
       defaults.each { |key, value| @defaults[key.to_sym] = value }

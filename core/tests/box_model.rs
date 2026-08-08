@@ -1,6 +1,5 @@
 //! `overflow`/`z-index`/`outline`/`visibility`/`border-style`拡張
-//! (groove/ridge/inset/outset)/`border-radius`楕円のE2Eテスト
-//! (M8 Phase 2 Box model詳細)。
+//! (groove/ridge/inset/outset)/`border-radius`楕円のE2Eテスト。
 //!
 //! `list_style.rs`/`typography.rs`と同じ方針: 実際のパイプライン(HTMLパース→
 //! スタイルカスケード→ページ分割→PDFエンコード)を通して回帰を検知する。
@@ -181,7 +180,7 @@ fn border_radius_longhand_and_shorthand_render_a_valid_pdf() {
     assert_eq!(page_count, 1);
 }
 
-// ===== 親子間・空ブロックのマージン相殺(M11 Phase 2、T271) =====
+// ===== 親子間・空ブロックのマージン相殺 =====
 
 #[test]
 fn a_child_top_margin_collapses_through_a_borderless_parent() {
@@ -250,7 +249,7 @@ fn a_document_using_margin_collapse_renders_a_valid_pdf() {
     assert!(bytes.starts_with(b"%PDF-"));
 }
 
-// ===== calc(M11 Phase 2、T272) =====
+// ===== calc =====
 
 #[test]
 fn calc_width_mixes_percentage_and_pixels() {

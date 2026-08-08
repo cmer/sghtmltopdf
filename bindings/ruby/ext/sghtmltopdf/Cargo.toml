@@ -1,10 +1,6 @@
 [package]
-# パッケージ名がRubyの初期化シンボル名(`Init_<パッケージ名>`)を決める
-# (`#[magnus::init]`が`CARGO_PKG_NAME`から生成する)。`sghtmltopdf-rb`のような
-# 名前にすると`Init_sghtmltopdf_rb`になり`require "sghtmltopdf/sghtmltopdf"`が
-# LoadErrorになるため、gem名と同じ`sghtmltopdf`にする。
 name = "sghtmltopdf"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 publish = false
 description = "Ruby binding for sghtmltopdf (see bindings/ruby)"
@@ -15,7 +11,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # `rb-sys` featureで`AsRawValue`/`FromRawValue`が使えるようになる
-# (GVL解放区間をまたいでブロックを運ぶのに必要)。
 magnus = { version = "0.8", features = ["rb-sys"] }
 # GVL解放(`rb_thread_call_without_gvl`)はmagnusに無いので直接呼ぶ。
 rb-sys = "0.9"
