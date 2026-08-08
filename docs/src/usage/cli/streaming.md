@@ -66,7 +66,7 @@ sghtmltopdf big.html -o big.pdf --streaming
 
 測定条件は次のとおりです。
 
-* sghtmltopdf 0.2.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / WSL2(Linux 5.15)
+* sghtmltopdf 0.1.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / WSL2(Linux 5.15)
 * 高さ60pxの`<p>`を要素数ぶん並べただけのHTML。フォントは`--font`で明示
 * ピークメモリはプロセスの最大常駐セットサイズ(RSS)。2回実行して良いほうの値
 

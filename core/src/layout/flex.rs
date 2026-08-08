@@ -105,14 +105,20 @@ pub(super) fn layout_taffy_subtree(
 
     let mut tree: tf::TaffyTree<usize> = tf::TaffyTree::new();
 
-    let leaves: Vec<tf::NodeId> = flex_items
+    // `box_style`は`ComputedStyle`(1KB超)を複製するので、アイテムごとに1回だけ
+    // 作って以降は使い回す(採寸コールバックは1アイテムにつき何度も呼ばれる)。
+    let item_styles: Vec<std::borrow::Cow<'_, ComputedStyle>> = flex_items
+        .iter()
+        .map(|item| box_style(item, styles))
+        .collect();
+
+    let leaves: Vec<tf::NodeId> = item_styles
         .iter()
         .enumerate()
-        .map(|(index, item)| {
-            let item_style = box_style(item, styles);
+        .map(|(index, item_style)| {
             let leaf_style = match mode {
-                TaffyMode::Flex => item_taffy_style(&item_style),
-                TaffyMode::Grid => super::grid::item_taffy_style(&item_style),
+                TaffyMode::Flex => item_taffy_style(item_style),
+                TaffyMode::Grid => super::grid::item_taffy_style(item_style),
             };
             tree.new_leaf_with_context(leaf_style, index)
                 .expect("taffyへのリーフノード追加は失敗しない")
@@ -127,6 +133,14 @@ pub(super) fn layout_taffy_subtree(
         .new_with_children(root_style, &leaves)
         .expect("taffyへのルートノード追加は失敗しない");
 
+    // 採寸コールバックはtaffyの各パスから同じアイテムに対して何度も呼ばれる。
+    // 中身は`(アイテム, 幅)`が決まれば一意に決まる純粋な計算なので、結果を
+    // 覚えておいて2回目以降を省く。受領書1通で採寸内のフルレイアウトが188回
+    // 走り、そのうち最終レイアウトへ活きるのは52回だけ、という状態だった。
+    let mut natural_widths: HashMap<usize, f32> = HashMap::new();
+    // 高さは幅が決まらないと決まらないので、幅もキーに含める。
+    let mut measured_heights: HashMap<(usize, u32), f32> = HashMap::new();
+
     tree.compute_layout_with_measure(
         root,
         tf::Size {
@@ -138,12 +152,12 @@ pub(super) fn layout_taffy_subtree(
                 return tf::Size::ZERO;
             };
             let item = &flex_items[index];
-            let item_style = box_style(item, styles);
+            let item_style = &item_styles[index];
 
             // パディング/ボーダーはCSS仕様通り常に「containing blockの幅」
             // (=flexコンテナのcontent_width)基準で解決する(水平・垂直とも)。
-            let padding = resolve_padding(&item_style, content_width);
-            let border = resolve_border(&item_style);
+            let padding = resolve_padding(item_style, content_width);
+            let border = resolve_border(item_style);
             let pb_x = padding.left + padding.right + border.left + border.right;
             let pb_y = padding.top + padding.bottom + border.top + border.bottom;
 
@@ -157,18 +171,17 @@ pub(super) fn layout_taffy_subtree(
                 .width
                 .map(|w| (w - pb_x).max(0.0))
                 .unwrap_or_else(|| {
+                    let natural = *natural_widths.entry(index).or_insert_with(|| {
+                        measure_natural_content_width(&item.content, styles, fonts)
+                    });
                     match available_space.width {
                         // 「使える幅」が確定していても、内容がそれより狭ければ
                         // 内容幅を返す。ここで常に`w`を返すと、内容幅に縮むべき
                         // ケース(Gridの`justify-items: start`等)で常にトラック
                         // 幅いっぱいになってしまう。
-                        tf::AvailableSpace::Definite(w) => {
-                            measure_natural_content_width(&item.content, styles, fonts).min(w)
-                        }
+                        tf::AvailableSpace::Definite(w) => natural.min(w),
                         // min-contentとmax-contentは区別しない(既知の簡略化)。
-                        tf::AvailableSpace::MinContent | tf::AvailableSpace::MaxContent => {
-                            measure_natural_content_width(&item.content, styles, fonts)
-                        }
+                        tf::AvailableSpace::MinContent | tf::AvailableSpace::MaxContent => natural,
                     }
                 });
 
@@ -176,20 +189,24 @@ pub(super) fn layout_taffy_subtree(
                 .height
                 .map(|h| (h - pb_y).max(0.0))
                 .unwrap_or_else(|| {
-                    let outer_width = width + pb_x;
+                    *measured_heights
+                        .entry((index, width.to_bits()))
+                        .or_insert_with(|| {
+                            let outer_width = width + pb_x;
 
-                    let mut float_ctx = FloatContext::new();
-                    let laid = layout_box_with_forced_width_ignoring_positioned(
-                        item,
-                        styles,
-                        fonts,
-                        outer_width,
-                        width,
-                        &mut float_ctx,
-                        0.0,
-                        0.0,
-                    );
-                    laid.layout.content.height
+                            let mut float_ctx = FloatContext::new();
+                            let laid = layout_box_with_forced_width_ignoring_positioned(
+                                item,
+                                styles,
+                                fonts,
+                                outer_width,
+                                width,
+                                &mut float_ctx,
+                                0.0,
+                                0.0,
+                            );
+                            laid.layout.content.height
+                        })
                 });
 
             tf::Size { width, height }
@@ -203,7 +220,7 @@ pub(super) fn layout_taffy_subtree(
         let item_layout = tree
             .layout(leaf)
             .expect("直前にcompute_layout_with_measureで計算済み");
-        let item_style = box_style(item, styles);
+        let item_style = &item_styles[index];
 
         // taffyのLayout.size/padding/borderはborder-box前提(スパイクで実測確認
         // 済み)。content-box幅・高さへ変換する。

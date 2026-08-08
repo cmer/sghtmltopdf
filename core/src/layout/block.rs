@@ -1,5 +1,6 @@
 //! Block Formatting Context: containing blockに基づく幅計算と、
 //! ブロック要素の縦積み配置(CSS2.1 §10.3.3, §9.4.1の簡略版)。
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -559,7 +560,7 @@ fn resolve_box_geometry(
     containing_width: f32,
     forced_content_width: Option<f32>,
 ) -> (ComputedStyle, EdgeSizes, EdgeSizes, EdgeSizes, f32) {
-    let mut style = box_style(b, styles);
+    let mut style = box_style(b, styles).into_owned();
     if let BoxContent::Image(image_content) = &b.content {
         apply_replaced_element_auto_size(&mut style, image_content, containing_width);
     }
@@ -1051,17 +1052,23 @@ pub(crate) fn has_visible_decoration(style: &ComputedStyle, border: &EdgeSizes) 
     .any(|(width, border_style)| width > 0.0 && border_style != BorderStyle::None)
 }
 
-pub(super) fn box_style(
+/// ボックスの計算済みスタイル。
+///
+/// 実要素のスタイルは`styles`が持つものをそのまま借りる。`ComputedStyle`は
+/// 1KBを超えるうえ`font_family: Vec<String>`を持つため、複製するとレイアウト
+/// のたびにヒープ確保が積み上がる(表のセルでは1セルあたり3回呼ばれる)。
+/// 書き換えたい呼び出し側だけが`into_owned`で複製する。
+pub(super) fn box_style<'a>(
     b: &LayoutBox,
-    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
-) -> ComputedStyle {
+    styles: &'a HashMap<NodeId, Rc<ComputedStyle>>,
+) -> Cow<'a, ComputedStyle> {
     match b.node {
-        Some(node) => (*styles[&node]).clone(),
+        Some(node) => Cow::Borrowed(&styles[&node]),
         // 無名ボックス(CSS2.1 9.2.1.1)。マージン/パディング/枠線を持たないblock。
-        None => ComputedStyle {
+        None => Cow::Owned(ComputedStyle {
             display: Display::Block,
             ..ComputedStyle::default()
-        },
+        }),
     }
 }
 

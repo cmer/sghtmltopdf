@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-08T20:14:25+09:00\n"
+"POT-Creation-Date: 2026-08-08T21:13:52+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1942,7 +1942,7 @@ msgstr ""
 
 #: src/usage/cli/streaming.md:69
 msgid ""
-"sghtmltopdf 0.2.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / WSL2(Linux "
+"sghtmltopdf 0.1.0のreleaseビルド、Intel Core Ultra 7 258V / メモリ16GB / WSL2(Linux "
 "5.15)"
 msgstr ""
 
