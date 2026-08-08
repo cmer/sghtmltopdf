@@ -1,4 +1,5 @@
 /.claude
 /docs/book
+/docs/po/*.po~
 /target
 CLAUDE.md
