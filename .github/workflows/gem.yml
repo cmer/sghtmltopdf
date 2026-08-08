@@ -38,8 +38,11 @@ jobs:
         with:
           platform: ${{ matrix.platform }}
           working-directory: bindings/ruby
-          # 焼き込むRuby ABIはrb-sysのイメージが対応する既定の集合に任せる
-          ruby-versions: default
+          # 焼き込むRuby ABIを明示する。既定(`default`)はrb-sysのイメージが対応する
+          # 全ABI(3.0から)になり、rake-compilerがその範囲でgemspecの
+          # `required_ruby_version`を上書きするため、gemspecの`>= 3.2.0`より緩い
+          # precompiled gemが出てしまう。ABI1つあたり9MB増える点でも絞る意味がある。
+          ruby-versions: "3.2,3.3,3.4,4.0"
       - name: 同梱されたRuby ABIを表示する
         run: |
           gem=$(find bindings/ruby/pkg -name '*-${{ matrix.platform }}.gem')

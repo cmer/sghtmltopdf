@@ -8,11 +8,13 @@ Gem::Specification.new do |spec|
   spec.authors = ["yo_waka"]
   spec.email = ["y.wakahara@gmail.com"]
 
-  spec.summary = "Chromium/WebKit/Geckoに依存しないHTML→PDFレンダラー"
+  spec.summary = "HTML to PDF renderer that does not depend on Chromium, WebKit, or Gecko"
   spec.description = <<~DESC
-    wkhtmltopdfの後継として、Chromium/WebKit/Geckoに依存しないRust製の
-    HTML→PDFレンダリングエンジンをRubyから使うためのバインディング。
-    Railsからはwicked_pdf互換のレンダラ(`render pdf: "invoice"`)で使える。
+    Ruby binding for sghtmltopdf, a successor to wkhtmltopdf: an HTML-to-PDF
+    rendering engine written in Rust that needs no browser process. The engine
+    runs in-process through a native extension and releases the GVL while
+    rendering. On Rails it registers a wicked_pdf compatible renderer, so
+    `render pdf: "invoice"` works with the keys you already use.
   DESC
   spec.homepage = "https://github.com/waka/sghtmltopdf"
   spec.license = "MIT"
