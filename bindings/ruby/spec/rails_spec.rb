@@ -30,9 +30,15 @@ RSpec.describe "Railsのコントローラ", type: :rails do
     end
   end
 
-  # `examples/`のサンプルをdummyアプリのビューとpublic/へ複製してあるので、
-  # Rails経由の出力とCLIが書き出したゴールデンPDFを直接比べられる。両者が
-  # 食い違うのは、Rails統合層がHTMLかオプションを取りこぼしたとき。
+  # `examples/`のサンプル(外部CSSを`<link>`で読む、実務に近い帳票)を
+  # dummyアプリのビューとpublic/へ複製し、Rails経由でも同じPDFになることを見る。
+  #
+  # チェックインしたPDFとのバイト比較はしない。`examples/main.css`の
+  # `font-family`はシステムフォントを名前で引くため、出力バイトがホストに
+  # 入っているフォントで変わってしまう。代わりに同一プロセス内の
+  # `Sghtmltopdf.render`と突き合わせる。どちらも同じフォント解決を通るので
+  # 環境に依存せず、それでいて「Rails統合層がHTMLかオプションを取りこぼす」
+  # 退行はきちんと捕まえられる。
   #
   # symlinkではなく複製にしているのは、`--allow`がsymlinkを辿った先の実体
   # パスで判定するため。`Rails.root`の外を指すsymlinkはCSSごと弾かれる。
@@ -47,11 +53,24 @@ RSpec.describe "Railsのコントローラ", type: :rails do
       expect(File.binread(Rails.root.join("public/main.css"))).to eq(example("main.css"))
     end
 
-    it "CLIが書き出したPDFとバイト単位で一致する" do
+    it "直接変換した場合と同じPDFになる" do
       get "/invoices/receipt"
+      html = InvoicesController.render(template: "invoices/receipt", layout: false)
 
       expect(last_response.status).to eq(200)
-      expect(normalize(last_response.body)).to eq(normalize(example("receipt.pdf")))
+      expect(normalize(last_response.body)).to eq(normalize(Sghtmltopdf.render(html)))
+    end
+
+    it "public/main.cssが実際に当たっている" do
+      get "/invoices/receipt"
+      styled = last_response.body
+      # base_urlを空のディレクトリにするとmain.cssを解決できない(取得失敗は
+      # 既定で無視される)。同じHTMLでも結果が変わることで、上のspecが
+      # 「CSSが両方とも当たっていない」状態で通っていないことを担保する。
+      html = InvoicesController.render(template: "invoices/receipt", layout: false)
+      unstyled = Dir.mktmpdir { |dir| Sghtmltopdf.render(html, base_url: dir) }
+
+      expect(normalize(styled)).not_to eq(normalize(unstyled))
     end
   end
 
