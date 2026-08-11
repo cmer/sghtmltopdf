@@ -28,6 +28,14 @@ Compared with the common headless-Chrome approach:
 * Streaming. HTML is read in chunks and each page is written out as soon as its layout is final, so memory does not grow with document size (measured: 228MB → 28MB on a 60,000-element document).
 * Page breaks are first class. CSS Fragmentation (`break-before`, `break-inside`, `orphans`, `widows`) and `@page` are implemented directly.
 
+### What is actually rendering this
+
+The layout engine is written for this project. HTML parsing is [html5ever](https://github.com/servo/html5ever), CSS parsing is [cssparser](https://github.com/servo/rust-cssparser), and selector matching is the [selectors](https://github.com/servo/stylo) crate all from Servo, and all of them battle-tested (Firefox ships the same selector engine through Stylo). Those give a DOM and computed styles. Everything after that box generation, line breaking, table layout, pagination, PDF writing—is code in this repository.
+
+That is the whole reason for the trade-off in both directions. CSS coverage is a subset rather than everything a browser supports, because every property is implemented here rather than inherited. And in return, pagination is what the engine is built around instead of something bolted onto a screen-oriented layout: repeating table headers across page breaks, `@page` margin boxes, and streaming a page out the moment its layout is final are all things a browser cannot be asked to do.
+
+Text shaping and font handling go through the usual Rust stack. No browser engine is embedded, and this is not a fork of anything.
+
 Future-goals: executing JavaScript, pixel-perfect parity with browsers, and full CSS coverage. See [what is not supported](https://waka.github.io/sghtmltopdf/appendix/limitations.html).
 
 ### Where the name comes from
