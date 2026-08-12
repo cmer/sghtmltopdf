@@ -6989,8 +6989,8 @@ msgid "マージンの既定値"
 msgstr "Default margins"
 
 #: src/migration/wkhtmltopdf.md:14
-msgid "左右10mm"
-msgstr "10mm left and right"
+msgid "四辺10mm"
+msgstr "10mm on all four sides"
 
 #: src/migration/wkhtmltopdf.md:14
 msgid "四辺1in(96px)"
@@ -7079,12 +7079,16 @@ msgstr ""
 
 #: src/migration/wkhtmltopdf.md:35
 msgid ""
-"wkhtmltopdfは左右10mm、sghtmltopdfは四辺1インチ(96px = 25.4mm)です。 指定なし"
-"で変換すると余白が変わるので、既存の見た目を保つには明示します。"
+"wkhtmltopdfは四辺10mm、sghtmltopdfは四辺1インチ(96px = 25.4mm)です。 "
+"wkhtmltopdfの`--extended-help`は左右にしか既定値を書いていませんが、実際には"
+"上下にも10mmが入ります。 指定なしで変換すると余白が変わるので、既存の見た目を"
+"保つには明示します。"
 msgstr ""
-"wkhtmltopdf uses 10mm on the left and right, sghtmltopdf 1 inch (96px, or "
-"25.4mm) on all four sides. Converting without saying anything therefore "
-"changes the margins, so state them to keep the existing look."
+"wkhtmltopdf uses 10mm on all four sides, sghtmltopdf 1 inch (96px, or "
+"25.4mm). wkhtmltopdf's `--extended-help` only documents a default for the "
+"left and right margins, but the binary applies 10mm to the top and bottom "
+"as well. Converting without saying anything therefore changes the margins, "
+"so state them to keep the existing look."
 
 #: src/migration/wkhtmltopdf.md:46
 msgid "# wkhtmltopdf\n"
@@ -7590,15 +7594,16 @@ msgstr "`-V, --version`"
 
 #: src/migration/wkhtmltopdf-options.md:58
 msgid ""
-"マージンの既定値: wkhtmltopdfは左右10mm・上下未指定だが、sghtmltopdfの現在の"
-"既定は四辺96px(＝1in＝25.4mm)。 既存の出力を変えないため既定値は変更しない。 "
-"移行時は`--margin-*`を明示すること。"
+"マージンの既定値: wkhtmltopdfは四辺10mm(`--extended-help`には左右の既定値しか"
+"載っていないが、実際は上下も10mm)だが、sghtmltopdfの現在の既定は四辺96px(＝"
+"1in＝25.4mm)。 既存の出力を変えないため既定値は変更しない。 移行時は`--margin-"
+"*`を明示すること。"
 msgstr ""
-"Default margins: wkhtmltopdf uses 10mm left and right and leaves top and "
-"bottom unset, while sghtmltopdf currently defaults to 96px, that is 1in or "
-"25.4mm, on all four sides. The default is not being changed, so that "
-"existing output stays as it is. State `--margin-*` explicitly when you move "
-"across."
+"Default margins: wkhtmltopdf uses 10mm on all four sides (`--extended-help` "
+"only lists a default for left and right, but top and bottom are 10mm too), "
+"while sghtmltopdf currently defaults to 96px, that is 1in or 25.4mm, on all "
+"four sides. The default is not being changed, so that existing output stays "
+"as it is. State `--margin-*` explicitly when you move across."
 
 #: src/migration/wkhtmltopdf-options.md:62
 msgid "Outline Options"
@@ -8494,11 +8499,24 @@ msgstr "Differences in the defaults"
 
 #: src/migration/wicked-pdf.md:119
 msgid ""
-"マージン: wkhtmltopdfは左右10mm。sghtmltopdfは四辺1in(96px)。 同じ見た目にし"
+"マージン: wkhtmltopdfは四辺10mm。sghtmltopdfは四辺1in(96px)。 同じ見た目にし"
 "たければ`margin_*`を明示する"
 msgstr ""
-"Margins: wkhtmltopdf uses 10mm left and right, sghtmltopdf 1in (96px) on all "
-"four sides. State `margin_*` explicitly to keep the same look"
+"Margins: wkhtmltopdf uses 10mm on all four sides, sghtmltopdf 1in (96px) on "
+"all four sides. State `margin_*` explicitly to keep the same look"
+
+#: src/migration/wicked-pdf.md:123
+msgid ""
+"`disable_local_file_access`との併用: `--allow`は読み取り範囲を狭めるだけで、"
+"許可を与えるものではない。wicked_pdfで`disable_local_file_access: true`と"
+"`allow: [dir]`を併用して「dirだけ読める」状態にしていた場合、そのまま持ち込む"
+"とローカル読み取りが全て止まる。`allow`だけを残すこと"
+msgstr ""
+"Combining with `disable_local_file_access`: `--allow` only narrows the range "
+"of local reads, it does not grant them. If you used "
+"`disable_local_file_access: true` together with `allow: [dir]` in wicked_pdf "
+"to mean \"only dir is readable\", carrying both across stops local reads "
+"entirely. Keep `allow` on its own."
 
 #: src/migration/wicked-pdf.md:121
 msgid ""

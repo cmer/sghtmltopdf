@@ -63,10 +63,10 @@ module Sghtmltopdf
       # 配列は同じオプションの繰り返し。要素ごとに同じ規則を適用する。
       when Array then value.flat_map { |element| pairs_for(key, element) }
       when Hash
-        # wicked_pdfの`margin: {top: 10}`のような入れ子は受けない。数値の
-        # 単位の解釈が違う(wicked_pdfはmm・こちらはpx)ため、機械的に
-        # 平坦化すると黙って別の余白になる。移行時は
-        # 移行ガイドの対応表を見て書き換えてもらう。
+        # wicked_pdfの`margin: {top: 10}`のような入れ子は受けない。対応する
+        # CLIフラグが無く、機械的に平坦化すると綴り違いのキーまで黙って
+        # 通ってしまう。移行時は移行ガイドの対応表を見て書き換えてもらう。
+        # なお単位を省いた数値の解釈はwicked_pdfと同じくmm(`cli/units.rs`)。
         example = value.keys.first
         raise ArgumentError,
           "#{key}にHashは渡せません(pathとindexを取るのは:fontだけです)。" \
