@@ -24,6 +24,7 @@
 //! `pdf-writer`は圧縮を自前で行わないため、サブセット後のフォントバイト列は
 //! `flate2`でzlib(`/FlateDecode`)圧縮してから埋め込む。
 
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::io::Write;
 
@@ -62,12 +63,26 @@ impl FontUsage {
     ///
     /// 1文字とは限らないのは合字のため(`fl`が1グリフになる等)。1文字しか
     /// 持たせないと、PDFのテキスト抽出・検索で"float"が"foat"になる。
+    ///
+    /// 複数の文字が同じグリフを共有することもある。フォントが`&nbsp;`の
+    /// グリフを持たない場合、シェイパーはspaceのグリフで代替する(HarfBuzzの
+    /// space fallback)ため、そのグリフは文書内でU+0020とU+00A0の両方を表す。
+    /// 先勝ちのままだと、文書中で`&nbsp;`が先に現れただけで以後すべての空白が
+    /// U+00A0として抽出され、テキスト検索やコピーが壊れる。衝突したときは
+    /// 普通のspaceを優先する。
     pub fn record(&mut self, font: &Font, glyph_id: u16, text: &str) {
-        self.glyphs.entry(glyph_id).or_insert_with(|| {
-            let advance = font.glyph_hor_advance(glyph_id).unwrap_or(0) as f32;
-            let width_1000 = advance * 1000.0 / font.units_per_em() as f32;
-            (width_1000, text.to_string())
-        });
+        match self.glyphs.entry(glyph_id) {
+            Entry::Vacant(slot) => {
+                let advance = font.glyph_hor_advance(glyph_id).unwrap_or(0) as f32;
+                let width_1000 = advance * 1000.0 / font.units_per_em() as f32;
+                slot.insert((width_1000, text.to_string()));
+            }
+            Entry::Occupied(mut slot) => {
+                if text == " " && slot.get().1 != " " {
+                    slot.get_mut().1 = text.to_string();
+                }
+            }
+        }
     }
 }
 
@@ -351,6 +366,41 @@ mod tests {
             data.len(),
             compressed.len()
         );
+    }
+
+    const TEST_FONT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+
+    /// `&nbsp;`のグリフを持たないフォントでは、シェイパーがspaceのグリフで
+    /// 代替するため1つのグリフが両方を表す。その場合でも`/ToUnicode`は
+    /// 普通のspaceを指すようにする(そうしないと文書中の空白すべてが
+    /// U+00A0として抽出され、テキスト検索やコピーが壊れる)。
+    #[test]
+    fn a_glyph_shared_by_a_space_and_a_no_break_space_maps_to_the_space() {
+        let font = Font::load(TEST_FONT).expect("should load bundled test font");
+        let space_glyph = 3;
+
+        // `&nbsp;`が先に現れた場合でもspaceが勝つ。
+        let mut nbsp_first = FontUsage::default();
+        nbsp_first.record(&font, space_glyph, "\u{a0}");
+        nbsp_first.record(&font, space_glyph, " ");
+        assert_eq!(nbsp_first.glyphs[&space_glyph].1, " ");
+
+        // 逆順でもspaceのまま(`&nbsp;`で上書きしない)。
+        let mut space_first = FontUsage::default();
+        space_first.record(&font, space_glyph, " ");
+        space_first.record(&font, space_glyph, "\u{a0}");
+        assert_eq!(space_first.glyphs[&space_glyph].1, " ");
+    }
+
+    #[test]
+    fn a_ligature_cluster_keeps_the_text_it_was_first_recorded_with() {
+        // 合字は複数文字を1グリフで表す。空白の優先は合字の記録を壊さない。
+        let font = Font::load(TEST_FONT).expect("should load bundled test font");
+        let mut usage = FontUsage::default();
+        usage.record(&font, 100, "fl");
+        usage.record(&font, 100, "fl");
+
+        assert_eq!(usage.glyphs[&100].1, "fl");
     }
 
     #[test]
