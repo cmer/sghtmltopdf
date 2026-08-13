@@ -15,6 +15,8 @@ use crate::style::{
     ListStylePosition, ListStyleType, RgbaColor,
 };
 
+use super::white_space;
+
 #[derive(Debug, Clone)]
 pub struct LayoutBox {
     /// 対応するDOM要素。無名ボックスの場合は`None`。
@@ -995,7 +997,7 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
     // `text`が空でも意味のある内容なので、1つでもあれば無名ブロックを作る
     let has_meaningful_content = pending
         .iter()
-        .any(|span| span.atomic.is_some() || !span.text.trim().is_empty());
+        .any(|span| span.atomic.is_some() || !white_space::is_collapsible_only(&span.text));
     if has_meaningful_content {
         let mut spans = std::mem::take(pending);
         spans.shrink_to_fit();
@@ -1036,7 +1038,9 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>, node: Node
             }
         }
         NodeData::Text { contents } => {
-            if contents.trim().is_empty() {
+            // `&nbsp;`だけのテキストノードは「空白のみ」ではない(畳み込まれない
+            // 内容を持つ)ので、`str::trim`ではなくCSSの分類で判定する。
+            if white_space::is_collapsible_only(contents) {
                 ChildKind::Whitespace
             } else {
                 ChildKind::Inline

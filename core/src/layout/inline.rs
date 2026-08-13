@@ -15,6 +15,7 @@ use super::block::LaidOutBox;
 use super::box_tree::{BoxContent, InlineSpan, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::Rect;
+use super::white_space;
 
 /// `display: inline-block`のプレースホルダ文字(U+FFFC OBJECT REPLACEMENT
 /// CHARACTER)。実際には描画されず、行組みが箱の位置を保つためだけに使う。
@@ -872,10 +873,14 @@ fn apply_text_transform(ch: char, transform: TextTransform, is_word_start: bool)
     }
 }
 
-/// `char::is_whitespace`基準で`str::split_whitespace`相当に単語分割しつつ、
+/// 畳み込み対象の空白([`white_space::is_collapsible`])で単語分割しつつ、
 /// `<br>`由来の強制改行を[`InlineItem::ForcedBreak`]として出現順に挟み込む。
 /// 連続する空白は畳み込み、先頭・末尾の空白は無視する(強制改行は
 /// 空白ではあるが畳み込まれず、常に1つのアイテムとして残る)。
+///
+/// `&nbsp;`やthin spaceは単語区切りにはならず、単語の一部として
+/// [`split_word_into_runs`]へ渡る(畳み込まれず、フォント本来の字幅で描かれ、
+/// 改行の可否は[`is_break_boundary`]が決める)。
 fn split_into_items(chars: &[StyledChar]) -> Vec<InlineItem<'_>> {
     let mut items = Vec::new();
     let mut word_start = 0usize;
@@ -899,7 +904,7 @@ fn split_into_items(chars: &[StyledChar]) -> Vec<InlineItem<'_>> {
             word_start = i + 1;
             continue;
         }
-        if !sc.ch.is_whitespace() {
+        if !white_space::is_collapsible(sc.ch) {
             continue;
         }
         if word_start < i {
@@ -1218,6 +1223,16 @@ fn split_run_at_width(run: &TextRun, max_width: f32) -> (Option<TextRun>, Option
 /// 改行可能とみなす簡略判定(UAX#14の全面実装ではない)。`break-all`はすべての
 /// 文字境界、`keep-all`はCJK境界でも改行しない。
 fn is_break_boundary(prev: char, next: char, word_break: WordBreak) -> bool {
+    // `&nbsp;`等(UAX #14のGL・WJ)は前後の改行を禁止する。これは`word-break`
+    // より優先する: 「10&nbsp;kg」を分断しないために置かれた文字なので、
+    // `break-all`でも守るのが利用者の意図に合う(ブラウザも同様)。
+    if white_space::is_non_breaking(prev) || white_space::is_non_breaking(next) {
+        return false;
+    }
+    // thin space等(BA)とZWSP(ZW)の直後は改行してよい。
+    if white_space::allows_break_after(prev) {
+        return true;
+    }
     match word_break {
         WordBreak::BreakAll => true,
         WordBreak::KeepAll => false,
