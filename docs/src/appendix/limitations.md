@@ -59,6 +59,10 @@
 `&nbsp;`・narrow no-break space・figure space・word joinerの前後では改行しません
 (`word-break: break-all`を指定した場合も同様です)。
 
+`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよい」という
+指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りません
+(`<wbr>`を挟んでも抽出結果は繋がったままです)。
+
 この範囲での既知の制限は以下です。
 
 * `text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の空白のみ)

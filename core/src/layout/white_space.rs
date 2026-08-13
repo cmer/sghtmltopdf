@@ -24,6 +24,9 @@
 //! グリフを持たないフォントで.notdefが出るのを避けるため、ここでは畳み込む
 //! 空白(=単語区切り)として扱う(従来の挙動のまま)。
 
+/// 幅を持たない改行機会(UAX #14のZWクラス)。`<wbr>`の実体でもある。
+pub(crate) const ZERO_WIDTH_SPACE: char = '\u{200b}';
+
 /// 畳み込みの対象になる空白かどうか(CSS Text 3の"collapsible white space")。
 ///
 /// `white-space: normal`ではこの文字の並びが1個の単語間スペースになり、行頭・
@@ -65,9 +68,11 @@ pub(crate) fn is_non_breaking(ch: char) -> bool {
     )
 }
 
-/// 直後で改行してよい空白かどうか(UAX #14のBA・ZW)。
+/// 直後で改行してよい空白かどうか(UAX #14のBA)。
 ///
-/// 幅を持つ整形用スペース(thin space等)と、幅を持たないZWSPの両方を含む。
+/// 幅を持つ整形用スペース(thin space等)が対象。ZWSP(ZW)はここには現れない:
+/// グリフを出さずに改行機会のフラグへ畳むため、`inline::flatten_spans`が
+/// 文字の段階で取り除いている。
 /// U+3000 IDEOGRAPHIC SPACEは`inline::is_cjk`が既に改行機会として扱うため
 /// (かつ`word-break: keep-all`の対象であるべきなため)ここには含めない。
 pub(crate) fn allows_break_after(ch: char) -> bool {
@@ -76,7 +81,6 @@ pub(crate) fn allows_break_after(ch: char) -> bool {
         '\u{1680}'          // OGHAM SPACE MARK (BA)
         | '\u{2000}'..='\u{2006}' // EN QUAD〜SIX-PER-EM SPACE (BA)
         | '\u{2008}'..='\u{200a}' // PUNCTUATION/THIN/HAIR SPACE (BA)
-        | '\u{200b}'        // ZERO WIDTH SPACE (ZW)
         | '\u{205f}' // MEDIUM MATHEMATICAL SPACE (BA)
     )
 }
@@ -111,9 +115,13 @@ mod tests {
             assert!(is_non_breaking(ch));
             assert!(!allows_break_after(ch));
         }
-        for ch in ['\u{2002}', '\u{2009}', '\u{200a}', '\u{200b}', '\u{205f}'] {
+        for ch in ['\u{2002}', '\u{2009}', '\u{200a}', '\u{205f}'] {
             assert!(allows_break_after(ch));
             assert!(!is_non_breaking(ch));
         }
+        // ZWSPは文字として残らない(`inline::flatten_spans`が取り除く)ので
+        // どちらの表にも載せない。
+        assert!(!allows_break_after(ZERO_WIDTH_SPACE));
+        assert!(!is_non_breaking(ZERO_WIDTH_SPACE));
     }
 }

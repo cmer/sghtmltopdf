@@ -102,6 +102,9 @@ pub struct TextRun {
     /// このランの直前がsoft hyphen由来の改行機会かどうか。ここで行が
     /// 分かれたら、前の行の末尾にハイフンを表示する。
     pub(super) hyphen_before: bool,
+    /// このランの直前が改行機会かどうか(soft hyphen・ZWSP・`<wbr>`)。
+    /// ハイフンを出すかどうかは`hyphen_before`が別に持つ。
+    pub(super) break_before: bool,
     /// このランに適用された`vertical-align`の計算値(行の高さ確定後に
     /// `top`/`bottom`を後追いで解決するため、レイアウト中だけ使う)。
     pub(super) vertical_align: VerticalAlign,
@@ -151,6 +154,14 @@ struct StyledChar {
     /// 描画されないため文字列からは取り除き、改行機会としてこのフラグに
     /// 変換する。ここで行が分かれた場合は行末にハイフンを表示する。
     hyphen_before: bool,
+    /// この文字の直前が改行機会かどうか(soft hyphenとZWSP・`<wbr>`)。
+    ///
+    /// `hyphen_before`と分けているのは、ハイフンを表示するかどうかが違うため。
+    /// ZWSPは「幅ゼロの改行機会」でしかないので、グリフを1つも出さずにこの
+    /// フラグへ畳む。文字として残すと、フォントがZWSPのグリフを持たない場合に
+    /// spaceのグリフで代替され、`/ToUnicode`で普通の空白と衝突してPDFの
+    /// テキスト抽出が壊れる(空白がU+200Bとして取り出される)。
+    break_before: bool,
 }
 
 /// 通常フロー(`white-space: normal`/`nowrap`)の行組みの入力単位。
@@ -769,6 +780,14 @@ fn flatten_spans(
     let mut span_links: Vec<Option<Rc<str>>> = Vec::with_capacity(spans.len());
     // spanを跨いでも語頭判定を継続する(先頭は語頭扱い)。
     let mut prev_is_boundary = true;
+    // 直前にsoft hyphenがあったか。
+    //
+    // 改行機会は「次に来る文字」へ持ち越すため、spanの外で持つ必要がある。
+    // `<wbr>`は要素なので必ず単独のspanになり、span内に閉じた変数では
+    // 次のspanへ渡らない(`<span>foo&shy;</span><span>bar</span>`も同様)。
+    let mut hyphen_pending = false;
+    // 直前に改行機会(soft hyphen・ZWSP)があったか。
+    let mut break_pending = false;
 
     for span in spans {
         // スパンごとに背景色などを差し替えるため、共有スタイルから所有スタイルを作る。
@@ -797,20 +816,28 @@ fn flatten_spans(
                 style_index,
                 atomic_span: Some(style_index),
                 is_forced_break: false,
-                hyphen_before: false,
+                hyphen_before: hyphen_pending,
+                break_before: break_pending,
             });
+            hyphen_pending = false;
+            break_pending = false;
             prev_is_boundary = false;
             continue;
         }
 
         let hyphens = span_styles[style_index].hyphens;
-        // 直前にsoft hyphenがあったか。
-        let mut hyphen_pending = false;
         for ch in span.text.chars() {
             // soft hyphen(U+00AD)自身は描画しない。`hyphens: manual`(初期値)
             // なら改行機会として次の文字へ引き継ぎ、`none`なら単に捨てる。
             if ch == SOFT_HYPHEN {
                 hyphen_pending = hyphens == Hyphens::Manual;
+                break_pending |= hyphen_pending;
+                continue;
+            }
+            // ZWSP(`<wbr>`の実体)も描画しない。幅ゼロの改行機会でしかないため、
+            // グリフを出さずにフラグへ畳む(詳細は`StyledChar::break_before`)。
+            if ch == white_space::ZERO_WIDTH_SPACE {
+                break_pending = true;
                 continue;
             }
             let is_word_start = prev_is_boundary;
@@ -821,8 +848,10 @@ fn flatten_spans(
                 atomic_span: None,
                 is_forced_break: span.is_forced_break,
                 hyphen_before: hyphen_pending,
+                break_before: break_pending,
             });
             hyphen_pending = false;
+            break_pending = false;
             prev_is_boundary = ch.is_whitespace();
         }
     }
@@ -950,16 +979,20 @@ fn split_word_into_runs(
     let mut last_char: Option<char> = None;
     // 現在組み立て中のランの直前がsoft hyphen由来の改行機会かどうか。
     let mut current_hyphen_before = false;
+    // 同じく、直前が改行機会(soft hyphen・ZWSP)かどうか。
+    let mut current_break_before = false;
 
     let flush = |runs: &mut Vec<TextRun>,
                  current: Option<(usize, usize)>,
                  text: &str,
-                 hyphen_before: bool| {
+                 hyphen_before: bool,
+                 break_before: bool| {
         if let Some((style_index, fi)) = current {
             let mut run = shape_run(text, fi, fonts, &span_styles[style_index]);
             run.link = span_links.get(style_index).cloned().flatten();
             run.style_index = style_index;
             run.hyphen_before = hyphen_before;
+            run.break_before = break_before;
             runs.push(run);
         }
     };
@@ -979,7 +1012,7 @@ fn split_word_into_runs(
             (Some((style_index, fi)), Some(prev_ch)) => {
                 style_index == sc.style_index
                     && fi == font_index
-                    && !sc.hyphen_before
+                    && !sc.break_before
                     && !is_break_boundary(prev_ch, sc.ch, word_break)
             }
             _ => false,
@@ -988,14 +1021,27 @@ fn split_word_into_runs(
         if continues_current {
             current_text.push(sc.ch);
         } else {
-            flush(&mut runs, current, &current_text, current_hyphen_before);
+            flush(
+                &mut runs,
+                current,
+                &current_text,
+                current_hyphen_before,
+                current_break_before,
+            );
             current_text = sc.ch.to_string();
             current = Some((sc.style_index, font_index));
             current_hyphen_before = sc.hyphen_before;
+            current_break_before = sc.break_before;
         }
         last_char = Some(sc.ch);
     }
-    flush(&mut runs, current, &current_text, current_hyphen_before);
+    flush(
+        &mut runs,
+        current,
+        &current_text,
+        current_hyphen_before,
+        current_break_before,
+    );
 
     runs
 }
@@ -1009,8 +1055,8 @@ fn group_into_chunks(runs: Vec<TextRun>, word_break: WordBreak) -> Vec<Vec<TextR
     for run in runs {
         let starts_new_chunk = match chunks.last().and_then(|chunk| chunk.last()) {
             None => true,
-            // soft hyphenも改行機会。
-            Some(_) if run.hyphen_before => true,
+            // soft hyphen・ZWSP(`<wbr>`)も改行機会。
+            Some(_) if run.break_before => true,
             Some(prev) => is_break_boundary(
                 prev.text.chars().last().unwrap_or(' '),
                 run.text.chars().next().unwrap_or(' '),
@@ -1214,6 +1260,7 @@ fn split_run_at_width(run: &TextRun, max_width: f32) -> (Option<TextRun>, Option
     tail.x_offset = 0.0;
     // 後半は「単語の途中で切られた」だけなので、ハイフンは表示しない。
     tail.hyphen_before = false;
+    tail.break_before = false;
 
     (Some(head), Some(tail))
 }
@@ -1430,10 +1477,12 @@ pub(super) fn shape_run(
         text_shadow: (!style.text_shadow.is_empty())
             .then(|| Rc::from(style.text_shadow.as_slice())),
         emphasis,
-        // `style_index`/`hyphen_before`は呼び出し側(`split_word_into_runs`)が
-        // 設定する。単体で使う経路(`shape_standalone_line`等)では既定値でよい。
+        // `style_index`/`hyphen_before`/`break_before`は呼び出し側
+        // (`split_word_into_runs`)が設定する。単体で使う経路
+        // (`shape_standalone_line`等)では既定値でよい。
         style_index: 0,
         hyphen_before: false,
+        break_before: false,
     }
 }
 

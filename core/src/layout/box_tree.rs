@@ -1093,6 +1093,18 @@ fn collect_spans_in_context(
                 out.push(InlineSpan::forced_break(node));
                 return;
             }
+            // `<wbr>`は子を持たない「ここで改行してよい」マーカー
+            // (HTML仕様: line break opportunity)。ZWSPを1つ置くだけで、幅ゼロの
+            // 改行機会という同じ意味になる(`layout::white_space`が改行機会と
+            // して扱う)。ブラウザの実装も同様。
+            if &*name.local == "wbr" {
+                out.push(InlineSpan::text_in_inline_context(
+                    node,
+                    white_space::ZERO_WIDTH_SPACE.to_string(),
+                    context,
+                ));
+                return;
+            }
             // インラインの`<img>`(置換要素)も1つの箱として行に参加する。
             // 中身は`resolve_images`が後から`BoxContent::Image`へ差し替える。
             if &*name.local == "img" {
@@ -1352,6 +1364,24 @@ mod tests {
             spans[0].text, "one",
             "no span should precede the first word, got {spans:?}"
         );
+    }
+
+    #[test]
+    fn wbr_becomes_a_zero_width_space() {
+        // `<wbr>`は「ここで改行してよい」だけを表す要素。ZWSPを1つ置いて
+        // `layout::white_space`の改行機会の規則に載せる。
+        let dom = html::parse(br#"<p>aaa<wbr>bbb</p>"#);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let p_box = find_box(&tree, p).expect("p box not found");
+        let spans = find_inline_spans(p_box).expect("expected inline content");
+
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        assert_eq!(text, "aaa\u{200b}bbb");
+        // `<br>`とは違い強制改行ではない(改行「機会」を足すだけ)。
+        assert!(spans.iter().all(|span| !span.is_forced_break));
     }
 
     #[test]

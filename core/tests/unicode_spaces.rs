@@ -9,11 +9,14 @@
 //! - 改行してよい位置はUAX #14の行分割クラスに従う(`&nbsp;`は不可、
 //!   thin space・ZWSPは直後で可)。
 
+use std::collections::HashMap;
+
 use sghtmltopdf_core::fonts::{Font, FontCollection};
 use sghtmltopdf_core::html::{self, Dom, NodeData, NodeId};
 use sghtmltopdf_core::layout::{
-    build_box_tree, layout_document, LaidOutBox, LaidOutContent, PageSettings,
+    build_box_tree, layout_document, paginate_document, LaidOutBox, LaidOutContent, PageSettings,
 };
+use sghtmltopdf_core::pdf::encode_pdf;
 use sghtmltopdf_core::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
 
 const FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
@@ -198,6 +201,133 @@ fn a_no_break_space_stays_glued_even_under_word_break_break_all() {
     assert!(
         lines.iter().any(|(_, text)| text.contains("0\u{a0}k")),
         "the characters around the &nbsp; must stay on one line, got {lines:?}"
+    );
+}
+
+// ===== `<wbr>` =====
+
+#[test]
+fn wbr_offers_a_wrap_opportunity_inside_a_long_word() {
+    // HTML仕様の"line break opportunity"。長い識別子やURLを狙った位置で
+    // 折り返すために使われる。
+    let broken = narrow_lines("<p>aaaaaa<wbr>bbbbbb</p>");
+    let unbroken = narrow_lines("<p>aaaaaabbbbbb</p>");
+
+    assert_eq!(broken.len(), 2, "<wbr> should break, got {broken:?}");
+    assert_eq!(broken[0].1, "aaaaaa");
+    assert_eq!(broken[1].1, "bbbbbb");
+    assert_eq!(
+        unbroken.len(),
+        1,
+        "without <wbr> the long word overflows instead, got {unbroken:?}"
+    );
+}
+
+#[test]
+fn wbr_adds_no_width_when_the_line_does_not_wrap() {
+    assert_eq!(
+        width_of("<p>aaa<wbr>bbb</p>"),
+        width_of("<p>aaabbb</p>"),
+        "<wbr> must not change the width of a line that fits"
+    );
+}
+
+#[test]
+fn wbr_only_offers_a_break_it_does_not_force_one() {
+    // `<br>`との違い。収まるうちは1行のまま。
+    let lines = p_lines("<p>aaa<wbr>bbb</p>", "body { margin: 0; } p { margin: 0; }");
+    assert_eq!(lines.len(), 1, "<wbr> is not a forced break, got {lines:?}");
+}
+
+#[test]
+fn wbr_survives_word_break_keep_all() {
+    // `word-break: keep-all`は「単語内で改行しない」指定だが、`<wbr>`は
+    // 明示的に置かれた改行機会なので効き続ける(ZWクラスはUAX #14でも
+    // 単語の切れ目とは独立に扱われる)。
+    let lines = p_lines(
+        "<p>aaaaaa<wbr>bbbbbb</p>",
+        "body { margin: 0; } p { margin: 0; width: 40px; word-break: keep-all; }",
+    );
+
+    assert_eq!(lines.len(), 2, "<wbr> should still break, got {lines:?}");
+}
+
+/// PDFのストリームをすべて展開して連結する(`/ToUnicode`
+/// CMapを覗くため。`typography.rs`と同じ手順)。
+fn decompressed_streams(html_src: &str) -> Vec<u8> {
+    let dom = html::parse(html_src.as_bytes());
+    let styles = compute_styles(
+        &dom,
+        &user_agent_stylesheet(),
+        &parse_stylesheet("body { margin: 0; }"),
+    );
+    let fonts = FontCollection::new(vec![
+        Font::load(FONT_PATH).expect("should load bundled test font")
+    ]);
+    let settings = PageSettings::default();
+    let pages = paginate_document(&dom, &styles, &fonts, &settings);
+    let bytes = encode_pdf(&pages, &styles, &HashMap::new(), &fonts, &settings);
+
+    fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack.windows(needle.len()).position(|w| w == needle)
+    }
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(pos) = find(&bytes[i..], b"stream\n") {
+        let start = i + pos + b"stream\n".len();
+        let Some(end_rel) = find(&bytes[start..], b"endstream") else {
+            break;
+        };
+        let end = start + end_rel;
+        let mut decoder = flate2::read::ZlibDecoder::new(&bytes[start..end]);
+        let mut decompressed = Vec::new();
+        if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok() {
+            out.extend_from_slice(&decompressed);
+        }
+        i = end + b"endstream".len();
+    }
+    out
+}
+
+#[test]
+fn wbr_leaves_no_character_in_the_laid_out_text() {
+    // `<wbr>`は改行機会であって文字ではない。ZWSPを文字として流すと、
+    // フォントがZWSPのグリフを持たない場合にspaceのグリフで代替されるため、
+    // PDFのテキスト層に幽霊の空白が入る(抽出すると`inline word`になる)。
+    for html_src in [
+        "<p>inline<wbr>word</p>",
+        "<p>a<wbr>b<wbr>c</p>",
+        "<p>\u{200b}text</p>",
+    ] {
+        let lines = p_lines(html_src, "body { margin: 0; } p { margin: 0; }");
+        assert!(
+            lines.iter().all(|(_, text)| !text.contains('\u{200b}')),
+            "no run may carry a U+200B for {html_src}, got {lines:?}"
+        );
+    }
+    assert_eq!(
+        p_lines("<p>inline<wbr>word</p>", "body { margin: 0; }")[0].1,
+        "inlineword",
+        "the text either side of a <wbr> is contiguous"
+    );
+}
+
+#[test]
+fn wbr_leaves_nothing_behind_in_the_pdf_text_layer() {
+    // 回帰テスト: `<wbr>`をZWSPの「文字」として流していた頃は、フォントが
+    // ZWSPのグリフを持たないためspaceのグリフで代替され、`/ToUnicode`が
+    // そのグリフをU+200Bに割り当てていた。結果、文書中のすべての空白が
+    // U+200Bとして抽出され、コピー&ペーストとテキスト検索が壊れていた。
+    let pdf = decompressed_streams("<p>inline<wbr>word stays</p>");
+    let text = String::from_utf8_lossy(&pdf);
+
+    assert!(
+        !text.contains("<200B>"),
+        "<wbr> must not reach the /ToUnicode CMap"
+    );
+    assert!(
+        text.contains("<0020>"),
+        "the space glyph must still map to U+0020, got:\n{text}"
     );
 }
 

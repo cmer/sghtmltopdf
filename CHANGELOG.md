@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-width break opportunity inside a word.
 - Treat a cell holding only `&nbsp;` as non-empty, so `empty-cells: hide` no longer
   strips the borders of a `<td>&nbsp;</td>`.
+- Do not let a glyph shared by several characters lose its `/ToUnicode` mapping to
+  whichever character happened to come first in the document. A font without its own
+  `&nbsp;` glyph made every space in the document extract as U+00A0, breaking
+  copy-paste and text search in the PDF.
+
+### Added
+
+- Support `<wbr>`, and U+200B ZERO WIDTH SPACE, as a line break opportunity. Neither
+  adds width nor leaves a character in the PDF text layer.
 
 ## 0.1.1
 
