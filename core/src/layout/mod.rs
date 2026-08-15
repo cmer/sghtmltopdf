@@ -10,6 +10,7 @@ mod inline;
 mod page;
 mod paginate;
 mod table;
+mod white_space;
 
 pub(crate) use block::{
     has_visible_decoration, resolve_border, resolve_lpa_or_zero, resolve_padding,
@@ -32,3 +33,4 @@ pub use paginate::{
     paginate, paginate_document, paginate_document_streaming, paginate_document_with_absolutes,
     paginate_streaming, Page, StreamingPaginator,
 };
+pub(crate) use white_space::is_collapsible_only;

@@ -51,6 +51,24 @@
 * `position: sticky`、`display: inline-flex`/`inline-grid`、subgrid
 * `:is()`/`:where()`/`:has()`、`::first-line`、`::marker`
 
+## 空白文字の扱い
+
+畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。
+`&nbsp;`(U+00A0)やthin space(U+2009)などは畳み込まれない普通の文字として、
+フォント本来の字幅で描かれます。改行してよい位置はUAX #14の行分割クラスに従い、
+`&nbsp;`・narrow no-break space・figure space・word joinerの前後では改行しません
+(`word-break: break-all`を指定した場合も同様です)。
+
+`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよい」という
+指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りません
+(`<wbr>`を挟んでも抽出結果は繋がったままです)。
+
+この範囲での既知の制限は以下です。
+
+* `text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の空白のみ)
+* U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります
+* 行末に来た空白の「ぶら下がり」(hanging)は行いません
+
 ## ストリーミングモード固有の制限
 
 `--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--toc`)などが使えなくなります。

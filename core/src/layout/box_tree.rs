@@ -15,6 +15,8 @@ use crate::style::{
     ListStylePosition, ListStyleType, RgbaColor,
 };
 
+use super::white_space;
+
 #[derive(Debug, Clone)]
 pub struct LayoutBox {
     /// 対応するDOM要素。無名ボックスの場合は`None`。
@@ -223,10 +225,14 @@ impl Default for InlineContext {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ChildKind {
-    /// `display: none`、空白のみのテキストなど、ボックスを生成しない。
+    /// `display: none`など、ボックスを生成しない。
     None,
     Block,
     Inline,
+    /// 空白のみのテキストノード。インライン内容の間に挟まっている場合だけ
+    /// 意味を持つ(単語間の空白として畳み込まれる)。ブロックの間や
+    /// インライン内容の前後では捨てる(CSS2.1 9.2.2.1)。
+    Whitespace,
 }
 
 pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>) -> LayoutBox {
@@ -295,8 +301,12 @@ pub(crate) fn build_box_for_element(
         let mut spans = Vec::new();
         push_before_content(styles, node, &mut spans);
         for &child in &child_ids {
-            if child_kind(dom, styles, child) == ChildKind::Inline {
-                collect_spans(dom, styles, child, &mut spans);
+            match child_kind(dom, styles, child) {
+                ChildKind::Inline => collect_spans(dom, styles, child, &mut spans),
+                ChildKind::Whitespace => {
+                    push_collapsible_whitespace(dom, styles, child, &mut spans)
+                }
+                ChildKind::Block | ChildKind::None => {}
             }
         }
         push_after_content(styles, node, &mut spans);
@@ -437,11 +447,36 @@ fn build_children_boxes(
                 }
             }
             ChildKind::Inline => collect_spans(dom, styles, child, &mut pending_spans),
+            ChildKind::Whitespace => {
+                push_collapsible_whitespace(dom, styles, child, &mut pending_spans)
+            }
         }
     }
     flush_pending_spans(&mut pending_spans, &mut result);
 
     result
+}
+
+/// 空白のみのテキストノード(`ChildKind::Whitespace`)をスパン列に足す。
+///
+/// `<span>one</span> <span>two</span>`のように、インライン要素同士の間にある
+/// 空白は単語間の空白として意味を持つ(行組みの段階で1個に畳み込まれる)ため、
+/// 捨てずにスパンとして残す必要がある。一方、直前にインライン内容が無い場合
+/// (ブロックの直後や親の先頭)は、その空白は行頭に来るだけで結果に影響しない
+/// ので足さない。空白だけが並んだ列から無名ブロックが作られないことは
+/// [`flush_pending_spans`]が保証する。
+fn push_collapsible_whitespace(
+    dom: &Dom,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    node: NodeId,
+    out: &mut Vec<InlineSpan>,
+) {
+    if out.is_empty() {
+        return;
+    }
+    // 元のテキストをそのまま渡す(`white-space: pre`の経路は空白の並びを
+    // そのまま使うため、ここで1個に潰してはいけない)。
+    collect_spans(dom, styles, node, out);
 }
 
 /// `node`の計算スタイルが`::first-letter`にマッチしていれば(`first_letter_style`
@@ -743,8 +778,12 @@ fn build_inline_block_box(
         push_before_content(styles, node, &mut spans);
         push_form_control_content(dom, styles, node, &mut spans);
         for &child in &child_ids {
-            if child_kind(dom, styles, child) == ChildKind::Inline {
-                collect_spans(dom, styles, child, &mut spans);
+            match child_kind(dom, styles, child) {
+                ChildKind::Inline => collect_spans(dom, styles, child, &mut spans),
+                ChildKind::Whitespace => {
+                    push_collapsible_whitespace(dom, styles, child, &mut spans)
+                }
+                ChildKind::Block | ChildKind::None => {}
             }
         }
         push_after_content(styles, node, &mut spans);
@@ -958,7 +997,7 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
     // `text`が空でも意味のある内容なので、1つでもあれば無名ブロックを作る
     let has_meaningful_content = pending
         .iter()
-        .any(|span| span.atomic.is_some() || !span.text.trim().is_empty());
+        .any(|span| span.atomic.is_some() || !white_space::is_collapsible_only(&span.text));
     if has_meaningful_content {
         let mut spans = std::mem::take(pending);
         spans.shrink_to_fit();
@@ -999,8 +1038,10 @@ fn child_kind(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>, node: Node
             }
         }
         NodeData::Text { contents } => {
-            if contents.trim().is_empty() {
-                ChildKind::None
+            // `&nbsp;`だけのテキストノードは「空白のみ」ではない(畳み込まれない
+            // 内容を持つ)ので、`str::trim`ではなくCSSの分類で判定する。
+            if white_space::is_collapsible_only(contents) {
+                ChildKind::Whitespace
             } else {
                 ChildKind::Inline
             }
@@ -1050,6 +1091,18 @@ fn collect_spans_in_context(
             // `<br>`は子を持たない強制改行マーカー。
             if &*name.local == "br" {
                 out.push(InlineSpan::forced_break(node));
+                return;
+            }
+            // `<wbr>`は子を持たない「ここで改行してよい」マーカー
+            // (HTML仕様: line break opportunity)。ZWSPを1つ置くだけで、幅ゼロの
+            // 改行機会という同じ意味になる(`layout::white_space`が改行機会と
+            // して扱う)。ブラウザの実装も同様。
+            if &*name.local == "wbr" {
+                out.push(InlineSpan::text_in_inline_context(
+                    node,
+                    white_space::ZERO_WIDTH_SPACE.to_string(),
+                    context,
+                ));
                 return;
             }
             // インラインの`<img>`(置換要素)も1つの箱として行に参加する。
@@ -1239,6 +1292,111 @@ mod tests {
         // 別のNodeIdを持つ(=別の計算スタイルを引ける)。
         assert_ne!(spans[0].node, spans[1].node);
         assert_eq!(dom.children(b).next(), Some(spans[1].node));
+    }
+
+    /// `<p>`(最初のもの)のスパン列のテキストを連結して返す。
+    fn first_p_text(html_src: &[u8]) -> String {
+        let dom = html::parse(html_src);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let p_box = find_box(&tree, p).expect("p box not found");
+        find_inline_spans(p_box)
+            .expect("expected inline content")
+            .iter()
+            .map(|span| span.text.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn whitespace_between_two_inline_elements_is_kept() {
+        // 回帰テスト(issue #3): 空白のみのテキストノードを一律で捨てていたため、
+        // インライン要素同士の間の単語間空白が消えて`onetwo`になっていた。
+        assert_eq!(
+            first_p_text(br#"<p><span>one</span> <span>two</span></p>"#),
+            "one two"
+        );
+    }
+
+    #[test]
+    fn whitespace_between_inline_elements_is_kept_across_a_whole_run() {
+        // 3つ以上並んだ場合も、間の空白がすべて残る。
+        assert_eq!(
+            first_p_text(br#"<p><b>one</b> <i>two</i> <span>three</span></p>"#),
+            "one two three"
+        );
+    }
+
+    #[test]
+    fn a_newline_between_two_inline_elements_is_kept() {
+        // 整形されたマークアップでよくある改行も、単語間の空白として残る
+        // (1個の空白へ畳み込むのは行組み側`layout::inline`の仕事)。
+        assert_eq!(
+            first_p_text(b"<p><span>one</span>\n  <span>two</span></p>"),
+            "one\n  two"
+        );
+    }
+
+    #[test]
+    fn a_non_breaking_space_between_two_inline_elements_is_kept() {
+        // `&nbsp;`は`char::is_whitespace`が真になるため「空白のみのテキスト
+        // ノード」として一緒に捨てられていた。
+        assert_eq!(
+            first_p_text("<p><span>one</span>\u{a0}<span>two</span></p>".as_bytes()),
+            "one\u{a0}two"
+        );
+    }
+
+    #[test]
+    fn whitespace_before_the_first_inline_child_creates_no_span() {
+        // 行頭に来るだけで結果に影響しない空白はスパンを作らない
+        // (整形されたマークアップでスパンが無駄に増えないように)。末尾側は
+        // 行組みが無視するので残っていてよい(`white-space: pre`では意味を持つ)。
+        let dom = html::parse(b"<p>\n  <span>one</span>\n</p>");
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let p_box = find_box(&tree, p).expect("p box not found");
+        let spans = find_inline_spans(p_box).expect("expected inline content");
+
+        assert_eq!(
+            spans[0].text, "one",
+            "no span should precede the first word, got {spans:?}"
+        );
+    }
+
+    #[test]
+    fn wbr_becomes_a_zero_width_space() {
+        // `<wbr>`は「ここで改行してよい」だけを表す要素。ZWSPを1つ置いて
+        // `layout::white_space`の改行機会の規則に載せる。
+        let dom = html::parse(br#"<p>aaa<wbr>bbb</p>"#);
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let p_box = find_box(&tree, p).expect("p box not found");
+        let spans = find_inline_spans(p_box).expect("expected inline content");
+
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        assert_eq!(text, "aaa\u{200b}bbb");
+        // `<br>`とは違い強制改行ではない(改行「機会」を足すだけ)。
+        assert!(spans.iter().all(|span| !span.is_forced_break));
+    }
+
+    #[test]
+    fn whitespace_between_block_siblings_creates_no_anonymous_box() {
+        // ブロックの間の空白は従来どおりボックスを生成しない(CSS2.1 9.2.2.1)。
+        let dom = html::parse(b"<div>\n  <p>a</p>\n  <p>b</p>\n</div>");
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let div_box = find_box(&tree, div).expect("div box not found");
+        let BoxContent::Blocks(children) = &div_box.content else {
+            panic!("expected block children, got {:?}", div_box.content);
+        };
+        assert_eq!(children.len(), 2, "the two <p> only, got {children:?}");
     }
 
     #[test]

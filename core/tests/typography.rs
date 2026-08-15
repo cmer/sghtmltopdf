@@ -315,6 +315,67 @@ fn text_transform_uppercase_applies_end_to_end() {
     assert_eq!(page_count, 1);
 }
 
+/// 最初の`<p>`が組んだ1行の幅と、その行のラン数を返す。
+fn first_p_line(html_src: &str, css: &str) -> (f32, usize) {
+    let (dom, laid) = layout(html_src, css);
+    let p = find_tag(&dom, dom.document(), "p").expect("p not found");
+    let p_box = find_laid_out(&laid, p).expect("p box not found");
+    let LaidOutContent::Inline(lines) = &p_box.content else {
+        panic!("expected inline content");
+    };
+    assert_eq!(lines.len(), 1, "expected a single line, got {lines:?}");
+    (lines[0].rect.width, lines[0].runs.len())
+}
+
+#[test]
+fn whitespace_between_inline_elements_still_separates_the_words_end_to_end() {
+    // 回帰テスト(issue #3): インライン要素同士の間の空白が捨てられ、
+    // `<span>one</span> <span>two</span>`が`onetwo`と組まれていた。単語間の
+    // 空白はランのx方向オフセットとして現れるため、行幅で検証する。
+    let css = "body { margin: 0; } p { margin: 0; }";
+    let (separate, separate_runs) = first_p_line("<p><span>one</span> <span>two</span></p>", css);
+    let (plain, _) = first_p_line("<p>one two</p>", css);
+    let (joined, _) = first_p_line("<p>onetwo</p>", css);
+
+    assert_eq!(separate_runs, 2, "one run per <span>");
+    assert!(
+        (separate - plain).abs() < 0.01,
+        "should be as wide as the same text without elements: {separate} vs {plain}"
+    );
+    assert!(
+        separate > joined + 1.0,
+        "the word gap must be there: {separate} vs {joined} without a space"
+    );
+}
+
+#[test]
+fn trailing_whitespace_after_an_inline_element_does_not_widen_the_line_end_to_end() {
+    // 末尾の空白はスパンとして残るが、行の幅には影響してはいけない
+    // (`text-align: right`/`justify`がずれるため)。
+    let css = "body { margin: 0; } p { margin: 0; }";
+    let (with_whitespace, _) = first_p_line("<p><span>one</span>\n</p>", css);
+    let (without, _) = first_p_line("<p><span>one</span></p>", css);
+
+    assert_eq!(
+        with_whitespace, without,
+        "trailing whitespace must not add width"
+    );
+}
+
+#[test]
+fn a_non_breaking_space_between_inline_elements_still_separates_the_words_end_to_end() {
+    // 同じく issue #3。`&nbsp;`も`char::is_whitespace`が真になるため、空白のみの
+    // テキストノードとして一緒に捨てられていた。
+    let css = "body { margin: 0; } p { margin: 0; }";
+    let (nbsp, _) = first_p_line("<p><span>one</span>\u{a0}<span>two</span></p>", css);
+    let (joined, _) = first_p_line("<p>onetwo</p>", css);
+
+    assert!(
+        nbsp > joined + 1.0,
+        "&nbsp; must separate the words: {nbsp} vs {joined} without a space"
+    );
+}
+
 #[test]
 fn combined_typography_properties_render_a_valid_pdf_end_to_end() {
     // justify + line-height + text-indent + letter-spacing + white-space: pre

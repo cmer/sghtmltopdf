@@ -1586,9 +1586,13 @@ fn paint_order<'a>(
 /// (内容として意味を持つため)。
 fn laid_content_is_empty(content: &LaidOutContent) -> bool {
     match content {
-        LaidOutContent::Inline(lines) => lines
-            .iter()
-            .all(|line| line.runs.iter().all(|run| run.text.trim().is_empty())),
+        // `<td>&nbsp;</td>`は「空のセル」ではない(枠を出すための定番の書き方)。
+        // `str::trim`は`&nbsp;`も落としてしまうためCSSの分類で判定する。
+        LaidOutContent::Inline(lines) => lines.iter().all(|line| {
+            line.runs
+                .iter()
+                .all(|run| crate::layout::is_collapsible_only(&run.text))
+        }),
         LaidOutContent::Blocks(children) => {
             children.is_empty() || children.iter().all(|c| laid_content_is_empty(&c.content))
         }
@@ -4863,6 +4867,26 @@ mod tests {
             hidden < shown,
             "hiding the empty cell should remove its border/background fills \
              (shown={shown}, hidden={hidden})"
+        );
+    }
+
+    #[test]
+    fn a_cell_holding_only_a_no_break_space_does_not_count_as_empty() {
+        // `<td>&nbsp;</td>`は枠を出すための定番の書き方。`&nbsp;`は畳み込まれない
+        // 内容を持つので、`empty-cells: hide`で消してはいけない
+        // (`str::trim`で空判定していた頃は空セル扱いになっていた)。
+        let css = "td { border: 1px solid black; background-color: rgb(200,200,200); } \
+                   table { empty-cells: hide; }";
+
+        let truly_empty =
+            fill_operator_count(r#"<table><tr><td>Apple</td><td></td></tr></table>"#, css);
+        let with_nbsp =
+            fill_operator_count("<table><tr><td>Apple</td><td>\u{a0}</td></tr></table>", css);
+
+        assert!(
+            with_nbsp > truly_empty,
+            "a cell with &nbsp; should keep its decoration \
+             (nbsp={with_nbsp}, empty={truly_empty})"
         );
     }
 
