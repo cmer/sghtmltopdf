@@ -2312,6 +2312,19 @@ mod tests {
     }
 
     #[test]
+    fn white_space_pre_preserves_leading_whitespace_before_an_inline_element() {
+        // 行頭の空白がインデントとして残る。空白のみのテキストノードで
+        // 始まっているので、以前は`box_tree`の段階で捨てられて`xy`になっていた。
+        let (_, spans, styles) = spans_for("   <b>x</b>y", "p { white-space: pre; }");
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 500.0, 0.0, 0.0, None);
+
+        assert_eq!(lines.len(), 1);
+        let text: String = lines[0].runs.iter().map(|r| r.text.as_str()).collect();
+        assert_eq!(text, "   xy", "the indentation should be preserved");
+    }
+
+    #[test]
     fn white_space_pre_consecutive_newlines_produce_an_empty_line() {
         let (_, spans, styles) = spans_for("a&#10;&#10;b", "p { white-space: pre; }");
         let fonts = dejavu_only();

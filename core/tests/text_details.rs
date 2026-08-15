@@ -287,6 +287,8 @@ fn text_overflow_clip_leaves_the_line_untouched() {
 
 // ===== text-shadow =====
 
+// グリフ列は送り幅の補正を挟めるよう常に`TJ`で書き出すため、
+// テキスト描画の回数は`TJ`の数で数える。
 #[test]
 fn text_shadow_adds_extra_glyph_draws_to_the_content_stream() {
     let plain = decompressed_stream_bytes(&build_pdf("<p>shadowed</p>", "body { margin: 0; }"));
@@ -295,7 +297,7 @@ fn text_shadow_adds_extra_glyph_draws_to_the_content_stream() {
         "body { margin: 0; } p { text-shadow: 2px 2px red; }",
     ));
     assert!(
-        count_occurrences(&shadowed, b"Tj") > count_occurrences(&plain, b"Tj"),
+        count_occurrences(&shadowed, b"TJ") > count_occurrences(&plain, b"TJ"),
         "text-shadow should add extra text-showing operators"
     );
 }
@@ -311,7 +313,7 @@ fn a_blurred_text_shadow_draws_more_layers_than_a_sharp_one() {
         "body { margin: 0; } p { text-shadow: 2px 2px 4px red; }",
     ));
     assert!(
-        count_occurrences(&blurred, b"Tj") > count_occurrences(&sharp, b"Tj"),
+        count_occurrences(&blurred, b"TJ") > count_occurrences(&sharp, b"TJ"),
         "a blur radius should be approximated with extra layers"
     );
 }

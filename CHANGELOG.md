@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whichever character happened to come first in the document. A font without its own
   `&nbsp;` glyph made every space in the document extract as U+00A0, breaking
   copy-paste and text search in the PDF.
+- Draw glyphs at the advance width the layout used. A PDF advances a glyph by its
+  single `/W` entry, which cannot express the two cases where the shaper reports a
+  different advance for the same glyph: the stretched word gaps of a justified line,
+  and a fixed-width space (`&thinsp;` and friends) that the font has no glyph for.
+  A `text-align: justify` line was drawn short of the right edge by the whole stretch
+  amount, and text following a substituted fixed-width space was drawn off its laid
+  out position. The difference is now made up with `TJ` adjustments.
+- Keep the leading whitespace of a `white-space: pre` element when it comes from a
+  whitespace-only text node, so `<pre>   <b>x</b>y</pre>` keeps its indentation
+  instead of rendering as `xy`.
 
 ### Added
 

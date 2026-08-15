@@ -12,7 +12,7 @@ use crate::html::{Dom, NodeData, NodeId};
 use crate::pdf::{ImageAssetCache, PreparedImage};
 use crate::style::{
     CaptionSide, ComputedStyle, Display, LengthPercentage, LengthPercentageOrAuto,
-    ListStylePosition, ListStyleType, RgbaColor,
+    ListStylePosition, ListStyleType, RgbaColor, WhiteSpace,
 };
 
 use super::white_space;
@@ -462,16 +462,24 @@ fn build_children_boxes(
 /// `<span>one</span> <span>two</span>`のように、インライン要素同士の間にある
 /// 空白は単語間の空白として意味を持つ(行組みの段階で1個に畳み込まれる)ため、
 /// 捨てずにスパンとして残す必要がある。一方、直前にインライン内容が無い場合
-/// (ブロックの直後や親の先頭)は、その空白は行頭に来るだけで結果に影響しない
-/// ので足さない。空白だけが並んだ列から無名ブロックが作られないことは
-/// [`flush_pending_spans`]が保証する。
+/// (ブロックの直後や親の先頭)は、畳み込みが効くならその空白は行頭に来るだけで
+/// 結果に影響しないので足さない。空白だけが並んだ列から無名ボックスが
+/// 作られないことは[`flush_pending_spans`]が保証する。
+///
+/// ただし`white-space: pre`では行頭の空白もそのまま残る(インデントとして
+/// 意味を持つ)ため、この間引きをしてはいけない。`<pre>   <b>x</b>y</pre>`の
+/// ように空白のみのテキストノードで始まる場合に効く。
 fn push_collapsible_whitespace(
     dom: &Dom,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     node: NodeId,
     out: &mut Vec<InlineSpan>,
 ) {
-    if out.is_empty() {
+    // `white-space`は継承プロパティなので、テキストノード自身の計算スタイルに
+    // 親の値が入っている。
+    let preserves_leading_whitespace =
+        styles.get(&node).map(|s| s.white_space) == Some(WhiteSpace::Pre);
+    if out.is_empty() && !preserves_leading_whitespace {
         return;
     }
     // 元のテキストをそのまま渡す(`white-space: pre`の経路は空白の並びを
@@ -1364,6 +1372,23 @@ mod tests {
             spans[0].text, "one",
             "no span should precede the first word, got {spans:?}"
         );
+    }
+
+    #[test]
+    fn leading_whitespace_is_kept_when_white_space_preserves_it() {
+        // `white-space: pre`では行頭の空白もインデントとして意味を持つので、
+        // 空白のみのテキストノードで始まっていても捨ててはいけない
+        // (捨てていた頃は`<pre>   <b>x</b>y</pre>`が`xy`になっていた)。
+        let dom = html::parse(b"<pre>   <b>x</b>y</pre>");
+        let styles = compute_styles(&dom, &user_agent_stylesheet(), &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let pre = find(&dom, dom.document(), "pre").expect("pre not found");
+        let pre_box = find_box(&tree, pre).expect("pre box not found");
+        let spans = find_inline_spans(pre_box).expect("expected inline content");
+
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        assert_eq!(text, "   xy", "the indentation must survive, got {spans:?}");
     }
 
     #[test]
