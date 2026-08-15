@@ -46,7 +46,7 @@ use std::rc::Rc;
 use pdf_writer::types::{ActionType, AnnotationType, LineCapStyle, TextRenderingMode};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect as PdfRect, Ref, TextStr};
 
-use crate::fonts::FontCollection;
+use crate::fonts::{Font, FontCollection};
 use crate::html::NodeId;
 use crate::img::resolve_against_base_href;
 use crate::layout::{
@@ -3000,6 +3000,77 @@ const ITALIC_SHEAR: f32 = 0.2126; // tan(12°)
 /// 疑似ボールド(塗り+縁取り)の線幅を、フォントサイズに対する比率で表す。
 const BOLD_STROKE_RATIO: f32 = 0.03;
 
+/// グリフの送り幅の食い違いを補正する下限(px)。これ未満はTJ配列を膨らませる
+/// だけで見た目に効かないため無視する。
+const ADVANCE_EPSILON: f32 = 0.01;
+
+/// ランのグリフ列を書き出す。送り幅が`/W`と食い違うグリフの後ろにはTJ補正を挟む。
+///
+/// PDFがグリフを進める幅はCIDFontの`/W`で決まり、これはグリフIDごとに1つしか
+/// 持てない。一方レイアウトはシェイパーが返す`x_advance`を使う。この2つは
+/// 一致するとは限らない。
+///
+/// * 単語間の空白は`merge_adjacent_runs`が「隙間ぶんのアドバンスを持つ空白
+///   グリフ」として復元する。`text-align: justify`が広げた隙間はspaceの字幅と
+///   一致しないため、補正が無いと両端揃えの行が伸ばした分だけ右端に届かない。
+/// * フォントが持たない固定幅スペース(`&thinsp;`等)は、シェイパーがspaceの
+///   グリフで代替しつつアドバンスだけ規定値(em/5等)へ差し替える。同じグリフを
+///   普通のspaceも使うため、`/W`はどちらか一方の幅しか表せない。
+///
+/// 差はTJ配列の補正値で埋める。TJの数値はテキスト空間の1/1000単位で、送り量から
+/// 減算される(正の値で詰まる)ので、広げたいときは負の値を入れる。
+/// `letter-spacing`は`Tc`で別に加算されるため、ここの差分計算には含めない。
+fn show_run_glyphs(
+    content: &mut RenderTarget<'_>,
+    run: &TextRun,
+    font: &Font,
+    remap: Option<&HashMap<u16, u16>>,
+) {
+    // `remaps`が`Some`(一括処理)ならサブセット後のグリフIDへ、`None`
+    // (ストリーミング処理)なら元のグリフIDのまま。
+    let cid_of = |glyph_id: u16| match remap {
+        Some(remap) => remap.get(&glyph_id).copied().unwrap_or(0),
+        None => glyph_id,
+    };
+
+    let units_per_em = font.units_per_em() as f32;
+    // フォントサイズ0のランは補正のしようがない(1/1000単位への換算ができない)。
+    if run.font_size <= 0.0 || units_per_em <= 0.0 {
+        let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
+        for glyph in &run.glyphs {
+            glyph_bytes.extend_from_slice(&cid_of(glyph.glyph_id).to_be_bytes());
+        }
+        content.show(pdf_writer::Str(&glyph_bytes));
+        return;
+    }
+
+    let mut positioned = content.show_positioned();
+    let mut items = positioned.items();
+    // 補正の要らないグリフはまとめて1つの文字列として出す(補正が1つも無ければ
+    // 要素1つのTJ配列になり、`Tj`と同じ大きさに収まる)。
+    let mut pending = Vec::with_capacity(run.glyphs.len() * 2);
+    for glyph in &run.glyphs {
+        pending.extend_from_slice(&cid_of(glyph.glyph_id).to_be_bytes());
+        let pdf_advance = font.glyph_hor_advance(glyph.glyph_id).unwrap_or(0) as f32
+            * run.font_size
+            / units_per_em;
+        let delta = glyph.x_advance - pdf_advance;
+        if delta.abs() < ADVANCE_EPSILON {
+            continue;
+        }
+        items.show(pdf_writer::Str(&pending));
+        pending.clear();
+        // 小数第2位までに丸める。両端揃えの文書では単語間のすべての隙間に補正が
+        // 入るため、`f32`をそのまま書くとコンテンツストリームがおよそ1割膨らむ。
+        // 1/1000単位の0.01は12ptで0.00012pxなので、見た目には効かない。
+        let adjustment = (-delta * 1000.0 / run.font_size * 100.0).round() / 100.0;
+        items.adjust(adjustment);
+    }
+    if !pending.is_empty() {
+        items.show(pdf_writer::Str(&pending));
+    }
+}
+
 fn render_line(
     content: &mut RenderTarget<'_>,
     line: &LineBox,
@@ -3051,6 +3122,7 @@ fn render_line(
     render_text_shadows(
         content,
         line,
+        fonts,
         settings,
         remaps,
         font_resource_names,
@@ -3099,14 +3171,9 @@ fn render_line(
         }
         previous_run_end = Some(run.x_offset + run.width);
 
-        let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
-        for glyph in &run.glyphs {
-            let cid = match remap {
-                Some(remap) => remap.get(&glyph.glyph_id).copied().unwrap_or(0),
-                None => glyph.glyph_id,
-            };
-            glyph_bytes.extend_from_slice(&cid.to_be_bytes());
-        }
+        let Some(font) = fonts.get(run.font_index) else {
+            continue;
+        };
 
         content.set_fill_rgb(
             run.color.red as f32 / 255.0,
@@ -3139,7 +3206,7 @@ fn render_line(
         // 明示的に設定し、前のランの値が
         // グラフィックステートに残らないようにする。
         content.set_char_spacing(run.letter_spacing);
-        content.show(pdf_writer::Str(&glyph_bytes));
+        show_run_glyphs(content, run, font, remap);
     }
 
     content.end_text();
@@ -3418,6 +3485,7 @@ const TEXT_SHADOW_BLUR_STEPS: usize = 2;
 fn render_text_shadows(
     content: &mut RenderTarget<'_>,
     line: &LineBox,
+    fonts: &FontCollection,
     settings: &PageSettings,
     remaps: Option<&[HashMap<u16, u16>]>,
     font_resource_names: &[String],
@@ -3441,15 +3509,10 @@ fn render_text_shadows(
         let Some(resource_name) = font_resource_names.get(run.font_index) else {
             continue;
         };
-
-        let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
-        for glyph in &run.glyphs {
-            let cid = match remap {
-                Some(remap) => remap.get(&glyph.glyph_id).copied().unwrap_or(0),
-                None => glyph.glyph_id,
-            };
-            glyph_bytes.extend_from_slice(&cid.to_be_bytes());
-        }
+        // 影は本体と同じグリフ列なので、送り幅の補正も同じでなければずれる。
+        let Some(font) = fonts.get(run.font_index) else {
+            continue;
+        };
 
         let x = settings.margin.left + line.rect.x + run.x_offset;
         let run_baseline_y = baseline_y + run.baseline_shift;
@@ -3482,7 +3545,7 @@ fn render_text_shadows(
                     run_baseline_y - shadow.offset_y - dy,
                 ]);
                 content.set_char_spacing(run.letter_spacing);
-                content.show(pdf_writer::Str(&glyph_bytes));
+                show_run_glyphs(content, run, font, remap);
                 content.end_text();
                 content.restore_state();
             }
@@ -5386,8 +5449,9 @@ mod tests {
             "hidden outer's red background should not be painted"
         );
         // innerのテキストは(何らかのグリフ描画として)出力されるはず。
+        // グリフ列は送り幅の補正を挟めるよう常に`TJ`で出す([`show_run_glyphs`])。
         assert!(
-            count_occurrences(&decompressed, b"Tj") > 0,
+            count_occurrences(&decompressed, b"TJ") > 0,
             "visible descendant's text should still be painted"
         );
     }
