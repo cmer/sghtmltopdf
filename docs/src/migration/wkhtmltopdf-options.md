@@ -55,7 +55,7 @@ sghtmltopdfは入力を1つのHTMLに限定し、表紙・目次は`--cover <pat
 | `--use-xserver` | ❌ 非対応 | Xサーバに依存しない |
 | `-V, --version` | ✅ 対応 | |
 
-マージンの既定値: wkhtmltopdfは左右10mm・上下未指定だが、sghtmltopdfの現在の既定は四辺96px(＝1in＝25.4mm)。
+マージンの既定値: wkhtmltopdfは四辺10mm(`--extended-help`には左右の既定値しか載っていないが、実際は上下も10mm)だが、sghtmltopdfの現在の既定は四辺96px(＝1in＝25.4mm)。
 既存の出力を変えないため既定値は変更しない。
 移行時は`--margin-*`を明示すること。
 

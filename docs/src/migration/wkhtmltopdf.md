@@ -11,7 +11,7 @@ Railsでwicked_pdf経由で使っている場合は[wicked_pdfからの移行](w
 | | wkhtmltopdf | sghtmltopdf |
 |---|---|---|
 | CLIオプションとCSSの`@page` | CLIが勝つ | `@page`が勝つ(CLIは初期値) |
-| マージンの既定値 | 左右10mm | 四辺1in(96px) |
+| マージンの既定値 | 四辺10mm | 四辺1in(96px) |
 | 表紙・目次の指定 | 位置引数(`cover a.html toc`) | `--cover <PATH>` / `--toc` |
 | 複数HTMLの結合 | できる | できない(入力は1つ) |
 | ヘッダー/フッターのページ変数 | JavaScriptで差し込み | プレースホルダ置換(JSは実行しない) |
@@ -32,7 +32,8 @@ CLIで制御したい場合は、HTMLから`@page`の該当プロパティを外
 
 ### マージンの既定値
 
-wkhtmltopdfは左右10mm、sghtmltopdfは四辺1インチ(96px = 25.4mm)です。
+wkhtmltopdfは四辺10mm、sghtmltopdfは四辺1インチ(96px = 25.4mm)です。
+wkhtmltopdfの`--extended-help`は左右にしか既定値を書いていませんが、実際には上下にも10mmが入ります。
 指定なしで変換すると余白が変わるので、既存の見た目を保つには明示します。
 
 ```sh

@@ -116,11 +116,12 @@ PDFのレンダリングはHTTPサーバを介さないので、`/assets/…`の
 
 ## 既定値の違い
 
-* マージン: wkhtmltopdfは左右10mm。sghtmltopdfは四辺1in(96px)。
+* マージン: wkhtmltopdfは四辺10mm。sghtmltopdfは四辺1in(96px)。
   同じ見た目にしたければ`margin_*`を明示する
 * CLIオプションとCSSの`@page`: wkhtmltopdfはCLIが勝つが、sghtmltopdfは `@page` が勝つ(オプションは初期値)
 * ローカルファイルの参照範囲: Railsでは`--allow`の既定が`Rails.root`になる。アプリの外(例: `/usr/share/fonts`)のファイルを`<img>`や`@font-face`の`url()`で参照している場合は、`Sghtmltopdf.configure { |c| c.allow = [Rails.root.to_s, "/usr/share/fonts"] }`のように明示する。`--font`系(`gothic_font`など)で渡すフォントはこの制限を受けない
 * リモート取得: `http(s)`のアセット取得は既定で無効。必要なら`allow_remote_assets: true`
+* `disable_local_file_access`との併用: `--allow`は読み取り範囲を狭めるだけで、許可を与えるものではない。wicked_pdfで`disable_local_file_access: true`と`allow: [dir]`を併用して「dirだけ読める」状態にしていた場合、そのまま持ち込むとローカル読み取りが全て止まる。`allow`だけを残すこと
 
 ## フォント
 
