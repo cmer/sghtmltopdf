@@ -24,10 +24,9 @@ use crate::style::{
 };
 
 use super::block::{
-    box_style, clamp_used_width, layout_box_ignoring_positioned,
-    layout_box_with_forced_width_ignoring_positioned, resolve_border, resolve_lp, resolve_padding,
-    shift_box_y, shift_box_y_in_place, shift_content_vertical, LaidOutBox, LaidOutContent,
-    LaidOutTable, LaidOutTableRow,
+    box_style, clamp_used_width, layout_box, layout_box_with_forced_width, resolve_border,
+    resolve_lp, resolve_padding, shift_box_y, shift_box_y_in_place, shift_content_vertical,
+    LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow, PosCtx,
 };
 use super::box_tree::{BoxContent, TableBox, TableCell, TableRow};
 use super::float_ctx::FloatContext;
@@ -52,6 +51,7 @@ pub(super) fn layout_table(
     v_spacing: f32,
     x: f32,
     y: f32,
+    pos: &mut PosCtx,
 ) -> (LaidOutTable, f32) {
     // captionは行が無くても独立してレイアウトする(空テーブル+captionのみの
     // ケースにも対応するため、column_count==0の早期リターンより前に行う)。
@@ -59,7 +59,7 @@ pub(super) fn layout_table(
     // floatとは独立させる(テーブル本体のセルと同じ方針)。
     let laid_caption = table.caption.as_deref().map(|caption| {
         let mut caption_float_ctx = FloatContext::new();
-        layout_box_ignoring_positioned(
+        layout_box(
             caption,
             styles,
             fonts,
@@ -67,6 +67,7 @@ pub(super) fn layout_table(
             &mut caption_float_ctx,
             x,
             y,
+            pos,
         )
     });
     let caption_height = laid_caption
@@ -188,8 +189,14 @@ pub(super) fn layout_table(
                     // `display: table`のセルは新しいBlock Formatting Contextを
                     // 確立する(CSS2.1 9.4.1)ため、外側のfloatとは独立した空の
                     // コンテキストを渡す。
+                    //
+                    // セルはy=0の仮位置でレイアウトされ、行の高さが決まってから
+                    // 下へ動かされるが、集めた`absolute`は動かさなくてよい。
+                    // 絶対配置の位置はcontaining blockからしか決まらず(静的位置は
+                    // 未対応)、containing blockがセル内にある場合はページ合成時に
+                    // 祖先の実位置との差分で補正されるため。
                     let mut cell_float_ctx = FloatContext::new();
-                    layout_box_with_forced_width_ignoring_positioned(
+                    layout_box_with_forced_width(
                         &gc.cell.content,
                         styles,
                         fonts,
@@ -198,6 +205,7 @@ pub(super) fn layout_table(
                         &mut cell_float_ctx,
                         cell_x,
                         0.0,
+                        pos,
                     )
                 })
                 .collect()
@@ -644,8 +652,20 @@ pub(super) fn measure_natural_content_width(
 ) -> f32 {
     match content {
         BoxContent::Inline(spans) => {
-            let lines =
-                layout_inline_content(spans, styles, fonts, UNCONSTRAINED_WIDTH, 0.0, 0.0, None);
+            // 採寸パスなので、`inline-block`の子孫にある`absolute`は捨てる
+            // (最終レイアウトパスが同じ子孫をもう一度通って集める)。
+            let mut discarded = Vec::new();
+            let mut pos = PosCtx::new(&mut discarded, (0.0, 0.0));
+            let lines = layout_inline_content(
+                spans,
+                styles,
+                fonts,
+                UNCONSTRAINED_WIDTH,
+                0.0,
+                0.0,
+                None,
+                &mut pos,
+            );
             lines.iter().map(|l| l.rect.width).fold(0.0f32, f32::max)
         }
         BoxContent::Blocks(children) => children

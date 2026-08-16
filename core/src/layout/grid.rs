@@ -17,7 +17,7 @@ use crate::style::{
     TrackBreadth, TrackComponent, TrackList, TrackSize,
 };
 
-use super::block::LaidOutBox;
+use super::block::{LaidOutBox, PosCtx};
 use super::box_tree::GridBox;
 use super::flex::{layout_taffy_subtree, TaffyMode};
 
@@ -41,6 +41,7 @@ pub struct LaidOutGridRow {
 
 /// グリッドコンテナのcontent box内でアイテムをレイアウトする。
 /// 返り値はレイアウト済みのグリッドと、コンテナのcontent-boxの高さ。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn layout_grid(
     grid: &GridBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -49,6 +50,7 @@ pub(super) fn layout_grid(
     content_width: f32,
     content_x: f32,
     content_y: f32,
+    pos: &mut PosCtx,
 ) -> (LaidOutGrid, f32) {
     let result = layout_taffy_subtree(
         &grid.items,
@@ -59,6 +61,7 @@ pub(super) fn layout_grid(
         content_x,
         content_y,
         TaffyMode::Grid,
+        pos,
     );
 
     let rows = group_into_rows(result.items, result.row_tracks.as_ref(), content_y);

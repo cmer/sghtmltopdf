@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T13:07:21+09:00\n"
+"POT-Creation-Date: 2026-08-16T13:24:52+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -3539,8 +3539,7 @@ msgid "containing blockになれるのは、単一ページに収まっている
 msgstr ""
 
 #: src/supports/properties.md:75
-msgid ""
-"インラインフォーマッティングコンテキストの内側(テキストの途中)にある`absolute`、テーブルセル内・flexアイテム内の`absolute`は非対応"
+msgid "テキストの途中に置いた`absolute`は、その前後のテキストが別々の行に分かれる(ブラウザのように1行のまま残らない)"
 msgstr ""
 
 #: src/supports/properties.md:76

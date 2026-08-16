@@ -25,8 +25,8 @@ use crate::style::{
 };
 
 use super::block::{
-    box_style, layout_box_with_forced_size_ignoring_positioned,
-    layout_box_with_forced_width_ignoring_positioned, resolve_border, resolve_padding, LaidOutBox,
+    box_style, layout_box_with_forced_size, measure_box_with_forced_width, resolve_border,
+    resolve_padding, LaidOutBox, PosCtx,
 };
 use super::box_tree::{FlexBox, LayoutBox};
 use super::float_ctx::FloatContext;
@@ -36,6 +36,7 @@ use super::table::measure_natural_content_width;
 /// でflexアイテム群をレイアウトする。返り値はレイアウト済みの各アイテムと、
 /// コンテナの自然な(内容に基づく)content-box高さ(呼び出し側`block.rs`が
 /// 明示`height`指定で上書きする前の値、`layout_table`と同じ役割分担)。
+#[allow(clippy::too_many_arguments)]
 pub(super) fn layout_flex(
     flex: &FlexBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -44,6 +45,7 @@ pub(super) fn layout_flex(
     content_width: f32,
     content_x: f32,
     content_y: f32,
+    pos: &mut PosCtx,
 ) -> (Vec<LaidOutBox>, f32) {
     let result = layout_taffy_subtree(
         &flex.items,
@@ -54,6 +56,7 @@ pub(super) fn layout_flex(
         content_x,
         content_y,
         TaffyMode::Flex,
+        pos,
     );
     (result.items, result.container_height)
 }
@@ -94,6 +97,7 @@ pub(super) fn layout_taffy_subtree(
     content_x: f32,
     content_y: f32,
     mode: TaffyMode,
+    pos: &mut PosCtx,
 ) -> TaffySubtreeLayout {
     if flex_items.is_empty() {
         return TaffySubtreeLayout {
@@ -195,7 +199,7 @@ pub(super) fn layout_taffy_subtree(
                             let outer_width = width + pb_x;
 
                             let mut float_ctx = FloatContext::new();
-                            let laid = layout_box_with_forced_width_ignoring_positioned(
+                            let laid = measure_box_with_forced_width(
                                 item,
                                 styles,
                                 fonts,
@@ -251,8 +255,11 @@ pub(super) fn layout_taffy_subtree(
         // (`float`はアイテム自身には効果を持たない、CSS仕様通り)ため、
         // アイテムごとに独立した`FloatContext`を使う(`table.rs`のセルと同じ
         // 方針)。
+        // 最終レイアウトパスなので、アイテムの子孫にある`absolute`/`fixed`は
+        // 本物の`PosCtx`へ集める(採寸パスと違い、ここは1アイテムにつき1回
+        // しか通らない)。
         let mut item_float_ctx = FloatContext::new();
-        let laid = layout_box_with_forced_size_ignoring_positioned(
+        let laid = layout_box_with_forced_size(
             item,
             styles,
             fonts,
@@ -262,6 +269,7 @@ pub(super) fn layout_taffy_subtree(
             &mut item_float_ctx,
             x,
             y,
+            pos,
         );
         result.push(laid);
     }
