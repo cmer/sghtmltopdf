@@ -61,6 +61,20 @@ body { font-family: "MyFont", sans-serif; }
 > フォントファイルはTTF/OTFのみです。WOFF/WOFF2は非対応なので、Webで配信しているwebfontをそのまま指すとエラーになります。
 > 元のTTF/OTFを使ってください。
 
+### `src: url()`に書けるもの
+
+ローカルの相対パス・絶対パスのほかに、`data:`URI(base64)と`http(s)`のURLを書けます。
+参照の解決とアクセス制御は`<img src>`や外部CSSとまったく同じ規則で、`<base href>`・`--base-url`・`--allow`・`--allow-remote-assets`がそのまま効きます。
+
+```css
+@font-face {
+  font-family: "Embedded";
+  src: url(data:font/ttf;base64,AAEAAAAM…);
+}
+```
+
+`data:`URIはフォントをHTMLの中で自己完結させられるので、文字列を直接渡す変換やHTTPサーバ経由の変換のように、変換する側のファイルシステムを当てにできない構成で使えます。
+
 読み込みの待ち合わせはありません。
 headless Chromeで必要だった`document.fonts.ready`待ちのような処理は不要で、フォントが未解決のままPDF化されることはありません。
 
