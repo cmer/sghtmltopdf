@@ -72,7 +72,7 @@
 
 * 絶対配置要素は「通常フローから外し、確定したページへ後付けするオーバーレイ」として配置する
 * containing blockになれるのは、単一ページに収まっているpositioned祖先(またはページ領域)
-* インラインフォーマッティングコンテキストの内側(テキストの途中)にある`absolute`、テーブルセル内・flexアイテム内の`absolute`は非対応
+* テキストの途中に置いた`absolute`は、その前後のテキストが別々の行に分かれる(ブラウザのように1行のまま残らない)
 * 絶対配置要素自身がページを跨ぐ分割は非対応(1ページにbest-effortで置く)
 * ストリーミングモード(`Mode::Streaming`)では絶対配置を無視する
 
@@ -177,7 +177,7 @@ flexコンテナはページ分割上アトミック(`display: table`と同じ�
 | - | - | - |
 | `flex-direction` | ✅ | `row`/`row-reverse`/`column`/`column-reverse` |
 | `flex-wrap` | ✅ | `nowrap`/`wrap`/`wrap-reverse` |
-| `justify-content` | ⚠️ | `flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応 |
+| `justify-content` | ⚠️ | `normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応 |
 | `align-items` | ✅ | `flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch` |
 | `align-content` | ✅ | `flex-start`(`start`)/`flex-end`(`end`)/`center`/`stretch`/`space-between`/`space-around`/`space-evenly` |
 | `align-self` | ✅ | `auto`/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch` |
@@ -221,6 +221,9 @@ Flexboxと違い、1ページに収まらないグリッドは行単位でペー
 | `grid` / `grid-template`(ショートハンド) | ❌ | 個別のロングハンドを使う。トラック定義とエリア定義を1つの構文へ詰め込む複雑な文法のため非対応 |
 | `display: inline-grid` | ❌ | `inline-flex`と同じ理由で非対応 |
 | subgrid / masonry | ❌ | 未実装 |
+
+`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)と一致しません。
+列幅を厳密に決めたい場合は`fr`か長さで指定してください。
 
 ## 置換要素(画像)
 

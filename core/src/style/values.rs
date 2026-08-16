@@ -1042,7 +1042,10 @@ pub enum FlexWrap {
 /// `justify-content`。CSS Box Alignment仕様の`safe`/`unsafe`オーバーフローは非対応。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum JustifyContent {
+    /// 初期値。flexコンテナでは`flex-start`と同じ振る舞いになるが、gridでは
+    /// 意味が違う(余った幅を`auto`トラックが吸って伸びる)ため区別する。
     #[default]
+    Normal,
     FlexStart,
     FlexEnd,
     Center,
