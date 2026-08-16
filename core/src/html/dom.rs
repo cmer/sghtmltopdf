@@ -275,6 +275,23 @@ impl Dom {
         }
     }
 
+    /// `root`の子孫だけを解放し、`root`自身は要素として残す。
+    ///
+    /// 残った`root`はタグ名・クラス・idを保つので、後続の兄弟からは
+    /// 「直前の兄弟」として見え続ける。`+`/`~`や`:first-child`のように
+    /// 直前の兄弟が要るセレクタを使う文書では、[`Self::release_subtree`]の
+    /// 代わりにこちらを使う(ストリーミング処理での使い分けは
+    /// `style::needs_preceding_siblings`が判断する)。
+    ///
+    /// 残るのはトップレベル要素1個につきノード1個なので、解放できる量は
+    /// ほぼ変わらない(子孫が大半を占めるため)。
+    pub fn release_descendants(&mut self, root: NodeId) {
+        let children: Vec<NodeId> = self.children(root).collect();
+        for child in children {
+            self.release_subtree(child);
+        }
+    }
+
     /// `id`が[`Dom::release_subtree`]で解放済みかどうか。
     pub fn is_released(&self, id: NodeId) -> bool {
         matches!(self.node(id).data, NodeData::Released)

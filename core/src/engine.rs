@@ -44,10 +44,10 @@ use crate::pdf::{
 };
 use crate::sink::Sink;
 use crate::style::{
-    backward_looking_selectors, compute_single_element_style, compute_styles,
-    compute_styles_with_parent, extract_author_stylesheet, resolve_page_rules,
-    rules_use_page_count, user_agent_stylesheet, ComputedStyle, LengthPercentageOrAuto, PageRule,
-    RgbaColor, Stylesheet,
+    compute_single_element_style, compute_styles, compute_styles_with_parent,
+    extract_author_stylesheet, needs_preceding_siblings, resolve_page_rules, rules_use_page_count,
+    streaming_unsafe_selectors, user_agent_stylesheet, ComputedStyle, LengthPercentageOrAuto,
+    PageRule, RgbaColor, Stylesheet,
 };
 use crate::style::{FontStyle, FontWeight};
 
@@ -851,10 +851,28 @@ struct StreamingState<S: Sink> {
     /// トップレベル要素ごとに判定するため、
     /// 既に警告した文字を持ち回って重複を防ぐ。
     warned_uncovered_chars: HashSet<char>,
+    /// 処理済みトップレベル要素を、サブツリーごと解放してよいか。
+    ///
+    /// `+`/`~`や`:first-child`のように直前の兄弟が要るセレクタを使う文書では、
+    /// 解放を子孫だけに絞って要素そのものは残す。残さないと、後続の要素から
+    /// 見て「自分が最初の子」になってしまう。
+    release_whole_subtree: bool,
     paginator: StreamingPaginator,
     writer: StreamingPdfWriter<S>,
     /// `<img>`のフェッチ・デコード結果を文書内でメモ化するキャッシュ。
     image_cache: ImageAssetCache,
+}
+
+/// 処理済みのトップレベル要素を解放する。
+///
+/// `whole`が`false`のときは子孫だけを解放し、要素そのものは残す。残した要素は
+/// タグ名・クラス・idを保つので、後続の兄弟から「直前の兄弟」として見え続ける。
+fn release_processed(mut dom: std::cell::RefMut<'_, Dom>, node: NodeId, whole: bool) {
+    if whole {
+        dom.release_subtree(node);
+    } else {
+        dom.release_descendants(node);
+    }
 }
 
 /// HTMLチャンク投入からPDFバイト列書き出しまでを1つのAPIとして統合するコアの
@@ -1037,13 +1055,13 @@ impl<S: Sink> Engine<S> {
         }
         // 後方参照セレクタは常に非マッチになる。エラーにはしないが、黙って
         // 結果が変わるのは避けたいので警告する。
-        let backward = backward_looking_selectors(&author);
-        if !backward.is_empty() {
+        let unsafe_selectors = streaming_unsafe_selectors(&author);
+        if !unsafe_selectors.is_empty() {
             eprintln!(
-                "警告: {} はストリーミングモードでは常に非マッチになります\n  \
-                 (対象要素の親の子リストが完結するまで判定できないため)。\n  \
+                "警告: {} はストリーミングモードでは結果が変わります\n  \
+                 (<body>直下の要素は、前後の兄弟が揃う前に確定するため)。\n  \
                  これらを使う場合は --streaming を外してください",
-                backward.join(", ")
+                unsafe_selectors.join(", ")
             );
         }
 
@@ -1173,6 +1191,11 @@ impl<S: Sink> Engine<S> {
                 ),
         );
 
+        // 直前の兄弟が要るセレクタを使っていない文書では、従来どおり
+        // サブツリーごと解放する(要素を残すとトップレベル要素1個につき
+        // 1ノードが積み上がるため、要らないなら残さない)。
+        let release_whole_subtree = !needs_preceding_siblings(&author);
+
         Ok(StreamingState {
             ua,
             author,
@@ -1190,6 +1213,7 @@ impl<S: Sink> Engine<S> {
             overlay_cache: None,
             warned_font_families: Vec::new(),
             warned_uncovered_chars: HashSet::new(),
+            release_whole_subtree,
             paginator: StreamingPaginator::new(page_settings.content_height()),
             writer,
             image_cache,
@@ -1254,7 +1278,7 @@ impl<S: Sink> Engine<S> {
 
         let Some(item_box) = item_box else {
             // `display: none`などでボックスを生成しない要素。
-            parser.dom_mut().release_subtree(node);
+            release_processed(parser.dom_mut(), node, state.release_whole_subtree);
             return Ok(());
         };
 
@@ -1272,7 +1296,7 @@ impl<S: Sink> Engine<S> {
         // (テキスト内容・属性等)が再度読まれることはないため、ページの
         // flushを待たずに即座に解放してよい(`ComputedStyle`は`state.styles`
         // に別途保持済み)。
-        parser.dom_mut().release_subtree(node);
+        release_processed(parser.dom_mut(), node, state.release_whole_subtree);
 
         // このトップレベル要素自体が装飾(背景・枠線・background-image。
         // `has_visible_decoration`はbackground-imageも見る)を持たない場合、

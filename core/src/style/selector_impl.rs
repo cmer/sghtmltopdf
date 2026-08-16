@@ -27,13 +27,30 @@ impl SelectorImpl for SgSelectorImpl {
     type PseudoElement = PseudoElement;
 }
 
-/// セレクタパーサ本体。`:is`/`:where`等の拡張構文は扱わない。
+/// セレクタパーサ本体。
 #[derive(Clone, Copy, Debug)]
 pub struct SelectorParser;
 
 impl<'i> parser::Parser<'i> for SelectorParser {
     type Impl = SgSelectorImpl;
     type Error = parser::SelectorParseErrorKind<'i>;
+
+    /// `:is()`/`:where()`を有効にする。
+    ///
+    /// どちらも寛容なセレクタリスト(中に未対応のセレクタが混ざっていても、
+    /// その項だけを捨ててリスト自体は生かす)として扱われる。詳細度は
+    /// `:is()`が引数のうち最も高いもの、`:where()`は常に0。
+    fn parse_is_and_where(&self) -> bool {
+        true
+    }
+
+    /// `:has()`を有効にする。
+    ///
+    /// マッチングは`selectors`クレートが持つ関係セレクタの実装
+    /// (主体の部分木・後続兄弟を走査する)をそのまま使う。
+    fn parse_has(&self) -> bool {
+        true
+    }
 
     /// `:hover`等の非構造的擬似クラスはパース自体には対応する(常に非マッチとして
     /// 扱うのは[`super::element_ref::ElementRef::match_non_ts_pseudo_class`]の役割)。

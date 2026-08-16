@@ -1444,20 +1444,37 @@ fn streaming_warns_when_a_font_family_cannot_be_resolved() {
 }
 
 #[test]
-fn streaming_warns_about_backward_looking_selectors() {
-    // 後方参照が必要なセレクタはストリーミングでは常に非マッチになる。
+fn streaming_warns_about_selectors_that_need_later_siblings() {
+    // 「この先に同じ型の要素が続くか」が要るセレクタは、<body>直下の要素に
+    // ついてバッチと結果が変わる。
     let html = r#"<html><head><style>
-            li:last-child { color: red }
             p:nth-last-child(2) { color: blue }
+            div:has(~ h1) { color: green }
         </style></head><body><p>x</p></body></html>"#;
 
     let streaming = run_capturing_stderr(html, &["--streaming"], "warn-selector-streaming");
     assert!(streaming.contains("警告"), "got: {streaming}");
-    assert!(streaming.contains(":last-child"), "got: {streaming}");
     assert!(streaming.contains(":nth-last-child"), "got: {streaming}");
+    assert!(streaming.contains(":has(~"), "got: {streaming}");
 
     let batch = run_capturing_stderr(html, &[], "warn-selector-batch");
     assert!(!batch.contains("警告"), "got: {batch}");
+}
+
+/// ストリーミングでもバッチと同じ結果になるセレクタは警告しない。
+/// 過剰に警告すると、外す必要のない利用者にまで`--streaming`を諦めさせる。
+#[test]
+fn streaming_stays_quiet_for_selectors_that_keep_working() {
+    let html = r#"<html><head><style>
+            li:last-child { color: red }
+            div:empty { color: green }
+            section:has(h1) { color: blue }
+            h1 + p { color: teal }
+            li:first-child { color: navy }
+        </style></head><body><p>x</p></body></html>"#;
+
+    let streaming = run_capturing_stderr(html, &["--streaming"], "warn-selector-safe");
+    assert!(!streaming.contains("警告"), "got: {streaming}");
 }
 
 #[test]
