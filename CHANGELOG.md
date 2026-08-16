@@ -5,10 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.2.0 - 2026-08-16
+
+### Added
+
+- Support the `:has()`, `:is()` and `:where()` selectors (#10). Specificity follows the
+  spec: `:is()` and `:has()` count as their most specific argument and `:where()` counts as
+  zero, and the argument list of `:is()` / `:where()` is forgiving. In streaming mode
+  `:has(~ ...)` cannot be decided and warns.
+- Support `color-mix()` (#11), in the `srgb`, `srgb-linear`, `lab`, `oklab`, `xyz`, `hsl`,
+  `hwb`, `lch` and `oklch` colour spaces with all four hue interpolation methods. Weight
+  normalisation and premultiplied alpha follow the spec. Wide-gamut spaces and
+  `currentcolor` operands are rejected; see the docs for why.
+- Accept `data:` URIs and `http(s)` URLs in the `src: url()` of `@font-face` (#5). They are
+  resolved through the same fetcher, `<base href>` handling and access control as `<img>`,
+  `<link>` and `@import`.
+- Support `<wbr>`, and U+200B ZERO WIDTH SPACE, as a line break opportunity. Neither
+  adds width nor leaves a character in the PDF text layer.
+
+### Changed
+
+- Decline a font that has no glyph outlines, with a warning naming the font, instead of
+  selecting it (#9). Colour emoji fonts such as Noto Color Emoji are bitmap-only: font
+  selection consulted `cmap` alone, so such a font was chosen as one that could draw the
+  character, and the result was text that vanished entirely rather than showing tofu, with
+  no warning, a PDF inflated to the size of the source font because subsetting had nothing
+  to strip, and an embedded font some readers refused to parse. Emoji now fall back to tofu
+  with a warning naming the characters. Colour emoji rendering itself is tracked in #12; a
+  monochrome outline font such as Noto Emoji works today through `--font`.
+- Report only the selectors that actually behave differently in streaming mode. The warning
+  used to name `:last-child` and `:empty`, which are correct there, while staying silent
+  about `+`, `~` and `:first-child`, which were not.
 
 ### Fixed
 
+- Measure the natural width of a nested table, flex or grid box instead of treating it as
+  zero (#5). A grid or flex container nested inside another one collapsed to zero width,
+  so its content overflowed one word per line. This was never specific to grid-in-grid:
+  flex-in-flex, flex-in-grid, grid-in-flex and any of those inside a table cell took the
+  same path.
+- Let `auto` grid tracks absorb the leftover width. `justify-content` had `flex-start` as
+  its initial value internally, which is not the same as the initial `normal` and stopped
+  the tracks from stretching.
+- Collect absolutely positioned descendants of a flex item, a grid item, a table cell and
+  an `inline-block` (#5). They were laid out through helpers that discarded them, so the
+  element was silently dropped.
+- Keep the preceding siblings of a processed top-level element visible in streaming mode.
+  The subtree was released as soon as it had been laid out, so every later element looked
+  like the first child: `+` and `~` stopped matching and `:first-child` matched everything.
+  The nodes are now kept when the stylesheet needs them, which costs about 19 bytes per
+  top-level element and nothing at all otherwise.
+- Memoise the natural width and the measured height of each box. Deeply nested flex and
+  grid re-measured the same subtree once per ancestor level, growing exponentially with
+  depth; a five-level structure repeated 200 times went from 0.15 s to 0.04 s.
 - Keep the whitespace between two inline elements, so `<span>one</span> <span>two</span>`
   renders as `one two` instead of `onetwo` (#3).
 - Collapse only the whitespace CSS Text 3 says is collapsible (space, tab, newline).
@@ -35,11 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep the leading whitespace of a `white-space: pre` element when it comes from a
   whitespace-only text node, so `<pre>   <b>x</b>y</pre>` keeps its indentation
   instead of rendering as `xy`.
-
-### Added
-
-- Support `<wbr>`, and U+200B ZERO WIDTH SPACE, as a line break opportunity. Neither
-  adds width nor leaves a character in the PDF text layer.
 
 ## 0.1.1
 
