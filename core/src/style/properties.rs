@@ -3,6 +3,8 @@
 use cssparser::{match_ignore_ascii_case, CowRcStr, ParseError, Parser, Token};
 use palette::{FromColor, Lab, Lch, Oklab, Oklch, Srgb};
 
+use super::color_mix::{self, HueMethod, Space as ColorSpace};
+
 use super::values::{
     AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment, BackgroundRepeat,
     BorderCollapse, BorderStyle, BoxSizing, BreakBetween, BreakInside, CaptionSide, Clear, Color,
@@ -1413,9 +1415,25 @@ fn parse_length_unit<'i>(
     }
 }
 
+/// `color-mix()`の入れ子の上限。無効な深さでスタックを食い潰さないための歯止め
+/// (`MAX_IMPORT_DEPTH`と同じ考え方)。
+const MAX_COLOR_MIX_DEPTH: u32 = 16;
+
 /// `lab`/`lch`/`oklab`/`oklch`は`cssparser-color`がsRGB変換関数を
 /// 公開していないため、`palette`クレートで変換する。
 fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, ()>> {
+    parse_color_at_depth(input, 0)
+}
+
+fn parse_color_at_depth<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<Color, ParseError<'i, ()>> {
+    // `cssparser-color`は`color-mix()`を扱わない(より良い`calc()`対応が要る、
+    // として対象外にしている)ので、先に自前で試す。
+    if let Ok(mixed) = input.try_parse(|input| parse_color_mix(input, depth)) {
+        return Ok(mixed);
+    }
     let color = cssparser_color::Color::parse(input).map_err(|_| input.new_custom_error(()))?;
     match color {
         cssparser_color::Color::CurrentColor => Ok(Color::CurrentColor),
@@ -1494,6 +1512,128 @@ fn parse_color<'i>(input: &mut Parser<'i, '_>) -> Result<Color, ParseError<'i, (
             ))
         }
         _ => Err(input.new_custom_error(())),
+    }
+}
+
+/// `color-mix(in <color-space> [<hue-interpolation-method>]?, <color> <percentage>?, <color> <percentage>?)`。
+///
+/// `currentcolor`をオペランドに含む形は非対応。`currentcolor`はカスケードの後
+/// (その要素の`color`が決まってから)解決するのに対し、混色はここで済ませて
+/// しまうため、この時点では値が分からない。仕様どおり無効な色として扱い、
+/// 宣言ごと落とす。
+fn parse_color_mix<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<Color, ParseError<'i, ()>> {
+    if depth >= MAX_COLOR_MIX_DEPTH {
+        return Err(input.new_custom_error(()));
+    }
+    if input.expect_function_matching("color-mix").is_err() {
+        return Err(input.new_custom_error(()));
+    }
+    input.parse_nested_block(|input| {
+        if input.expect_ident_matching("in").is_err() {
+            return Err(input.new_custom_error(()));
+        }
+        let space = match input.expect_ident() {
+            Ok(ident) => ColorSpace::parse(ident).ok_or(()),
+            Err(_) => Err(()),
+        }
+        .map_err(|_| input.new_custom_error(()))?;
+
+        // `<hue-interpolation-method>`は極座標の色空間でのみ意味を持つ。
+        // 構文としては`shorter hue`のように2つのidentが続く。
+        let hue_method = input
+            .try_parse(|input| {
+                let method = match input.expect_ident() {
+                    Ok(ident) => HueMethod::parse(ident).ok_or(()),
+                    Err(_) => Err(()),
+                }?;
+                input.expect_ident_matching("hue").map_err(|_| ())?;
+                Ok::<_, ()>(method)
+            })
+            .unwrap_or_default();
+
+        input
+            .expect_comma()
+            .map_err(|_| input.new_custom_error(()))?;
+        let (first, first_percentage) = parse_color_mix_operand(input, depth)?;
+        input
+            .expect_comma()
+            .map_err(|_| input.new_custom_error(()))?;
+        let (second, second_percentage) = parse_color_mix_operand(input, depth)?;
+
+        let (w1, w2, alpha_multiplier) = normalize_mix_weights(first_percentage, second_percentage)
+            .ok_or_else(|| input.new_custom_error(()))?;
+
+        let (red, green, blue, alpha) = color_mix::mix(space, hue_method, first, w1, second, w2);
+        Ok(rgba_from_unit_floats(
+            red,
+            green,
+            blue,
+            alpha * alpha_multiplier,
+        ))
+    })
+}
+
+/// `<color> <percentage>?`(順序はどちらでもよい)。
+#[allow(clippy::type_complexity)]
+fn parse_color_mix_operand<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<(color_mix::UnitRgba, Option<f32>), ParseError<'i, ()>> {
+    let leading = input.try_parse(parse_mix_percentage).ok();
+    let color = parse_color_at_depth(input, depth + 1)?;
+    let percentage = match leading {
+        Some(p) => Some(p),
+        None => input.try_parse(parse_mix_percentage).ok(),
+    };
+
+    let Color::Rgba {
+        red,
+        green,
+        blue,
+        alpha,
+    } = color
+    else {
+        // `currentcolor`。上記のとおりここでは解決できない。
+        return Err(input.new_custom_error(()));
+    };
+    Ok((
+        (
+            red as f32 / 255.0,
+            green as f32 / 255.0,
+            blue as f32 / 255.0,
+            alpha,
+        ),
+        percentage,
+    ))
+}
+
+fn parse_mix_percentage<'i>(input: &mut Parser<'i, '_>) -> Result<f32, ParseError<'i, ()>> {
+    match input.expect_percentage() {
+        // 負のパーセンテージは無効。
+        Ok(p) if p >= 0.0 => Ok(p),
+        _ => Err(input.new_custom_error(())),
+    }
+}
+
+/// 2つの重みを正規化する(CSS Color 5 §3.2)。返り値は`(第1の重み, 第2の重み,
+/// 結果のアルファに掛ける係数)`。両方が0%なら無効。
+fn normalize_mix_weights(first: Option<f32>, second: Option<f32>) -> Option<(f32, f32, f32)> {
+    match (first, second) {
+        (None, None) => Some((0.5, 0.5, 1.0)),
+        (Some(p), None) => Some((p, 1.0 - p, 1.0)),
+        (None, Some(p)) => Some((1.0 - p, p, 1.0)),
+        (Some(a), Some(b)) => {
+            let sum = a + b;
+            if sum <= 0.0 {
+                return None;
+            }
+            // 合計が100%に満たない場合は、足りないぶんだけ結果を透明にする。
+            let alpha_multiplier = if sum < 1.0 { sum } else { 1.0 };
+            Some((a / sum, b / sum, alpha_multiplier))
+        }
     }
 }
 

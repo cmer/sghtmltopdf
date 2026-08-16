@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T18:15:07+09:00\n"
+"POT-Creation-Date: 2026-08-16T19:53:45+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -2267,8 +2267,8 @@ msgid ""
 "`:last-of-type`・`:only-of-type`・`:nth-last-child()`・`:nth-last-of-"
 "type()`・`:has(~ ...)`"
 msgstr ""
-"`:last-of-type`, `:only-of-type`, `:nth-last-child()`, `:nth-last-of-type()`, "
-"`:has(~ ...)`"
+"`:last-of-type`, `:only-of-type`, `:nth-last-child()`, `:nth-last-of-"
+"type()`, `:has(~ ...)`"
 
 #: src/usage/cli/streaming.md:31
 msgid "結果が変わる(余分にマッチする、または取りこぼす)"
@@ -2284,8 +2284,8 @@ msgstr ""
 "An element directly under `<body>` has its style settled the moment its next "
 "sibling appears. Only selectors that need to know whether more elements of "
 "the same kind follow are therefore undecidable. Rewrite rules such as "
-"\"remove the rule on the last row only\" by adding a class and writing "
-"`.last { … }` instead."
+"\"remove the rule on the last row only\" by adding a class and writing `."
+"last { … }` instead."
 
 #: src/usage/cli/streaming.md:37
 msgid ""
@@ -2293,10 +2293,9 @@ msgid ""
 "child`など)はバッチと同じ結果になります。 詳細は[セレクタ](../../supports/"
 "selectors.md#ストリーミングモード固有の制約)を参照してください。"
 msgstr ""
-"Every other sibling selector — `+`, `~`, `:first-child`, `:nth-child()`, "
-"`:last-child` and so on — gives the same result as batch mode. See "
-"[Selectors](../../supports/selectors.md#ストリーミングモード固有の制約) for "
-"the details."
+"Every other sibling selector — `+`, `~`, `:first-child`, `:nth-child()`, `:"
+"last-child` and so on — gives the same result as batch mode. See [Selectors]"
+"(../../supports/selectors.md#ストリーミングモード固有の制約) for the details."
 
 #: src/usage/cli/streaming.md:40
 msgid "使えるもの"
@@ -3071,7 +3070,7 @@ msgstr "Precompiled gems are distributed, so no Rust toolchain is needed."
 #: src/supports/selectors.md:15 src/supports/selectors.md:27
 #: src/supports/selectors.md:46 src/supports/selectors.md:57
 #: src/supports/selectors.md:76 src/supports/selectors.md:89
-#: src/supports/selectors.md:104
+#: src/supports/selectors.md:120
 msgid "対応"
 msgstr "Supported"
 
@@ -3922,7 +3921,7 @@ msgstr "Property"
 #: src/supports/properties.md:176 src/supports/properties.md:211
 #: src/supports/properties.md:230 src/supports/selectors.md:15
 #: src/supports/selectors.md:27 src/supports/selectors.md:46
-#: src/supports/selectors.md:76 src/supports/selectors.md:104
+#: src/supports/selectors.md:76 src/supports/selectors.md:120
 #: src/migration/wkhtmltopdf-options.md:29
 #: src/migration/wkhtmltopdf-options.md:67
 #: src/migration/wkhtmltopdf-options.md:76
@@ -3963,9 +3962,9 @@ msgstr "`display`"
 #: src/supports/properties.md:187 src/supports/selectors.md:37
 #: src/supports/selectors.md:48 src/supports/selectors.md:49
 #: src/supports/selectors.md:78 src/supports/selectors.md:80
-#: src/supports/selectors.md:82 src/supports/selectors.md:106
-#: src/supports/selectors.md:107 src/supports/selectors.md:108
-#: src/supports/selectors.md:109
+#: src/supports/selectors.md:82 src/supports/selectors.md:122
+#: src/supports/selectors.md:123 src/supports/selectors.md:124
+#: src/supports/selectors.md:125
 msgid "⚠️"
 msgstr "⚠️"
 
@@ -4149,7 +4148,7 @@ msgstr "`margin`"
 #: src/supports/selectors.md:81 src/supports/selectors.md:83
 #: src/supports/selectors.md:91 src/supports/selectors.md:92
 #: src/supports/selectors.md:93 src/supports/selectors.md:94
-#: src/supports/selectors.md:96 src/supports/selectors.md:110
+#: src/supports/selectors.md:96 src/supports/selectors.md:126
 msgid "✅"
 msgstr "✅"
 
@@ -4309,8 +4308,8 @@ msgstr "`outline-offset`"
 #: src/supports/selectors.md:50 src/supports/selectors.md:51
 #: src/supports/selectors.md:63 src/supports/selectors.md:79
 #: src/supports/selectors.md:84 src/supports/selectors.md:85
-#: src/supports/selectors.md:97 src/supports/selectors.md:98
-#: src/supports/selectors.md:111 src/supports/selectors.md:112
+#: src/supports/selectors.md:97 src/supports/selectors.md:99
+#: src/supports/selectors.md:127 src/supports/selectors.md:128
 msgid "❌"
 msgstr "❌"
 
@@ -5653,7 +5652,8 @@ msgstr "`:nth-child()`, `:nth-last-child()`"
 
 #: src/supports/selectors.md:31
 msgid "ストリーミングモードでは`:nth-last-child()`の結果が変わる(下記参照)"
-msgstr "In streaming mode `:nth-last-child()` gives a different result; see below"
+msgstr ""
+"In streaming mode `:nth-last-child()` gives a different result; see below"
 
 #: src/supports/selectors.md:32
 msgid ""
@@ -5964,25 +5964,90 @@ msgstr "`currentcolor`, `transparent`"
 msgid "`color()`(`color(display-p3 ...)`等)"
 msgstr "`color()`, such as `color(display-p3 ...)`"
 
-#: src/supports/selectors.md:98
-msgid "`color-mix()` / 相対色構文(`rgb(from ...)`)"
-msgstr "`color-mix()`, and the relative colour syntax `rgb(from ...)`"
+#: src/supports/selectors.md:98 src/supports/selectors.md:103
+msgid "`color-mix()`"
+msgstr "`color-mix()`"
 
-#: src/supports/selectors.md:100
+#: src/supports/selectors.md:98
+msgid "⚠️ (下記)"
+msgstr "⚠️ (see below)"
+
+#: src/supports/selectors.md:99
+msgid "相対色構文(`rgb(from ...)`)"
+msgstr "The relative colour syntax `rgb(from ...)`"
+
+#: src/supports/selectors.md:101
 msgid "アルファ付きの色は塗り・背景ともPDFのExtGStateで透過描画する。"
 msgstr ""
 "Colours with alpha are drawn through a PDF ExtGState, for both fills and "
 "backgrounds."
 
-#: src/supports/selectors.md:102 src/supports/selectors.md:104
+#: src/supports/selectors.md:105
+msgid ""
+"`color-mix(in <色空間> [<色相の回し方> hue]?, <色> <割合>?, <色> <割合>?)`に"
+"対応する。 割合の正規化(合計が100%を超えるときは比率だけが効き、満たないとき"
+"は足りないぶんだけ結果が透明になる)と、アルファの事前乗算も仕様どおり行う。"
+msgstr ""
+"`color-mix(in <colorspace> [<hue-interpolation-method> hue]?, <color> "
+"<percentage>?, <color> <percentage>?)` is supported. Weights are normalised "
+"as the spec requires — over 100% only the ratio matters, under 100% the "
+"result becomes transparent by the shortfall — and alpha is premultiplied "
+"before interpolating."
+
+#: src/supports/selectors.md:108
+msgid ""
+"色空間: `srgb` / `srgb-linear` / `lab` / `oklab` / `xyz`(`xyz-d65`) / "
+"`hsl` / `hwb` / `lch` / `oklch`"
+msgstr ""
+"Colour spaces: `srgb`, `srgb-linear`, `lab`, `oklab`, `xyz` (`xyz-d65`), "
+"`hsl`, `hwb`, `lch` and `oklch`"
+
+#: src/supports/selectors.md:109
+msgid "色相の回し方: `shorter`(既定) / `longer` / `increasing` / `decreasing`"
+msgstr ""
+"Hue interpolation: `shorter` (the default), `longer`, `increasing` and "
+"`decreasing`"
+
+#: src/supports/selectors.md:110
+msgid "入れ子にできる(深さ16まで)"
+msgstr "It can be nested (up to 16 levels)"
+
+#: src/supports/selectors.md:112
+msgid "以下は非対応で、書くとその宣言だけが無視される。"
+msgstr "The following are not supported; using one drops that declaration alone."
+
+#: src/supports/selectors.md:114
+msgid ""
+"`display-p3` / `a98-rgb` / `prophoto-rgb` / `rec2020`。出力先がPDFのDeviceRGB"
+"なので、受け付けてもsRGBへ丸められるだけで指定した意味にならない"
+msgstr ""
+"`display-p3`, `a98-rgb`, `prophoto-rgb` and `rec2020`. The output is PDF "
+"DeviceRGB, so accepting them would only round the result back to sRGB and "
+"the request would not mean what it says"
+
+#: src/supports/selectors.md:115
+msgid ""
+"オペランドの`currentcolor`。`currentcolor`はカスケードの後(その要素の`color`"
+"が決まってから)解決するのに対し、混色はパース時に済ませるため、この時点では値"
+"が分からない"
+msgstr ""
+"`currentcolor` as an operand. `currentcolor` is resolved after the cascade, "
+"once the element's own `color` is known, whereas the mixing happens at parse "
+"time, so the value is not available yet"
+
+#: src/supports/selectors.md:116
+msgid "`xyz-d50`(白色点の変換が要るため)"
+msgstr "`xyz-d50` (it would need a white point conversion)"
+
+#: src/supports/selectors.md:118 src/supports/selectors.md:120
 msgid "at-rule"
 msgstr "At-rules"
 
-#: src/supports/selectors.md:106
+#: src/supports/selectors.md:122
 msgid "`@media`"
 msgstr "`@media`"
 
-#: src/supports/selectors.md:106
+#: src/supports/selectors.md:122
 msgid ""
 "メディアタイプのみを評価する。`screen`(および`not screen`以外の否定)はブロッ"
 "クごと無視し、`print`/`all`/タイプ省略は適用する。`(min-width: ...)`のような"
@@ -5993,11 +6058,11 @@ msgstr ""
 "type are applied. Feature queries such as `(min-width: ...)` are skipped "
 "without being evaluated, so the contents apply as long as the type matches"
 
-#: src/supports/selectors.md:107
+#: src/supports/selectors.md:123
 msgid "`@page`"
 msgstr "`@page`"
 
-#: src/supports/selectors.md:107
+#: src/supports/selectors.md:123
 msgid ""
 "`size`(キーワード/`<length>{1,2}`/`landscape`/`portrait`)と`margin`系に対応。"
 "`:first`/`:left`/`:right`擬似クラス単体に対応し、名前付きページ(`@page "
@@ -6008,11 +6073,11 @@ msgstr ""
 "left`, and `:right` are supported on their own; named pages such as `@page "
 "intro`, `:blank`, and compound pseudo-classes such as `:first:left` are not"
 
-#: src/supports/selectors.md:108
+#: src/supports/selectors.md:124
 msgid "`@page`内のmargin box"
 msgstr "The margin boxes inside `@page`"
 
-#: src/supports/selectors.md:108
+#: src/supports/selectors.md:124
 msgid ""
 "`@top-left-corner`/`@top-left`/`@top-center`/`@top-right`…の16種すべて。"
 "`content`のテキスト描画のみで、背景色・枠線等の装飾は非対応。`counter(page)`/"
@@ -6025,11 +6090,11 @@ msgstr ""
 "with `counter(page)` and `counter(pages)`, though `counter(pages)` is "
 "unavailable in streaming mode"
 
-#: src/supports/selectors.md:109 src/supports/fonts.md:44
+#: src/supports/selectors.md:125 src/supports/fonts.md:44
 msgid "`@font-face`"
 msgstr "`@font-face`"
 
-#: src/supports/selectors.md:109
+#: src/supports/selectors.md:125
 msgid ""
 "`font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタ"
 "に対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-"
@@ -6041,11 +6106,11 @@ msgstr ""
 "or `tech()` inside `src`. Other descriptors such as `font-display` are "
 "ignored. Font files may be TTF or OTF only; WOFF and WOFF2 are not supported"
 
-#: src/supports/selectors.md:110
+#: src/supports/selectors.md:126
 msgid "`@import`"
 msgstr "`@import`"
 
-#: src/supports/selectors.md:110
+#: src/supports/selectors.md:126
 msgid ""
 "ネスト(深さ上限16、超過分はその1件だけ無視)・循環参照の検出に対応。`@import "
 "url(...) screen;`のようなメディアクエリ条件は評価せず常に取り込む"
@@ -6054,15 +6119,15 @@ msgstr ""
 "alone is ignored, and cycles are detected. A media condition such as "
 "`@import url(...) screen;` is not evaluated; the file is always imported"
 
-#: src/supports/selectors.md:111
+#: src/supports/selectors.md:127
 msgid "`@charset`"
 msgstr "`@charset`"
 
-#: src/supports/selectors.md:111
+#: src/supports/selectors.md:127
 msgid "入力はUTF-8前提"
 msgstr "The input is assumed to be UTF-8"
 
-#: src/supports/selectors.md:112
+#: src/supports/selectors.md:128
 msgid ""
 "`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
 "`@container` / `@property`"
@@ -6070,15 +6135,15 @@ msgstr ""
 "`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@layer`, "
 "`@container`, `@property`"
 
-#: src/supports/selectors.md:112
+#: src/supports/selectors.md:128
 msgid "ブロックごと無視される"
 msgstr "The whole block is ignored"
 
-#: src/supports/selectors.md:114
+#: src/supports/selectors.md:130
 msgid "ストリーミングモード固有の制約"
 msgstr "Restrictions specific to streaming mode"
 
-#: src/supports/selectors.md:116
+#: src/supports/selectors.md:132
 msgid ""
 "`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::"
 "Streaming`でのみ以下が適用される。"
@@ -6086,7 +6151,7 @@ msgstr ""
 "In `Mode::Batch` the whole DOM is available, so none of this applies. The "
 "following holds only in `Mode::Streaming`."
 
-#: src/supports/selectors.md:119
+#: src/supports/selectors.md:135
 msgid ""
 "`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理しま"
 "す。 そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下"
@@ -6099,7 +6164,7 @@ msgstr ""
 "for those top-level elements — inside one of them the subtree is complete, "
 "so nothing changes."
 
-#: src/supports/selectors.md:122
+#: src/supports/selectors.md:138
 msgid ""
 "`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:"
 "has(~ ...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告が"
@@ -6109,7 +6174,7 @@ msgstr ""
 "and `:has(~ ...)` match too much or miss altogether. Using any of them "
 "prints a warning"
 
-#: src/supports/selectors.md:124
+#: src/supports/selectors.md:140
 msgid ""
 "`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するの"
 "でバッチと同じ結果になります"
@@ -6118,7 +6183,7 @@ msgstr ""
 "next sibling, on the other hand, line up with what settling already "
 "guarantees, so they give the same result as batch mode"
 
-#: src/supports/selectors.md:125
+#: src/supports/selectors.md:141
 msgid ""
 "`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:"
 "only-child`もバッチと同じ結果になります。 これらを使っている文書では、処理済"
@@ -6132,7 +6197,7 @@ msgstr ""
 "descendants released, so the element itself stays visible as a sibling (what "
 "remains is one node per top-level element, so almost as much is still freed)"
 
-#: src/supports/selectors.md:128
+#: src/supports/selectors.md:144
 msgid ""
 "`<body>`開始後の`<style>`タグはエラー: `EngineError::"
 "UnsupportedInStreamingMode`を返す。 黙って見た目が崩れるのを避けるため、"
@@ -6142,11 +6207,11 @@ msgstr ""
 "UnsupportedInStreamingMode`. Keep all `<style>` in `<head>`, so that the "
 "layout does not quietly fall apart"
 
-#: src/supports/selectors.md:130
+#: src/supports/selectors.md:146
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr "`position: absolute` and `fixed` are ignored"
 
-#: src/supports/selectors.md:131
+#: src/supports/selectors.md:147
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr "`counter(pages)`, the total page count, is unavailable"
 
@@ -8950,25 +9015,31 @@ msgid "グラデーション(`linear-gradient()`等)と複数背景"
 msgstr "Gradients such as `linear-gradient()`, and multiple backgrounds"
 
 #: src/appendix/limitations.md:51
+msgid "相対色構文(`rgb(from ...)`)と`color()`(`color-mix()`は対応済み)"
+msgstr ""
+"The relative colour syntax (`rgb(from ...)`) and `color()` (`color-mix()` is "
+"supported)"
+
+#: src/appendix/limitations.md:52
 msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
 msgstr "Animations, transitions, and `filter`, since the output is static"
 
-#: src/appendix/limitations.md:52
+#: src/appendix/limitations.md:53
 msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
 msgstr ""
 "`position: sticky`, `display: inline-flex` and `inline-grid`, and subgrid"
 
-#: src/appendix/limitations.md:53
+#: src/appendix/limitations.md:54
 msgid "`::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)"
 msgstr ""
 "`::first-line` and `::marker` (`:is()`, `:where()` and `:has()` are "
 "supported)"
 
-#: src/appendix/limitations.md:55
+#: src/appendix/limitations.md:56
 msgid "空白文字の扱い"
 msgstr "How whitespace is treated"
 
-#: src/appendix/limitations.md:57
+#: src/appendix/limitations.md:58
 msgid ""
 "畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 `&nbsp;"
 "`(U+00A0)やthin space(U+2009)などは畳み込まれない普通の文字として、 フォント"
@@ -8984,7 +9055,7 @@ msgstr ""
 "space, figure space or word joiner (this holds under `word-break: break-all` "
 "as well)."
 
-#: src/appendix/limitations.md:63
+#: src/appendix/limitations.md:64
 msgid ""
 "`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよ"
 "い」という 指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りませ"
@@ -8995,11 +9066,11 @@ msgstr ""
 "character in the PDF text layer (text extraction runs the two sides together "
 "even with a `<wbr>` between them)."
 
-#: src/appendix/limitations.md:67
+#: src/appendix/limitations.md:68
 msgid "この範囲での既知の制限は以下です。"
 msgstr "Within that scope, the known limitations are:"
 
-#: src/appendix/limitations.md:69
+#: src/appendix/limitations.md:70
 msgid ""
 "`text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の"
 "空白のみ)"
@@ -9007,22 +9078,22 @@ msgstr ""
 "When `text-align: justify` stretches a line, `&nbsp;` is not one of the gaps "
 "it stretches (only ordinary spaces are)"
 
-#: src/appendix/limitations.md:70
+#: src/appendix/limitations.md:71
 msgid "U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります"
 msgstr ""
 "U+2028 and U+2029 are treated as ordinary whitespace rather than as the "
 "forced breaks they are meant to be"
 
-#: src/appendix/limitations.md:71
+#: src/appendix/limitations.md:72
 msgid "行末に来た空白の「ぶら下がり」(hanging)は行いません"
 msgstr ""
 "Whitespace that lands at the end of a line is not hung outside the line box"
 
-#: src/appendix/limitations.md:73
+#: src/appendix/limitations.md:74
 msgid "ストリーミングモード固有の制限"
 msgstr "Limitations specific to streaming mode"
 
-#: src/appendix/limitations.md:75
+#: src/appendix/limitations.md:76
 msgid ""
 "`--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--"
 "toc`)などが使えなくなります。 詳細は[ストリーミングモード](../usage/cli/"
@@ -9032,11 +9103,11 @@ msgstr ""
 "`[topage]`, and the table of contents, `--toc`, become unavailable. See "
 "[Streaming mode](../usage/cli/streaming.md) for the details."
 
-#: src/appendix/limitations.md:78
+#: src/appendix/limitations.md:79
 msgid "今後について"
 msgstr "Looking ahead"
 
-#: src/appendix/limitations.md:80
+#: src/appendix/limitations.md:81
 msgid ""
 "JavaScriptエンジンの組み込みは、必要性が出てきた段階での検討事項として残して"
 "あります。 上記のうちPDFのアウトラインなど、設計上の非目標ではないものは将来"

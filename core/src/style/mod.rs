@@ -1,6 +1,7 @@
 //! CSSパース・セレクタマッチング・カスケード(cssparser/selectors)。
 
 mod cascade;
+mod color_mix;
 mod computed;
 mod custom_properties;
 mod element_ref;
