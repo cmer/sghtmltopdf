@@ -27,17 +27,19 @@
 | 擬似クラス | 対応 | 備考 |
 | - | - | - |
 | `:root` | ✅ | |
-| `:first-child` / `:last-child` / `:only-child` | ✅ | ストリーミングモードでは`:last-child`が常に非マッチ(下記参照) |
-| `:nth-child()` / `:nth-last-child()` | ✅ | 同上(`:nth-last-child()`はストリーミングモードで非マッチ) |
-| `:first-of-type` / `:last-of-type` / `:only-of-type` / `:nth-of-type()` / `:nth-last-of-type()` | ✅ | 同上 |
-| `:empty` | ✅ | 同上 |
+| `:first-child` / `:last-child` / `:only-child` | ✅ | |
+| `:nth-child()` / `:nth-last-child()` | ✅ | ストリーミングモードでは`:nth-last-child()`の結果が変わる(下記参照) |
+| `:first-of-type` / `:last-of-type` / `:only-of-type` / `:nth-of-type()` / `:nth-last-of-type()` | ✅ | ストリーミングモードでは`:first-of-type`/`:nth-of-type()`以外の結果が変わる(下記参照) |
+| `:empty` | ✅ | |
 | `:not()` | ✅ | |
-| `:is()` / `:where()` / `:has()` | ❌ | パースエラー(セレクタごと無視される) |
+| `:is()` / `:where()` | ✅ | 引数リストは寛容(未対応のセレクタが混ざっていてもその項だけを捨てる)。詳細度は`:is()`が引数のうち最も高いもの、`:where()`は常に0 |
+| `:has()` | ✅ | 子孫・`>`・`+`・`~`のいずれも書ける。詳細度は`:is()`と同じ規則。入れ子(`:has()`の中の`:has()`)と擬似要素は仕様どおり書けない。ストリーミングモードでは`:has(~ ...)`が非マッチ(下記参照) |
 | `:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / `:target` / `:enabled` / `:disabled` / `:checked` / `:visited` | ⚠️ | パースは通るが常に非マッチ。対話状態を持たない静的なPDF出力では意味を持たないため |
 | `:link` / `:any-link` | ✅ | `href`を持つ`<a>`にマッチする |
 
-非対応の擬似クラスがセレクタに含まれるとルール全体が捨てられる(`:is()`等)。
+非対応の擬似要素(`::first-line`等)がセレクタに含まれるとルール全体が捨てられる。
 一方`:hover`のようにパースが通るものは、ルールとしては生き残った上でマッチしない。
+`:is()` / `:where()`の引数リストだけは例外で、未対応の項があってもその項が捨てられるだけでルールは生きる。
 
 ## 擬似要素
 
@@ -114,7 +116,15 @@
 `Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。
 `Mode::Streaming`でのみ以下が適用される。
 
-* 後方参照セレクタは常に非マッチ: `:last-child`/`:last-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:empty`(対象要素の親の子リストが完結するまで原理的に判定できないため)
+`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理します。
+そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下の要素に限って結果が変わります(その要素の内側は部分木が揃っているので変わりません)。
+
+* `:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:has(~ ...)`は、余分にマッチしたり取りこぼしたりします。
+  これらを使うと警告が出ます
+* `:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するのでバッチと同じ結果になります
+* `+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:only-child`もバッチと同じ結果になります。
+  これらを使っている文書では、処理済みのトップレベル要素を子孫だけ解放し、要素そのものを兄弟として残すためです
+  (残るのはトップレベル要素1個につき1ノードなので、解放できる量はほぼ変わりません)
 * `<body>`開始後の`<style>`タグはエラー: `EngineError::UnsupportedInStreamingMode`を返す。
   黙って見た目が崩れるのを避けるため、`<style>`は`<head>`に集約する
 * `position: absolute`/`fixed`は無視される

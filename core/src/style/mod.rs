@@ -31,7 +31,9 @@ pub use page_rule::{
 };
 pub use properties::PropertyDeclaration;
 pub use selector_impl::SgSelectorImpl;
-pub use stylesheet::{backward_looking_selectors, parse_stylesheet, StyleRule, Stylesheet};
+pub use stylesheet::{
+    needs_preceding_siblings, parse_stylesheet, streaming_unsafe_selectors, StyleRule, Stylesheet,
+};
 pub use ua::user_agent_stylesheet;
 pub use values::{
     compose_transform, AlignContent, AlignItems, AlignSelf, AspectRatio, BackgroundAttachment,

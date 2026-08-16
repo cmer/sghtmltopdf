@@ -7,7 +7,9 @@ use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput,
     QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, StyleSheetParser, Token,
 };
-use selectors::parser::{ParseRelative, SelectorList};
+use selectors::parser::{
+    Combinator, Component, NthSelectorData, NthType, ParseRelative, Selector, SelectorList,
+};
 
 use super::font_face::{parse_font_face_block, FontFaceRule};
 use super::page_rule::{parse_page_rule_block, parse_page_selector, PageRule};
@@ -301,63 +303,224 @@ impl<'i> RuleBodyItemParser<'i, Vec<PropertyDeclaration>, ()> for DeclarationBlo
     }
 }
 
-/// `Mode::Streaming`では評価できない「後方参照セレクタ」が使われていれば、
-/// その名前を返す。
+/// 判定に直前の兄弟が要るセレクタ。
 ///
-/// これらは対象要素の親の子リストが完結するまで原理的に判定できないため、
-/// ストリーミング処理では常に非マッチになる。黙って結果が変わるのを
-/// 避けるため、呼び出し側が警告を出すのに使う。
-pub fn backward_looking_selectors(sheet: &Stylesheet) -> Vec<String> {
-    use cssparser::ToCss as _;
+/// ストリーミングは処理済みのトップレベル要素を解放するが、これらを使う文書では
+/// 解放を子孫だけに絞り、要素そのものは兄弟として見えるように残す必要がある
+/// ([`crate::html::Dom::release_descendants`])。
+const NEEDS_PRECEDING: &[&str] = &[
+    "+",
+    "~",
+    ":first-child",
+    ":nth-child()",
+    ":first-of-type",
+    ":nth-of-type()",
+    ":only-child",
+    ":only-of-type",
+];
 
-    const NAMES: &[&str] = &[
-        ":nth-last-child",
-        ":nth-last-of-type",
-        ":last-child",
-        ":last-of-type",
-        ":only-child",
-        ":only-of-type",
-        ":empty",
-    ];
+/// 直前の兄弟を残しても、なお判定できないセレクタ。
+///
+/// いずれも「この先に同じ型の要素が続くか」を知る必要があるが、トップレベル
+/// 要素が確定するのは次の兄弟が現れた時点なので、その先は分からない。
+const STILL_UNSAFE: &[&str] = &[
+    ":last-of-type",
+    ":only-of-type",
+    ":nth-last-child()",
+    ":nth-last-of-type()",
+    ":has(~ ...)",
+];
 
+/// スタイルシートが、判定に直前の兄弟を要するセレクタを含むか。
+///
+/// 含む場合、ストリーミング処理はトップレベル要素の解放を子孫だけに絞る。
+/// 含まない場合は従来どおりサブツリーごと解放してよい。
+///
+/// 使うときだけ残すのは、残すと解放できないノードが積み上がるため。
+/// 実測(トップレベル要素20万個)ではピークRSSが89.5MB→93.2MB、要素あたり
+/// 約19バイト。ただし積み上がるぶん[`crate::html::MAX_NODES`]には当たりうるので、
+/// トップレベル要素がその数を超える文書では、これらのセレクタを使うと
+/// ノード数の上限エラーになる(使わなければ従来どおり上限に当たらない)。
+pub fn needs_preceding_siblings(sheet: &Stylesheet) -> bool {
+    scan_sheet(sheet)
+        .iter()
+        .any(|name| NEEDS_PRECEDING.contains(&name.as_str()))
+}
+
+/// `Mode::Streaming`では直前の兄弟を残してもなおバッチと結果が変わるセレクタが
+/// 使われていれば、その名前を返す。
+///
+/// トップレベル要素が確定するのは次の兄弟が現れた時点なので、そこから先に同じ型の
+/// 要素が続くかどうかは分からない。判定にそれが要るものは、余分にマッチしたり
+/// 取りこぼしたりする。黙って結果が変わるのを避けるため、呼び出し側が警告を出すのに使う。
+///
+/// 逆に`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件
+/// (次の兄弟が現れた)と一致するのでバッチと同じ結果になる。ここでは挙げない。
+pub fn streaming_unsafe_selectors(sheet: &Stylesheet) -> Vec<String> {
+    scan_sheet(sheet)
+        .into_iter()
+        .filter(|name| STILL_UNSAFE.contains(&name.as_str()))
+        .collect()
+}
+
+/// スタイルシート中の、兄弟関係に依存するセレクタの名前を重複なく集める。
+fn scan_sheet(sheet: &Stylesheet) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     for rule in &sheet.rules {
         for selector in rule.selectors.slice() {
-            let text = selector.to_css_string();
-            for name in NAMES {
-                if text.contains(name) && !found.iter().any(|f| f == name) {
-                    found.push((*name).to_string());
-                }
-            }
+            scan_selector(selector, &mut found);
         }
     }
     found
 }
 
+fn scan_selector(selector: &Selector<SgSelectorImpl>, found: &mut Vec<String>) {
+    for component in selector.iter_raw_match_order() {
+        match component {
+            Component::Combinator(Combinator::NextSibling) => push_once(found, "+"),
+            Component::Combinator(Combinator::LaterSibling) => push_once(found, "~"),
+            Component::Nth(data) => push_once(found, nth_name(data)),
+            // 引数の中身も同じ規則で効くので辿る。
+            Component::Is(list) | Component::Where(list) | Component::Negation(list) => {
+                for inner in list.slice() {
+                    scan_selector(inner, found);
+                }
+            }
+            // `:has()`の中で問題になるのは`~`(後続の兄弟全部)だけ。子孫・`>`・`+`は
+            // 確定した時点で見えている。
+            Component::Has(relatives) => {
+                for relative in relatives.iter() {
+                    if relative
+                        .selector
+                        .iter_raw_match_order()
+                        .any(|c| matches!(c, Component::Combinator(Combinator::LaterSibling)))
+                    {
+                        push_once(found, ":has(~ ...)");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 判定に前後の兄弟が要るものだけを名前で返す。
+/// `:last-child`(`is_function`が`false`の`LastChild`)だけは、確定の条件と
+/// 一致するので安全。空文字を返して除く。
+fn nth_name(data: &NthSelectorData) -> &'static str {
+    match (data.ty, data.is_function) {
+        (NthType::Child, false) => ":first-child",
+        (NthType::Child, true) => ":nth-child()",
+        (NthType::OfType, false) => ":first-of-type",
+        (NthType::OfType, true) => ":nth-of-type()",
+        (NthType::LastChild, false) => "",
+        (NthType::LastChild, true) => ":nth-last-child()",
+        (NthType::LastOfType, false) => ":last-of-type",
+        (NthType::LastOfType, true) => ":nth-last-of-type()",
+        (NthType::OnlyChild, _) => ":only-child",
+        (NthType::OnlyOfType, _) => ":only-of-type",
+    }
+}
+
+fn push_once(found: &mut Vec<String>, name: &str) {
+    if name.is_empty() || found.iter().any(|f| f == name) {
+        return;
+    }
+    found.push(name.to_string());
+}
+
 #[cfg(test)]
 mod tests {
 
+    /// 直前の兄弟が要るセレクタを検出する(検出したらDOMの解放を子孫だけに絞る)。
     #[test]
-    fn backward_looking_selectors_are_detected() {
-        let sheet = parse_stylesheet(
-            "li:last-child { color: red } p:nth-last-child(2) { color: blue } div:empty { color: green }",
-        );
-        let found = backward_looking_selectors(&sheet);
-        assert!(found.contains(&":last-child".to_string()), "got: {found:?}");
-        assert!(
-            found.contains(&":nth-last-child".to_string()),
-            "got: {found:?}"
-        );
-        assert!(found.contains(&":empty".to_string()), "got: {found:?}");
+    fn selectors_that_need_preceding_siblings_are_detected() {
+        for css in [
+            "li:first-child { color: red }",
+            "p:nth-child(2) { color: red }",
+            "p:first-of-type { color: red }",
+            "p:nth-of-type(2) { color: red }",
+            "p:only-child { color: red }",
+            "h1 + p { color: red }",
+            "h1 ~ p { color: red }",
+            ":is(p:first-child, span) { color: red }",
+            ":not(p:first-child) { color: red }",
+        ] {
+            assert!(
+                needs_preceding_siblings(&parse_stylesheet(css)),
+                "検出できていない: {css}"
+            );
+        }
     }
 
+    /// 直前の兄弟が要らないセレクタでは、従来どおりサブツリーごと解放してよい。
     #[test]
-    fn ordinary_selectors_are_not_reported_as_backward_looking() {
-        let sheet = parse_stylesheet(
-            "li:first-child { color: red } p + p { color: blue } a:hover { color: green }",
-        );
-        assert!(backward_looking_selectors(&sheet).is_empty());
+    fn ordinary_selectors_do_not_need_preceding_siblings() {
+        for css in [
+            "li:last-child { color: red }",
+            "div:empty { color: red }",
+            "a:hover { color: red }",
+            "section:has(h1) { color: red }",
+            "div > p { color: red }",
+            "div p { color: red }",
+        ] {
+            assert!(
+                !needs_preceding_siblings(&parse_stylesheet(css)),
+                "余計に検出している: {css}"
+            );
+        }
     }
+
+    /// 直前の兄弟を残してもなお判定できないセレクタだけを警告する。
+    #[test]
+    fn only_selectors_that_stay_broken_are_reported() {
+        let sheet = parse_stylesheet(
+            "p:last-of-type { color: red } p:only-of-type { color: blue } \
+             p:nth-last-child(2) { color: green } p:nth-last-of-type(1) { color: teal } \
+             div:has(~ h1) { color: navy }",
+        );
+        let found = streaming_unsafe_selectors(&sheet);
+        for expected in [
+            ":last-of-type",
+            ":only-of-type",
+            ":nth-last-child()",
+            ":nth-last-of-type()",
+            ":has(~ ...)",
+        ] {
+            assert!(
+                found.contains(&expected.to_string()),
+                "{expected} が漏れている: {found:?}"
+            );
+        }
+    }
+
+    /// 直前の兄弟を残せば正しくなるものは警告しない。過剰に警告すると、
+    /// 外す必要のない利用者にまで`--streaming`を諦めさせる。
+    #[test]
+    fn selectors_that_stay_correct_are_not_reported() {
+        let sheet = parse_stylesheet(
+            "li:last-child { color: red } div:empty { color: green } \
+             a:hover { color: blue } section:has(h1) { color: teal } \
+             div:has(> p) { color: navy } h1:has(+ p) { color: olive } \
+             h1 + p { color: gray } li:first-child { color: lime }",
+        );
+        assert!(
+            streaming_unsafe_selectors(&sheet).is_empty(),
+            "got: {:?}",
+            streaming_unsafe_selectors(&sheet)
+        );
+    }
+
+    /// `:is()`/`:where()`/`:not()`の引数の中も見る。
+    #[test]
+    fn nested_selector_lists_are_scanned() {
+        let sheet = parse_stylesheet(":is(p:nth-last-of-type(2), span) { color: red }");
+        assert_eq!(
+            streaming_unsafe_selectors(&sheet),
+            vec![":nth-last-of-type()"]
+        );
+    }
+
     use super::*;
 
     #[test]

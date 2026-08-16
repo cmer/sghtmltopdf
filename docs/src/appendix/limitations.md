@@ -50,7 +50,7 @@
 * グラデーション(`linear-gradient()`等)と複数背景
 * アニメーション・トランジション・`filter`(静的な出力のため)
 * `position: sticky`、`display: inline-flex`/`inline-grid`、subgrid
-* `:is()`/`:where()`/`:has()`、`::first-line`、`::marker`
+* `::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)
 
 ## 空白文字の扱い
 
