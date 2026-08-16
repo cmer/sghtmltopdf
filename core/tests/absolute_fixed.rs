@@ -238,3 +238,93 @@ fn a_document_with_absolute_and_fixed_encodes_to_a_valid_pdf_in_batch_mode() {
     assert!(bytes.starts_with(b"%PDF-"));
     assert!(bytes.windows(5).any(|w| w == b"%%EOF"));
 }
+
+/// 以下4つは、新しいフォーマッティングコンテキストを作る箱
+/// (flexアイテム・gridアイテム・テーブルセル・inline-block)の中に置いた
+/// `absolute`が、無言で消えずに出てくることの回帰テスト。
+/// いずれもレイアウトが「結果を捨てる採寸パス」を持つため、消えないことに
+/// 加えて、重複して二重に出ないことも同時に確かめる。
+fn absolute_count(html_src: &str, needle: &str) -> usize {
+    pages_of(html_src)
+        .iter()
+        .map(|texts| texts.iter().filter(|t| t.contains(needle)).count())
+        .sum()
+}
+
+#[test]
+fn an_absolute_inside_a_flex_item_is_placed_relative_to_that_item() {
+    // 2カラムのflex。右のアイテムだけをpositionedにして、その左端に貼る。
+    let content_width = PageSettings::default().content_width();
+    let html_src = r#"<body><div style="display: flex; margin: 0;">
+        <div style="flex: 1; height: 100px;">left column</div>
+        <div style="flex: 1; height: 100px; position: relative;">
+          right column
+          <span style="position: absolute; left: 0; top: 0;">BADGE</span>
+        </div>
+      </div></body>"#;
+
+    assert_eq!(
+        absolute_count(html_src, "BADGE"),
+        1,
+        "flexアイテム内のabsoluteは1つだけ出る(採寸パスの分が重複してはならない)"
+    );
+
+    // containing blockが右のアイテムなので、ページの右半分に来る。
+    // 収集していなかった頃はここに到達する前に消えていた。
+    let (_, badge) = find_box_rect(html_src, "BADGE");
+    assert!(
+        badge.x > content_width * 0.4,
+        "バッジは右カラムの左端に付くはず: x={} of {content_width}",
+        badge.x
+    );
+}
+
+#[test]
+fn an_absolute_inside_a_grid_item_is_placed_relative_to_that_item() {
+    let content_width = PageSettings::default().content_width();
+    let html_src = r#"<body><div style="display: grid; grid-template-columns: 1fr 1fr; margin: 0;">
+        <div style="height: 100px;">left cell</div>
+        <div style="height: 100px; position: relative;">
+          right cell
+          <span style="position: absolute; left: 0; top: 0;">BADGE</span>
+        </div>
+      </div></body>"#;
+
+    assert_eq!(absolute_count(html_src, "BADGE"), 1);
+    let (_, badge) = find_box_rect(html_src, "BADGE");
+    assert!(
+        badge.x > content_width * 0.4,
+        "バッジは右のグリッドアイテムの左端に付くはず: x={badge:?}"
+    );
+}
+
+#[test]
+fn an_absolute_inside_a_table_cell_is_placed_relative_to_that_cell() {
+    let content_width = PageSettings::default().content_width();
+    let html_src = r#"<body><table style="width: 100%; margin: 0;"><tr>
+        <td style="width: 50%;">left cell</td>
+        <td style="width: 50%; position: relative;">
+          right cell
+          <span style="position: absolute; left: 0; top: 0;">BADGE</span>
+        </td>
+      </tr></table></body>"#;
+
+    assert_eq!(absolute_count(html_src, "BADGE"), 1);
+    let (_, badge) = find_box_rect(html_src, "BADGE");
+    assert!(
+        badge.x > content_width * 0.4,
+        "バッジは右のセルの左端に付くはず: x={badge:?}"
+    );
+}
+
+#[test]
+fn an_absolute_inside_an_inline_block_is_not_dropped() {
+    let html_src = r#"<body><p style="margin: 0;">
+        <span style="display: inline-block; position: relative; width: 200px; height: 60px;">
+          box
+          <span style="position: absolute; left: 0; top: 0;">BADGE</span>
+        </span>
+      </p></body>"#;
+
+    assert_eq!(absolute_count(html_src, "BADGE"), 1);
+}

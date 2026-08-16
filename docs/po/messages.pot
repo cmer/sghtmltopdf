@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T16:18:53+09:00\n"
+"POT-Creation-Date: 2026-08-16T16:57:16+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1784,7 +1784,7 @@ msgstr ""
 msgid "制約"
 msgstr ""
 
-#: src/usage/cli/streaming.md:27 src/supports/fonts.md:91
+#: src/usage/cli/streaming.md:27 src/supports/fonts.md:105
 msgid "挙動"
 msgstr ""
 
@@ -2446,7 +2446,7 @@ msgstr ""
 #: src/supports/properties.md:108 src/supports/properties.md:123
 #: src/supports/properties.md:141 src/supports/properties.md:150
 #: src/supports/properties.md:161 src/supports/properties.md:176
-#: src/supports/properties.md:211 src/supports/properties.md:227
+#: src/supports/properties.md:211 src/supports/properties.md:230
 #: src/supports/selectors.md:15 src/supports/selectors.md:27
 #: src/supports/selectors.md:44 src/supports/selectors.md:55
 #: src/supports/selectors.md:74 src/supports/selectors.md:87
@@ -3124,7 +3124,7 @@ msgstr ""
 #: src/supports/properties.md:123 src/supports/properties.md:141
 #: src/supports/properties.md:150 src/supports/properties.md:161
 #: src/supports/properties.md:176 src/supports/properties.md:211
-#: src/supports/properties.md:227 src/supports/pagination.md:13
+#: src/supports/properties.md:230 src/supports/pagination.md:13
 msgid "プロパティ"
 msgstr ""
 
@@ -3134,7 +3134,7 @@ msgstr ""
 #: src/supports/properties.md:123 src/supports/properties.md:141
 #: src/supports/properties.md:150 src/supports/properties.md:161
 #: src/supports/properties.md:176 src/supports/properties.md:211
-#: src/supports/properties.md:227 src/supports/selectors.md:15
+#: src/supports/properties.md:230 src/supports/selectors.md:15
 #: src/supports/selectors.md:27 src/supports/selectors.md:44
 #: src/supports/selectors.md:74 src/supports/selectors.md:102
 #: src/migration/wkhtmltopdf-options.md:29
@@ -3302,8 +3302,8 @@ msgstr ""
 #: src/supports/properties.md:214 src/supports/properties.md:215
 #: src/supports/properties.md:216 src/supports/properties.md:217
 #: src/supports/properties.md:218 src/supports/properties.md:219
-#: src/supports/properties.md:220 src/supports/properties.md:229
-#: src/supports/properties.md:230 src/supports/selectors.md:17
+#: src/supports/properties.md:220 src/supports/properties.md:232
+#: src/supports/properties.md:233 src/supports/selectors.md:17
 #: src/supports/selectors.md:18 src/supports/selectors.md:19
 #: src/supports/selectors.md:20 src/supports/selectors.md:21
 #: src/supports/selectors.md:22 src/supports/selectors.md:29
@@ -3539,8 +3539,7 @@ msgid "containing blockになれるのは、単一ページに収まっている
 msgstr ""
 
 #: src/supports/properties.md:75
-msgid ""
-"インラインフォーマッティングコンテキストの内側(テキストの途中)にある`absolute`、テーブルセル内・flexアイテム内の`absolute`は非対応"
+msgid "テキストの途中に置いた`absolute`は、その前後のテキストが別々の行に分かれる(ブラウザのように1行のまま残らない)"
 msgstr ""
 
 #: src/supports/properties.md:76
@@ -3573,7 +3572,7 @@ msgid ""
 "`<length>`(`px`/`em`/`rem`)のみ。`smaller`/`larger`/`medium`等のキーワード、パーセンテージ指定は非対応"
 msgstr ""
 
-#: src/supports/properties.md:85 src/supports/fonts.md:93
+#: src/supports/properties.md:85 src/supports/fonts.md:107
 msgid "`font-weight`"
 msgstr ""
 
@@ -3582,7 +3581,7 @@ msgid ""
 "`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字フォントが無い場合は塗り+縁取りの疑似ボールドで描画"
 msgstr ""
 
-#: src/supports/properties.md:86 src/supports/fonts.md:94
+#: src/supports/properties.md:86 src/supports/fonts.md:108
 msgid "`font-style`"
 msgstr ""
 
@@ -4055,7 +4054,7 @@ msgstr ""
 
 #: src/supports/properties.md:180
 msgid ""
-"`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
+"`normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
 msgstr ""
 
 #: src/supports/properties.md:181
@@ -4270,105 +4269,111 @@ msgid "subgrid / masonry"
 msgstr ""
 
 #: src/supports/properties.md:225
+msgid ""
+"`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)と一致しません。 "
+"列幅を厳密に決めたい場合は`fr`か長さで指定してください。"
+msgstr ""
+
+#: src/supports/properties.md:228
 msgid "置換要素(画像)"
 msgstr ""
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:232
 msgid "`object-fit`"
 msgstr ""
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:232
 msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
 msgstr ""
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:233
 msgid "`object-position`"
 msgstr ""
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:233
 msgid "`background-position`と同じ値文法。初期値`50% 50%`"
 msgstr ""
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:235
 msgid ""
 "`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対応フォーマットはPNG/JPEG/WebP。 "
 "CSSで`width`/`height`の片方だけを指定した場合は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、)。"
 msgstr ""
 
-#: src/supports/properties.md:236
+#: src/supports/properties.md:239
 msgid "非対応プロパティ一覧"
 msgstr ""
 
-#: src/supports/properties.md:238
+#: src/supports/properties.md:241
 msgid "以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と決めたものだけではない。 カテゴリ表の`❌`行も参照。"
 msgstr ""
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:245
 msgid ""
 "ショートハンド: "
 "`font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分"
 msgstr ""
 
-#: src/supports/properties.md:243
+#: src/supports/properties.md:246
 msgid ""
 "論理プロパティ: "
 "`inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて"
 msgstr ""
 
-#: src/supports/properties.md:244
+#: src/supports/properties.md:247
 msgid ""
 "書字方向: "
 "`direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`"
 msgstr ""
 
-#: src/supports/properties.md:245
+#: src/supports/properties.md:248
 msgid ""
 "テキスト詳細: "
 "`text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
 msgstr ""
 
-#: src/supports/properties.md:246
+#: src/supports/properties.md:249
 msgid ""
 "フォント詳細: "
 "`font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`"
 msgstr ""
 
-#: src/supports/properties.md:247
+#: src/supports/properties.md:250
 msgid ""
 "多段組み: "
 "`columns`/`column-count`/`column-width`/`column-rule`/`column-span`/`column-fill`"
 msgstr ""
 
-#: src/supports/properties.md:248
+#: src/supports/properties.md:251
 msgid ""
 "視覚効果: "
 "`filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-mode`/`clip`/`clip-path`/`mask`/`isolation`"
 msgstr ""
 
-#: src/supports/properties.md:249
+#: src/supports/properties.md:252
 msgid ""
 "3D/アニメーション: "
 "`perspective`/`transform-style`/`backface-visibility`/`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/`will-change`"
 msgstr ""
 
-#: src/supports/properties.md:250
+#: src/supports/properties.md:253
 msgid ""
 "枠線・背景の拡張: "
 "`border-image-*`/`background-clip`/`background-origin`/`outline-offset`"
 msgstr ""
 
-#: src/supports/properties.md:251
+#: src/supports/properties.md:254
 msgid ""
 "オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-behavior`"
 msgstr ""
 
-#: src/supports/properties.md:252
+#: src/supports/properties.md:255
 msgid ""
 "UI/対話: "
 "`cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-color`/`appearance`"
 msgstr ""
 
-#: src/supports/properties.md:253
+#: src/supports/properties.md:256
 msgid ""
 "その他: "
 "`all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/`speak`等の音声メディア系/`zoom`"
@@ -4919,117 +4924,141 @@ msgid ""
 msgstr ""
 
 #: src/supports/fonts.md:64
+msgid "`src: url()`に書けるもの"
+msgstr ""
+
+#: src/supports/fonts.md:66
+msgid ""
+"ローカルの相対パス・絶対パスのほかに、`data:`URI(base64)と`http(s)`のURLを書けます。 参照の解決とアクセス制御は`<img "
+"src>`や外部CSSとまったく同じ規則で、`<base "
+"href>`・`--base-url`・`--allow`・`--allow-remote-assets`がそのまま効きます。"
+msgstr ""
+
+#: src/supports/fonts.md:71
+msgid "\"Embedded\""
+msgstr ""
+
+#: src/supports/fonts.md:72
+msgid "data:font/ttf;base64,AAEAAAAM…"
+msgstr ""
+
+#: src/supports/fonts.md:76
+msgid ""
+"`data:`URIはフォントをHTMLの中で自己完結させられるので、文字列を直接渡す変換やHTTPサーバ経由の変換のように、変換する側のファイルシステムを当てにできない構成で使えます。"
+msgstr ""
+
+#: src/supports/fonts.md:78
 msgid ""
 "読み込みの待ち合わせはありません。 headless "
 "Chromeで必要だった`document.fonts.ready`待ちのような処理は不要で、フォントが未解決のままPDF化されることはありません。"
 msgstr ""
 
-#: src/supports/fonts.md:67
+#: src/supports/fonts.md:81
 msgid "`unicode-range`"
 msgstr ""
 
-#: src/supports/fonts.md:69
+#: src/supports/fonts.md:83
 msgid "文字の範囲ごとにフォントを切り替えられます。 英数字は欧文フォント、日本語は和文フォント、という典型的な構成がそのまま書けます。"
 msgstr ""
 
-#: src/supports/fonts.md:74 src/supports/fonts.md:79
+#: src/supports/fonts.md:88 src/supports/fonts.md:93
 msgid "\"Mixed\""
 msgstr ""
 
-#: src/supports/fonts.md:75
+#: src/supports/fonts.md:89
 msgid "\"fonts/Latin.ttf\""
 msgstr ""
 
-#: src/supports/fonts.md:80
+#: src/supports/fonts.md:94
 msgid "\"fonts/JP.ttf\""
 msgstr ""
 
-#: src/supports/fonts.md:80
+#: src/supports/fonts.md:94
 msgid "/* 上の範囲外はこちら */"
 msgstr ""
 
-#: src/supports/fonts.md:84
+#: src/supports/fonts.md:98
 msgid "単一コードポイント・範囲・ワイルドカード(`U+4??`)・カンマ区切りの複数指定に対応します"
 msgstr ""
 
-#: src/supports/fonts.md:85
+#: src/supports/fonts.md:99
 msgid "宣言された範囲はハードフィルタとして働きます。範囲外の文字には、そのフォントが実際にグリフを持っていても使いません"
 msgstr ""
 
-#: src/supports/fonts.md:86
+#: src/supports/fonts.md:100
 msgid "`unicode-range`を書かなかったフォント(`local()`・`--font`・システム探索を含む)は全域をカバーします"
 msgstr ""
 
-#: src/supports/fonts.md:87
+#: src/supports/fonts.md:101
 msgid "範囲が重なった場合は、CSSの中で先に宣言されたほうが優先されます"
 msgstr ""
 
-#: src/supports/fonts.md:89
+#: src/supports/fonts.md:103
 msgid "太字と斜体"
 msgstr ""
 
-#: src/supports/fonts.md:91
+#: src/supports/fonts.md:105
 msgid "指定"
 msgstr ""
 
-#: src/supports/fonts.md:93
+#: src/supports/fonts.md:107
 msgid ""
 "`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字のフォントが無い場合は、塗りに縁取りを足した疑似ボールドで描画します"
 msgstr ""
 
-#: src/supports/fonts.md:94
+#: src/supports/fonts.md:108
 msgid ""
 "`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視)。イタリック字形が無い場合は、テキスト行列のせん断による疑似イタリックになります"
 msgstr ""
 
-#: src/supports/fonts.md:96
+#: src/supports/fonts.md:110
 msgid "`font`ショートハンドは非対応です。 `font-size`・`font-family`などのロングハンドを個別に書いてください。"
 msgstr ""
 
-#: src/supports/fonts.md:99
+#: src/supports/fonts.md:113
 msgid "絵文字"
 msgstr ""
 
-#: src/supports/fonts.md:101
+#: src/supports/fonts.md:115
 msgid ""
 "絵文字はモノクロのアウトラインフォントで描きます。 GoogleのNoto Emoji(カラーのNoto Color "
 "Emojiではなく、アウトライン版)を指定すれば、そのまま描画されます。"
 msgstr ""
 
-#: src/supports/fonts.md:108
+#: src/supports/fonts.md:122
 msgid "カラーフォントは非対応です。 `CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`のいずれも扱いません。"
 msgstr ""
 
-#: src/supports/fonts.md:111
+#: src/supports/fonts.md:125
 msgid "この種のフォントは指定しても使われず、警告が出ます。"
 msgstr ""
 
-#: src/supports/fonts.md:119
+#: src/supports/fonts.md:133
 msgid ""
 "黙って無視するのではなく採用しないのは、輪郭を持たないフォントを埋め込むと、文字が豆腐にすらならず完全に消えたうえ、サブセット化が効かずPDFだけが数MB膨らむためです。 "
 "不採用にすれば通常のフォント探索へ落ち、描画できる文字が無ければ「豆腐になります」の警告が文字を名指しして出ます。"
 msgstr ""
 
-#: src/supports/fonts.md:122
+#: src/supports/fonts.md:136
 msgid "サブセット化"
 msgstr ""
 
-#: src/supports/fonts.md:124
+#: src/supports/fonts.md:138
 msgid "埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定しても、PDFのサイズは文書に出てくる文字の分にしかなりません。"
 msgstr ""
 
-#: src/supports/fonts.md:127
+#: src/supports/fonts.md:141
 msgid "ストリーミングモードでの注意"
 msgstr ""
 
-#: src/supports/fonts.md:129
+#: src/supports/fonts.md:143
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たないため "
 "上の3・4のシステムフォント探索が行われません(警告を出して既定フォントで描画します)。 "
 "`--font`系オプションか`@font-face`で明示すれば、ストリーミングでも意図どおりのフォントになります。"
 msgstr ""
 
-#: src/supports/fonts.md:133
+#: src/supports/fonts.md:147
 msgid ""
 "例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加えてCJKを描画できるフォントを1本先回りで読み込みます。 "
 "日本語の文書を何も指定せずストリーミングで変換しても豆腐にならないのはこのためです。 CJK以外のスクリプトは警告の対象になります。"

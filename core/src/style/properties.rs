@@ -2016,6 +2016,7 @@ fn parse_justify_content<'i>(
 ) -> Result<JustifyContent, ParseError<'i, ()>> {
     let ident = input.expect_ident()?.clone();
     Ok(match_ignore_ascii_case! { &ident,
+        "normal" => JustifyContent::Normal,
         "flex-start" | "start" => JustifyContent::FlexStart,
         "flex-end" | "end" => JustifyContent::FlexEnd,
         "center" => JustifyContent::Center,

@@ -333,35 +333,14 @@ pub(super) fn layout_box_with_forced_size(
     )
 }
 
-/// `table`/`flex`/`inline`のセル・アイテム・アトミックボックスから呼ぶ、
-/// 絶対配置を集めない版のラッパー(これらのフォーマッティングコンテキスト
-/// 内の`absolute`/`fixed`は非対応)。
+/// 結果を捨てる採寸パス専用のラッパー。flexコンテナがtaffyへ内在サイズを
+/// 返すために、同じアイテムを何度もレイアウトし直す経路で使う。
+///
+/// 採寸で見つかった`absolute`/`fixed`は捨てる。最終レイアウトパスが同じ
+/// 子孫をもう一度通って本物の`PosCtx`へ集めるので、ここで集めると同じ
+/// ボックスが何重にも登録されてしまう。
 #[allow(clippy::too_many_arguments)]
-pub(super) fn layout_box_ignoring_positioned(
-    b: &LayoutBox,
-    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
-    fonts: &FontCollection,
-    containing_width: f32,
-    float_ctx: &mut FloatContext,
-    x: f32,
-    y: f32,
-) -> LaidOutBox {
-    let mut sink = Vec::new();
-    let mut pos = PosCtx::new(&mut sink, (0.0, 0.0));
-    layout_box(
-        b,
-        styles,
-        fonts,
-        containing_width,
-        float_ctx,
-        x,
-        y,
-        &mut pos,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn layout_box_with_forced_width_ignoring_positioned(
+pub(super) fn measure_box_with_forced_width(
     b: &LayoutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
@@ -379,34 +358,6 @@ pub(super) fn layout_box_with_forced_width_ignoring_positioned(
         fonts,
         containing_width,
         forced_content_width,
-        float_ctx,
-        x,
-        y,
-        &mut pos,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn layout_box_with_forced_size_ignoring_positioned(
-    b: &LayoutBox,
-    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
-    fonts: &FontCollection,
-    containing_width: f32,
-    forced_content_width: f32,
-    forced_content_height: f32,
-    float_ctx: &mut FloatContext,
-    x: f32,
-    y: f32,
-) -> LaidOutBox {
-    let mut sink = Vec::new();
-    let mut pos = PosCtx::new(&mut sink, (0.0, 0.0));
-    layout_box_with_forced_size(
-        b,
-        styles,
-        fonts,
-        containing_width,
-        forced_content_width,
-        forced_content_height,
         float_ctx,
         x,
         y,
@@ -549,7 +500,7 @@ pub(super) fn shrink_to_fit_content_width(
     available_width: f32,
 ) -> f32 {
     let _ = style;
-    let natural = super::table::measure_natural_content_width(&b.content, styles, fonts);
+    let natural = super::table::measure_natural_content_width(b, styles, fonts);
     natural.min(available_width).max(0.0)
 }
 
@@ -776,6 +727,7 @@ fn layout_box_impl(
                 content_x,
                 content_y,
                 Some(&*float_ctx),
+                pos,
             );
             // 行内の`display: inline-block`ボックスは、行の位置が確定した
             // この時点で最終座標へ移動させる。
@@ -810,6 +762,7 @@ fn layout_box_impl(
                 v_spacing,
                 content_x,
                 content_y,
+                pos,
             );
             let height =
                 resolve_used_height(&style, &padding, &border, content_width, table_height);
@@ -826,6 +779,7 @@ fn layout_box_impl(
                 content_width,
                 content_x,
                 content_y,
+                pos,
             );
             let height = resolve_used_height(&style, &padding, &border, content_width, grid_height);
             (LaidOutContent::Grid(laid_grid), height)
@@ -842,6 +796,7 @@ fn layout_box_impl(
                 content_width,
                 content_x,
                 content_y,
+                pos,
             );
             let height = resolve_used_height(&style, &padding, &border, content_width, flex_height);
             (LaidOutContent::Flex(items), height)
@@ -2496,11 +2451,7 @@ mod tests {
     }
 
     fn image_box(content: ImageBoxContent) -> LayoutBox {
-        LayoutBox {
-            node: None,
-            content: BoxContent::Image(content),
-            marker: None,
-        }
+        LayoutBox::anonymous(BoxContent::Image(content))
     }
 
     #[test]

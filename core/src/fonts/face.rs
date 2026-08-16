@@ -1,14 +1,14 @@
 //! `@font-face`ルールから実際のフォントファイルを読み込む。
 //!
-//! CSSは`<style>`要素からのみ得られ(外部`.css`ファイル・ネットワーク経由の取得は
-//! 現状どこにも存在しない)、`src: url(...)`はHTMLファイル自身のディレクトリを
-//! 基準とするローカルファイルパスとして解決する。`src: local(...)`はシステム
-//! フォントのフルネーム/PostScript名として[`super::system::SystemFonts`]から
-//! 解決する。
+//! `src: url(...)`は`<img>`・`<link>`・`@import`と同じ[`ImageFetcher`]で解決・
+//! 取得する。したがってローカルパス(HTMLファイル自身のディレクトリが基準)・
+//! `http(s)`・`data:`URIのいずれも扱え、`<base href>`やローカル/リモートの
+//! アクセス制御も同じ規則が適用される。`src: local(...)`はシステムフォントの
+//! フルネーム/PostScript名として[`super::system::SystemFonts`]から解決する。
 
 use cssparser::UnicodeRange;
 
-use crate::img::{ImageFetcher, ImgSrc};
+use crate::img::ImageFetcher;
 use crate::style::{FontFaceRule, FontFaceSource, FontStyle, FontWeight};
 
 use super::font::{warn_font_without_outlines, Font};
@@ -48,9 +48,11 @@ fn load_one(
     for src in &rule.src {
         let font = match src {
             // 読み込みは`<img>`・`<link>`・`@import`と同じ[`ImageFetcher`]を通す。
-            FontFaceSource::Url(path) => fetcher
-                .fetch(&ImgSrc::LocalPath(path.clone()))
-                .ok()
+            // 分類も同じ`resolve`に任せる(ここで`LocalPath`と決め打ちすると
+            // `data:`URIがファイルパス扱いになって必ず失敗する)。
+            FontFaceSource::Url(raw) => fetcher
+                .resolve(raw)
+                .and_then(|src| fetcher.fetch(&src).ok())
                 .and_then(|bytes| Font::from_bytes(bytes, 0).ok()),
             FontFaceSource::Local(name) => system.load_by_full_name(name),
         };
@@ -100,6 +102,15 @@ mod tests {
         }
     }
 
+    /// `tests/fonts`配下のフォントを、そのまま`data:`URIに埋め込んだ文字列にする。
+    fn data_uri(file_name: &str) -> String {
+        use base64::Engine;
+
+        let bytes = std::fs::read(Path::new(DEJAVU_PATH).join(file_name)).expect("test font");
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        format!("data:font/ttf;base64,{encoded}")
+    }
+
     fn no_system_fonts() -> SystemFonts {
         // ローカルの空ディレクトリを走査させ、システムフォントが1つも
         // 無い状態を作る(local()解決の対象外テスト用)。
@@ -128,6 +139,49 @@ mod tests {
 
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].family, "Custom Brand");
+    }
+
+    /// フォント本体をbase64で埋め込んだ`data:`URI。文字列入力やHTTPサーバ
+    /// 経由の変換では、フォントを自己完結させる唯一の手段になる。
+    #[test]
+    fn loads_a_font_from_a_data_uri() {
+        let rules = vec![rule(
+            "Custom Brand",
+            vec![FontFaceSource::Url(data_uri("DejaVuSansMono.ttf"))],
+        )];
+        let loaded = load_font_faces(&rules, &fetcher(), &no_system_fonts());
+
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].family, "Custom Brand");
+    }
+
+    /// `data:`URIはファイルを読まないので、ローカル読み込みを禁止しても使えること。
+    #[test]
+    fn a_data_uri_source_survives_disabled_local_file_access() {
+        let rules = vec![rule(
+            "Custom Brand",
+            vec![FontFaceSource::Url(data_uri("DejaVuSansMono.ttf"))],
+        )];
+        let blocked = fetcher().with_local_access(false, Vec::new());
+
+        let loaded = load_font_faces(&rules, &blocked, &no_system_fonts());
+        assert_eq!(loaded.len(), 1);
+    }
+
+    /// `<base href>`が`@font-face`の`url()`にも効くこと。
+    #[test]
+    fn resolves_a_url_source_against_base_href() {
+        // base_dirをtests/に置き、fonts/への前置を`<base href>`に担わせる。
+        let base = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests")).to_path_buf();
+        let based = ImageFetcher::new(base, false).with_base_href(Some("fonts/".to_string()));
+
+        let rules = vec![rule(
+            "Custom Brand",
+            vec![FontFaceSource::Url("DejaVuSans.ttf".to_string())],
+        )];
+        let loaded = load_font_faces(&rules, &based, &no_system_fonts());
+
+        assert_eq!(loaded.len(), 1);
     }
 
     #[test]

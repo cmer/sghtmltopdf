@@ -11,7 +11,7 @@ use crate::style::{
     RgbaColor, TextAlign, TextOverflow, TextTransform, VerticalAlign, WhiteSpace, WordBreak,
 };
 
-use super::block::LaidOutBox;
+use super::block::{LaidOutBox, PosCtx};
 use super::box_tree::{BoxContent, InlineSpan, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::Rect;
@@ -191,6 +191,7 @@ enum InlineItem<'a> {
 /// 占有帯を問い合わせ、`available_width`/`origin_x`を動的に狭める(float周りの
 /// テキスト回り込み)。`None`(floatが無い、またはテーブル列幅の事前測定など
 /// 無関係な呼び出し)なら固定の`available_width`/`origin_x`のまま(既存動作)。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_inline_content(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
@@ -199,6 +200,7 @@ pub(crate) fn layout_inline_content(
     origin_x: f32,
     origin_y: f32,
     float_ctx: Option<&FloatContext>,
+    pos: &mut PosCtx,
 ) -> Vec<LineBox> {
     if fonts.is_empty() || spans.is_empty() {
         return Vec::new();
@@ -296,7 +298,7 @@ pub(crate) fn layout_inline_content(
                     }
                 }
 
-                let laid = layout_atomic_inline(atomic, styles, fonts, line_available_width);
+                let laid = layout_atomic_inline(atomic, styles, fonts, line_available_width, pos);
                 let margin_box_width = margin_box_width_of(&laid);
                 let margin_box_height = laid.layout.margin_box_height();
 
@@ -1668,11 +1670,16 @@ pub(super) fn finish_line(
 /// `display: inline-block`の中身をレイアウトする。新しいBlock Formatting
 /// Contextを確立するため、空の`FloatContext`を渡す。幅は
 /// 明示指定があればそれ、無ければ内容の自然幅を使える幅でクランプする。
+///
+/// 箱は原点`(0, 0)`で組み、行の位置が確定してから`place_atomic_inlines`が
+/// 最終座標へ動かす。集めた`absolute`は動かさなくてよい(テーブルセルと
+/// 同じ理由: 絶対配置の位置はcontaining blockからしか決まらない)。
 fn layout_atomic_inline(
     b: &LayoutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     available_width: f32,
+    pos: &mut PosCtx,
 ) -> LaidOutBox {
     let mut style = b
         .node
@@ -1729,7 +1736,7 @@ fn layout_atomic_inline(
     );
 
     let mut float_ctx = FloatContext::new();
-    super::block::layout_box_with_forced_width_ignoring_positioned(
+    super::block::layout_box_with_forced_width(
         b,
         styles,
         fonts,
@@ -1738,6 +1745,7 @@ fn layout_atomic_inline(
         &mut float_ctx,
         0.0,
         0.0,
+        pos,
     )
 }
 
@@ -1788,6 +1796,32 @@ mod tests {
     use crate::html::{self, Dom};
     use crate::layout::box_tree::{build_box_tree, BoxContent, LayoutBox};
     use crate::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
+
+    /// 絶対配置の収集先を毎回用意しなくて済むよう、本体を包んで同名で影を作る。
+    /// ここでの関心は行組みの結果だけなので、集まった`absolute`は捨てる。
+    #[allow(clippy::too_many_arguments)]
+    fn layout_inline_content(
+        spans: &[InlineSpan],
+        styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+        fonts: &FontCollection,
+        available_width: f32,
+        origin_x: f32,
+        origin_y: f32,
+        float_ctx: Option<&FloatContext>,
+    ) -> Vec<LineBox> {
+        let mut discarded = Vec::new();
+        let mut pos = PosCtx::new(&mut discarded, (0.0, 0.0));
+        super::layout_inline_content(
+            spans,
+            styles,
+            fonts,
+            available_width,
+            origin_x,
+            origin_y,
+            float_ctx,
+            &mut pos,
+        )
+    }
 
     const DEJAVU_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
     const DEJAVU_BOLD_PATH: &str = concat!(

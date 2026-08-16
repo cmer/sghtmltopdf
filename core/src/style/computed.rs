@@ -521,7 +521,7 @@ impl Default for ComputedStyle {
             box_shadow: Vec::new(),
             flex_direction: FlexDirection::Row,
             flex_wrap: FlexWrap::NoWrap,
-            justify_content: JustifyContent::FlexStart,
+            justify_content: JustifyContent::Normal,
             align_items: AlignItems::Stretch,
             align_content: AlignContent::Stretch,
             align_self: AlignSelf::Auto,

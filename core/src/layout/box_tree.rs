@@ -5,6 +5,7 @@
 //! 規則(CSS2.1 9.2.1.1)に従い、連続するinline-levelの内容を無名ブロックボックスに
 //! まとめる。無名ボックスは対応するDOMノードを持たないため`node: None`とする。
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -29,6 +30,80 @@ pub struct LayoutBox {
     /// 持つ`inside`)はレイアウト層(`block.rs`)
     /// がこのフィールドを見て別途配置する。
     pub marker: Option<String>,
+    /// 採寸結果のメモ。詳細は[`MeasureMemo`]。
+    pub measured: MeasureMemo,
+}
+
+impl LayoutBox {
+    /// 内容だけを持つボックス(無名ボックス・置換要素の入れ物)。
+    pub fn anonymous(content: BoxContent) -> Self {
+        Self {
+            node: None,
+            content,
+            marker: None,
+            measured: MeasureMemo::default(),
+        }
+    }
+
+    /// `node`に対応するボックス。
+    pub fn for_node(node: NodeId, content: BoxContent) -> Self {
+        Self {
+            node: Some(node),
+            content,
+            marker: None,
+            measured: MeasureMemo::default(),
+        }
+    }
+}
+
+/// ボックス1つ分の採寸メモ。
+///
+/// 同じ部分木は何度も測り直される。flex/gridのアイテムは祖先の段ごとに測られ、
+/// さらに高さを知るための捨てレイアウトが幅の候補ごとに走るため、メモが無いと
+/// ネストの段数に対して指数的に増える。
+///
+/// メモした値はボックスの内容・計算スタイル・フォントだけで決まる。ツリーは
+/// 文書ごとに組み直され、`resolve_images`のような内容の書き換えはレイアウト
+/// 開始前に終わっているので、レイアウト中は不変になる。
+#[derive(Debug, Clone, Default)]
+pub struct MeasureMemo {
+    /// 自然幅(max-content幅)。[`super::table::measure_natural_content_width`]が埋める。
+    natural_width: Cell<Option<f32>>,
+    /// content幅を決め打ちして組んだときのcontent高さ。flex/gridの採寸ブリッジが
+    /// 埋める。
+    ///
+    /// キーはcontent幅とcontaining width(`(content, containing)`)の組。中身の
+    /// パーセンテージ指定はcontaining widthを基準に解決されるので、同じcontent幅
+    /// でもcontaining widthが違えば高さは変わりうる。1つのボックスに対して問われる
+    /// 組は数種類しかないので、線形探索で足りる(ハッシュより速い)。
+    heights: RefCell<Vec<(u32, u32, f32)>>,
+}
+
+impl MeasureMemo {
+    pub(super) fn natural_width(&self) -> Option<f32> {
+        self.natural_width.get()
+    }
+
+    pub(super) fn set_natural_width(&self, width: f32) {
+        self.natural_width.set(Some(width));
+    }
+
+    pub(super) fn height(&self, content_width: f32, containing_width: f32) -> Option<f32> {
+        let (cw, aw) = (content_width.to_bits(), containing_width.to_bits());
+        self.heights
+            .borrow()
+            .iter()
+            .find(|(w, a, _)| *w == cw && *a == aw)
+            .map(|(_, _, h)| *h)
+    }
+
+    pub(super) fn set_height(&self, content_width: f32, containing_width: f32, height: f32) {
+        self.heights.borrow_mut().push((
+            content_width.to_bits(),
+            containing_width.to_bits(),
+            height,
+        ));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -237,11 +312,9 @@ enum ChildKind {
 
 pub fn build_box_tree(dom: &Dom, styles: &HashMap<NodeId, Rc<ComputedStyle>>) -> LayoutBox {
     let child_ids: Vec<NodeId> = dom.children(dom.document()).collect();
-    LayoutBox {
-        node: None,
-        content: BoxContent::Blocks(build_children_boxes(dom, styles, &child_ids, 1)),
-        marker: None,
-    }
+    LayoutBox::anonymous(BoxContent::Blocks(build_children_boxes(
+        dom, styles, &child_ids, 1,
+    )))
 }
 
 /// `node`単体(とその子孫)から[`LayoutBox`]を構築する。`build_box_tree`が
@@ -259,27 +332,24 @@ pub(crate) fn build_box_for_element(
         return None;
     }
     if style.display == Display::Table {
-        return Some(LayoutBox {
-            node: Some(node),
-            content: BoxContent::Table(build_table_box(dom, styles, node)),
-            marker: None,
-        });
+        return Some(LayoutBox::for_node(
+            node,
+            BoxContent::Table(build_table_box(dom, styles, node)),
+        ));
     }
     if style.display == Display::Flex {
-        return Some(LayoutBox {
-            node: Some(node),
-            content: BoxContent::Flex(build_flex_box(dom, styles, node)),
-            marker: None,
-        });
+        return Some(LayoutBox::for_node(
+            node,
+            BoxContent::Flex(build_flex_box(dom, styles, node)),
+        ));
     }
     if style.display == Display::Grid {
-        return Some(LayoutBox {
-            node: Some(node),
-            content: BoxContent::Grid(GridBox {
+        return Some(LayoutBox::for_node(
+            node,
+            BoxContent::Grid(GridBox {
                 items: build_flex_box(dom, styles, node).items,
             }),
-            marker: None,
-        });
+        ));
     }
 
     let child_ids: Vec<NodeId> = dom.children(node).collect();
@@ -317,11 +387,7 @@ pub(crate) fn build_box_for_element(
         BoxContent::Inline(spans)
     };
 
-    Some(LayoutBox {
-        node: Some(node),
-        content,
-        marker: None,
-    })
+    Some(LayoutBox::for_node(node, content))
 }
 
 /// box tree構築後に呼び、`<img>`要素に対応するボックス(`child_kind`により
@@ -802,11 +868,7 @@ fn build_inline_block_box(
         BoxContent::Inline(spans)
     };
 
-    Some(LayoutBox {
-        node: Some(node),
-        content,
-        marker: None,
-    })
+    Some(LayoutBox::for_node(node, content))
 }
 
 /// `node`が`href`を持つ`<a>`要素であれば、その値。
@@ -958,11 +1020,8 @@ fn build_table_row(
             node: cell_node,
             colspan: read_colspan(dom, cell_node),
             rowspan: read_rowspan(dom, cell_node),
-            content: build_box_for_element(dom, styles, cell_node).unwrap_or(LayoutBox {
-                node: Some(cell_node),
-                content: BoxContent::Inline(Vec::new()),
-                marker: None,
-            }),
+            content: build_box_for_element(dom, styles, cell_node)
+                .unwrap_or_else(|| LayoutBox::for_node(cell_node, BoxContent::Inline(Vec::new()))),
         })
         .collect();
     TableRow {
@@ -1009,11 +1068,7 @@ fn flush_pending_spans(pending: &mut Vec<InlineSpan>, result: &mut Vec<LayoutBox
     if has_meaningful_content {
         let mut spans = std::mem::take(pending);
         spans.shrink_to_fit();
-        result.push(LayoutBox {
-            node: None,
-            content: BoxContent::Inline(spans),
-            marker: None,
-        });
+        result.push(LayoutBox::anonymous(BoxContent::Inline(spans)));
     }
     pending.clear();
 }
@@ -1118,11 +1173,7 @@ fn collect_spans_in_context(
             if &*name.local == "img" {
                 out.push(InlineSpan::atomic(
                     node,
-                    LayoutBox {
-                        node: Some(node),
-                        content: BoxContent::Inline(Vec::new()),
-                        marker: None,
-                    },
+                    LayoutBox::for_node(node, BoxContent::Inline(Vec::new())),
                 ));
                 return;
             }
@@ -2059,5 +2110,27 @@ mod tests {
         let spans = find_inline_spans(&tree).expect("expected inline content");
         assert_eq!(spans[0].text, "日");
         assert_eq!(spans[1].text, "本語のテスト");
+    }
+
+    /// 高さのメモはcontent幅とcontaining widthの組で引く。中身のパーセンテージは
+    /// containing widthを基準に解決されるので、content幅が同じでも取り違えては
+    /// いけない(ネストしたflex/gridでは、同じアイテムが違うcontaining widthで
+    /// 何度も測られる)。
+    #[test]
+    fn the_height_memo_distinguishes_the_containing_width() {
+        let memo = MeasureMemo::default();
+        memo.set_height(100.0, 120.0, 40.0);
+
+        assert_eq!(memo.height(100.0, 120.0), Some(40.0));
+        assert_eq!(memo.height(100.0, 200.0), None);
+        assert_eq!(memo.height(101.0, 120.0), None);
+    }
+
+    #[test]
+    fn the_natural_width_memo_round_trips() {
+        let memo = MeasureMemo::default();
+        assert_eq!(memo.natural_width(), None);
+        memo.set_natural_width(12.5);
+        assert_eq!(memo.natural_width(), Some(12.5));
     }
 }

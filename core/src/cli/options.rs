@@ -411,7 +411,7 @@ pub struct ConvertArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub streaming: bool,
 
-    /// <img src>/<link rel=stylesheet href>のhttp(s)フェッチを許可する
+    /// <img src>/<link rel=stylesheet href>/@font-faceのurl()のhttp(s)フェッチを許可する
     #[arg(long, action = ArgAction::SetTrue)]
     pub allow_remote_assets: bool,
 
