@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T13:47:51+09:00\n"
+"POT-Creation-Date: 2026-08-16T16:57:16+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -5016,25 +5016,49 @@ msgid "`font`ショートハンドは非対応です。 `font-size`・`font-fami
 msgstr ""
 
 #: src/supports/fonts.md:113
-msgid "サブセット化"
+msgid "絵文字"
 msgstr ""
 
 #: src/supports/fonts.md:115
+msgid ""
+"絵文字はモノクロのアウトラインフォントで描きます。 GoogleのNoto Emoji(カラーのNoto Color "
+"Emojiではなく、アウトライン版)を指定すれば、そのまま描画されます。"
+msgstr ""
+
+#: src/supports/fonts.md:122
+msgid "カラーフォントは非対応です。 `CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`のいずれも扱いません。"
+msgstr ""
+
+#: src/supports/fonts.md:125
+msgid "この種のフォントは指定しても使われず、警告が出ます。"
+msgstr ""
+
+#: src/supports/fonts.md:133
+msgid ""
+"黙って無視するのではなく採用しないのは、輪郭を持たないフォントを埋め込むと、文字が豆腐にすらならず完全に消えたうえ、サブセット化が効かずPDFだけが数MB膨らむためです。 "
+"不採用にすれば通常のフォント探索へ落ち、描画できる文字が無ければ「豆腐になります」の警告が文字を名指しして出ます。"
+msgstr ""
+
+#: src/supports/fonts.md:136
+msgid "サブセット化"
+msgstr ""
+
+#: src/supports/fonts.md:138
 msgid "埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定しても、PDFのサイズは文書に出てくる文字の分にしかなりません。"
 msgstr ""
 
-#: src/supports/fonts.md:118
+#: src/supports/fonts.md:141
 msgid "ストリーミングモードでの注意"
 msgstr ""
 
-#: src/supports/fonts.md:120
+#: src/supports/fonts.md:143
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たないため "
 "上の3・4のシステムフォント探索が行われません(警告を出して既定フォントで描画します)。 "
 "`--font`系オプションか`@font-face`で明示すれば、ストリーミングでも意図どおりのフォントになります。"
 msgstr ""
 
-#: src/supports/fonts.md:124
+#: src/supports/fonts.md:147
 msgid ""
 "例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加えてCJKを描画できるフォントを1本先回りで読み込みます。 "
 "日本語の文書を何も指定せずストリーミングで変換しても豆腐にならないのはこのためです。 CJK以外のスクリプトは警告の対象になります。"
@@ -7073,47 +7097,52 @@ msgid "フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です"
 msgstr ""
 
 #: src/appendix/limitations.md:41
+msgid ""
+"カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は[フォント](../supports/fonts.md#絵文字)を参照してください"
+msgstr ""
+
+#: src/appendix/limitations.md:42
 msgid "`--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります"
 msgstr ""
 
-#: src/appendix/limitations.md:43
+#: src/appendix/limitations.md:44
 msgid "CSSの主な制限"
 msgstr ""
 
-#: src/appendix/limitations.md:45
+#: src/appendix/limitations.md:46
 msgid "機能単位では以下が非対応です。"
 msgstr ""
 
-#: src/appendix/limitations.md:47
+#: src/appendix/limitations.md:48
 msgid ""
 "縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`等)、`direction`による右横書き"
 msgstr ""
 
-#: src/appendix/limitations.md:48
+#: src/appendix/limitations.md:49
 msgid "多段組み(`columns`/`column-count`)"
 msgstr ""
 
-#: src/appendix/limitations.md:49
+#: src/appendix/limitations.md:50
 msgid "グラデーション(`linear-gradient()`等)と複数背景"
 msgstr ""
 
-#: src/appendix/limitations.md:50
+#: src/appendix/limitations.md:51
 msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
 msgstr ""
 
-#: src/appendix/limitations.md:51
+#: src/appendix/limitations.md:52
 msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
 msgstr ""
 
-#: src/appendix/limitations.md:52
+#: src/appendix/limitations.md:53
 msgid "`:is()`/`:where()`/`:has()`、`::first-line`、`::marker`"
 msgstr ""
 
-#: src/appendix/limitations.md:54
+#: src/appendix/limitations.md:55
 msgid "空白文字の扱い"
 msgstr ""
 
-#: src/appendix/limitations.md:56
+#: src/appendix/limitations.md:57
 msgid ""
 "畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 `&nbsp;`(U+00A0)やthin "
 "space(U+2009)などは畳み込まれない普通の文字として、 フォント本来の字幅で描かれます。改行してよい位置はUAX #14の行分割クラスに従い、 "
@@ -7121,43 +7150,43 @@ msgid ""
 "(`word-break: break-all`を指定した場合も同様です)。"
 msgstr ""
 
-#: src/appendix/limitations.md:62
+#: src/appendix/limitations.md:63
 msgid ""
 "`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよい」という "
 "指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りません (`<wbr>`を挟んでも抽出結果は繋がったままです)。"
 msgstr ""
 
-#: src/appendix/limitations.md:66
+#: src/appendix/limitations.md:67
 msgid "この範囲での既知の制限は以下です。"
 msgstr ""
 
-#: src/appendix/limitations.md:68
+#: src/appendix/limitations.md:69
 msgid "`text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の空白のみ)"
 msgstr ""
 
-#: src/appendix/limitations.md:69
+#: src/appendix/limitations.md:70
 msgid "U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります"
 msgstr ""
 
-#: src/appendix/limitations.md:70
+#: src/appendix/limitations.md:71
 msgid "行末に来た空白の「ぶら下がり」(hanging)は行いません"
 msgstr ""
 
-#: src/appendix/limitations.md:72
+#: src/appendix/limitations.md:73
 msgid "ストリーミングモード固有の制限"
 msgstr ""
 
-#: src/appendix/limitations.md:74
+#: src/appendix/limitations.md:75
 msgid ""
 "`--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--toc`)などが使えなくなります。 "
 "詳細は[ストリーミングモード](../usage/cli/streaming.md)を参照してください。"
 msgstr ""
 
-#: src/appendix/limitations.md:77
+#: src/appendix/limitations.md:78
 msgid "今後について"
 msgstr ""
 
-#: src/appendix/limitations.md:79
+#: src/appendix/limitations.md:80
 msgid ""
 "JavaScriptエンジンの組み込みは、必要性が出てきた段階での検討事項として残してあります。 "
 "上記のうちPDFのアウトラインなど、設計上の非目標ではないものは将来対応する可能性があります。"

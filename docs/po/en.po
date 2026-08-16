@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T13:47:51+09:00\n"
+"POT-Creation-Date: 2026-08-16T16:57:16+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -6351,10 +6351,51 @@ msgstr ""
 "size` and `font-family`, individually."
 
 #: src/supports/fonts.md:113
+msgid "絵文字"
+msgstr "Emoji"
+
+#: src/supports/fonts.md:115
+msgid ""
+"絵文字はモノクロのアウトラインフォントで描きます。 GoogleのNoto Emoji(カラー"
+"のNoto Color Emojiではなく、アウトライン版)を指定すれば、そのまま描画されま"
+"す。"
+msgstr ""
+"Emoji are drawn from a monochrome outline font. Point at Google's Noto Emoji "
+"(the outline one, not the colour Noto Color Emoji) and it renders as it is."
+
+#: src/supports/fonts.md:122
+msgid ""
+"カラーフォントは非対応です。 `CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`のいずれも扱"
+"いません。"
+msgstr ""
+"Colour fonts are not supported. Neither `CBDT`/`CBLC`, `COLR`/`CPAL` nor "
+"`sbix` is handled."
+
+#: src/supports/fonts.md:125
+msgid "この種のフォントは指定しても使われず、警告が出ます。"
+msgstr ""
+"Such a font is not used even when you name it explicitly, and a warning is "
+"printed."
+
+#: src/supports/fonts.md:133
+msgid ""
+"黙って無視するのではなく採用しないのは、輪郭を持たないフォントを埋め込むと、"
+"文字が豆腐にすらならず完全に消えたうえ、サブセット化が効かずPDFだけが数MB膨ら"
+"むためです。 不採用にすれば通常のフォント探索へ落ち、描画できる文字が無ければ"
+"「豆腐になります」の警告が文字を名指しして出ます。"
+msgstr ""
+"Declining the font rather than quietly ignoring it matters because embedding "
+"an outline-less font makes the characters vanish entirely — not even a tofu "
+"box — while subsetting has nothing to strip, so the PDF alone grows by "
+"several megabytes. Declining it lets the usual font search take over, and if "
+"nothing can draw a character the \"you will get tofu\" warning names that "
+"character."
+
+#: src/supports/fonts.md:136
 msgid "サブセット化"
 msgstr "Subsetting"
 
-#: src/supports/fonts.md:115
+#: src/supports/fonts.md:138
 msgid ""
 "埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定して"
 "も、PDFのサイズは文書に出てくる文字の分にしかなりません。"
@@ -6363,11 +6404,11 @@ msgstr ""
 "complete Japanese font, the PDF only grows by the characters that appear in "
 "the document."
 
-#: src/supports/fonts.md:118
+#: src/supports/fonts.md:141
 msgid "ストリーミングモードでの注意"
 msgstr "A note on streaming mode"
 
-#: src/supports/fonts.md:120
+#: src/supports/fonts.md:143
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たな"
 "いため 上の3・4のシステムフォント探索が行われません(警告を出して既定フォント"
@@ -6380,7 +6421,7 @@ msgstr ""
 "with the `--font` options or `@font-face` gives you the fonts you intended "
 "even when streaming."
 
-#: src/supports/fonts.md:124
+#: src/supports/fonts.md:147
 msgid ""
 "例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加"
 "えてCJKを描画できるフォントを1本先回りで読み込みます。 日本語の文書を何も指定"
@@ -8799,18 +8840,26 @@ msgid "フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です"
 msgstr "Fonts may be TTF or OTF only; WOFF and WOFF2 are not supported"
 
 #: src/appendix/limitations.md:41
+msgid ""
+"カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は"
+"[フォント](../supports/fonts.md#絵文字)を参照してください"
+msgstr ""
+"Colour fonts (`CBDT`/`CBLC`, `COLR`/`CPAL`, `sbix`) are not supported. For "
+"emoji see [Fonts](../supports/fonts.md#絵文字)"
+
+#: src/appendix/limitations.md:42
 msgid "`--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります"
 msgstr "Even with `--grayscale`, JPEG and CMYK images stay in colour"
 
-#: src/appendix/limitations.md:43
+#: src/appendix/limitations.md:44
 msgid "CSSの主な制限"
 msgstr "The main CSS limitations"
 
-#: src/appendix/limitations.md:45
+#: src/appendix/limitations.md:46
 msgid "機能単位では以下が非対応です。"
 msgstr "Taken feature by feature, the following are not supported."
 
-#: src/appendix/limitations.md:47
+#: src/appendix/limitations.md:48
 msgid ""
 "縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`"
 "等)、`direction`による右横書き"
@@ -8819,32 +8868,32 @@ msgstr ""
 "properties such as `margin-inline`, and right-to-left text through "
 "`direction`"
 
-#: src/appendix/limitations.md:48
+#: src/appendix/limitations.md:49
 msgid "多段組み(`columns`/`column-count`)"
 msgstr "Multi-column layout, `columns` and `column-count`"
 
-#: src/appendix/limitations.md:49
+#: src/appendix/limitations.md:50
 msgid "グラデーション(`linear-gradient()`等)と複数背景"
 msgstr "Gradients such as `linear-gradient()`, and multiple backgrounds"
 
-#: src/appendix/limitations.md:50
+#: src/appendix/limitations.md:51
 msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
 msgstr "Animations, transitions, and `filter`, since the output is static"
 
-#: src/appendix/limitations.md:51
+#: src/appendix/limitations.md:52
 msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
 msgstr ""
 "`position: sticky`, `display: inline-flex` and `inline-grid`, and subgrid"
 
-#: src/appendix/limitations.md:52
+#: src/appendix/limitations.md:53
 msgid "`:is()`/`:where()`/`:has()`、`::first-line`、`::marker`"
 msgstr "`:is()`, `:where()`, `:has()`, `::first-line`, and `::marker`"
 
-#: src/appendix/limitations.md:54
+#: src/appendix/limitations.md:55
 msgid "空白文字の扱い"
-msgstr ""
+msgstr "How whitespace is treated"
 
-#: src/appendix/limitations.md:56
+#: src/appendix/limitations.md:57
 msgid ""
 "畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 `&nbsp;"
 "`(U+00A0)やthin space(U+2009)などは畳み込まれない普通の文字として、 フォント"
@@ -8852,37 +8901,52 @@ msgid ""
 "`&nbsp;`・narrow no-break space・figure space・word joinerの前後では改行しま"
 "せん (`word-break: break-all`を指定した場合も同様です)。"
 msgstr ""
+"Only the whitespace CSS Text 3 defines as such — space, tab and newline — is "
+"collapsed. `&nbsp;` (U+00A0), thin space (U+2009) and the like are ordinary "
+"characters that never collapse, and they are drawn at the width the font "
+"gives them. Where a line may break follows the UAX #14 line breaking "
+"classes: no break is taken on either side of `&nbsp;`, narrow no-break "
+"space, figure space or word joiner (this holds under `word-break: break-"
+"all` as well)."
 
-#: src/appendix/limitations.md:62
+#: src/appendix/limitations.md:63
 msgid ""
 "`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよ"
 "い」という 指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りませ"
 "ん (`<wbr>`を挟んでも抽出結果は繋がったままです)。"
 msgstr ""
+"`<wbr>` — and U+200B ZERO WIDTH SPACE, which means the same thing — is "
+"treated as \"a line may break here\". It adds no width and leaves no "
+"character in the PDF text layer (text extraction runs the two sides "
+"together even with a `<wbr>` between them)."
 
-#: src/appendix/limitations.md:66
+#: src/appendix/limitations.md:67
 msgid "この範囲での既知の制限は以下です。"
-msgstr ""
+msgstr "Within that scope, the known limitations are:"
 
-#: src/appendix/limitations.md:68
+#: src/appendix/limitations.md:69
 msgid ""
 "`text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の"
 "空白のみ)"
 msgstr ""
-
-#: src/appendix/limitations.md:69
-msgid "U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります"
-msgstr ""
+"When `text-align: justify` stretches a line, `&nbsp;` is not one of the gaps "
+"it stretches (only ordinary spaces are)"
 
 #: src/appendix/limitations.md:70
-msgid "行末に来た空白の「ぶら下がり」(hanging)は行いません"
+msgid "U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります"
 msgstr ""
+"U+2028 and U+2029 are treated as ordinary whitespace rather than as the "
+"forced breaks they are meant to be"
 
-#: src/appendix/limitations.md:72
+#: src/appendix/limitations.md:71
+msgid "行末に来た空白の「ぶら下がり」(hanging)は行いません"
+msgstr "Whitespace that lands at the end of a line is not hung outside the line box"
+
+#: src/appendix/limitations.md:73
 msgid "ストリーミングモード固有の制限"
 msgstr "Limitations specific to streaming mode"
 
-#: src/appendix/limitations.md:74
+#: src/appendix/limitations.md:75
 msgid ""
 "`--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--"
 "toc`)などが使えなくなります。 詳細は[ストリーミングモード](../usage/cli/"
@@ -8892,11 +8956,11 @@ msgstr ""
 "`[topage]`, and the table of contents, `--toc`, become unavailable. See "
 "[Streaming mode](../usage/cli/streaming.md) for the details."
 
-#: src/appendix/limitations.md:77
+#: src/appendix/limitations.md:78
 msgid "今後について"
 msgstr "Looking ahead"
 
-#: src/appendix/limitations.md:79
+#: src/appendix/limitations.md:80
 msgid ""
 "JavaScriptエンジンの組み込みは、必要性が出てきた段階での検討事項として残して"
 "あります。 上記のうちPDFのアウトラインなど、設計上の非目標ではないものは将来"
@@ -8912,6 +8976,14 @@ msgstr ""
 #~ msgstr ""
 #~ "`absolute` inside an inline formatting context, that is in the middle of "
 #~ "text, and `absolute` inside a table cell or a flex item, are not supported"
+
+#~ msgid ""
+#~ "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-"
+#~ "around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
+#~ msgstr ""
+#~ "`flex-start` (`start`), `flex-end` (`end`), `center`, `space-between`, "
+#~ "`space-around`, and `space-evenly`. The `safe` and `unsafe` overflow "
+#~ "keywords are not supported"
 
 #~ msgid "944MB / 10.83秒"
 #~ msgstr "944MB / 10.83s"

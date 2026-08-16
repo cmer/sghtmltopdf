@@ -17,6 +17,11 @@ const CJK_FONT_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/fonts/NotoSansCJK-Regular.ttc"
 );
+/// ビットマップのみ(CBDT/CBLC)で、グリフの輪郭を一切持たないフォント。
+const COLOR_EMOJI_FONT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fonts/NotoColorEmoji.ttf"
+);
 const SAMPLE_HTML: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/sample.html");
 const BIN: &str = env!("CARGO_BIN_EXE_sghtmltopdf");
 
@@ -1460,4 +1465,53 @@ fn streaming_stays_quiet_when_everything_is_resolvable() {
     let html = r#"<html><body><p>plain</p></body></html>"#;
     let stderr = run_capturing_stderr(html, &["--streaming", "--quiet"], "warn-none");
     assert!(stderr.is_empty(), "no warning expected, got: {stderr}");
+}
+
+/// 実在のカラー絵文字フォントを明示指定しても採用しないこと。
+///
+/// このフォントは`cmap`を持つので「絵文字を描画できる」ように見えるが、
+/// 輪郭を一切持たないため実際には何も描けない。採用してしまうと、文字が
+/// 豆腐にすらならず消えたうえ、サブセット化が効かず10MB超のフォントが
+/// ほぼ素通しでPDFへ入る。
+#[test]
+fn a_colour_emoji_font_is_refused_with_a_warning() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-e2e-{}-color-emoji",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    std::fs::write(&input, "<html><body><p>A \u{1F389} B</p></body></html>").unwrap();
+    let output = dir.join("out.pdf");
+
+    let out = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(COLOR_EMOJI_FONT_PATH)
+        .arg("-o")
+        .arg(&output)
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(out.status.success(), "変換自体は成功させる(1本外すだけ)");
+
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        stderr.contains("輪郭を持たない") && stderr.contains("NotoColorEmoji.ttf"),
+        "不採用にした理由をフォント名付きで伝えるはず: {stderr}"
+    );
+    assert!(
+        stderr.contains("\u{1F389}"),
+        "描画できなくなった文字を名指しする通常の警告にも乗るはず: {stderr}"
+    );
+
+    let bytes = std::fs::read(&output).expect("output PDF should exist");
+    assert!(bytes.starts_with(b"%PDF-"));
+    let source_size = std::fs::metadata(COLOR_EMOJI_FONT_PATH).unwrap().len();
+    assert!(
+        (bytes.len() as u64) < source_size / 10,
+        "採用していたらフォントがほぼ素通しで入る。PDF={} 元フォント={source_size}",
+        bytes.len()
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
 }
