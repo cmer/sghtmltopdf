@@ -95,9 +95,25 @@
 | `lab()` / `lch()` / `oklab()` / `oklch()` | ✅ (sRGBへ変換して描画) |
 | `currentcolor` / `transparent` | ✅ |
 | `color()`(`color(display-p3 ...)`等) | ❌ |
-| `color-mix()` / 相対色構文(`rgb(from ...)`) | ❌ |
+| `color-mix()` | ⚠️ (下記) |
+| 相対色構文(`rgb(from ...)`) | ❌ |
 
 アルファ付きの色は塗り・背景ともPDFのExtGStateで透過描画する。
+
+#### `color-mix()`
+
+`color-mix(in <色空間> [<色相の回し方> hue]?, <色> <割合>?, <色> <割合>?)`に対応する。
+割合の正規化(合計が100%を超えるときは比率だけが効き、満たないときは足りないぶんだけ結果が透明になる)と、アルファの事前乗算も仕様どおり行う。
+
+* 色空間: `srgb` / `srgb-linear` / `lab` / `oklab` / `xyz`(`xyz-d65`) / `hsl` / `hwb` / `lch` / `oklch`
+* 色相の回し方: `shorter`(既定) / `longer` / `increasing` / `decreasing`
+* 入れ子にできる(深さ16まで)
+
+以下は非対応で、書くとその宣言だけが無視される。
+
+* `display-p3` / `a98-rgb` / `prophoto-rgb` / `rec2020`。出力先がPDFのDeviceRGBなので、受け付けてもsRGBへ丸められるだけで指定した意味にならない
+* オペランドの`currentcolor`。`currentcolor`はカスケードの後(その要素の`color`が決まってから)解決するのに対し、混色はパース時に済ませるため、この時点では値が分からない
+* `xyz-d50`(白色点の変換が要るため)
 
 ## at-rule
 

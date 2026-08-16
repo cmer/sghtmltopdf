@@ -48,6 +48,7 @@
 * 縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`等)、`direction`による右横書き
 * 多段組み(`columns`/`column-count`)
 * グラデーション(`linear-gradient()`等)と複数背景
+* 相対色構文(`rgb(from ...)`)と`color()`(`color-mix()`は対応済み)
 * アニメーション・トランジション・`filter`(静的な出力のため)
 * `position: sticky`、`display: inline-flex`/`inline-grid`、subgrid
 * `::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)
