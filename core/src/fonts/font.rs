@@ -552,9 +552,13 @@ mod tests {
 #[cfg(test)]
 mod outline_tests {
     use super::*;
-    use crate::fonts::test_support::without_tables;
 
     const TEST_FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+    /// ビットマップのみ(CBDT/CBLC)で、グリフの輪郭を一切持たないフォント。
+    const COLOR_EMOJI_FONT_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fonts/NotoColorEmoji.ttf"
+    );
 
     #[test]
     fn a_normal_font_has_outlines() {
@@ -563,20 +567,21 @@ mod outline_tests {
         assert!(font.has_glyph('A'));
     }
 
-    /// カラー絵文字フォントの再現: `cmap`は持つが輪郭が無いフォントは、
-    /// 文字を持っているように見えても「描画できる」と判定してはならない。
-    /// 判定を誤ると、無言で不可視のテキストを出したうえPDFだけが膨らむ。
+    /// カラー絵文字フォントは`cmap`を持つので文字を持っているように見えるが、
+    /// 輪郭が無いので実際には何も描けない。「描画できる」と判定してしまうと、
+    /// 無言で不可視のテキストを出したうえPDFだけが膨らむ。
     #[test]
-    fn a_font_without_outlines_covers_nothing() {
-        let data = std::fs::read(TEST_FONT_PATH).expect("should read bundled test font");
-        let stripped = without_tables(&data, &[b"glyf", b"loca"]);
-        let font = Font::from_bytes(stripped, 0).expect("輪郭が無くてもフォントとしては読める");
+    fn a_colour_font_covers_nothing() {
+        let font = Font::load(COLOR_EMOJI_FONT_PATH).expect("should load bundled colour font");
 
         assert!(!font.has_outlines());
         assert!(
-            font.glyph_id('A').is_some(),
-            "cmapは残っているのでグリフIDは引ける"
+            font.glyph_id('\u{1F389}').is_some(),
+            "cmapは持つのでグリフIDは引ける"
         );
-        assert!(!font.has_glyph('A'), "輪郭が無いので描画できるとは言えない");
+        assert!(
+            !font.has_glyph('\u{1F389}'),
+            "輪郭が無いので描画できるとは言えない"
+        );
     }
 }

@@ -5,8 +5,6 @@ mod face;
 mod font;
 mod shape;
 mod system;
-#[cfg(test)]
-mod test_support;
 
 pub use collection::FontCollection;
 pub use face::{load_font_faces, LoadedFontFace};
