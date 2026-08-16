@@ -38,6 +38,7 @@
 
 * 画像はPNG / JPEG / WebPのみ。SVGとGIFは非対応です
 * フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です
+* カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は[フォント](../supports/fonts.md#絵文字)を参照してください
 * `--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります
 
 ## CSSの主な制限

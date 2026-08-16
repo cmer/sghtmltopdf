@@ -129,6 +129,13 @@ struct Metrics {
     weight: u16,
     bounding_box: BoundingBox,
     family_name: Option<String>,
+    /// グリフの輪郭(`glyf`/CFF/CFF2)を持つか。
+    ///
+    /// ビットマップ専用のカラー絵文字フォント(`CBDT`/`CBLC`)のように、
+    /// `cmap`は持つが輪郭を持たないフォントがある。この種のフォントは
+    /// 「その文字を持っている」ように見えて実際には何も描けないので、
+    /// フォント選択の対象から外すために区別する。
+    has_outlines: bool,
 }
 
 impl Metrics {
@@ -168,6 +175,7 @@ impl Metrics {
             strikeout: m.strikeout.map(|d| (d.offset as i16, d.thickness as i16)),
             is_monospaced: m.is_monospace,
             weight: attributes.weight.value() as u16,
+            has_outlines: font.outline_glyphs().format().is_some(),
             bounding_box: m
                 .bounds
                 .map(|b| BoundingBox {
@@ -180,6 +188,19 @@ impl Metrics {
             family_name,
         }
     }
+}
+
+/// 輪郭を持たないフォントを採らなかったことを警告する。
+///
+/// `source`は`--font`のパスや`@font-face`のfamily名のような、利用者が
+/// 指定した文字列。自動探索で外したものは対象外(そちらは結果として
+/// 「描画できるフォントがありません」の警告に乗る)。
+pub fn warn_font_without_outlines(source: &str) {
+    eprintln!(
+        "警告: {source} は輪郭を持たない(ビットマップのカラー絵文字専用の)\n  \
+         フォントのため使用しません。カラーフォントは未対応です。\n  \
+         絵文字にはモノクロのアウトライン版(Noto Emojiなど)を指定してください"
+    );
 }
 
 #[derive(Debug)]
@@ -394,8 +415,19 @@ impl Font {
         found
     }
 
+    /// `c`を実際に描画できるか。
+    ///
+    /// `cmap`にあるだけでは足りず、輪郭を持つフォントであることも要る
+    /// ([`Self::has_outlines`])。カラー絵文字フォントは`cmap`を持つので、
+    /// これを見ないと「描ける」と誤判定して無言で不可視のテキストを出す。
     pub fn has_glyph(&self, c: char) -> bool {
-        self.glyph_id(c).is_some()
+        self.has_outlines() && self.glyph_id(c).is_some()
+    }
+
+    /// グリフの輪郭(`glyf`/CFF/CFF2)を持つか。ビットマップ専用の
+    /// カラー絵文字フォントなど、これが`false`のフォントは何も描けない。
+    pub fn has_outlines(&self) -> bool {
+        self.metrics.has_outlines
     }
 
     /// フォント名(`name`テーブルの Typographic Family、無ければ Family)。
@@ -514,5 +546,37 @@ mod tests {
             "with no extra leading, the baseline offset should equal the ascent: {offset} vs {ascent}"
         );
         assert!(offset > 0.0 && offset < line_height);
+    }
+}
+
+#[cfg(test)]
+mod outline_tests {
+    use super::*;
+    use crate::fonts::test_support::without_tables;
+
+    const TEST_FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+
+    #[test]
+    fn a_normal_font_has_outlines() {
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+        assert!(font.has_outlines());
+        assert!(font.has_glyph('A'));
+    }
+
+    /// カラー絵文字フォントの再現: `cmap`は持つが輪郭が無いフォントは、
+    /// 文字を持っているように見えても「描画できる」と判定してはならない。
+    /// 判定を誤ると、無言で不可視のテキストを出したうえPDFだけが膨らむ。
+    #[test]
+    fn a_font_without_outlines_covers_nothing() {
+        let data = std::fs::read(TEST_FONT_PATH).expect("should read bundled test font");
+        let stripped = without_tables(&data, &[b"glyf", b"loca"]);
+        let font = Font::from_bytes(stripped, 0).expect("輪郭が無くてもフォントとしては読める");
+
+        assert!(!font.has_outlines());
+        assert!(
+            font.glyph_id('A').is_some(),
+            "cmapは残っているのでグリフIDは引ける"
+        );
+        assert!(!font.has_glyph('A'), "輪郭が無いので描画できるとは言えない");
     }
 }

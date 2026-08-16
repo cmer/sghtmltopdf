@@ -285,11 +285,17 @@ impl SystemFonts {
             let Some((family, _)) = info.families.first() else {
                 continue;
             };
+            // `cmap`にあるだけでは足りず、輪郭を持つことも要る(`Font::has_glyph`と
+            // 同じ判定を、`Font`を作らずにその場で行う)。カラー絵文字フォントは
+            // `cmap`を持つので、これが無いと「描ける」と誤判定して採ってしまう。
             let covered = self
                 .db
                 .with_face_data(info.id, |data, index| {
                     skrifa::FontRef::from_index(data, index)
-                        .map(|font| font.charmap().map(c).is_some())
+                        .map(|font| {
+                            font.charmap().map(c).is_some()
+                                && font.outline_glyphs().format().is_some()
+                        })
                         .unwrap_or(false)
                 })
                 .unwrap_or(false);
@@ -310,7 +316,7 @@ impl SystemFonts {
                     Font::from_bytes(data.to_vec(), index).ok()
                 })
                 .flatten();
-            if let Some(font) = font {
+            if let Some(font) = font.filter(|font| font.has_glyph(c)) {
                 return Some((family.clone(), font));
             }
         }
@@ -1015,5 +1021,34 @@ mod tests {
         ensure_cjk_fallback_font(&mut fonts, &system);
 
         assert_eq!(fonts.len(), 1);
+    }
+
+    /// カラー絵文字フォントを想定した回帰テスト。
+    ///
+    /// `cmap`は持つが輪郭を持たないフォントは、文字カバレッジによる自動探索の
+    /// 対象から外れなければならない。ここを通してしまうと、何も描けないフォントが
+    /// 「その文字を描画できるフォント」として採用され、無言で不可視のテキストと
+    /// 巨大なPDFになる(実際にNoto Color Emojiで起きていた)。
+    #[test]
+    fn a_font_without_outlines_is_not_picked_up_by_the_coverage_search() {
+        let dir = std::env::temp_dir().join(format!(
+            "sghtmltopdf-fonts-no-outline-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = std::fs::read(std::path::Path::new(FONTS_DIR).join("DejaVuSans.ttf")).unwrap();
+        let stripped = crate::fonts::test_support::without_tables(&source, &[b"glyf", b"loca"]);
+        std::fs::write(dir.join("NoOutline.ttf"), stripped).unwrap();
+
+        // このディレクトリには輪郭を持つフォントが1つも無い。
+        let system = SystemFonts::from_dir(&dir);
+        assert!(
+            system
+                .load_covering('A', FontWeight::Normal, FontStyle::Normal)
+                .is_none(),
+            "輪郭を持たないフォントを「Aを描画できる」と判定してはならない"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-08T21:13:52+09:00\n"
+"POT-Creation-Date: 2026-08-16T16:18:53+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -70,7 +70,7 @@ msgstr "Selectors, values, and at-rules"
 
 #: src/SUMMARY.md:22 src/usage/cli/reference.md:60 src/usage/ruby_rails.md:95
 #: src/supports/fonts.md:1 src/migration/wkhtmltopdf.md:18
-#: src/migration/wicked-pdf.md:125
+#: src/migration/wicked-pdf.md:126
 msgid "フォント"
 msgstr "Fonts"
 
@@ -1821,7 +1821,7 @@ msgstr ""
 "`@font-face` inside the header or footer HTML is not loaded. Name any font "
 "used only there with `--font`"
 
-#: src/usage/cli/reference.md:150 src/migration/wkhtmltopdf.md:43
+#: src/usage/cli/reference.md:150 src/migration/wkhtmltopdf.md:44
 msgid "表紙と目次"
 msgstr "Cover page and table of contents"
 
@@ -3307,7 +3307,7 @@ msgid "# config/initializers/sghtmltopdf.rb など\n"
 msgstr "# for example config/initializers/sghtmltopdf.rb\n"
 
 #: src/usage/ruby_rails.md:88 src/migration/wicked-pdf.md:36
-#: src/migration/wicked-pdf.md:132
+#: src/migration/wicked-pdf.md:133
 msgid "\"vendor/fonts/NotoSansJP-Regular.ttf\""
 msgstr "\"vendor/fonts/NotoSansJP-Regular.ttf\""
 
@@ -3613,7 +3613,7 @@ msgstr ""
 "the application's CPU on rendering, or when you run somewhere the gem does "
 "not support, such as Windows."
 
-#: src/usage/ruby_rails.md:189 src/migration/wicked-pdf.md:142
+#: src/usage/ruby_rails.md:189 src/migration/wicked-pdf.md:143
 msgid "\"http://pdf.internal:8080\""
 msgstr "\"http://pdf.internal:8080\""
 
@@ -6304,10 +6304,51 @@ msgstr ""
 "size` and `font-family`, individually."
 
 #: src/supports/fonts.md:99
+msgid "絵文字"
+msgstr "Emoji"
+
+#: src/supports/fonts.md:101
+msgid ""
+"絵文字はモノクロのアウトラインフォントで描きます。 GoogleのNoto Emoji(カラー"
+"のNoto Color Emojiではなく、アウトライン版)を指定すれば、そのまま描画されま"
+"す。"
+msgstr ""
+"Emoji are drawn from a monochrome outline font. Point at Google's Noto Emoji "
+"(the outline one, not the colour Noto Color Emoji) and it renders as it is."
+
+#: src/supports/fonts.md:108
+msgid ""
+"カラーフォントは非対応です。 `CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`のいずれも扱"
+"いません。"
+msgstr ""
+"Colour fonts are not supported. Neither `CBDT`/`CBLC`, `COLR`/`CPAL` nor "
+"`sbix` is handled."
+
+#: src/supports/fonts.md:111
+msgid "この種のフォントは指定しても使われず、警告が出ます。"
+msgstr ""
+"Such a font is not used even when you name it explicitly, and a warning is "
+"printed."
+
+#: src/supports/fonts.md:119
+msgid ""
+"黙って無視するのではなく採用しないのは、輪郭を持たないフォントを埋め込むと、"
+"文字が豆腐にすらならず完全に消えたうえ、サブセット化が効かずPDFだけが数MB膨ら"
+"むためです。 不採用にすれば通常のフォント探索へ落ち、描画できる文字が無ければ"
+"「豆腐になります」の警告が文字を名指しして出ます。"
+msgstr ""
+"Declining the font rather than quietly ignoring it matters because embedding "
+"an outline-less font makes the characters vanish entirely — not even a tofu "
+"box — while subsetting has nothing to strip, so the PDF alone grows by "
+"several megabytes. Declining it lets the usual font search take over, and if "
+"nothing can draw a character the \"you will get tofu\" warning names that "
+"character."
+
+#: src/supports/fonts.md:122
 msgid "サブセット化"
 msgstr "Subsetting"
 
-#: src/supports/fonts.md:101
+#: src/supports/fonts.md:124
 msgid ""
 "埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定して"
 "も、PDFのサイズは文書に出てくる文字の分にしかなりません。"
@@ -6316,11 +6357,11 @@ msgstr ""
 "complete Japanese font, the PDF only grows by the characters that appear in "
 "the document."
 
-#: src/supports/fonts.md:104
+#: src/supports/fonts.md:127
 msgid "ストリーミングモードでの注意"
 msgstr "A note on streaming mode"
 
-#: src/supports/fonts.md:106
+#: src/supports/fonts.md:129
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たな"
 "いため 上の3・4のシステムフォント探索が行われません(警告を出して既定フォント"
@@ -6333,7 +6374,7 @@ msgstr ""
 "with the `--font` options or `@font-face` gives you the fonts you intended "
 "even when streaming."
 
-#: src/supports/fonts.md:110
+#: src/supports/fonts.md:133
 msgid ""
 "例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加"
 "えてCJKを描画できるフォントを1本先回りで読み込みます。 日本語の文書を何も指定"
@@ -7086,19 +7127,19 @@ msgid ""
 msgstr ""
 "wkhtmltopdf uses 10mm on all four sides, sghtmltopdf 1 inch (96px, or "
 "25.4mm). wkhtmltopdf's `--extended-help` only documents a default for the "
-"left and right margins, but the binary applies 10mm to the top and bottom "
-"as well. Converting without saying anything therefore changes the margins, "
-"so state them to keep the existing look."
+"left and right margins, but the binary applies 10mm to the top and bottom as "
+"well. Converting without saying anything therefore changes the margins, so "
+"state them to keep the existing look."
 
-#: src/migration/wkhtmltopdf.md:46
+#: src/migration/wkhtmltopdf.md:47
 msgid "# wkhtmltopdf\n"
 msgstr "# wkhtmltopdf\n"
 
-#: src/migration/wkhtmltopdf.md:47
+#: src/migration/wkhtmltopdf.md:48
 msgid "# sghtmltopdf\n"
 msgstr "# sghtmltopdf\n"
 
-#: src/migration/wkhtmltopdf.md:50
+#: src/migration/wkhtmltopdf.md:51
 msgid ""
 "目次の見た目はwkhtmltopdfの既定TOC XSLの出力に合わせてあります。 XSLTは非対応"
 "なので、変更は`--user-style-sheet`のCSSで行います。"
@@ -7107,11 +7148,11 @@ msgstr ""
 "produces. XSLT is not supported, so change it with CSS through `--user-style-"
 "sheet`."
 
-#: src/migration/wkhtmltopdf.md:53
+#: src/migration/wkhtmltopdf.md:54
 msgid "ヘッダー/フッターのページ番号"
 msgstr "Page numbers in headers and footers"
 
-#: src/migration/wkhtmltopdf.md:55
+#: src/migration/wkhtmltopdf.md:56
 msgid ""
 "wkhtmltopdfは`--header-html`のURLにクエリ(`?page=1&topage=5`)を付け、ページ側"
 "のJavaScriptで差し込む方式でした。 JSを実行しないので、sghtmltopdfはプレース"
@@ -7122,22 +7163,22 @@ msgstr ""
 "JavaScript is not executed here, sghtmltopdf substitutes placeholders as "
 "text instead."
 
-#: src/migration/wkhtmltopdf.md:59
+#: src/migration/wkhtmltopdf.md:60
 msgid "\"[page] / [topage]\""
 msgstr "\"[page] / [topage]\""
 
-#: src/migration/wkhtmltopdf.md:62
+#: src/migration/wkhtmltopdf.md:63
 msgid ""
 "HTMLでヘッダーを作る場合も、HTMLのテキストとして`[page]`が置換されます。"
 msgstr ""
 "When the header is built in HTML, `[page]` is likewise substituted in the "
 "HTML as text."
 
-#: src/migration/wkhtmltopdf.md:64
+#: src/migration/wkhtmltopdf.md:65
 msgid "非対応のオプションは黙って無視しない"
 msgstr "Unsupported options are never ignored silently"
 
-#: src/migration/wkhtmltopdf.md:66
+#: src/migration/wkhtmltopdf.md:67
 msgid ""
 "指定すると理由と代替手段を示して`exit 1`で終了します。 移行時に「オプションが"
 "効いていないことに気づかない」事故を避けるためです。"
@@ -7146,11 +7187,11 @@ msgstr ""
 "This is to keep you from moving over and never noticing that an option has "
 "no effect."
 
-#: src/migration/wkhtmltopdf.md:69
+#: src/migration/wkhtmltopdf.md:70
 msgid "主なものは以下です。"
 msgstr "The main ones are these."
 
-#: src/migration/wkhtmltopdf.md:71
+#: src/migration/wkhtmltopdf.md:72
 msgid ""
 "JavaScript関連: `--enable-javascript`・`--javascript-delay`・`--run-script`・"
 "`--window-status`・`--debug-javascript`・`--stop-slow-scripts`(JS実行は設計上"
@@ -7160,11 +7201,11 @@ msgstr ""
 "window-status`, `--debug-javascript`, `--stop-slow-scripts`. Executing "
 "JavaScript is a deliberate non-goal"
 
-#: src/migration/wkhtmltopdf.md:72
+#: src/migration/wkhtmltopdf.md:73
 msgid "PDFアウトライン: `--outline`・`--outline-depth`・`--dump-outline`"
 msgstr "PDF outlines: `--outline`, `--outline-depth`, `--dump-outline`"
 
-#: src/migration/wkhtmltopdf.md:73
+#: src/migration/wkhtmltopdf.md:74
 msgid ""
 "XSLT: `--xsl-style-sheet`・`--dump-default-toc-xsl`(目次は内蔵テンプレート + "
 "CSSで代替)"
@@ -7172,11 +7213,11 @@ msgstr ""
 "XSLT: `--xsl-style-sheet`, `--dump-default-toc-xsl`. The table of contents "
 "uses a built-in template plus CSS instead"
 
-#: src/migration/wkhtmltopdf.md:74
+#: src/migration/wkhtmltopdf.md:75
 msgid "画像の再エンコード: `--image-quality`・`--image-dpi`"
 msgstr "Re-encoding images: `--image-quality`, `--image-dpi`"
 
-#: src/migration/wkhtmltopdf.md:75
+#: src/migration/wkhtmltopdf.md:76
 msgid ""
 "ネットワーク: `--proxy`・`--cookie`・`--custom-header`・`--username`/`--"
 "password`・`--ssl-*`"
@@ -7184,7 +7225,7 @@ msgstr ""
 "Networking: `--proxy`, `--cookie`, `--custom-header`, `--username` and `--"
 "password`, `--ssl-*`"
 
-#: src/migration/wkhtmltopdf.md:76
+#: src/migration/wkhtmltopdf.md:77
 msgid ""
 "WebKit固有: `--disable-smart-shrinking`・`--viewport-size`・`--lowquality`・"
 "`--print-media-type`(常に印刷メディア扱い)"
@@ -7192,29 +7233,29 @@ msgstr ""
 "WebKit specific: `--disable-smart-shrinking`, `--viewport-size`, `--"
 "lowquality`, `--print-media-type`. Print media is always assumed"
 
-#: src/migration/wkhtmltopdf.md:77
+#: src/migration/wkhtmltopdf.md:78
 msgid "PDFフォーム: `--enable-forms`"
 msgstr "PDF forms: `--enable-forms`"
 
-#: src/migration/wkhtmltopdf.md:79
+#: src/migration/wkhtmltopdf.md:80
 msgid "HTML/CSS側で必要になる調整"
 msgstr "Adjustments you may need in the HTML and CSS"
 
-#: src/migration/wkhtmltopdf.md:81
+#: src/migration/wkhtmltopdf.md:82
 msgid ""
 "エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の3つ"
 "です。"
 msgstr "Ranges"
 
-#: src/migration/wkhtmltopdf.md:84
+#: src/migration/wkhtmltopdf.md:85
 msgid "`!important`が使えません。付いた宣言は無視されます"
 msgstr "`!important` is not supported; a declaration carrying it is ignored"
 
-#: src/migration/wkhtmltopdf.md:85
+#: src/migration/wkhtmltopdf.md:86
 msgid "`inherit`/`initial`/`unset`が使えません"
 msgstr "`inherit`, `initial`, and `unset` are not supported"
 
-#: src/migration/wkhtmltopdf.md:86
+#: src/migration/wkhtmltopdf.md:87
 msgid ""
 "ビューポート単位(`vw`/`vh`等)と`ex`/`ch`/`lh`が使えません。長さは`px`/`em`/"
 "`rem`と絶対単位(`mm`/`cm`/`in`/`pt`/`pc`/`Q`)で書いてください"
@@ -7223,17 +7264,17 @@ msgstr ""
 "supported. Write lengths with `px`, `em`, `rem`, or the absolute units `mm`, "
 "`cm`, `in`, `pt`, `pc`, and `Q`"
 
-#: src/migration/wkhtmltopdf.md:88
+#: src/migration/wkhtmltopdf.md:89
 msgid ""
 "詳しくは[セレクタ・値・at-rule](../supports/selectors.md)を参照してください。"
 msgstr ""
 "See [Selectors, values, and at-rules](../supports/selectors.md) for details."
 
-#: src/migration/wkhtmltopdf.md:90
+#: src/migration/wkhtmltopdf.md:91
 msgid "移行できたか確かめる"
 msgstr "Checking that the move worked"
 
-#: src/migration/wkhtmltopdf.md:92
+#: src/migration/wkhtmltopdf.md:93
 msgid ""
 "まずは`--log-level info`(既定)のまま変換し、警告が出ないことを確認します。 非"
 "対応オプションはexit 1で止まるので、変換が通った時点でオプションはすべて解釈"
@@ -7596,8 +7637,8 @@ msgstr "`-V, --version`"
 msgid ""
 "マージンの既定値: wkhtmltopdfは四辺10mm(`--extended-help`には左右の既定値しか"
 "載っていないが、実際は上下も10mm)だが、sghtmltopdfの現在の既定は四辺96px(＝"
-"1in＝25.4mm)。 既存の出力を変えないため既定値は変更しない。 移行時は`--margin-"
-"*`を明示すること。"
+"1in＝25.4mm)。 既存の出力を変えないため既定値は変更しない。 移行時は`--"
+"margin-*`を明示すること。"
 msgstr ""
 "Default margins: wkhtmltopdf uses 10mm on all four sides (`--extended-help` "
 "only lists a default for left and right, but top and bottom are 10mm too), "
@@ -8505,19 +8546,6 @@ msgstr ""
 "Margins: wkhtmltopdf uses 10mm on all four sides, sghtmltopdf 1in (96px) on "
 "all four sides. State `margin_*` explicitly to keep the same look"
 
-#: src/migration/wicked-pdf.md:123
-msgid ""
-"`disable_local_file_access`との併用: `--allow`は読み取り範囲を狭めるだけで、"
-"許可を与えるものではない。wicked_pdfで`disable_local_file_access: true`と"
-"`allow: [dir]`を併用して「dirだけ読める」状態にしていた場合、そのまま持ち込む"
-"とローカル読み取りが全て止まる。`allow`だけを残すこと"
-msgstr ""
-"Combining with `disable_local_file_access`: `--allow` only narrows the range "
-"of local reads, it does not grant them. If you used "
-"`disable_local_file_access: true` together with `allow: [dir]` in wicked_pdf "
-"to mean \"only dir is readable\", carrying both across stops local reads "
-"entirely. Keep `allow` on its own."
-
 #: src/migration/wicked-pdf.md:121
 msgid ""
 "CLIオプションとCSSの`@page`: wkhtmltopdfはCLIが勝つが、sghtmltopdfは `@page` "
@@ -8543,7 +8571,20 @@ msgstr ""
 "Remote fetching: retrieving `http(s)` assets is off by default. Turn it on "
 "with `allow_remote_assets: true` if you need it"
 
-#: src/migration/wicked-pdf.md:127
+#: src/migration/wicked-pdf.md:124
+msgid ""
+"`disable_local_file_access`との併用: `--allow`は読み取り範囲を狭めるだけで、"
+"許可を与えるものではない。wicked_pdfで`disable_local_file_access: true`と"
+"`allow: [dir]`を併用して「dirだけ読める」状態にしていた場合、そのまま持ち込む"
+"とローカル読み取りが全て止まる。`allow`だけを残すこと"
+msgstr ""
+"Combining with `disable_local_file_access`: `--allow` only narrows the range "
+"of local reads, it does not grant them. If you used "
+"`disable_local_file_access: true` together with `allow: [dir]` in wicked_pdf "
+"to mean \"only dir is readable\", carrying both across stops local reads "
+"entirely. Keep `allow` on its own."
+
+#: src/migration/wicked-pdf.md:128
 msgid ""
 "wkhtmltopdfはシステムのフォント設定に依存するが、sghtmltopdfは`gothic_font`/"
 "`serif_font`/`mono_font`で指定できる。 日本語を出す場合は、コンテナのフォント"
@@ -8554,11 +8595,11 @@ msgstr ""
 "Japanese output it is safer to state them, so that you are not at the mercy "
 "of what a container happens to have."
 
-#: src/migration/wicked-pdf.md:136
+#: src/migration/wicked-pdf.md:137
 msgid "別プロセスへ逃がす(wicked_pdfには無い選択肢)"
 msgstr "Moving the work to another process, which wicked_pdf could not do"
 
-#: src/migration/wicked-pdf.md:138
+#: src/migration/wicked-pdf.md:139
 msgid ""
 "wicked_pdfはリクエストごとにwkhtmltopdfのプロセスを起動するが、sghtmltopdfの"
 "gemはアプリのプロセス内で変換する(重い処理の間はGVLを解放するのでPumaの他ス"
@@ -8571,7 +8612,7 @@ msgstr ""
 "still do not want to spend the application's CPU on it, `server_url` "
 "delegates to a separate `sghtmltopdf server` process."
 
-#: src/migration/wicked-pdf.md:145
+#: src/migration/wicked-pdf.md:146
 msgid ""
 "負荷分散はLB(nginx・k8s Service)を前段に置く前提で、URLは1つだけ受ける。 到達"
 "できないときは`Sghtmltopdf::ServerError`になり、ローカル変換へはフォールバッ"
@@ -8582,7 +8623,7 @@ msgstr ""
 "reached you get `Sghtmltopdf::ServerError`; it does not fall back to "
 "converting locally."
 
-#: src/migration/wicked-pdf.md:148
+#: src/migration/wicked-pdf.md:149
 msgid ""
 "サーバモードでは`base_url`・`allow`・フォント指定などローカルパスを取るオプ"
 "ションはリクエストから指定できない(サーバ起動時にだけ設定できる)。 Railtieが"
@@ -8595,15 +8636,15 @@ msgstr ""
 "automatically, but anything you set explicitly with `configure` produces a "
 "400 and a `UsageError`, so move those to the server's startup options."
 
-#: src/migration/wicked-pdf.md:151
+#: src/migration/wicked-pdf.md:152
 msgid "まだ無いもの"
 msgstr "Not there yet"
 
-#: src/migration/wicked-pdf.md:153
+#: src/migration/wicked-pdf.md:154
 msgid "PDFの結合・アウトライン: 非対応"
 msgstr "Merging PDFs and PDF outlines are not supported"
 
-#: src/migration/wicked-pdf.md:155
+#: src/migration/wicked-pdf.md:156
 msgid ""
 "なお逐次出力(ストリーミング)はwicked_pdfには無い機能で、ブロック付きの"
 "`render`で使える。 `ActionController::Live`と組み合わせれば、確定したページか"
@@ -8752,18 +8793,26 @@ msgid "フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です"
 msgstr "Fonts may be TTF or OTF only; WOFF and WOFF2 are not supported"
 
 #: src/appendix/limitations.md:41
+msgid ""
+"カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は"
+"[フォント](../supports/fonts.md#絵文字)を参照してください"
+msgstr ""
+"Colour fonts (`CBDT`/`CBLC`, `COLR`/`CPAL`, `sbix`) are not supported. For "
+"emoji see [Fonts](../supports/fonts.md#絵文字)"
+
+#: src/appendix/limitations.md:42
 msgid "`--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります"
 msgstr "Even with `--grayscale`, JPEG and CMYK images stay in colour"
 
-#: src/appendix/limitations.md:43
+#: src/appendix/limitations.md:44
 msgid "CSSの主な制限"
 msgstr "The main CSS limitations"
 
-#: src/appendix/limitations.md:45
+#: src/appendix/limitations.md:46
 msgid "機能単位では以下が非対応です。"
 msgstr "Taken feature by feature, the following are not supported."
 
-#: src/appendix/limitations.md:47
+#: src/appendix/limitations.md:48
 msgid ""
 "縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`"
 "等)、`direction`による右横書き"
@@ -8772,32 +8821,70 @@ msgstr ""
 "properties such as `margin-inline`, and right-to-left text through "
 "`direction`"
 
-#: src/appendix/limitations.md:48
+#: src/appendix/limitations.md:49
 msgid "多段組み(`columns`/`column-count`)"
 msgstr "Multi-column layout, `columns` and `column-count`"
 
-#: src/appendix/limitations.md:49
+#: src/appendix/limitations.md:50
 msgid "グラデーション(`linear-gradient()`等)と複数背景"
 msgstr "Gradients such as `linear-gradient()`, and multiple backgrounds"
 
-#: src/appendix/limitations.md:50
+#: src/appendix/limitations.md:51
 msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
 msgstr "Animations, transitions, and `filter`, since the output is static"
 
-#: src/appendix/limitations.md:51
+#: src/appendix/limitations.md:52
 msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
 msgstr ""
 "`position: sticky`, `display: inline-flex` and `inline-grid`, and subgrid"
 
-#: src/appendix/limitations.md:52
+#: src/appendix/limitations.md:53
 msgid "`:is()`/`:where()`/`:has()`、`::first-line`、`::marker`"
 msgstr "`:is()`, `:where()`, `:has()`, `::first-line`, and `::marker`"
 
-#: src/appendix/limitations.md:54
+#: src/appendix/limitations.md:55
+msgid "空白文字の扱い"
+msgstr ""
+
+#: src/appendix/limitations.md:57
+msgid ""
+"畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 `&nbsp;"
+"`(U+00A0)やthin space(U+2009)などは畳み込まれない普通の文字として、 フォント"
+"本来の字幅で描かれます。改行してよい位置はUAX #14の行分割クラスに従い、 "
+"`&nbsp;`・narrow no-break space・figure space・word joinerの前後では改行しま"
+"せん (`word-break: break-all`を指定した場合も同様です)。"
+msgstr ""
+
+#: src/appendix/limitations.md:63
+msgid ""
+"`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよ"
+"い」という 指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りませ"
+"ん (`<wbr>`を挟んでも抽出結果は繋がったままです)。"
+msgstr ""
+
+#: src/appendix/limitations.md:67
+msgid "この範囲での既知の制限は以下です。"
+msgstr ""
+
+#: src/appendix/limitations.md:69
+msgid ""
+"`text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の"
+"空白のみ)"
+msgstr ""
+
+#: src/appendix/limitations.md:70
+msgid "U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります"
+msgstr ""
+
+#: src/appendix/limitations.md:71
+msgid "行末に来た空白の「ぶら下がり」(hanging)は行いません"
+msgstr ""
+
+#: src/appendix/limitations.md:73
 msgid "ストリーミングモード固有の制限"
 msgstr "Limitations specific to streaming mode"
 
-#: src/appendix/limitations.md:56
+#: src/appendix/limitations.md:75
 msgid ""
 "`--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--"
 "toc`)などが使えなくなります。 詳細は[ストリーミングモード](../usage/cli/"
@@ -8807,11 +8894,11 @@ msgstr ""
 "`[topage]`, and the table of contents, `--toc`, become unavailable. See "
 "[Streaming mode](../usage/cli/streaming.md) for the details."
 
-#: src/appendix/limitations.md:59
+#: src/appendix/limitations.md:78
 msgid "今後について"
 msgstr "Looking ahead"
 
-#: src/appendix/limitations.md:61
+#: src/appendix/limitations.md:80
 msgid ""
 "JavaScriptエンジンの組み込みは、必要性が出てきた段階での検討事項として残して"
 "あります。 上記のうちPDFのアウトラインなど、設計上の非目標ではないものは将来"
