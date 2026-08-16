@@ -382,3 +382,98 @@ fn grid_renders_a_valid_pdf_end_to_end() {
     assert!(texts.iter().any(|t| t.contains("header")));
     assert!(texts.iter().any(|t| t.contains("footer")));
 }
+
+// ===== ネストしたフォーマッティングコンテキスト =====
+
+/// 内側のグリッドコンテナはブロックレベルなので、既定では外側のトラック幅を
+/// 埋める。自然幅が0として測られていた頃は、トラックが潰れて内容が1語ずつ
+/// 溢れていた。
+#[test]
+fn a_grid_inside_a_grid_item_fills_the_track() {
+    let boxes = item_boxes(
+        r#"<div class="g"><div class="item"><div class="k">key</div>
+           <div class="v">a much longer description that needs room</div></div></div>"#,
+        "body { margin: 0; } .g { display: grid; width: 400px; } \
+         .item { display: grid; grid-template-columns: auto 1fr; gap: 10px; }",
+    );
+
+    let (item, key, value) = (boxes[0], boxes[1], boxes[2]);
+    assert_eq!(item.width, 400.0, "内側のグリッドはトラック幅を埋める");
+    assert!(key.width > 0.0, "auto列は内容幅になる: {key:?}");
+    assert!(
+        (value.width - (400.0 - 10.0 - key.width)).abs() < 0.5,
+        "1fr列が残り幅を取る: key={key:?} value={value:?}"
+    );
+}
+
+/// トラックが内容基準で決まる場合(明示的な`justify-content: flex-start`で
+/// `auto`トラックが伸びない)は、内側のグリッドの自然幅がそのまま列幅になる。
+/// 「潰れない」ことだけでなく「実際に測れている」ことの確認。
+#[test]
+fn a_nested_grid_is_measured_by_its_own_columns() {
+    let boxes = item_boxes(
+        r#"<div class="g"><div class="item"><div class="k">key</div>
+           <div class="v">value</div></div></div>"#,
+        "body { margin: 0; } \
+         .g { display: grid; grid-template-columns: auto; justify-content: flex-start; width: 400px; } \
+         .item { display: grid; grid-template-columns: max-content max-content; gap: 10px; }",
+    );
+
+    let (item, key, value) = (boxes[0], boxes[1], boxes[2]);
+    assert!(
+        item.width > 0.0 && item.width < 400.0,
+        "内容幅に縮むはず: {item:?}"
+    );
+    assert!(
+        (item.width - (key.width + 10.0 + value.width)).abs() < 0.5,
+        "内側の2列+gapの合計が外側の列幅になる: item={item:?} key={key:?} value={value:?}"
+    );
+}
+
+/// テーブルを内側に持つ場合も、行のセル幅合計から自然幅が出る。
+#[test]
+fn a_table_inside_a_grid_item_is_measured_by_its_rows() {
+    let (dom, laid) = layout(
+        r#"<div class="g"><div class="item"><table><tr><td>alpha</td><td>beta</td></tr></table></div></div>"#,
+        "body { margin: 0; } \
+         .g { display: grid; grid-template-columns: auto; justify-content: flex-start; width: 400px; } \
+         .item { }",
+    );
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let item = find_laid_out(&laid, divs[1]).expect("item box");
+
+    assert!(
+        item.layout.content.width > 0.0 && item.layout.content.width < 400.0,
+        "テーブルの自然幅で列が決まるはず: {:?}",
+        item.layout.content
+    );
+}
+
+/// `justify-content`の初期値`normal`では、余った幅を`auto`トラックが吸って
+/// コンテナを埋める。明示的に`flex-start`と書いた場合は内容幅のまま左に寄る。
+/// (トラック間での余白の配分比率はtaffy任せで、CSSの均等配分とは一致しない)
+#[test]
+fn auto_tracks_absorb_the_free_space_unless_justify_content_says_otherwise() {
+    const HTML: &str = r#"<div class="g"><div class="a">key</div><div class="b">value</div></div>"#;
+    let filled = item_boxes(
+        HTML,
+        "body { margin: 0; } .g { display: grid; grid-template-columns: auto auto; \
+         gap: 10px; width: 400px; }",
+    );
+    let right_edge = filled[1].x + filled[1].width;
+    assert!(
+        (right_edge - 400.0).abs() < 0.5,
+        "既定ではコンテナを埋める: {filled:?}"
+    );
+
+    let packed = item_boxes(
+        HTML,
+        "body { margin: 0; } .g { display: grid; grid-template-columns: auto auto; \
+         gap: 10px; width: 400px; justify-content: flex-start; }",
+    );
+    assert!(
+        packed[1].x + packed[1].width < 200.0,
+        "flex-startなら内容幅のまま左に寄る: {packed:?}"
+    );
+}

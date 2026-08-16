@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T13:24:52+09:00\n"
+"POT-Creation-Date: 2026-08-16T13:47:51+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -2446,7 +2446,7 @@ msgstr ""
 #: src/supports/properties.md:108 src/supports/properties.md:123
 #: src/supports/properties.md:141 src/supports/properties.md:150
 #: src/supports/properties.md:161 src/supports/properties.md:176
-#: src/supports/properties.md:211 src/supports/properties.md:227
+#: src/supports/properties.md:211 src/supports/properties.md:230
 #: src/supports/selectors.md:15 src/supports/selectors.md:27
 #: src/supports/selectors.md:44 src/supports/selectors.md:55
 #: src/supports/selectors.md:74 src/supports/selectors.md:87
@@ -3124,7 +3124,7 @@ msgstr ""
 #: src/supports/properties.md:123 src/supports/properties.md:141
 #: src/supports/properties.md:150 src/supports/properties.md:161
 #: src/supports/properties.md:176 src/supports/properties.md:211
-#: src/supports/properties.md:227 src/supports/pagination.md:13
+#: src/supports/properties.md:230 src/supports/pagination.md:13
 msgid "プロパティ"
 msgstr ""
 
@@ -3134,7 +3134,7 @@ msgstr ""
 #: src/supports/properties.md:123 src/supports/properties.md:141
 #: src/supports/properties.md:150 src/supports/properties.md:161
 #: src/supports/properties.md:176 src/supports/properties.md:211
-#: src/supports/properties.md:227 src/supports/selectors.md:15
+#: src/supports/properties.md:230 src/supports/selectors.md:15
 #: src/supports/selectors.md:27 src/supports/selectors.md:44
 #: src/supports/selectors.md:74 src/supports/selectors.md:102
 #: src/migration/wkhtmltopdf-options.md:29
@@ -3302,8 +3302,8 @@ msgstr ""
 #: src/supports/properties.md:214 src/supports/properties.md:215
 #: src/supports/properties.md:216 src/supports/properties.md:217
 #: src/supports/properties.md:218 src/supports/properties.md:219
-#: src/supports/properties.md:220 src/supports/properties.md:229
-#: src/supports/properties.md:230 src/supports/selectors.md:17
+#: src/supports/properties.md:220 src/supports/properties.md:232
+#: src/supports/properties.md:233 src/supports/selectors.md:17
 #: src/supports/selectors.md:18 src/supports/selectors.md:19
 #: src/supports/selectors.md:20 src/supports/selectors.md:21
 #: src/supports/selectors.md:22 src/supports/selectors.md:29
@@ -4054,7 +4054,7 @@ msgstr ""
 
 #: src/supports/properties.md:180
 msgid ""
-"`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
+"`normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
 msgstr ""
 
 #: src/supports/properties.md:181
@@ -4269,105 +4269,111 @@ msgid "subgrid / masonry"
 msgstr ""
 
 #: src/supports/properties.md:225
+msgid ""
+"`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)と一致しません。 "
+"列幅を厳密に決めたい場合は`fr`か長さで指定してください。"
+msgstr ""
+
+#: src/supports/properties.md:228
 msgid "置換要素(画像)"
 msgstr ""
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:232
 msgid "`object-fit`"
 msgstr ""
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:232
 msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
 msgstr ""
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:233
 msgid "`object-position`"
 msgstr ""
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:233
 msgid "`background-position`と同じ値文法。初期値`50% 50%`"
 msgstr ""
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:235
 msgid ""
 "`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対応フォーマットはPNG/JPEG/WebP。 "
 "CSSで`width`/`height`の片方だけを指定した場合は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、)。"
 msgstr ""
 
-#: src/supports/properties.md:236
+#: src/supports/properties.md:239
 msgid "非対応プロパティ一覧"
 msgstr ""
 
-#: src/supports/properties.md:238
+#: src/supports/properties.md:241
 msgid "以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と決めたものだけではない。 カテゴリ表の`❌`行も参照。"
 msgstr ""
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:245
 msgid ""
 "ショートハンド: "
 "`font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分"
 msgstr ""
 
-#: src/supports/properties.md:243
+#: src/supports/properties.md:246
 msgid ""
 "論理プロパティ: "
 "`inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて"
 msgstr ""
 
-#: src/supports/properties.md:244
+#: src/supports/properties.md:247
 msgid ""
 "書字方向: "
 "`direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`"
 msgstr ""
 
-#: src/supports/properties.md:245
+#: src/supports/properties.md:248
 msgid ""
 "テキスト詳細: "
 "`text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
 msgstr ""
 
-#: src/supports/properties.md:246
+#: src/supports/properties.md:249
 msgid ""
 "フォント詳細: "
 "`font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`"
 msgstr ""
 
-#: src/supports/properties.md:247
+#: src/supports/properties.md:250
 msgid ""
 "多段組み: "
 "`columns`/`column-count`/`column-width`/`column-rule`/`column-span`/`column-fill`"
 msgstr ""
 
-#: src/supports/properties.md:248
+#: src/supports/properties.md:251
 msgid ""
 "視覚効果: "
 "`filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-mode`/`clip`/`clip-path`/`mask`/`isolation`"
 msgstr ""
 
-#: src/supports/properties.md:249
+#: src/supports/properties.md:252
 msgid ""
 "3D/アニメーション: "
 "`perspective`/`transform-style`/`backface-visibility`/`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/`will-change`"
 msgstr ""
 
-#: src/supports/properties.md:250
+#: src/supports/properties.md:253
 msgid ""
 "枠線・背景の拡張: "
 "`border-image-*`/`background-clip`/`background-origin`/`outline-offset`"
 msgstr ""
 
-#: src/supports/properties.md:251
+#: src/supports/properties.md:254
 msgid ""
 "オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-behavior`"
 msgstr ""
 
-#: src/supports/properties.md:252
+#: src/supports/properties.md:255
 msgid ""
 "UI/対話: "
 "`cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-color`/`appearance`"
 msgstr ""
 
-#: src/supports/properties.md:253
+#: src/supports/properties.md:256
 msgid ""
 "その他: "
 "`all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/`speak`等の音声メディア系/`zoom`"

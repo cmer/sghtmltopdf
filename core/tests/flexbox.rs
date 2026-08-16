@@ -450,3 +450,35 @@ fn a_text_run_and_an_element_become_separate_items() {
     );
     assert_eq!(laid_out_text(anonymous), "left");
 }
+
+/// flexアイテムの中身がさらにflexコンテナの場合。自然幅が0として測られて
+/// いた頃は、内側のコンテナごと幅0に潰れていた(grid-in-grid・flex-in-grid・
+/// grid-in-flexも同じ経路)。
+#[test]
+fn a_flex_inside_a_flex_item_does_not_collapse_to_zero() {
+    let (dom, laid) = layout(
+        r#"<div class="outer"><div class="item"><div class="a">alpha</div><div class="b">beta</div></div></div>"#,
+        "body { margin: 0; } \
+         .outer { display: flex; width: 400px; } \
+         .item { display: flex; gap: 10px; }",
+    );
+    let d = divs(&dom);
+    let item = find_laid_out(&laid, d[1]).unwrap();
+    let a = find_laid_out(&laid, d[2]).unwrap();
+    let b = find_laid_out(&laid, d[3]).unwrap();
+
+    assert!(
+        item.layout.content.width > 0.0,
+        "内側のflexコンテナが潰れてはならない: {:?}",
+        item.layout.content
+    );
+    assert!(a.layout.content.width > 0.0 && b.layout.content.width > 0.0);
+    // 主軸が横なので、内側の自然幅は2つのアイテム+gapの合計になる。
+    assert!(
+        item.layout.content.width >= a.layout.content.width + b.layout.content.width,
+        "a={:?} b={:?} item={:?}",
+        a.layout.content,
+        b.layout.content,
+        item.layout.content
+    );
+}

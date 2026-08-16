@@ -10,7 +10,8 @@
 //! - `rowspan="0"`(HTML5の「以降の行末まで拡張」特殊値)は非対応、1として扱う
 //! - `border-collapse: collapse`は見た目の枠線描画のみ統合し、レイアウト計算は
 //!   separateモデルと同一
-//! - セル内にネストしたテーブルの自然幅測定は非対応(0として扱う)
+//! - セル内にネストしたテーブル・flex・gridの自然幅は、それぞれの軸の意味に
+//!   従って近似で測る([`measure_natural_content_width`]に内訳)
 //! - `vertical-align: baseline`でベースラインを提供できないセル内容
 //!   (ネストしたテーブル・置換要素)は`bottom`相当にフォールバックする
 
@@ -20,7 +21,8 @@ use std::rc::Rc;
 use crate::fonts::FontCollection;
 use crate::html::NodeId;
 use crate::style::{
-    CaptionSide, ComputedStyle, LengthPercentageOrAuto, TableLayout, VerticalAlign,
+    CaptionSide, ComputedStyle, FlexDirection, LengthPercentageOrAuto, RepeatCount, TableLayout,
+    TrackComponent, TrackList, VerticalAlign,
 };
 
 use super::block::{
@@ -28,7 +30,7 @@ use super::block::{
     resolve_lp, resolve_padding, shift_box_y, shift_box_y_in_place, shift_content_vertical,
     LaidOutBox, LaidOutContent, LaidOutTable, LaidOutTableRow, PosCtx,
 };
-use super::box_tree::{BoxContent, TableBox, TableCell, TableRow};
+use super::box_tree::{BoxContent, LayoutBox, TableBox, TableCell, TableRow};
 use super::float_ctx::FloatContext;
 use super::inline::layout_inline_content;
 
@@ -631,7 +633,7 @@ fn natural_cell_width(
     // クランプはcontent幅に対して行い(min/maxの指定値はcontent-box基準)、
     // padding/borderはその後に足す。min/maxのパーセンテージ基準はこの時点では
     // 未定のため0を基準に解決する(paddingと同じ簡略化)。
-    let content_natural = measure_natural_content_width(&cell.content.content, styles, fonts);
+    let content_natural = measure_natural_content_width(&cell.content, styles, fonts);
     let clamped = clamp_used_width(
         &style,
         0.0,
@@ -642,22 +644,83 @@ fn natural_cell_width(
     clamped + padding.left + padding.right + border.left + border.right
 }
 
-/// ボックスの内容を折り返し無しでレイアウトした場合の自然な幅を測る。
-/// テーブルの自動列幅アルゴリズムに加え、`layout::flex`のtaffy採寸ブリッジ
-/// (`available_space`が`MinContent`/`MaxContent`の場合)からも共有で使う。
-pub(super) fn measure_natural_content_width(
-    content: &BoxContent,
+/// 子ボックス1つの自然幅に、その子自身のpadding/borderを足したもの。
+/// パーセンテージ指定は基準となる幅がこの時点で定まらないため0を基準に
+/// 解決する(`natural_cell_width`と同じ簡略化)。marginは含めない。
+fn outer_natural_width(
+    child: &LayoutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
 ) -> f32 {
-    match content {
+    let style = box_style(child, styles);
+    let padding = resolve_padding(&style, 0.0);
+    let border = resolve_border(&style);
+    measure_natural_content_width(child, styles, fonts)
+        + padding.left
+        + padding.right
+        + border.left
+        + border.right
+}
+
+/// `grid-template-columns`が宣言しているトラック数。
+/// `repeat(auto-fill|auto-fit, ...)`は、min/max-content制約下では1回の
+/// 繰り返しとして数える(CSS Grid仕様の規定)。
+fn declared_column_count(list: &TrackList) -> usize {
+    list.components
+        .iter()
+        .map(|component| match component {
+            TrackComponent::Single(_) => 1,
+            TrackComponent::Repeat { count, tracks, .. } => match count {
+                RepeatCount::Count(n) => *n as usize * tracks.len(),
+                RepeatCount::AutoFill | RepeatCount::AutoFit => tracks.len(),
+            },
+        })
+        .sum()
+}
+
+/// ボックスの内容を折り返し無しでレイアウトした場合の自然な幅(max-content幅)
+/// を測る。テーブルの自動列幅アルゴリズム、`layout::flex`のtaffy採寸ブリッジ、
+/// shrink-to-fit幅(float・inline-block・絶対配置の`width: auto`)から共有で使う。
+///
+/// ネストしたテーブル・flex・gridも、それぞれの軸の意味に従って再帰的に測る。
+/// 内訳はCSSの規定そのものではなく次の近似で、いずれも「アイテムの配置を
+/// 実際に解かずに求まる範囲」に留めている。
+///
+/// * flex: 主軸が横なら各アイテムの合計+`column-gap`、縦なら最大値
+/// * grid: `grid-template-columns`の宣言トラック数で行に区切り、行ごとの合計の
+///   最大値。`repeat(auto-fill|auto-fit, ...)`はCSS仕様通り1回の繰り返しとみなす。
+///   明示配置(`grid-column`)と複数トラックにまたがるアイテムは考慮しない
+/// * テーブル: 行ごとのセル幅合計の最大値(`border-spacing`は含めない)
+///
+/// 結果は[`LayoutBox::natural_width`]にメモする。同じ部分木は祖先の各段から、
+/// さらに幅の候補ごとの捨てレイアウトからも測り直されるため、メモが無いと
+/// ネストの段数に対して指数的に増える。
+pub(super) fn measure_natural_content_width(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+) -> f32 {
+    if let Some(memo) = b.measured.natural_width() {
+        return memo;
+    }
+    let width = compute_natural_content_width(b, styles, fonts);
+    b.measured.set_natural_width(width);
+    width
+}
+
+fn compute_natural_content_width(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+) -> f32 {
+    match &b.content {
         BoxContent::Inline(spans) => {
             // 採寸パスなので、`inline-block`の子孫にある`absolute`は捨てる
             // (最終レイアウトパスが同じ子孫をもう一度通って集める)。
             let mut discarded = Vec::new();
             let mut pos = PosCtx::new(&mut discarded, (0.0, 0.0));
             let lines = layout_inline_content(
-                spans,
+                spans.as_slice(),
                 styles,
                 fonts,
                 UNCONSTRAINED_WIDTH,
@@ -670,19 +733,53 @@ pub(super) fn measure_natural_content_width(
         }
         BoxContent::Blocks(children) => children
             .iter()
-            .map(|child| {
-                let style = box_style(child, styles);
-                let padding = resolve_padding(&style, 0.0);
-                let border = resolve_border(&style);
-                measure_natural_content_width(&child.content, styles, fonts)
-                    + padding.left
-                    + padding.right
-                    + border.left
-                    + border.right
+            .map(|child| outer_natural_width(child, styles, fonts))
+            .fold(0.0f32, f32::max),
+        BoxContent::Flex(flex) => {
+            let style = box_style(b, styles);
+            let items: Vec<f32> = flex
+                .items
+                .iter()
+                .map(|item| outer_natural_width(item, styles, fonts))
+                .collect();
+            match style.flex_direction {
+                FlexDirection::Row | FlexDirection::RowReverse => {
+                    let gaps =
+                        resolve_lp(style.column_gap, 0.0) * (items.len().saturating_sub(1)) as f32;
+                    items.iter().sum::<f32>() + gaps
+                }
+                // 縦積みなので、いちばん幅の要るアイテムがそのまま自然幅になる。
+                FlexDirection::Column | FlexDirection::ColumnReverse => {
+                    items.into_iter().fold(0.0f32, f32::max)
+                }
+            }
+        }
+        BoxContent::Grid(grid) => {
+            let style = box_style(b, styles);
+            // 宣言トラックが無い(`grid-template-columns: none`)場合は1列。
+            // アイテムは行方向へ流れるので、1列なら各アイテムが1行を占める。
+            let columns = declared_column_count(&style.grid_template_columns).max(1);
+            let gaps = resolve_lp(style.column_gap, 0.0) * (columns.saturating_sub(1)) as f32;
+            grid.items
+                .chunks(columns)
+                .map(|row| {
+                    row.iter()
+                        .map(|item| outer_natural_width(item, styles, fonts))
+                        .sum::<f32>()
+                        + gaps
+                })
+                .fold(0.0f32, f32::max)
+        }
+        BoxContent::Table(table) => table
+            .rows
+            .iter()
+            .map(|row| {
+                row.cells
+                    .iter()
+                    .map(|cell| natural_cell_width(cell, styles, fonts))
+                    .sum::<f32>()
             })
             .fold(0.0f32, f32::max),
-        // ネストしたテーブル・flex・gridの自然幅測定は非対応。
-        BoxContent::Table(_) | BoxContent::Flex(_) | BoxContent::Grid(_) => 0.0,
         BoxContent::Image(image_content) => image_content
             .attr_width
             .map(|w| w as f32)
@@ -1200,11 +1297,7 @@ mod tests {
             node: NodeId(0),
             colspan,
             rowspan,
-            content: LayoutBox {
-                node: None,
-                content: BoxContent::Inline(Vec::new()),
-                marker: None,
-            },
+            content: LayoutBox::anonymous(BoxContent::Inline(Vec::new())),
         }
     }
 

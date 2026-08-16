@@ -500,7 +500,7 @@ pub(super) fn shrink_to_fit_content_width(
     available_width: f32,
 ) -> f32 {
     let _ = style;
-    let natural = super::table::measure_natural_content_width(&b.content, styles, fonts);
+    let natural = super::table::measure_natural_content_width(b, styles, fonts);
     natural.min(available_width).max(0.0)
 }
 
@@ -2451,11 +2451,7 @@ mod tests {
     }
 
     fn image_box(content: ImageBoxContent) -> LayoutBox {
-        LayoutBox {
-            node: None,
-            content: BoxContent::Image(content),
-            marker: None,
-        }
+        LayoutBox::anonymous(BoxContent::Image(content))
     }
 
     #[test]

@@ -172,7 +172,7 @@ pub(super) fn container_taffy_style(style: &ComputedStyle, content_width: f32) -
         grid_template_areas: map_template_areas(&style.grid_template_areas),
         grid_template_column_names: map_line_names(&style.grid_template_columns),
         grid_template_row_names: map_line_names(&style.grid_template_rows),
-        justify_content: Some(super::flex::map_justify_content(style.justify_content)),
+        justify_content: super::flex::map_justify_content(style.justify_content),
         align_content: Some(super::flex::map_align_content(style.align_content)),
         // Gridでは`justify-items`/`align-items`の両方が意味を持つ。
         justify_items: Some(map_align_items(style.justify_items)),

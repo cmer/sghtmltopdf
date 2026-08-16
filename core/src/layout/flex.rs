@@ -141,10 +141,10 @@ pub(super) fn layout_taffy_subtree(
     // 中身は`(アイテム, 幅)`が決まれば一意に決まる純粋な計算なので、結果を
     // 覚えておいて2回目以降を省く。受領書1通で採寸内のフルレイアウトが188回
     // 走り、そのうち最終レイアウトへ活きるのは52回だけ、という状態だった。
-    let mut natural_widths: HashMap<usize, f32> = HashMap::new();
-    // 高さは幅が決まらないと決まらないので、幅もキーに含める。
-    let mut measured_heights: HashMap<(usize, u32), f32> = HashMap::new();
-
+    //
+    // メモはアイテムの`LayoutBox`側に置く。ここにローカルで持つと、ネストした
+    // flex/gridで祖先の段ごとにメモが作り直され、同じ部分木の採寸が段数分だけ
+    // 掛け算になるため。
     tree.compute_layout_with_measure(
         root,
         tf::Size {
@@ -175,9 +175,7 @@ pub(super) fn layout_taffy_subtree(
                 .width
                 .map(|w| (w - pb_x).max(0.0))
                 .unwrap_or_else(|| {
-                    let natural = *natural_widths.entry(index).or_insert_with(|| {
-                        measure_natural_content_width(&item.content, styles, fonts)
-                    });
+                    let natural = measure_natural_content_width(item, styles, fonts);
                     match available_space.width {
                         // 「使える幅」が確定していても、内容がそれより狭ければ
                         // 内容幅を返す。ここで常に`w`を返すと、内容幅に縮むべき
@@ -193,24 +191,25 @@ pub(super) fn layout_taffy_subtree(
                 .height
                 .map(|h| (h - pb_y).max(0.0))
                 .unwrap_or_else(|| {
-                    *measured_heights
-                        .entry((index, width.to_bits()))
-                        .or_insert_with(|| {
-                            let outer_width = width + pb_x;
+                    let outer_width = width + pb_x;
+                    if let Some(memo) = item.measured.height(width, outer_width) {
+                        return memo;
+                    }
 
-                            let mut float_ctx = FloatContext::new();
-                            let laid = measure_box_with_forced_width(
-                                item,
-                                styles,
-                                fonts,
-                                outer_width,
-                                width,
-                                &mut float_ctx,
-                                0.0,
-                                0.0,
-                            );
-                            laid.layout.content.height
-                        })
+                    let mut float_ctx = FloatContext::new();
+                    let laid = measure_box_with_forced_width(
+                        item,
+                        styles,
+                        fonts,
+                        outer_width,
+                        width,
+                        &mut float_ctx,
+                        0.0,
+                        0.0,
+                    );
+                    let height = laid.layout.content.height;
+                    item.measured.set_height(width, outer_width, height);
+                    height
                 });
 
             tf::Size { width, height }
@@ -299,7 +298,7 @@ fn container_taffy_style(style: &ComputedStyle, content_width: f32) -> tf::Style
         display: tf::Display::Flex,
         flex_direction: map_flex_direction(style.flex_direction),
         flex_wrap: map_flex_wrap(style.flex_wrap),
-        justify_content: Some(map_justify_content(style.justify_content)),
+        justify_content: map_justify_content(style.justify_content),
         align_items: Some(map_align_items(style.align_items)),
         align_content: Some(map_align_content(style.align_content)),
         gap: tf::Size {
@@ -392,14 +391,18 @@ fn map_flex_wrap(v: FlexWrap) -> tf::FlexWrap {
     }
 }
 
-pub(super) fn map_justify_content(v: JustifyContent) -> tf::JustifyContent {
+/// 初期値の`normal`はtaffyへ`None`として渡す。flexでは`flex-start`と同じに
+/// なるが、gridでは`auto`トラックが余った幅を吸って伸びる(明示的に
+/// `flex-start`と書いた場合は伸びない)。
+pub(super) fn map_justify_content(v: JustifyContent) -> Option<tf::JustifyContent> {
     match v {
-        JustifyContent::FlexStart => tf::JustifyContent::FLEX_START,
-        JustifyContent::FlexEnd => tf::JustifyContent::FLEX_END,
-        JustifyContent::Center => tf::JustifyContent::CENTER,
-        JustifyContent::SpaceBetween => tf::JustifyContent::SPACE_BETWEEN,
-        JustifyContent::SpaceAround => tf::JustifyContent::SPACE_AROUND,
-        JustifyContent::SpaceEvenly => tf::JustifyContent::SPACE_EVENLY,
+        JustifyContent::Normal => None,
+        JustifyContent::FlexStart => Some(tf::JustifyContent::FLEX_START),
+        JustifyContent::FlexEnd => Some(tf::JustifyContent::FLEX_END),
+        JustifyContent::Center => Some(tf::JustifyContent::CENTER),
+        JustifyContent::SpaceBetween => Some(tf::JustifyContent::SPACE_BETWEEN),
+        JustifyContent::SpaceAround => Some(tf::JustifyContent::SPACE_AROUND),
+        JustifyContent::SpaceEvenly => Some(tf::JustifyContent::SPACE_EVENLY),
     }
 }
 
