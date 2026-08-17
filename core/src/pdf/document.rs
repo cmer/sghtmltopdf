@@ -2062,11 +2062,7 @@ fn render_replaced_image(
     image: &PreparedImage,
     resource_ref: Ref,
 ) {
-    let rect = object_fit_rect(
-        content_box,
-        style,
-        (image.width as f32, image.height as f32),
-    );
+    let rect = object_fit_rect(content_box, style, (image.width, image.height));
 
     let x = settings.margin.left + content_box.x;
     let y = to_pdf_y(settings, content_box.y + content_box.height);
@@ -2136,8 +2132,9 @@ fn object_fit_rect(content_box: Rect, style: &ComputedStyle, intrinsic: (f32, f3
 #[derive(Debug, Clone, Copy)]
 struct BackgroundImagePaint {
     resource: Ref,
-    intrinsic_width: u32,
-    intrinsic_height: u32,
+    /// 内在サイズ(px)。SVGでは小数になりうる([`PreparedImage`]参照)。
+    intrinsic_width: f32,
+    intrinsic_height: f32,
 }
 
 /// `background-size`/`-position`/`-repeat`から、実際に描画すべき画像タイルの
@@ -2281,7 +2278,7 @@ fn render_background_image(
     let rects = background_tile_rects(
         border_box,
         style,
-        (paint.intrinsic_width as f32, paint.intrinsic_height as f32),
+        (paint.intrinsic_width, paint.intrinsic_height),
     );
     if rects.is_empty() {
         return;
@@ -4279,7 +4276,7 @@ mod tests {
         assert_eq!(rects.len(), 200);
     }
 
-    fn fake_prepared_image(width: u32, height: u32) -> Rc<PreparedImage> {
+    fn fake_prepared_image(width: f32, height: f32) -> Rc<PreparedImage> {
         Rc::new(PreparedImage {
             width,
             height,
@@ -4313,7 +4310,7 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         let div = find_tag(&dom, dom.document(), "div").expect("div not found");
         let mut background_images = HashMap::new();
-        background_images.insert(div, fake_prepared_image(40, 30));
+        background_images.insert(div, fake_prepared_image(40.0, 30.0));
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &background_images, &fonts, &settings);
@@ -4345,7 +4342,7 @@ mod tests {
         let mut background_images = HashMap::new();
         // intrinsic 40x30なので、100x60のborder-boxを覆うには3列(0,40,80)x
         // 2行(0,30)=6タイル必要。
-        background_images.insert(div, fake_prepared_image(40, 30));
+        background_images.insert(div, fake_prepared_image(40.0, 30.0));
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &background_images, &fonts, &settings);

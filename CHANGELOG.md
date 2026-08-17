@@ -35,18 +35,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   friends, pulled in by svg2pdf's `text` feature). Without it, text inside an SVG is not
   drawn at all.
 
+- Accept non-base64 `data:` URIs. A payload without `;base64` is now percent-decoded per
+  RFC 2397 instead of rejected. This is how SVG data URIs are normally written
+  (`data:image/svg+xml,%3Csvg...%3E`), in `<img src>` and CSS `url()` alike; requiring
+  base64 made the common form fail. Tabs and newlines are dropped from the payload (as the
+  URL standard does) but spaces are kept, since they separate tokens in an unencoded SVG.
+
 ### Changed
 
 - Pinned `pdf-writer` to 0.12 so that svg2pdf's `Chunk` is the same type as the one used to
   write the document, which is what lets an SVG be spliced in without going through bytes.
   No API of ours changed as a result.
+- `PreparedImage`'s intrinsic size is now `f32` rather than `u32`. An SVG's intrinsic size
+  can be fractional (`width="40.6"`, a fractional `viewBox`), and rounding it changed the
+  aspect ratio — 40.6×10.4 became 41×10, a 5% error that visibly skewed `object-fit`
+  (`contain` gave a height of 24.4 instead of 25.6) and the height derived from a
+  `width`-only rule. Raster sizes are unaffected: they are whole pixels either way.
+- An inline `<svg>` in the HTML now warns once per document instead of silently rendering
+  nothing. It is still not drawn — only `<img>` and `background-image` references are — but
+  saying "SVG is supported" and then dropping inline SVG without a word was misleading.
 
 ### Known limitations
 
 - SVG filters (`<filter>`) and raster images inside an SVG (`<image>`) are not drawn.
   Filters would require rasterising, which this deliberately avoids.
-- Inline `<svg>` written directly in the HTML is still not rendered; reference the SVG from
-  `<img>` or `background-image` instead.
+- Inline `<svg>` written directly in the HTML is not rendered; reference the SVG from
+  `<img>` or `background-image` instead. Supporting it means rebuilding SVG XML out of the
+  HTML DOM and deciding how attribute case (`viewBox`), CSS inheritance and `currentColor`
+  carry across — a different problem from referencing a file, so this phase covers only
+  references.
 - `--grayscale` does not apply to SVG. It warns and leaves the SVG in colour.
 - External references from inside an SVG (`<image href="...">`) are refused with a warning
   rather than resolved. usvg's default resolver reads such an href straight off disk, which

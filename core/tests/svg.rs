@@ -294,6 +294,179 @@ fn width_and_height_attributes_scale_the_svg() {
     );
 }
 
+// ===== object-fit / object-position =====
+
+/// 40x10のSVG。`object-fit`の効き方が縦横で違うことが分かる比率にしてある。
+const WIDE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="10">
+  <rect width="40" height="10" fill="#0000ff"/>
+</svg>"##;
+
+/// 40.6 x 10.4 の**小数**の内在サイズを持つSVG。整数へ丸めると41x10になり、
+/// 比が3.904から4.100へ約5%変わる。`object-fit`はこの比で決まるので、
+/// 丸めているとここで落ちる。
+const FRACTIONAL_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 406 104" width="40.6" height="10.4">
+  <rect width="406" height="104" fill="#0000ff"/>
+</svg>"##;
+
+/// Form XObjectを描く直前の`cm`(`a b c d e f cm`)を取り出す。
+/// `Do`の手前にある一番近い`cm`がそれ。
+fn xobject_cm(pdf: &[u8]) -> [f32; 6] {
+    let content = decompressed_stream_bytes(pdf);
+    let text = String::from_utf8_lossy(&content).into_owned();
+    let lines: Vec<&str> = text.lines().collect();
+    let draw_at = lines
+        .iter()
+        .position(|line| line.ends_with(" Do"))
+        .unwrap_or_else(|| panic!("no `Do` in the content stream: {text}"));
+    let cm = lines[..draw_at]
+        .iter()
+        .rev()
+        .find(|line| line.ends_with(" cm"))
+        .unwrap_or_else(|| panic!("no `cm` before the `Do`: {text}"));
+    let values: Vec<f32> = cm
+        .trim_end_matches(" cm")
+        .split_whitespace()
+        .map(|v| v.parse().expect("cm operands should be numbers"))
+        .collect();
+    values.try_into().expect("a cm has 6 operands")
+}
+
+#[track_caller]
+fn assert_close(actual: f32, expected: f32, what: &str) {
+    assert!(
+        (actual - expected).abs() < 0.05,
+        "{what}: expected about {expected}, got {actual}"
+    );
+}
+
+/// `object-fit`の5つの値それぞれで、描画される矩形が仕様どおりになること。
+/// 100x50のボックスに40x10(比4:1)のSVGを入れる。
+#[test]
+fn object_fit_scales_an_svg_the_same_way_it_scales_a_raster_image() {
+    // (値, 期待する幅, 期待する高さ)
+    let cases = [
+        // ボックスいっぱいに引き伸ばす(比を保たない)。
+        ("fill", 100.0, 50.0),
+        // 幅が先に埋まる: 100 / 4 = 25。
+        ("contain", 100.0, 25.0),
+        // 高さが先に埋まる: 50 * 4 = 200。
+        ("cover", 200.0, 50.0),
+        // 内在サイズそのまま。
+        ("none", 40.0, 10.0),
+        // 内在サイズがボックスに収まるので`none`と同じ。
+        ("scale-down", 40.0, 10.0),
+    ];
+    for (fit, width, height) in cases {
+        let html = format!(
+            r#"<body style="margin:0"><img src="logo.svg"
+                 style="width:100px;height:50px;object-fit:{fit}"></body>"#
+        );
+        let pdf = convert_svg_file(&html, WIDE_SVG, &[], &format!("fit-{fit}"));
+        let cm = xobject_cm(&pdf);
+        assert_close(cm[0], width, &format!("object-fit: {fit} width"));
+        assert_close(cm[3], height, &format!("object-fit: {fit} height"));
+    }
+}
+
+/// 内在サイズが小数のSVGでもアスペクト比を保つ。丸めていると
+/// `contain`の高さが25.6ではなく24.4になる(比が5%ずれる)。
+#[test]
+fn object_fit_keeps_a_fractional_intrinsic_aspect_ratio() {
+    let ratio = 40.6 / 10.4;
+
+    for (fit, expect) in [
+        ("contain", (100.0, 100.0 / ratio)),
+        ("cover", (50.0 * ratio, 50.0)),
+        ("none", (40.6, 10.4)),
+    ] {
+        let html = format!(
+            r#"<body style="margin:0"><img src="logo.svg"
+                 style="width:100px;height:50px;object-fit:{fit}"></body>"#
+        );
+        let pdf = convert_svg_file(&html, FRACTIONAL_SVG, &[], &format!("frac-{fit}"));
+        let cm = xobject_cm(&pdf);
+        assert_close(cm[0], expect.0, &format!("object-fit: {fit} width"));
+        assert_close(cm[3], expect.1, &format!("object-fit: {fit} height"));
+    }
+}
+
+/// `scale-down`は内在サイズがボックスより大きいときだけ縮める
+/// (そのとき`contain`と同じ)。
+#[test]
+fn object_fit_scale_down_shrinks_only_when_the_svg_is_larger_than_the_box() {
+    let html = r#"<body style="margin:0"><img src="logo.svg"
+         style="width:20px;height:20px;object-fit:scale-down"></body>"#;
+    let pdf = convert_svg_file(html, WIDE_SVG, &[], "scale-down-large");
+    let cm = xobject_cm(&pdf);
+    // 40x10を20x20へ収めるので幅が先に埋まる: 20 x 5。
+    assert_close(cm[0], 20.0, "scale-down width");
+    assert_close(cm[3], 5.0, "scale-down height");
+}
+
+/// `object-position`は収めた矩形の置き場所を動かす。既定(50% 50%)から
+/// `0% 0%`にすると左上へ寄る。
+#[test]
+fn object_position_moves_the_svg_within_the_content_box() {
+    let centred = convert_svg_file(
+        r#"<body style="margin:0"><img src="logo.svg"
+             style="width:100px;height:50px;object-fit:contain"></body>"#,
+        WIDE_SVG,
+        &[],
+        "pos-centre",
+    );
+    let top_left = convert_svg_file(
+        r#"<body style="margin:0"><img src="logo.svg"
+             style="width:100px;height:50px;object-fit:contain;object-position:0% 0%"></body>"#,
+        WIDE_SVG,
+        &[],
+        "pos-topleft",
+    );
+
+    let (c, tl) = (xobject_cm(&centred), xobject_cm(&top_left));
+    // 大きさは変わらない。
+    assert_close(tl[0], c[0], "width should not change with object-position");
+    assert_close(tl[3], c[3], "height should not change with object-position");
+    // 25px高い矩形を上端に寄せるので、PDF座標(下が原点)ではyが上がる。
+    assert_close(tl[5] - c[5], 12.5, "object-position: 0% 0% should raise it");
+}
+
+/// `object-fit: cover`ははみ出すので、content boxでクリップされる
+/// (クリップは`re W n`の並びで書かれる)。
+#[test]
+fn object_fit_cover_is_clipped_to_the_content_box() {
+    let pdf = convert_svg_file(
+        r#"<body style="margin:0"><img src="logo.svg"
+             style="width:100px;height:50px;object-fit:cover"></body>"#,
+        WIDE_SVG,
+        &[],
+        "cover-clip",
+    );
+    let content = decompressed_stream_bytes(&pdf);
+    let text = String::from_utf8_lossy(&content);
+    // content boxの矩形 → `W`(nonzeroクリップ) → `n`(パスを描かず終える)。
+    assert!(
+        text.contains("100 50 re\nW\nn\n"),
+        "the content box should be set as a clip path, content was: {text}"
+    );
+    // はみ出す幅で描かれていること(クリップされていなければページに漏れる)。
+    assert_close(xobject_cm(&pdf)[0], 200.0, "cover width");
+}
+
+/// `width`だけ指定したときの高さは、小数の内在比から導かれる。
+#[test]
+fn a_single_specified_dimension_derives_the_other_from_the_exact_ratio() {
+    let pdf = convert_svg_file(
+        r#"<body style="margin:0"><img src="logo.svg" style="width:203px"></body>"#,
+        FRACTIONAL_SVG,
+        &[],
+        "derive-height",
+    );
+    let cm = xobject_cm(&pdf);
+    // 203 / (40.6/10.4) = 52。丸めた41x10の比だと49.5になる。
+    assert_close(cm[0], 203.0, "width");
+    assert_close(cm[3], 52.0, "height derived from the exact ratio");
+}
+
 #[test]
 fn an_svg_works_as_a_background_image() {
     let pdf = convert(
@@ -464,6 +637,117 @@ fn an_svg_cannot_read_files_through_a_nested_image_href() {
     assert!(count_occurrences(&pdf, b"/Subtype /Form") > 0);
 
     cleanup(&dir);
+}
+
+// ===== インラインSVG(未対応) =====
+
+/// HTMLに直接書いた`<svg>`は描画しない。`<img src="*.svg">`は描けるように
+/// なったので、黙って何も出ないのではなく警告する。
+#[test]
+fn an_inline_svg_is_not_rendered_and_says_so() {
+    for (mode, name) in [
+        (&[][..], "inline-batch"),
+        (&["--streaming"][..], "inline-streaming"),
+    ] {
+        let dir =
+            std::env::temp_dir().join(format!("sghtmltopdf-svg-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("input.html");
+        std::fs::write(
+            &input,
+            r##"<body style="margin:0"><p>before</p>
+                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+                   <rect width="40" height="20" fill="#ff0000"/>
+                   <text x="2" y="14">INLINE</text>
+                 </svg>
+                 <p>after</p></body>"##,
+        )
+        .unwrap();
+        let output = dir.join("out.pdf");
+
+        let result = Command::new(BIN)
+            .arg(&input)
+            .args(["--font", FONT_PATH])
+            .args(mode)
+            .arg("-o")
+            .arg(&output)
+            .output()
+            .expect("failed to run the sghtmltopdf binary");
+        assert!(result.status.success(), "conversion should still succeed");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            stderr.contains("<svg> 要素") && stderr.contains("描画されません"),
+            "an inline <svg> should be reported, got: {stderr}"
+        );
+
+        let pdf = std::fs::read(&output).unwrap();
+        assert_eq!(
+            count_occurrences(&pdf, b"/Subtype /Form"),
+            0,
+            "an inline <svg> must not produce a form XObject in {name}"
+        );
+        // サブツリーごと消えるので、中の`<text>`が本文へ流れ込むこともない。
+        let content = decompressed_stream_bytes(&pdf);
+        assert_eq!(
+            count_occurrences(&content, b"INLINE"),
+            0,
+            "the inline SVG's text must not leak into the page in {name}"
+        );
+        cleanup(&dir);
+    }
+}
+
+/// 警告は1文書につき1回だけ(インラインSVGを多用した文書で
+/// 同じ警告が並ばないこと)。
+#[test]
+fn the_inline_svg_warning_is_emitted_once_per_document() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-svg-{}-inline-once",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut html = String::from(r#"<body style="margin:0">"#);
+    for _ in 0..5 {
+        html.push_str(
+            r#"<p><svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"></svg></p>"#,
+        );
+    }
+    html.push_str("</body>");
+    let input = dir.join("input.html");
+    std::fs::write(&input, &html).unwrap();
+
+    let result = Command::new(BIN)
+        .arg(&input)
+        .args(["--font", FONT_PATH])
+        .arg("-o")
+        .arg(dir.join("out.pdf"))
+        .output()
+        .expect("failed to run the sghtmltopdf binary");
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert_eq!(
+        stderr.matches("<svg> 要素").count(),
+        1,
+        "the warning should appear once, got: {stderr}"
+    );
+    // 何個あったかは伝える。
+    assert!(
+        stderr.contains("5個"),
+        "the warning should count them, got: {stderr}"
+    );
+    cleanup(&dir);
+}
+
+/// `<img src="*.svg">`だけの文書では、インラインSVGの警告を出さない
+/// (出すと本来通っている使い方に不安を持たせる)。
+#[test]
+fn referencing_an_svg_from_img_does_not_warn_about_inline_svg() {
+    // `convert`が「警告が出ないこと」を確かめている。
+    let pdf = convert(
+        r#"<body style="margin:0"><img src="logo.svg"></body>"#,
+        &[],
+        "no-inline-warning",
+    );
+    assert_embedded_as_vector(&pdf);
 }
 
 /// 壊れたSVGは画像なしの置換要素として扱われ、変換自体は成功する

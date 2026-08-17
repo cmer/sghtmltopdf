@@ -39,8 +39,8 @@ use crate::layout::{
     PageSettings, Rect, StreamingPaginator,
 };
 use crate::pdf::{
-    anchor_destination_name, ImageAssetCache, LinkSettings, PageOverlay, PdfOutputOptions,
-    PreparedImage, StreamingPdfWriter, SvgFontDb,
+    anchor_destination_name, warn_about_inline_svg, ImageAssetCache, LinkSettings, PageOverlay,
+    PdfOutputOptions, PreparedImage, StreamingPdfWriter, SvgFontDb,
 };
 use crate::sink::Sink;
 use crate::style::{
@@ -851,6 +851,8 @@ struct StreamingState<S: Sink> {
     /// トップレベル要素ごとに判定するため、
     /// 既に警告した文字を持ち回って重複を防ぐ。
     warned_uncovered_chars: HashSet<char>,
+    /// インラインの`<svg>`について既に警告したか(1文書につき1回だけ出す)。
+    warned_inline_svg: bool,
     /// 処理済みトップレベル要素を、サブツリーごと解放してよいか。
     ///
     /// `+`/`~`や`:first-child`のように直前の兄弟が要るセレクタを使う文書では、
@@ -1216,6 +1218,7 @@ impl<S: Sink> Engine<S> {
             overlay_cache: None,
             warned_font_families: Vec::new(),
             warned_uncovered_chars: HashSet::new(),
+            warned_inline_svg: false,
             release_whole_subtree,
             paginator: StreamingPaginator::new(page_settings.content_height()),
             writer,
@@ -1266,6 +1269,9 @@ impl<S: Sink> Engine<S> {
                 &sub_styles,
                 &mut state.warned_uncovered_chars,
             );
+            // このトップレベル要素の中だけを見る(文書全体を毎回走査すると
+            // 要素数の2乗になる)。
+            warn_about_inline_svg(&dom, node, &mut state.warned_inline_svg);
             let mut item_box = build_box_for_element(&dom, &sub_styles, node);
             if let (Some(item_box), true) = (&mut item_box, options_content.load_images) {
                 resolve_images(item_box, &dom, &state.image_cache);
@@ -1495,6 +1501,9 @@ impl<S: Sink> Engine<S> {
         ensure_default_font(&mut fonts, &system_fonts)?;
         // 補ってもなお描画できない文字が残っていれば警告する。
         warn_uncovered_chars(&fonts, &dom, &styles, &mut HashSet::new());
+        // インラインの`<svg>`は描画しない。`<img src="*.svg">`は描けるように
+        // なったので、黙って消えると紛らわしい。
+        warn_about_inline_svg(&dom, dom.document(), &mut false);
 
         let mut output = options.output.clone();
         output

@@ -170,6 +170,58 @@ pub fn looks_like_svg(bytes: &[u8]) -> bool {
     window.windows(4).any(|w| w.eq_ignore_ascii_case(b"<svg"))
 }
 
+/// HTMLに直接書かれたインラインの`<svg>`要素の数を数える。
+///
+/// インラインSVGは描画しない(UAスタイルシートの`svg { display: none }`で
+/// サブツリーごと消える)。`<img src="*.svg">`と`background-image`は描けるように
+/// なったので、「SVG対応」と読んで直接書いた人が黙って何も出ないのを見て
+/// 困らないよう、1文書につき1回警告するために使う。
+///
+/// 対応させるにはHTMLのDOMからSVGのXMLを組み直してusvgへ渡す必要があり
+/// (属性名の大小・`viewBox`等の扱い、CSSの継承、`currentColor`)、外部
+/// ファイルの参照とは別の仕事になるため、ここでは数えるだけにしている。
+/// `root`以下だけを見る(ストリーミング処理はトップレベル要素ごとに呼ぶため。
+/// 毎回文書全体を走査すると要素数の2乗になる)。
+pub fn count_inline_svg_elements(dom: &crate::html::Dom, root: crate::html::NodeId) -> usize {
+    fn walk(dom: &crate::html::Dom, node: crate::html::NodeId, count: &mut usize) {
+        if let crate::html::NodeData::Element { name, .. } = &dom.node(node).data {
+            // 名前空間は見ない(UAスタイルシートの判定と揃える)。入れ子の
+            // `<svg>`は数えたくないので、見つけたらその中は辿らない。
+            if &*name.local == "svg" {
+                *count += 1;
+                return;
+            }
+        }
+        for child in dom.children(node) {
+            walk(dom, child, count);
+        }
+    }
+    let mut count = 0;
+    walk(dom, root, &mut count);
+    count
+}
+
+/// [`count_inline_svg_elements`]が1つ以上見つけたときに、1文書につき1度だけ
+/// 警告する。
+///
+/// `warned`は文書ごとの状態。同じプロセスで複数の文書を変換する(gem・
+/// サーバモード)ので、プロセス全体で1回にしてしまうと2件目以降が黙る。
+pub fn warn_about_inline_svg(dom: &crate::html::Dom, root: crate::html::NodeId, warned: &mut bool) {
+    if *warned {
+        return;
+    }
+    let count = count_inline_svg_elements(dom, root);
+    if count == 0 {
+        return;
+    }
+    *warned = true;
+    eprintln!(
+        "警告: HTMLに直接書かれた <svg> 要素が{count}個ありますが、描画されません。\n  \
+         SVGは <img src=\"...svg\"> か background-image: url(...svg) から\n  \
+         参照した場合だけ描画できます(インラインSVGは未対応です)"
+    );
+}
+
 #[cfg(feature = "svg")]
 mod convert {
     use std::collections::HashMap;
@@ -223,7 +275,7 @@ mod convert {
     pub fn convert_svg(
         bytes: &[u8],
         fonts: &SvgFontDb,
-    ) -> Result<(u32, u32, VectorGraphic), SvgError> {
+    ) -> Result<(f32, f32, VectorGraphic), SvgError> {
         let options = svg_options(fonts);
         let tree =
             svg2pdf::usvg::Tree::from_data(bytes, &options).map_err(|e| SvgError(e.to_string()))?;
@@ -248,12 +300,11 @@ mod convert {
         let (chunk, root) =
             svg2pdf::to_chunk(&tree, conversion).map_err(|e| SvgError(e.to_string()))?;
 
-        // 内在サイズは整数へ丸める(レイアウト側の内在サイズがu32のため)。
-        // 小数のviewBox(`24.5`等)ではアスペクト比が僅かにずれるが、
-        // `width`/`height`/`aspect-ratio`のいずれかが指定されていれば影響しない。
-        let width = size.width().round().max(1.0) as u32;
-        let height = size.height().round().max(1.0) as u32;
-        Ok((width, height, VectorGraphic { chunk, root }))
+        // 内在サイズは丸めずに返す。`width="40.6"`や小数の`viewBox`を整数へ
+        // 丸めるとアスペクト比が変わり、`object-fit: contain`/`cover`や
+        // `width`だけ指定したときの高さの導出が目に見えてずれる
+        // (40.6x10.4 → 41x10で比が5%変わる)。
+        Ok((size.width(), size.height(), VectorGraphic { chunk, root }))
     }
 
     /// usvgのパースオプション。
@@ -428,7 +479,7 @@ mod convert {
         fn converts_an_svg_and_reports_its_intrinsic_size() {
             let (width, height, graphic) =
                 convert_svg(CIRCLE.as_bytes(), &SvgFontDb::empty()).expect("should convert");
-            assert_eq!((width, height), (20, 10));
+            assert_eq!((width, height), (20.0, 10.0));
             assert!(
                 graphic.chunk.refs().len() >= 1,
                 "the chunk should hold at least the form XObject"

@@ -783,7 +783,7 @@ fn compute_natural_content_width(
         BoxContent::Image(image_content) => image_content
             .attr_width
             .map(|w| w as f32)
-            .or_else(|| image_content.image.as_ref().map(|img| img.width as f32))
+            .or_else(|| image_content.image.as_ref().map(|img| img.width))
             .unwrap_or(0.0),
     }
 }

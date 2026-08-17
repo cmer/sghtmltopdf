@@ -361,6 +361,84 @@ fn a_data_uri_svg_is_rendered_even_when_the_declared_mime_type_is_wrong() {
     fx.convert("in.html", &[]).assert_rendered();
 }
 
+/// `%XX`をURLエンコードする(テスト用の最小実装。RFC 3986の
+/// unreserved以外をすべてエスケープする)。
+fn percent_encode(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char)
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
+/// SVGのdata URIは`;base64`ではなくパーセントエンコードで書くのが一般的。
+/// base64しか受けないと、この最も普通の書き方が通らない。
+#[test]
+fn a_percent_encoded_svg_data_uri_is_rendered() {
+    let fx = Fixture::new("data-uri-percent");
+    fx.write(
+        "in.html",
+        &html_with(&format!("data:image/svg+xml,{}", percent_encode(SVG))),
+    );
+    fx.convert("in.html", &[]).assert_rendered();
+}
+
+/// `;utf8,`のような慣習的なパラメータが付いていても、`;base64`が無ければ
+/// パーセントエンコードとして読む。
+#[test]
+fn a_data_uri_with_a_charset_style_parameter_but_no_base64_is_rendered() {
+    let fx = Fixture::new("data-uri-utf8");
+    fx.write(
+        "in.html",
+        &html_with(&format!("data:image/svg+xml;utf8,{}", percent_encode(SVG))),
+    );
+    fx.convert("in.html", &[]).assert_rendered();
+
+    let charset = Fixture::new("data-uri-charset");
+    charset.write(
+        "in.html",
+        &html_with(&format!(
+            "data:image/svg+xml;charset=utf-8,{}",
+            percent_encode(SVG)
+        )),
+    );
+    charset.convert("in.html", &[]).assert_rendered();
+}
+
+/// CSSの`url()`の中でも同じ(`background-image`は`<img src>`と同じ経路を通る)。
+#[test]
+fn a_percent_encoded_svg_data_uri_works_in_a_css_url() {
+    let fx = Fixture::new("data-uri-css");
+    fx.write(
+        "in.html",
+        &format!(
+            r#"<body style="margin:0"><div style="width:60px;height:30px;
+                 background-image:url('data:image/svg+xml,{}');
+                 background-repeat:no-repeat"></div></body>"#,
+            percent_encode(SVG)
+        ),
+    );
+    fx.convert("in.html", &[]).assert_rendered();
+}
+
+/// エンコードされていない生のSVGも通す(空白を落とさないことの確認も兼ねる。
+/// 落とすと`<svgxmlns=...>`になってパースできない)。HTML属性の中では引用符が
+/// 衝突するので、属性は単引用符で囲む。
+#[test]
+fn an_unencoded_svg_data_uri_is_rendered() {
+    let fx = Fixture::new("data-uri-raw");
+    fx.write(
+        "in.html",
+        &format!(r#"<body style="margin:0"><img src='data:image/svg+xml,{SVG}'></body>"#),
+    );
+    fx.convert("in.html", &[]).assert_rendered();
+}
+
 /// gzip圧縮されたSVG(`.svgz`)。マジックバイト`1f 8b`で嗅ぎ分け、
 /// 展開はusvgに任せる。
 #[test]

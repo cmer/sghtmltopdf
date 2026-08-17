@@ -67,12 +67,16 @@ pub enum PlaneColorSpace {
     Cmyk,
 }
 
-/// デコード結果。`width`/`height`は内在サイズ(px)で、ラスタ・ベクタの
-/// どちらでもレイアウトからは同じように見える。
+/// デコード結果。ラスタ・ベクタのどちらでもレイアウトからは同じに見える。
+///
+/// `width`/`height`はCSSの内在サイズ(px)。ラスタ画像では必ず整数(ピクセル数)
+/// だが、SVGは`width="40.6"`や小数の`viewBox`で**小数になりうる**ため`f32`で
+/// 持つ。整数へ丸めてしまうとアスペクト比がずれ、`object-fit: contain`等が
+/// 目に見えてずれる(40.6x10.4を41x10に丸めると比が5%変わる)。
 #[derive(Debug, Clone)]
 pub struct PreparedImage {
-    pub width: u32,
-    pub height: u32,
+    pub width: f32,
+    pub height: f32,
     pub content: PreparedContent,
 }
 
@@ -99,6 +103,14 @@ impl PreparedImage {
             PreparedContent::Vector(_) => None,
         }
     }
+}
+
+/// Image XObjectの`/Width`・`/Height`に書くピクセル数。
+///
+/// ラスタ画像の内在サイズはデコーダが返した整数をそのまま`f32`にしたものなので、
+/// 丸め戻しても値は変わらない(この関数はラスタ経路からしか呼ばれない)。
+fn pixels(value: f32) -> u32 {
+    value.round().max(0.0) as u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,8 +226,8 @@ fn decode_jpeg(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
         }
     };
     Ok(PreparedImage {
-        width: width as u32,
-        height: height as u32,
+        width: width as f32,
+        height: height as f32,
         content: PreparedContent::Raster {
             color: ImagePlane {
                 data: bytes.to_vec(),
@@ -271,8 +283,8 @@ fn decode_png(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
     };
 
     Ok(PreparedImage {
-        width,
-        height,
+        width: width as f32,
+        height: height as f32,
         content: PreparedContent::Raster {
             color: ImagePlane {
                 data: deflate(&color_bytes),
@@ -319,8 +331,8 @@ fn decode_webp(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
     };
 
     Ok(PreparedImage {
-        width,
-        height,
+        width: width as f32,
+        height: height as f32,
         content: PreparedContent::Raster {
             color: ImagePlane {
                 data: deflate(&color_bytes),
@@ -543,9 +555,23 @@ pub fn embed_image(
         ImageIdsKind::Raster { alpha: alpha_id } => {
             let (color, alpha) = raster_planes(image, grayscale);
             if let (Some(alpha), Some(alpha_id)) = (&alpha, alpha_id) {
-                write_plane(pdf, *alpha_id, image.width, image.height, alpha, None);
+                write_plane(
+                    pdf,
+                    *alpha_id,
+                    pixels(image.width),
+                    pixels(image.height),
+                    alpha,
+                    None,
+                );
             }
-            write_plane(pdf, ids.root, image.width, image.height, &color, *alpha_id);
+            write_plane(
+                pdf,
+                ids.root,
+                pixels(image.width),
+                pixels(image.height),
+                &color,
+                *alpha_id,
+            );
         }
         #[cfg(feature = "svg")]
         ImageIdsKind::Vector(graphic) => {
@@ -574,8 +600,8 @@ pub fn embed_image_streaming_chunks(
                 write_plane(
                     &mut chunk,
                     *alpha_id,
-                    image.width,
-                    image.height,
+                    pixels(image.width),
+                    pixels(image.height),
                     alpha,
                     None,
                 );
@@ -585,8 +611,8 @@ pub fn embed_image_streaming_chunks(
             write_plane(
                 &mut chunk,
                 ids.root,
-                image.width,
-                image.height,
+                pixels(image.width),
+                pixels(image.height),
                 &color,
                 *alpha_id,
             );
@@ -799,8 +825,8 @@ mod tests {
             decode_image(&bytes, &SvgFontDb::empty()).expect("jpeg decode should succeed");
         let (color, alpha) = planes(&prepared);
 
-        assert_eq!(prepared.width, 32);
-        assert_eq!(prepared.height, 24);
+        assert_eq!(prepared.width, 32.0);
+        assert_eq!(prepared.height, 24.0);
         assert_eq!(color.filter, Filter::DctDecode);
         assert_eq!(color.color_space, PlaneColorSpace::Rgb);
         assert!(alpha.is_none(), "JPEG has no alpha channel");
@@ -819,8 +845,8 @@ mod tests {
             decode_image(&bytes, &SvgFontDb::empty()).expect("png decode should succeed");
         let (color, alpha) = planes(&prepared);
 
-        assert_eq!(prepared.width, 16);
-        assert_eq!(prepared.height, 16);
+        assert_eq!(prepared.width, 16.0);
+        assert_eq!(prepared.height, 16.0);
         assert_eq!(color.filter, Filter::FlateDecode);
         assert_eq!(color.color_space, PlaneColorSpace::Rgb);
 
@@ -849,7 +875,7 @@ mod tests {
         let color_bytes = inflate(&color.data);
         assert_eq!(
             color_bytes.len(),
-            (prepared.width * prepared.height * 3) as usize
+            (prepared.width * prepared.height * 3.0) as usize
         );
     }
 
@@ -877,8 +903,8 @@ mod tests {
             decode_image(&bytes, &SvgFontDb::empty()).expect("webp decode should succeed");
         let (color, alpha) = planes(&prepared);
 
-        assert_eq!(prepared.width, 16);
-        assert_eq!(prepared.height, 16);
+        assert_eq!(prepared.width, 16.0);
+        assert_eq!(prepared.height, 16.0);
         assert_eq!(color.color_space, PlaneColorSpace::Rgb);
         let alpha = alpha.expect("expected an alpha plane");
 
@@ -906,7 +932,7 @@ mod tests {
         let prepared =
             decode_image(svg, &SvgFontDb::empty()).expect("svg conversion should succeed");
 
-        assert_eq!((prepared.width, prepared.height), (40, 20));
+        assert_eq!((prepared.width, prepared.height), (40.0, 20.0));
         assert!(matches!(prepared.content, PreparedContent::Vector(_)));
         assert!(
             prepared.raster().is_none(),
