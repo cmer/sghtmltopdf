@@ -26,14 +26,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Behind the `svg` feature, on by default.
 - The `svg-text` feature (off by default) renders `<text>` inside an SVG as embedded,
   selectable glyphs, using **the document's own fonts**. Whatever is available to the HTML
-  — `--font`, `@font-face`, the resolved generic families — is available inside the SVG,
-  matched either by the font's internal family name or by the name it is declared under in
-  CSS. Text with no `font-family` uses the document's default font rather than usvg's
-  "Times New Roman". A family the document does not have is not substituted: no separate
-  system-font scan happens for SVG, so an SVG cannot come out in a font the document never
-  had. It is off by default because enabling it adds 25 crates (rustybuzz, resvg and
-  friends, pulled in by svg2pdf's `text` feature). Without it, text inside an SVG is not
-  drawn at all.
+  is available inside the SVG, resolved the same way: by the font's internal family name, by
+  the name it is declared under in CSS (`@font-face`), or through the generic families —
+  `serif` / `sans-serif` / `monospace` in an SVG land on `--serif-font` / `--gothic-font` /
+  `--mono-font`. Text with no `font-family`, and text naming a family the document does not
+  have, both fall back to the document's default font. No separate system-font scan happens
+  for SVG, so an SVG can never come out in a font the document never had.
+
+  It is off by default because enabling it adds 25 crates (rustybuzz, resvg and friends,
+  pulled in by svg2pdf's `text` feature). Without it, text inside an SVG is **not drawn at
+  all** — not even converted to paths, since svg2pdf discards text nodes outright. That is
+  now reported: an SVG containing `<text>` warns once per document. usvg and svg2pdf do log
+  it themselves, but through the `log` crate, and this crate installs no logger, so it never
+  reached anyone.
 
 - Accept non-base64 `data:` URIs. A payload without `;base64` is now percent-decoded per
   RFC 2397 instead of rejected. This is how SVG data URIs are normally written

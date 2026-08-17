@@ -171,6 +171,30 @@ fn decode_svg(bytes: &[u8], fonts: &SvgFontDb) -> Result<PreparedImage, ImageDec
     })
 }
 
+/// フォントを持たないのに`<text>`があるSVGについて、文書ごとに1度だけ警告する。
+///
+/// `svg-text` featureが無いとき(既定)、SVG内のテキストは**何も描かれない**
+/// (パス化もされない)。usvg/svg2pdf側の警告は`log`クレート経由なので、
+/// ロガーを設定していないこのクレートでは消えてしまう。黙って字が消えるのは
+/// 分かりにくいため、ここで出す。
+///
+/// `fonts`が空でない(=`svg-text`が有効でフォントもある)なら黙る。
+fn warn_if_svg_text_will_be_dropped(bytes: &[u8], fonts: &SvgFontDb, warned: &Cell<bool>) {
+    if warned.get() || !fonts.is_empty() {
+        return;
+    }
+    // ラスタ画像のバイト列を無駄に走査しないよう、先にSVGか確かめる。
+    if !super::svg::looks_like_svg(bytes) || !super::svg::looks_like_it_has_text(bytes) {
+        return;
+    }
+    warned.set(true);
+    eprintln!(
+        "警告: SVG内の <text> は描画されません(パスにもなりません)。\n  \
+         描画するには svg-text featureを有効にしてビルドしてください\n  \
+         (文書のフォントがそのままSVG内でも使えます)"
+    );
+}
+
 #[cfg(not(feature = "svg"))]
 fn decode_svg(_bytes: &[u8], _fonts: &SvgFontDb) -> Result<PreparedImage, ImageDecodeError> {
     Err(ImageDecodeError(
@@ -378,7 +402,7 @@ fn split_interleaved_alpha(buf: &[u8], stride: usize) -> (Vec<u8>, Vec<u8>) {
 // 種類数にメモリが比例するという0014の核心的な要件は満たされる)、かつRef
 // 割当・書き出しはフォントと同じ既存のタイミング(レイアウト確定後)に置ける。
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -405,6 +429,8 @@ pub struct ImageAssetCache {
     /// SVG内の`<text>`に使うフォント。文書の`FontCollection`から組んだものを
     /// [`Self::with_svg_fonts`]で渡す。既定は空(SVG内のテキストは描かれない)。
     svg_fonts: SvgFontDb,
+    /// 「SVG内の`<text>`が描かれない」警告を既に出したか(文書につき1回)。
+    warned_svg_text: Cell<bool>,
 }
 
 impl ImageAssetCache {
@@ -428,6 +454,7 @@ impl ImageAssetCache {
             fetch_cache: DocumentImageCache::new(),
             decoded: RefCell::new(HashMap::new()),
             svg_fonts: SvgFontDb::empty(),
+            warned_svg_text: Cell::new(false),
         }
     }
 
@@ -459,6 +486,7 @@ impl ImageAssetCache {
             .fetch_cache
             .get_or_fetch(&self.fetcher, raw_src)
             .and_then(|bytes| {
+                warn_if_svg_text_will_be_dropped(&bytes, &self.svg_fonts, &self.warned_svg_text);
                 decode_image(&bytes, &self.svg_fonts)
                     .map(Rc::new)
                     .map_err(|e| Rc::from(e.to_string()))

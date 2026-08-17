@@ -103,6 +103,33 @@ impl SvgFontDb {
             }
         }
 
+        // 総称ファミリ(`serif`/`sans-serif`/`monospace`/`cursive`/`fantasy`)を
+        // 文書側の解決結果へ向ける。2つ効果がある:
+        //
+        // 1. SVG内の`font-family: serif`が、HTML側の`serif`(`--serif-font`や
+        //    システムフォント解決の結果)と同じフォントになる
+        // 2. **知らないfamilyの最後の逃げ場になる**。usvgの既定の選択関数は
+        //    候補の末尾に`Family::Serif`を足すので、ここを設定しないと
+        //    fontdbの既定値("Times New Roman")を引き、手元に無いため
+        //    テキストが黙って消える
+        //
+        // 文書が該当の総称名を持っていなければ既定フォントを充てる。名前が
+        // `db`から引けることは、上で別名として登録済みなので保証される。
+        if let Some(fallback) = &default_family {
+            let resolve = |css_name: &str| -> String {
+                if fonts.has_family(css_name) {
+                    css_name.to_string()
+                } else {
+                    fallback.clone()
+                }
+            };
+            db.set_serif_family(resolve("serif"));
+            db.set_sans_serif_family(resolve("sans-serif"));
+            db.set_monospace_family(resolve("monospace"));
+            db.set_cursive_family(resolve("cursive"));
+            db.set_fantasy_family(resolve("fantasy"));
+        }
+
         Self {
             db: std::sync::Arc::new(db),
             default_family,
@@ -168,6 +195,25 @@ pub fn looks_like_svg(bytes: &[u8]) -> bool {
     const SNIFF_WINDOW: usize = 4096;
     let window = &rest[..rest.len().min(SNIFF_WINDOW)];
     window.windows(4).any(|w| w.eq_ignore_ascii_case(b"<svg"))
+}
+
+/// SVGのバイト列が`<text>`要素を含んでいそうか。
+///
+/// `svg-text` featureが無いとSVG内のテキストは**何も描かれない**
+/// (パス化もされない。svg2pdfがテキストノードを捨てる)。usvgとsvg2pdfは
+/// `log`クレートに警告を出すが、このクレートはロガーを設定していないので
+/// 利用者には届かない。黙って字が消えるのは分かりにくいため、
+/// 変換前にバイト列を見て呼び出し側が警告できるようにする。
+///
+/// 属性ではなく要素だけを拾いたいので`<text`と`<tspan`を探す
+/// (`textLength`のような属性には`<`が付かないので誤検出しない)。
+pub fn looks_like_it_has_text(bytes: &[u8]) -> bool {
+    fn contains_tag(haystack: &[u8], tag: &[u8]) -> bool {
+        haystack
+            .windows(tag.len())
+            .any(|w| w.eq_ignore_ascii_case(tag))
+    }
+    contains_tag(bytes, b"<text") || contains_tag(bytes, b"<tspan")
 }
 
 /// HTMLに直接書かれたインラインの`<svg>`要素の数を数える。
