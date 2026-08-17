@@ -16,6 +16,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   way the fraction rounded depended on the exact string, so the same row wrapped for one
   value and not for another (`1 USD = 0.9143 EUR` wrapped, `1 USD 0.9143 EUR` did not).
 
+### Added
+
+- Render SVG referenced from `<img src>` and `background-image: url()`, as vector graphics
+  rather than by rasterising. Parsing goes through [usvg] and the translation to PDF
+  drawing operators through [svg2pdf], both from typst. An SVG becomes a form XObject
+  normalised to the unit square, so the existing drawing, `object-fit`, background tiling
+  and per-`src` caching all apply unchanged. `.svgz` (gzipped) is accepted too.
+  Behind the `svg` feature, on by default.
+- The `svg-text` feature (off by default) renders `<text>` inside an SVG as embedded,
+  selectable glyphs. It resolves system fonts through a second `fontdb`, separate from the
+  one used for the document's own fonts, which is why it is not on by default. Without it,
+  text inside an SVG is not drawn.
+
+### Changed
+
+- Pinned `pdf-writer` to 0.12 so that svg2pdf's `Chunk` is the same type as the one used to
+  write the document, which is what lets an SVG be spliced in without going through bytes.
+  No API of ours changed as a result.
+
+### Known limitations
+
+- SVG filters (`<filter>`) and raster images inside an SVG (`<image>`) are not drawn.
+  Filters would require rasterising, which this deliberately avoids.
+- Inline `<svg>` written directly in the HTML is still not rendered; reference the SVG from
+  `<img>` or `background-image` instead.
+- `--grayscale` does not apply to SVG. It warns and leaves the SVG in colour.
+- External references from inside an SVG (`<image href="...">`) are refused with a warning
+  rather than resolved. usvg's default resolver reads such an href straight off disk, which
+  would bypass the containment that applies to `<img>` (base directory, `--allow`,
+  `--disable-local-file-access`), so the path is closed off entirely. `data:` URIs are
+  unaffected, being self-contained.
+
+[usvg]: https://github.com/linebender/resvg
+[svg2pdf]: https://github.com/typst/svg2pdf
+
 ## 0.2.0 - 2026-08-16
 
 ### Added

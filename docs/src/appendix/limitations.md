@@ -36,10 +36,12 @@
 
 ## 画像・フォントの形式
 
-* 画像はPNG / JPEG / WebPのみ。SVGとGIFは非対応です
+* 画像はPNG / JPEG / WebP / SVGのみ。GIFは非対応です
+* SVGは`<img>`と`background-image`からの参照のみ。HTMLに直接書いたインラインの`<svg>`要素は描画しません
+* SVG内の`<text>`は`svg-text` featureを有効にした場合だけ描画します。`<filter>`と`<image>`は非対応です([画像](../supports/images.md#svg)を参照)
 * フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です
 * カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は[フォント](../supports/fonts.md#絵文字)を参照してください
-* `--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります
+* `--grayscale`を指定しても、JPEGとCMYK画像・SVGはカラーのまま残ります
 
 ## CSSの主な制限
 

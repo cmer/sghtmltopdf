@@ -2,11 +2,52 @@
 
 `<img>`とCSSの`background-image`で画像を埋め込めます。
 
-| 対応フォーマット | PNG / JPEG / WebP |
+| 対応フォーマット | PNG / JPEG / WebP / SVG |
 |---|---|
 | `src`に書けるもの | ローカルの相対パス・絶対パス、`http(s)`のURL、`data:` URI |
 
-SVGとGIFは非対応です。
+GIFは非対応です。
+
+## SVG
+
+SVG(`.svg`と、gzip圧縮された`.svgz`)はラスタライズせず、ベクタのままPDFへ
+埋め込みます。拡大しても解像度に依存せず、PDFのサイズもピクセル数ではなく
+図形の数で決まります。パース・正規化は[usvg]、PDFの描画命令への変換は
+[svg2pdf](どちらも[typst]由来)が行います。
+
+```html
+<img src="logo.svg" width="120">
+<div style="background-image: url(pattern.svg)"></div>
+```
+
+寸法の決め方・キャッシュ・エラー時の扱いはラスタ画像と同じです。SVGの
+`width`/`height`(無ければ`viewBox`)が内在サイズになります。
+
+制限:
+
+* SVG内の`<text>`は既定では描画されません。`svg-text` featureを有効にすると、
+  システムフォントを解決してグリフのまま埋め込みます(選択・検索できる
+  テキストになります)。本体のフォント解決とは別のフォントデータベースを
+  持つことになるため既定では切っています
+* SVGフィルタ(`<filter>`)は非対応です。ラスタライズを避けるため、
+  フィルタを解決するための機能を入れていません
+* SVG内に埋め込まれたラスタ画像(`<image>`)は描画されません
+* `--grayscale`はSVGには効きません(色が個々の描画命令の中にあるため)。
+  指定すると警告し、SVGだけ色のまま残ります
+* HTMLに直接書いたインラインの`<svg>`要素は対象外です。`<img>`または
+  `background-image`から参照してください
+* SVGの中の`<image href="...">`のような外部参照は解決しません。参照ごとに
+  警告を出して無視します。SVGの中からのファイル読み出しは`<img>`側の
+  封じ込め(基準ディレクトリ・`--allow`・`--disable-local-file-access`)を
+  迂回してしまうため、経路自体を塞いでいます。`data:` URIは対象外
+  (SVG自身の中で完結しているため許可されます)
+
+`svg` featureを切る(`--no-default-features`)とusvgを引き込まなくなり、
+SVGの参照はデコード失敗として扱われます。
+
+[usvg]: https://github.com/linebender/resvg
+[svg2pdf]: https://github.com/typst/svg2pdf
+[typst]: https://typst.app/
 
 ## `<img>`
 

@@ -2440,13 +2440,15 @@ mod tests {
         Rc::new(PreparedImage {
             width,
             height,
-            color: ImagePlane {
-                data: Vec::new(),
-                filter: pdf_writer::Filter::FlateDecode,
-                color_space: PlaneColorSpace::Rgb,
-                bits_per_component: 8,
+            content: crate::pdf::PreparedContent::Raster {
+                color: ImagePlane {
+                    data: Vec::new(),
+                    filter: pdf_writer::Filter::FlateDecode,
+                    color_space: PlaneColorSpace::Rgb,
+                    bits_per_component: 8,
+                },
+                alpha: None,
             },
-            alpha: None,
         })
     }
 

@@ -67,13 +67,38 @@ pub enum PlaneColorSpace {
     Cmyk,
 }
 
-/// デコード結果。`alpha`があれば`color`の`/SMask`として別XObjectに書き出す。
+/// デコード結果。`width`/`height`は内在サイズ(px)で、ラスタ・ベクタの
+/// どちらでもレイアウトからは同じように見える。
 #[derive(Debug, Clone)]
 pub struct PreparedImage {
     pub width: u32,
     pub height: u32,
-    pub color: ImagePlane,
-    pub alpha: Option<ImagePlane>,
+    pub content: PreparedContent,
+}
+
+/// PDFへの埋め込み方が異なる2種類の中身。
+#[derive(Debug, Clone)]
+pub enum PreparedContent {
+    /// ラスタ画像(JPEG/PNG/WebP)。1枚のImage XObjectになる。
+    /// `alpha`があれば`color`の`/SMask`として別XObjectに書き出す。
+    Raster {
+        color: ImagePlane,
+        alpha: Option<ImagePlane>,
+    },
+    /// SVG。Form XObjectとその参照先のかたまり([`pdf::svg`](super::svg))になる。
+    #[cfg(feature = "svg")]
+    Vector(super::svg::VectorGraphic),
+}
+
+impl PreparedImage {
+    /// ラスタ画像の中身。SVGなら`None`。
+    fn raster(&self) -> Option<(&ImagePlane, Option<&ImagePlane>)> {
+        match &self.content {
+            PreparedContent::Raster { color, alpha } => Some((color, alpha.as_ref())),
+            #[cfg(feature = "svg")]
+            PreparedContent::Vector(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,10 +106,13 @@ enum ImageFormat {
     Jpeg,
     Png,
     WebP,
+    Svg,
 }
 
 /// マジックバイトからフォーマットを判別する。宣言された`Content-Type`/
 /// `data:`のmime typeは信用せず、実際のバイト列だけで判定する。
+/// SVGだけはマジックバイトを持たないため、ラスタのどれにも当たらなかった
+/// ものをXMLとして嗅ぎ分ける([`svg::looks_like_svg`](super::svg::looks_like_svg))。
 fn sniff_format(bytes: &[u8]) -> Option<ImageFormat> {
     if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some(ImageFormat::Jpeg)
@@ -92,6 +120,8 @@ fn sniff_format(bytes: &[u8]) -> Option<ImageFormat> {
         Some(ImageFormat::Png)
     } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
         Some(ImageFormat::WebP)
+    } else if super::svg::looks_like_svg(bytes) {
+        Some(ImageFormat::Svg)
     } else {
         None
     }
@@ -104,10 +134,30 @@ pub fn decode_image(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
         Some(ImageFormat::Jpeg) => decode_jpeg(bytes),
         Some(ImageFormat::Png) => decode_png(bytes),
         Some(ImageFormat::WebP) => decode_webp(bytes),
+        Some(ImageFormat::Svg) => decode_svg(bytes),
         None => Err(ImageDecodeError(
-            "対応していない画像フォーマットです(JPEG/PNG/WebPのいずれでもありません)".to_string(),
+            "対応していない画像フォーマットです(JPEG/PNG/WebP/SVGのいずれでもありません)"
+                .to_string(),
         )),
     }
+}
+
+#[cfg(feature = "svg")]
+fn decode_svg(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
+    let (width, height, graphic) =
+        super::svg::convert_svg(bytes).map_err(|e| ImageDecodeError(e.to_string()))?;
+    Ok(PreparedImage {
+        width,
+        height,
+        content: PreparedContent::Vector(graphic),
+    })
+}
+
+#[cfg(not(feature = "svg"))]
+fn decode_svg(_bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
+    Err(ImageDecodeError(
+        "SVGの描画は`svg` featureが無効なため行えません".to_string(),
+    ))
 }
 
 /// SOF0(ベースライン)/SOF2(プログレッシブ)マーカーだけを読んでwidth/height/
@@ -160,13 +210,15 @@ fn decode_jpeg(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
     Ok(PreparedImage {
         width: width as u32,
         height: height as u32,
-        color: ImagePlane {
-            data: bytes.to_vec(),
-            filter: Filter::DctDecode,
-            color_space,
-            bits_per_component: 8,
+        content: PreparedContent::Raster {
+            color: ImagePlane {
+                data: bytes.to_vec(),
+                filter: Filter::DctDecode,
+                color_space,
+                bits_per_component: 8,
+            },
+            alpha: None,
         },
-        alpha: None,
     })
 }
 
@@ -215,18 +267,20 @@ fn decode_png(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
     Ok(PreparedImage {
         width,
         height,
-        color: ImagePlane {
-            data: deflate(&color_bytes),
-            filter: Filter::FlateDecode,
-            color_space,
-            bits_per_component: 8,
+        content: PreparedContent::Raster {
+            color: ImagePlane {
+                data: deflate(&color_bytes),
+                filter: Filter::FlateDecode,
+                color_space,
+                bits_per_component: 8,
+            },
+            alpha: alpha.map(|a| ImagePlane {
+                data: deflate(&a),
+                filter: Filter::FlateDecode,
+                color_space: PlaneColorSpace::Gray,
+                bits_per_component: 8,
+            }),
         },
-        alpha: alpha.map(|a| ImagePlane {
-            data: deflate(&a),
-            filter: Filter::FlateDecode,
-            color_space: PlaneColorSpace::Gray,
-            bits_per_component: 8,
-        }),
     })
 }
 
@@ -261,18 +315,20 @@ fn decode_webp(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
     Ok(PreparedImage {
         width,
         height,
-        color: ImagePlane {
-            data: deflate(&color_bytes),
-            filter: Filter::FlateDecode,
-            color_space: PlaneColorSpace::Rgb,
-            bits_per_component: 8,
+        content: PreparedContent::Raster {
+            color: ImagePlane {
+                data: deflate(&color_bytes),
+                filter: Filter::FlateDecode,
+                color_space: PlaneColorSpace::Rgb,
+                bits_per_component: 8,
+            },
+            alpha: alpha.map(|a| ImagePlane {
+                data: deflate(&a),
+                filter: Filter::FlateDecode,
+                color_space: PlaneColorSpace::Gray,
+                bits_per_component: 8,
+            }),
         },
-        alpha: alpha.map(|a| ImagePlane {
-            data: deflate(&a),
-            filter: Filter::FlateDecode,
-            color_space: PlaneColorSpace::Gray,
-            bits_per_component: 8,
-        }),
     })
 }
 
@@ -384,11 +440,26 @@ impl ImageAssetCache {
 }
 
 /// 1枚の画像([`PreparedImage`])をPDFへ書き出すために割り当てた`Ref`。
-#[derive(Debug, Clone, Copy)]
+///
+/// SVGは`Ref`を1個ではなくチャンクに含まれるオブジェクトの数だけ持つため
+/// `Copy`にはできない(参照で受け渡す)。
+#[derive(Debug, Clone)]
 pub struct ImageIds {
-    pub color: Ref,
-    /// `image.alpha`が`Some`の場合のみ`Some`になる。
-    pub alpha: Option<Ref>,
+    /// コンテンツストリームから`Do`で参照するXObjectの`Ref`。
+    /// ラスタならImage XObject、SVGならForm XObject。
+    /// ページの`/Resources /XObject`辞書へ登録するのもこれ。
+    pub root: Ref,
+    kind: ImageIdsKind,
+}
+
+#[derive(Debug, Clone)]
+enum ImageIdsKind {
+    /// `PreparedContent::Raster`の`alpha`が`Some`の場合のみ`Some`になる。
+    Raster { alpha: Option<Ref> },
+    /// 文書の`Ref`空間へ振り直し済みのsvg2pdfのチャンク。書き出す内容が
+    /// 既に確定しているのでここに持たせている。
+    #[cfg(feature = "svg")]
+    Vector(Box<super::svg::RenumberedVectorGraphic>),
 }
 
 /// `image`に対応する`Ref`を、`image_ids`に無ければ新規に払い出す
@@ -399,21 +470,45 @@ pub struct ImageIds {
 /// 同じ`src`に対して同じ`Rc`を返すことを前提とする)をキーにした文書全体で
 /// 共有するマップ。既に登録済みならそのRefを返すだけで新規に払い出さない
 /// (=同じ画像はPDFへ2回書き出さない)。
-pub fn ids_for_image(
+///
+/// SVGの`Ref`振り直しに失敗した場合は`None`を返す(その画像は描画されない)。
+pub fn ids_for_image<'a>(
     alloc: &mut RefAllocator,
-    image_ids: &mut HashMap<usize, ImageIds>,
+    image_ids: &'a mut HashMap<usize, ImageIds>,
     image: &Rc<PreparedImage>,
-) -> (ImageIds, bool) {
+) -> Option<(&'a ImageIds, bool)> {
     let key = Rc::as_ptr(image) as usize;
-    if let Some(&ids) = image_ids.get(&key) {
-        return (ids, false);
+    let is_new = !image_ids.contains_key(&key);
+    if is_new {
+        let ids = match &image.content {
+            PreparedContent::Raster { alpha, .. } => {
+                // アルファ(`/SMask`)より本体を先に払い出して`root`を安定させる
+                // (順序自体に意味は無い)。
+                let root = alloc.next();
+                ImageIds {
+                    root,
+                    kind: ImageIdsKind::Raster {
+                        alpha: alpha.as_ref().map(|_| alloc.next()),
+                    },
+                }
+            }
+            #[cfg(feature = "svg")]
+            PreparedContent::Vector(graphic) => {
+                match super::svg::renumber_into_document(graphic, alloc) {
+                    Ok(renumbered) => ImageIds {
+                        root: renumbered.root,
+                        kind: ImageIdsKind::Vector(Box::new(renumbered)),
+                    },
+                    Err(e) => {
+                        eprintln!("警告: {e}");
+                        return None;
+                    }
+                }
+            }
+        };
+        image_ids.insert(key, ids);
     }
-    let ids = ImageIds {
-        color: alloc.next(),
-        alpha: image.alpha.as_ref().map(|_| alloc.next()),
-    };
-    image_ids.insert(key, ids);
-    (ids, true)
+    Some((&image_ids[&key], is_new))
 }
 
 /// バッチモード向け: `image`のXObjectを`pdf`(`DerefMut<Target = Chunk>`)へ
@@ -424,37 +519,104 @@ pub fn embed_image(
     ids: &ImageIds,
     grayscale: bool,
 ) {
-    let color = if grayscale {
-        to_grayscale_plane(&image.color).0
-    } else {
-        image.color.clone()
-    };
-    let image = &PreparedImage {
-        color,
-        ..image.clone()
-    };
-    if let (Some(alpha), Some(alpha_id)) = (&image.alpha, ids.alpha) {
-        write_plane(pdf, alpha_id, image.width, image.height, alpha, None);
+    match &ids.kind {
+        ImageIdsKind::Raster { alpha: alpha_id } => {
+            let (color, alpha) = raster_planes(image, grayscale);
+            if let (Some(alpha), Some(alpha_id)) = (&alpha, alpha_id) {
+                write_plane(pdf, *alpha_id, image.width, image.height, alpha, None);
+            }
+            write_plane(pdf, ids.root, image.width, image.height, &color, *alpha_id);
+        }
+        #[cfg(feature = "svg")]
+        ImageIdsKind::Vector(graphic) => {
+            warn_if_grayscale_svg(grayscale);
+            // `Chunk::extend`がオフセットの付け替えまでやってくれる。
+            pdf.extend(&graphic.chunk);
+        }
     }
-    write_plane(
-        pdf,
-        ids.color,
-        image.width,
-        image.height,
-        &image.color,
-        ids.alpha,
-    );
 }
 
-/// [`embed_image`]のストリーミング版。`(Ref, Chunk)`の列を返し、呼び出し側が
-/// `Sink`へ都度書き出す(フォントの`embed_font_streaming_chunks`と同じ形)。
+/// [`embed_image`]のストリーミング版。`Sink`へ1回で書き出す単位の列を返す
+/// (フォントの`embed_font_streaming_chunks`と同じ形)。
 pub fn embed_image_streaming_chunks(
     image: &PreparedImage,
     ids: &ImageIds,
     grayscale: bool,
-) -> Vec<(Ref, Chunk)> {
+) -> Vec<EmbedChunk> {
+    match &ids.kind {
+        ImageIdsKind::Raster { alpha: alpha_id } => {
+            let (color, alpha) = raster_planes(image, grayscale);
+            // アルファと本体は別チャンクにして1枚ずつ書き出す
+            // (両方を同時にメモリへ載せないため)。
+            let mut chunks = Vec::with_capacity(2);
+            if let (Some(alpha), Some(alpha_id)) = (&alpha, alpha_id) {
+                let mut chunk = Chunk::new();
+                write_plane(
+                    &mut chunk,
+                    *alpha_id,
+                    image.width,
+                    image.height,
+                    alpha,
+                    None,
+                );
+                chunks.push(EmbedChunk::single(*alpha_id, chunk));
+            }
+            let mut chunk = Chunk::new();
+            write_plane(
+                &mut chunk,
+                ids.root,
+                image.width,
+                image.height,
+                &color,
+                *alpha_id,
+            );
+            chunks.push(EmbedChunk::single(ids.root, chunk));
+            chunks
+        }
+        #[cfg(feature = "svg")]
+        ImageIdsKind::Vector(graphic) => {
+            warn_if_grayscale_svg(grayscale);
+            // チャンクを複製するが、ここへ来るのは`src`ごとに1回だけで、
+            // 中身はベクタの描画命令(数KB程度)なので借用にして
+            // ライフタイムを持ち回るほどの量ではない。
+            vec![EmbedChunk {
+                chunk: graphic.chunk.clone(),
+                offsets: graphic.offsets.clone(),
+            }]
+        }
+    }
+}
+
+/// ストリーミング書き出しで`Sink`へ1回で流す単位。
+///
+/// `chunk`のバイト列をそのまま書き、`offsets`が示す「`Ref`とチャンク内の
+/// 開始位置」をxrefへ登録する。ラスタ画像は1チャンク=1オブジェクトだが、
+/// SVGは1チャンクに複数オブジェクトが入るためこの形にしている。
+pub struct EmbedChunk {
+    pub chunk: Chunk,
+    pub offsets: Vec<(Ref, usize)>,
+}
+
+impl EmbedChunk {
+    fn single(id: Ref, chunk: Chunk) -> Self {
+        Self {
+            chunk,
+            offsets: vec![(id, 0)],
+        }
+    }
+}
+
+/// 書き出し直前のラスタプレーン(`--grayscale`を適用済み)。
+///
+/// `ImageIdsKind`は`ids_for_image`が`PreparedContent`から作り、両者は同じ
+/// `Rc<PreparedImage>`で対応付けられる。したがって`ImageIdsKind::Raster`の
+/// 分岐に来た`image`は必ずラスタで、SVGが混ざるのは呼び出し側のバグ。
+fn raster_planes(image: &PreparedImage, grayscale: bool) -> (ImagePlane, Option<ImagePlane>) {
+    let Some((color, alpha)) = image.raster() else {
+        unreachable!("ImageIdsKind::Rasterに対応するのはPreparedContent::Rasterだけ");
+    };
     let color = if grayscale {
-        let (plane, converted) = to_grayscale_plane(&image.color);
+        let (plane, converted) = to_grayscale_plane(color);
         if !converted {
             eprintln!(
                 "警告: この画像はグレースケール化できません(JPEG/CMYKはデコーダを持たないため)"
@@ -462,29 +624,18 @@ pub fn embed_image_streaming_chunks(
         }
         plane
     } else {
-        image.color.clone()
+        color.clone()
     };
-    let image = &PreparedImage {
-        color,
-        ..image.clone()
-    };
-    let mut chunks = Vec::with_capacity(2);
-    if let (Some(alpha), Some(alpha_id)) = (&image.alpha, ids.alpha) {
-        let mut chunk = Chunk::new();
-        write_plane(&mut chunk, alpha_id, image.width, image.height, alpha, None);
-        chunks.push((alpha_id, chunk));
+    (color, alpha.cloned())
+}
+
+/// SVGは変換済みのコンテンツストリームをそのまま埋め込むため、
+/// `--grayscale`を後から適用できない(色は個々の描画命令の中にある)。
+#[cfg(feature = "svg")]
+fn warn_if_grayscale_svg(grayscale: bool) {
+    if grayscale {
+        eprintln!("警告: SVGはグレースケール化できません(色のまま埋め込みます)");
     }
-    let mut chunk = Chunk::new();
-    write_plane(
-        &mut chunk,
-        ids.color,
-        image.width,
-        image.height,
-        &image.color,
-        ids.alpha,
-    );
-    chunks.push((ids.color, chunk));
-    chunks
 }
 
 /// 画像のカラープレーンをグレースケール化する。
@@ -572,8 +723,9 @@ fn write_plane(
 
 /// PDFの`/Resources /XObject`辞書に登録するリソース名。`Ref`番号から機械的に
 /// 導出することで、ページごとの採番管理を別途持たずに済ませる。
-pub fn image_resource_name(color_ref: Ref) -> String {
-    format!("Im{}", color_ref.get())
+/// 渡すのは[`ImageIds::root`](画像ならImage XObject、SVGならForm XObject)。
+pub fn image_resource_name(root_ref: Ref) -> String {
+    format!("Im{}", root_ref.get())
 }
 
 #[cfg(test)]
@@ -614,39 +766,46 @@ mod tests {
         out
     }
 
+    /// ラスタのデコード結果からプレーンを取り出す。
+    fn planes(prepared: &PreparedImage) -> (&ImagePlane, Option<&ImagePlane>) {
+        prepared.raster().expect("expected a raster image")
+    }
+
     #[test]
     fn jpeg_is_embedded_as_a_dctdecode_passthrough() {
         let bytes = std::fs::read(JPEG_PATH).unwrap();
         let original_len = bytes.len();
         let prepared = decode_image(&bytes).expect("jpeg decode should succeed");
+        let (color, alpha) = planes(&prepared);
 
         assert_eq!(prepared.width, 32);
         assert_eq!(prepared.height, 24);
-        assert_eq!(prepared.color.filter, Filter::DctDecode);
-        assert_eq!(prepared.color.color_space, PlaneColorSpace::Rgb);
-        assert!(prepared.alpha.is_none(), "JPEG has no alpha channel");
+        assert_eq!(color.filter, Filter::DctDecode);
+        assert_eq!(color.color_space, PlaneColorSpace::Rgb);
+        assert!(alpha.is_none(), "JPEG has no alpha channel");
         assert_eq!(
-            prepared.color.data.len(),
+            color.data.len(),
             original_len,
             "passthrough must not re-encode the JPEG bytes"
         );
-        assert_eq!(prepared.color.data, bytes);
+        assert_eq!(color.data, bytes);
     }
 
     #[test]
     fn png_with_alpha_splits_color_and_smask() {
         let bytes = std::fs::read(PNG_ALPHA_PATH).unwrap();
         let prepared = decode_image(&bytes).expect("png decode should succeed");
+        let (color, alpha) = planes(&prepared);
 
         assert_eq!(prepared.width, 16);
         assert_eq!(prepared.height, 16);
-        assert_eq!(prepared.color.filter, Filter::FlateDecode);
-        assert_eq!(prepared.color.color_space, PlaneColorSpace::Rgb);
+        assert_eq!(color.filter, Filter::FlateDecode);
+        assert_eq!(color.color_space, PlaneColorSpace::Rgb);
 
-        let alpha = prepared.alpha.expect("expected an alpha plane");
+        let alpha = alpha.expect("expected an alpha plane");
         assert_eq!(alpha.color_space, PlaneColorSpace::Gray);
 
-        let color_bytes = inflate(&prepared.color.data);
+        let color_bytes = inflate(&color.data);
         assert_eq!(color_bytes.len(), 16 * 16 * 3);
         let alpha_bytes = inflate(&alpha.data);
         assert_eq!(alpha_bytes.len(), 16 * 16);
@@ -660,10 +819,11 @@ mod tests {
     fn opaque_png_has_no_alpha_plane() {
         let bytes = std::fs::read(PNG_OPAQUE_PATH).unwrap();
         let prepared = decode_image(&bytes).expect("png decode should succeed");
+        let (color, alpha) = planes(&prepared);
 
-        assert!(prepared.alpha.is_none());
-        assert_eq!(prepared.color.color_space, PlaneColorSpace::Rgb);
-        let color_bytes = inflate(&prepared.color.data);
+        assert!(alpha.is_none());
+        assert_eq!(color.color_space, PlaneColorSpace::Rgb);
+        let color_bytes = inflate(&color.data);
         assert_eq!(
             color_bytes.len(),
             (prepared.width * prepared.height * 3) as usize
@@ -674,10 +834,11 @@ mod tests {
     fn grayscale_png_stays_devicegray_without_tripling_bytes() {
         let bytes = std::fs::read(PNG_GRAY_PATH).unwrap();
         let prepared = decode_image(&bytes).expect("png decode should succeed");
+        let (color, alpha) = planes(&prepared);
 
-        assert!(prepared.alpha.is_none());
-        assert_eq!(prepared.color.color_space, PlaneColorSpace::Gray);
-        let color_bytes = inflate(&prepared.color.data);
+        assert!(alpha.is_none());
+        assert_eq!(color.color_space, PlaneColorSpace::Gray);
+        let color_bytes = inflate(&color.data);
         assert_eq!(
             color_bytes.len(),
             (prepared.width * prepared.height) as usize,
@@ -689,11 +850,12 @@ mod tests {
     fn webp_with_alpha_splits_color_and_smask() {
         let bytes = std::fs::read(WEBP_ALPHA_PATH).unwrap();
         let prepared = decode_image(&bytes).expect("webp decode should succeed");
+        let (color, alpha) = planes(&prepared);
 
         assert_eq!(prepared.width, 16);
         assert_eq!(prepared.height, 16);
-        assert_eq!(prepared.color.color_space, PlaneColorSpace::Rgb);
-        let alpha = prepared.alpha.expect("expected an alpha plane");
+        assert_eq!(color.color_space, PlaneColorSpace::Rgb);
+        let alpha = alpha.expect("expected an alpha plane");
 
         let alpha_bytes = inflate(&alpha.data);
         assert_eq!(alpha_bytes[0], 255, "left half should be opaque");
@@ -704,9 +866,25 @@ mod tests {
     fn opaque_webp_has_no_alpha_plane() {
         let bytes = std::fs::read(WEBP_OPAQUE_PATH).unwrap();
         let prepared = decode_image(&bytes).expect("webp decode should succeed");
+        let (color, alpha) = planes(&prepared);
 
-        assert!(prepared.alpha.is_none());
-        assert_eq!(prepared.color.color_space, PlaneColorSpace::Rgb);
+        assert!(alpha.is_none());
+        assert_eq!(color.color_space, PlaneColorSpace::Rgb);
+    }
+
+    /// SVGはラスタと同じ`PreparedImage`に乗り、内在サイズも同じように取れる。
+    #[cfg(feature = "svg")]
+    #[test]
+    fn an_svg_is_decoded_as_vector_content_with_its_intrinsic_size() {
+        let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20"/></svg>"#;
+        let prepared = decode_image(svg).expect("svg conversion should succeed");
+
+        assert_eq!((prepared.width, prepared.height), (40, 20));
+        assert!(matches!(prepared.content, PreparedContent::Vector(_)));
+        assert!(
+            prepared.raster().is_none(),
+            "an SVG has no raster planes to embed"
+        );
     }
 
     #[test]

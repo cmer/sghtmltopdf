@@ -250,14 +250,23 @@ impl<S: Sink> StreamingPdfWriter<S> {
         }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
-            let (ids, is_new) = ids_for_image(&mut self.alloc, &mut self.image_ids, image);
-            if is_new {
-                for (id, chunk) in embed_image_streaming_chunks(image, &ids, self.output.grayscale)
-                {
-                    self.write_chunk(id, &chunk)?;
-                }
+            // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
+            let Some((ids, is_new)) = ids_for_image(&mut self.alloc, &mut self.image_ids, image)
+            else {
+                continue;
+            };
+            let root = ids.root;
+            // 書き出しは`self`を可変で借りるため、`self.image_ids`から借りた
+            // `ids`をここで手放してから`write_objects`へ進む。
+            let embedded = if is_new {
+                embed_image_streaming_chunks(image, ids, self.output.grayscale)
+            } else {
+                Vec::new()
+            };
+            for embed in &embedded {
+                self.write_objects(&embed.chunk, &embed.offsets)?;
             }
-            page_image_refs.push(ids.color);
+            page_image_refs.push(root);
         }
 
         // `opacity < 1`の要素を先に集めてRefを払い出す(バッチモード
@@ -501,7 +510,16 @@ impl<S: Sink> StreamingPdfWriter<S> {
     /// `chunk`(単一の間接オブジェクトを含む前提)のバイト列を`sink`へ書き出し、
     /// 開始オフセットをxref用に記録する。
     fn write_chunk(&mut self, id: Ref, chunk: &Chunk) -> Result<(), S::Error> {
-        self.offsets.push((id, self.output_len));
+        self.write_objects(chunk, &[(id, 0)])
+    }
+
+    /// 複数のオブジェクトが入ったチャンクを書き出す。`offsets`はチャンク内の
+    /// 各オブジェクトの開始位置(SVGのForm XObject群のように1チャンクに
+    /// 複数オブジェクトが入る場合に使う)。
+    fn write_objects(&mut self, chunk: &Chunk, offsets: &[(Ref, usize)]) -> Result<(), S::Error> {
+        for &(id, offset) in offsets {
+            self.offsets.push((id, self.output_len + offset));
+        }
         let bytes = chunk.as_bytes();
         self.output_len += bytes.len();
         self.sink.write(bytes)

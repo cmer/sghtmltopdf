@@ -245,11 +245,14 @@ pub fn encode_pdf_with_options(
         }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
-            let (ids, is_new) = ids_for_image(&mut alloc, &mut image_ids, image);
+            // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
+            let Some((ids, is_new)) = ids_for_image(&mut alloc, &mut image_ids, image) else {
+                continue;
+            };
             if is_new {
-                embed_image(&mut pdf, image, &ids, output.grayscale);
+                embed_image(&mut pdf, image, ids, output.grayscale);
             }
-            page_image_refs.push(ids.color);
+            page_image_refs.push(ids.root);
         }
 
         // `opacity < 1`の要素を先に集めてRefを払い出す(画像・フォントと同じ
@@ -584,6 +587,23 @@ impl RefAllocator {
     pub(super) fn next(&mut self) -> Ref {
         self.0 += 1;
         Ref::new(self.0)
+    }
+
+    /// 次に払い出される`Ref`を、消費せずに覗く。
+    ///
+    /// 「払い出してみて、駄目だったら払い出さなかったことにする」ために使う
+    /// (SVGの`Ref`振り直しは失敗しうるが、失敗しても番号を消費してしまうと
+    /// 書き出されないオブジェクト番号が生まれ、`StreamingPdfWriter`の
+    /// 「1から連番で全部書かれている」前提のxrefが壊れる)。
+    #[cfg(feature = "svg")]
+    pub(super) fn peek(&self) -> Ref {
+        Ref::new(self.0 + 1)
+    }
+
+    /// [`peek`](Self::peek)から始まる`count`個をまとめて消費する。
+    #[cfg(feature = "svg")]
+    pub(super) fn commit(&mut self, count: usize) {
+        self.0 += i32::try_from(count).expect("Refの払い出し数がi32に収まらない");
     }
 }
 
@@ -1328,7 +1348,7 @@ fn render_box_with_style_inner(
             image_ids
                 .get(&(Rc::as_ptr(image) as usize))
                 .map(|ids| BackgroundImagePaint {
-                    resource: ids.color,
+                    resource: ids.root,
                     intrinsic_width: image.width,
                     intrinsic_height: image.height,
                 })
@@ -1442,14 +1462,14 @@ fn render_box_with_style_inner(
         }
         LaidOutContent::Image(image) => {
             if let Some(image) = image {
-                if let Some(&ids) = image_ids.get(&(Rc::as_ptr(image) as usize)) {
+                if let Some(ids) = image_ids.get(&(Rc::as_ptr(image) as usize)) {
                     render_replaced_image(
                         content,
                         b.layout.content,
                         style,
                         settings,
                         image,
-                        ids.color,
+                        ids.root,
                     );
                 }
             }
@@ -4263,13 +4283,15 @@ mod tests {
         Rc::new(PreparedImage {
             width,
             height,
-            color: super::super::img::ImagePlane {
-                data: Vec::new(),
-                filter: pdf_writer::Filter::FlateDecode,
-                color_space: super::super::img::PlaneColorSpace::Rgb,
-                bits_per_component: 8,
+            content: super::super::img::PreparedContent::Raster {
+                color: super::super::img::ImagePlane {
+                    data: Vec::new(),
+                    filter: pdf_writer::Filter::FlateDecode,
+                    color_space: super::super::img::PlaneColorSpace::Rgb,
+                    bits_per_component: 8,
+                },
+                alpha: None,
             },
-            alpha: None,
         })
     }
 
