@@ -129,12 +129,18 @@ fn sniff_format(bytes: &[u8]) -> Option<ImageFormat> {
 
 /// 画像バイト列をフォーマット判別した上でデコードし、PDF埋め込み用データへ
 /// 変換する。
-pub fn decode_image(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
+///
+/// `svg_fonts`はSVG内の`<text>`用のフォント([`SvgFontDb`])。ラスタ画像の
+/// デコードには使わない。
+pub fn decode_image(
+    bytes: &[u8],
+    svg_fonts: &SvgFontDb,
+) -> Result<PreparedImage, ImageDecodeError> {
     match sniff_format(bytes) {
         Some(ImageFormat::Jpeg) => decode_jpeg(bytes),
         Some(ImageFormat::Png) => decode_png(bytes),
         Some(ImageFormat::WebP) => decode_webp(bytes),
-        Some(ImageFormat::Svg) => decode_svg(bytes),
+        Some(ImageFormat::Svg) => decode_svg(bytes, svg_fonts),
         None => Err(ImageDecodeError(
             "対応していない画像フォーマットです(JPEG/PNG/WebP/SVGのいずれでもありません)"
                 .to_string(),
@@ -143,9 +149,9 @@ pub fn decode_image(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
 }
 
 #[cfg(feature = "svg")]
-fn decode_svg(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
+fn decode_svg(bytes: &[u8], fonts: &SvgFontDb) -> Result<PreparedImage, ImageDecodeError> {
     let (width, height, graphic) =
-        super::svg::convert_svg(bytes).map_err(|e| ImageDecodeError(e.to_string()))?;
+        super::svg::convert_svg(bytes, fonts).map_err(|e| ImageDecodeError(e.to_string()))?;
     Ok(PreparedImage {
         width,
         height,
@@ -154,7 +160,7 @@ fn decode_svg(bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
 }
 
 #[cfg(not(feature = "svg"))]
-fn decode_svg(_bytes: &[u8]) -> Result<PreparedImage, ImageDecodeError> {
+fn decode_svg(_bytes: &[u8], _fonts: &SvgFontDb) -> Result<PreparedImage, ImageDecodeError> {
     Err(ImageDecodeError(
         "SVGの描画は`svg` featureが無効なため行えません".to_string(),
     ))
@@ -370,6 +376,7 @@ use pdf_writer::{Chunk, Ref};
 use crate::img::{DocumentImageCache, ImageFetcher};
 
 use super::document::RefAllocator;
+use super::svg::SvgFontDb;
 
 /// [`ImageAssetCache`]1件分の結果(成功時のデコード済み画像、または失敗理由)。
 type CachedDecodedImage = Result<Rc<PreparedImage>, Rc<str>>;
@@ -383,6 +390,9 @@ pub struct ImageAssetCache {
     fetcher: ImageFetcher,
     fetch_cache: DocumentImageCache,
     decoded: RefCell<HashMap<String, CachedDecodedImage>>,
+    /// SVG内の`<text>`に使うフォント。文書の`FontCollection`から組んだものを
+    /// [`Self::with_svg_fonts`]で渡す。既定は空(SVG内のテキストは描かれない)。
+    svg_fonts: SvgFontDb,
 }
 
 impl ImageAssetCache {
@@ -405,7 +415,17 @@ impl ImageAssetCache {
             fetcher,
             fetch_cache: DocumentImageCache::new(),
             decoded: RefCell::new(HashMap::new()),
+            svg_fonts: SvgFontDb::empty(),
         }
+    }
+
+    /// SVG内の`<text>`に使うフォントを設定する(ビルダー的に使う)。
+    ///
+    /// 文書のフォントが決まった後、画像の解決を始める前に呼ぶ。渡さなければ
+    /// SVG内のテキストは描画されない。
+    pub fn with_svg_fonts(mut self, fonts: SvgFontDb) -> Self {
+        self.svg_fonts = fonts;
+        self
     }
 
     /// 取得・デコードに失敗した参照が1つでもあるか
@@ -427,7 +447,7 @@ impl ImageAssetCache {
             .fetch_cache
             .get_or_fetch(&self.fetcher, raw_src)
             .and_then(|bytes| {
-                decode_image(&bytes)
+                decode_image(&bytes, &self.svg_fonts)
                     .map(Rc::new)
                     .map_err(|e| Rc::from(e.to_string()))
             });
@@ -775,7 +795,8 @@ mod tests {
     fn jpeg_is_embedded_as_a_dctdecode_passthrough() {
         let bytes = std::fs::read(JPEG_PATH).unwrap();
         let original_len = bytes.len();
-        let prepared = decode_image(&bytes).expect("jpeg decode should succeed");
+        let prepared =
+            decode_image(&bytes, &SvgFontDb::empty()).expect("jpeg decode should succeed");
         let (color, alpha) = planes(&prepared);
 
         assert_eq!(prepared.width, 32);
@@ -794,7 +815,8 @@ mod tests {
     #[test]
     fn png_with_alpha_splits_color_and_smask() {
         let bytes = std::fs::read(PNG_ALPHA_PATH).unwrap();
-        let prepared = decode_image(&bytes).expect("png decode should succeed");
+        let prepared =
+            decode_image(&bytes, &SvgFontDb::empty()).expect("png decode should succeed");
         let (color, alpha) = planes(&prepared);
 
         assert_eq!(prepared.width, 16);
@@ -818,7 +840,8 @@ mod tests {
     #[test]
     fn opaque_png_has_no_alpha_plane() {
         let bytes = std::fs::read(PNG_OPAQUE_PATH).unwrap();
-        let prepared = decode_image(&bytes).expect("png decode should succeed");
+        let prepared =
+            decode_image(&bytes, &SvgFontDb::empty()).expect("png decode should succeed");
         let (color, alpha) = planes(&prepared);
 
         assert!(alpha.is_none());
@@ -833,7 +856,8 @@ mod tests {
     #[test]
     fn grayscale_png_stays_devicegray_without_tripling_bytes() {
         let bytes = std::fs::read(PNG_GRAY_PATH).unwrap();
-        let prepared = decode_image(&bytes).expect("png decode should succeed");
+        let prepared =
+            decode_image(&bytes, &SvgFontDb::empty()).expect("png decode should succeed");
         let (color, alpha) = planes(&prepared);
 
         assert!(alpha.is_none());
@@ -849,7 +873,8 @@ mod tests {
     #[test]
     fn webp_with_alpha_splits_color_and_smask() {
         let bytes = std::fs::read(WEBP_ALPHA_PATH).unwrap();
-        let prepared = decode_image(&bytes).expect("webp decode should succeed");
+        let prepared =
+            decode_image(&bytes, &SvgFontDb::empty()).expect("webp decode should succeed");
         let (color, alpha) = planes(&prepared);
 
         assert_eq!(prepared.width, 16);
@@ -865,7 +890,8 @@ mod tests {
     #[test]
     fn opaque_webp_has_no_alpha_plane() {
         let bytes = std::fs::read(WEBP_OPAQUE_PATH).unwrap();
-        let prepared = decode_image(&bytes).expect("webp decode should succeed");
+        let prepared =
+            decode_image(&bytes, &SvgFontDb::empty()).expect("webp decode should succeed");
         let (color, alpha) = planes(&prepared);
 
         assert!(alpha.is_none());
@@ -877,7 +903,8 @@ mod tests {
     #[test]
     fn an_svg_is_decoded_as_vector_content_with_its_intrinsic_size() {
         let svg = br#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20"/></svg>"#;
-        let prepared = decode_image(svg).expect("svg conversion should succeed");
+        let prepared =
+            decode_image(svg, &SvgFontDb::empty()).expect("svg conversion should succeed");
 
         assert_eq!((prepared.width, prepared.height), (40, 20));
         assert!(matches!(prepared.content, PreparedContent::Vector(_)));
@@ -889,13 +916,13 @@ mod tests {
 
     #[test]
     fn unrecognized_bytes_are_rejected() {
-        let result = decode_image(b"not an image");
+        let result = decode_image(b"not an image", &SvgFontDb::empty());
         assert!(result.is_err());
     }
 
     #[test]
     fn truncated_jpeg_header_is_rejected() {
-        let result = decode_image(&[0xFF, 0xD8, 0xFF]);
+        let result = decode_image(&[0xFF, 0xD8, 0xFF], &SvgFontDb::empty());
         assert!(result.is_err());
     }
 
@@ -903,7 +930,7 @@ mod tests {
     #[test]
     fn a_jpeg_truncated_inside_the_sof_segment_is_rejected_without_panicking() {
         // FFD8(SOI) FFC0(SOF0) 0011(セグメント長) までで終わる6バイト。
-        let result = decode_image(&[0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11]);
+        let result = decode_image(&[0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11], &SvgFontDb::empty());
         assert!(result.is_err(), "切り詰められたSOFは拒否されるべき");
     }
 
@@ -913,7 +940,7 @@ mod tests {
     fn a_jpeg_one_byte_short_of_a_complete_sof_is_rejected() {
         let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08];
         bytes.extend_from_slice(&[0x00, 0x10, 0x00]); // 高さ2バイト + 幅の1バイト目まで
-        let result = decode_image(&bytes);
+        let result = decode_image(&bytes, &SvgFontDb::empty());
         assert!(result.is_err(), "コンポーネント数まで届かないSOFは拒否");
     }
 
@@ -944,7 +971,8 @@ mod tests {
         png.extend_from_slice(&chunk(b"IEND", b""));
 
         assert!(png.len() < 200, "爆弾側のファイルは小さい: {}", png.len());
-        let err = decode_image(&png).expect_err("展開後サイズが上限を超えるPNGは拒否されるべき");
+        let err = decode_image(&png, &SvgFontDb::empty())
+            .expect_err("展開後サイズが上限を超えるPNGは拒否されるべき");
         assert!(
             err.to_string().contains("大きすぎます"),
             "サイズ上限による拒否であること: {err}"

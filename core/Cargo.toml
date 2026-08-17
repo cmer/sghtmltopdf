@@ -25,6 +25,17 @@ required-features = ["server"]
 name = "svg"
 required-features = ["svg", "cli"]
 
+[[test]]
+name = "svg_paths"
+required-features = ["svg", "cli"]
+
+# SVG内の`<text>`の描画までを見るテストは`svg-text`が要る。featureが無い場合の
+# 挙動(テキストが描かれないこと)もこのファイルで確認するため、`svg`だけでも
+# 動く(中で`cfg`で分岐する)。
+[[test]]
+name = "svg_fonts"
+required-features = ["svg", "cli"]
+
 # CLI(clap)とHTTPサーバ(tiny_http)はfeatureで切り離す。
 # ライブラリとして使う側は`--no-default-features`でこれらを引き込まずに済む。
 # gemはclap(=`cli`)を使うが、HTTPサーバは要らないので `cli` と `server` を分ける。
@@ -36,8 +47,14 @@ server = ["cli", "dep:tiny_http"]
 # (ラスタライズせずに)PDFへ埋め込む。svg2pdf経由でusvgを引き込むため、
 # 要らない場合は`--no-default-features`で切れるようfeatureにしている。
 svg = ["dep:svg2pdf"]
-# SVG内の`<text>`をグリフのまま埋め込む。svg2pdfの`text`featureを有効にし、
-# fontdb 0.23(本体が使う0.24とは別インスタンス)を引き込むため既定では切る。
+# SVG内の`<text>`をグリフのまま埋め込む。使うフォントは文書と同じもの
+# (`pdf::svg::SvgFontDb`が`FontCollection`から組む)で、SVGのためにシステム
+# フォントを探し直すことはしない。
+#
+# 既定で切っているのは依存が重いため。svg2pdfの`text`は`usvg/text`(シェイパの
+# rustybuzz、unicode系テーブル)と`resvg/text`を要求し、後者は`?`が付いていない
+# ので**optionalなresvg本体ごと**有効化してtiny-skiaまで引き込む。合わせて25
+# クレート増える。fontdb 0.23(本体が使う0.24とは別インスタンス)も入る。
 # 切っている間、SVG内のテキストは描画されない(パス化もされない)。
 svg-text = ["svg", "svg2pdf?/text"]
 

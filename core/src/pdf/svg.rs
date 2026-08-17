@@ -21,6 +21,125 @@
 //! フォーマットの嗅ぎ分け([`looks_like_svg`])は`svg` featureが無くても
 //! 使える。featureが無いときは「SVGだと分かった上で描けない」と言えた方が
 //! 「対応していないフォーマット」より分かりやすいため。
+//!
+//! # フォント
+//!
+//! SVG内の`<text>`に使えるフォントは[`SvgFontDb`]が決める。**文書が使うのと
+//! 同じ`FontCollection`から組む**ので、`--font`で渡したフォントも
+//! `@font-face`で読み込んだフォントも、そのままSVGの中から引ける。
+//! usvgに自前でシステムフォントを探させることはしない(この処理系の
+//! フォント解決を二重に走らせないため)。
+
+/// SVG内の`<text>`を描くためのフォントデータベース。
+///
+/// `svg-text` featureが無いときは中身を持たない値になり、SVG内のテキストは
+/// 描画されない(パス化もされない)。
+///
+/// `svg-text`が有効なときは、文書の[`FontCollection`](crate::fonts::FontCollection)
+/// にあるフォントのバイト列をそのまま持つ。usvgの`fontdb`は本体が使う
+/// `fontdb`とは別バージョンの別インスタンスだが、**中身のフォントは同じもの**
+/// になる。`Arc`で持つので複製は安い。
+#[derive(Clone, Default)]
+pub struct SvgFontDb {
+    #[cfg(feature = "svg-text")]
+    db: std::sync::Arc<svg2pdf::usvg::fontdb::Database>,
+    /// `font-family`を持たない`<text>`に使う既定のfamily名。文書の先頭の
+    /// フォント(=`--font`で最初に渡したもの)の名前を使う。
+    #[cfg(feature = "svg-text")]
+    default_family: Option<String>,
+}
+
+impl SvgFontDb {
+    /// フォントを持たないデータベース。SVG内のテキストは描画されない。
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// 文書のフォントコレクションから組む。
+    #[cfg(feature = "svg-text")]
+    pub fn from_collection(fonts: &crate::fonts::FontCollection) -> Self {
+        use svg2pdf::usvg::fontdb;
+
+        let mut db = fontdb::Database::new();
+        let mut default_family = None;
+        for (index, font) in fonts.fonts().iter().enumerate() {
+            // フォントのバイト列はそのまま渡す(ファイルを読み直さない。
+            // `@font-face`の`data:`URIやHTTP取得のようにファイルが存在しない
+            // 経路もあるため)。TTCのような複数フェイスのファイルでは
+            // `load_font_source`が全フェイスを登録するので、文書が使う
+            // フェイス番号(`Font::face_index`)以外も入る。SVG側の照合は
+            // family名で行われるため、それで困ることはない。
+            let ids = db.load_font_source(fontdb::Source::Binary(std::sync::Arc::new(
+                font.data().to_vec(),
+            )));
+
+            // CSS上で名乗っている名前(`@font-face`の`font-family`)が
+            // フォント内部の`name`テーブルと違う場合、そのままではSVGから
+            // 引けない。宣言名を別名として足しておく。
+            if let Some(declared) = fonts.declared_family(index) {
+                for id in ids {
+                    let Some(mut info) = db.face(id).cloned() else {
+                        continue;
+                    };
+                    if info
+                        .families
+                        .iter()
+                        .any(|(name, _)| name.eq_ignore_ascii_case(declared))
+                    {
+                        continue;
+                    }
+                    info.families
+                        .push((declared.to_string(), fontdb::Language::English_UnitedStates));
+                    db.remove_face(id);
+                    db.push_face_info(info);
+                }
+            }
+
+            if default_family.is_none() {
+                default_family = fonts
+                    .declared_family(index)
+                    .map(str::to_string)
+                    .or_else(|| font.family_name());
+            }
+        }
+
+        Self {
+            db: std::sync::Arc::new(db),
+            default_family,
+        }
+    }
+
+    /// `svg-text`が無効なときは、コレクションを見ずに空のまま返す
+    /// (SVG内のテキストは描画されない)。
+    #[cfg(not(feature = "svg-text"))]
+    pub fn from_collection(_fonts: &crate::fonts::FontCollection) -> Self {
+        Self::default()
+    }
+
+    /// 登録されているフェイスの数(テストと診断用)。`svg-text`が無効なら常に0。
+    pub fn len(&self) -> usize {
+        #[cfg(feature = "svg-text")]
+        {
+            self.db.len()
+        }
+        #[cfg(not(feature = "svg-text"))]
+        {
+            0
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl std::fmt::Debug for SvgFontDb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SvgFontDb")
+            .field("faces", &self.len())
+            .finish()
+    }
+}
 
 /// バイト列がSVG(またはgzip圧縮されたsvgz)に見えるか。
 ///
@@ -57,6 +176,7 @@ mod convert {
 
     use pdf_writer::{Chunk, Ref};
 
+    use super::SvgFontDb;
     use crate::pdf::document::RefAllocator;
 
     /// 変換済みのSVG。1つの`<img src="*.svg">`(または`background-image`)に
@@ -97,8 +217,14 @@ mod convert {
 
     /// SVGバイト列をPDFのForm XObjectへ変換する。返り値の`width`/`height`は
     /// SVGの内在サイズ(px)で、ラスタ画像の`PreparedImage`と同じ意味を持つ。
-    pub fn convert_svg(bytes: &[u8]) -> Result<(u32, u32, VectorGraphic), SvgError> {
-        let options = svg_options();
+    ///
+    /// `fonts`はSVG内の`<text>`に使うフォント([`SvgFontDb`])。文書が使うのと
+    /// 同じフォントを渡すことで、HTML側で使えるフォントがSVGの中でも使える。
+    pub fn convert_svg(
+        bytes: &[u8],
+        fonts: &SvgFontDb,
+    ) -> Result<(u32, u32, VectorGraphic), SvgError> {
+        let options = svg_options(fonts);
         let tree =
             svg2pdf::usvg::Tree::from_data(bytes, &options).map_err(|e| SvgError(e.to_string()))?;
 
@@ -154,7 +280,16 @@ mod convert {
     /// SVGの中から外部リソースを引く経路が無くなる。`data:`URIを扱う
     /// `resolve_data`は既定のまま残す。取得済みのバイト列の中で完結していて、
     /// 新たに信頼境界を越えないため。
-    fn svg_options() -> svg2pdf::usvg::Options<'static> {
+    ///
+    /// # フォント
+    ///
+    /// `resources_dir`は既定の`None`のまま(相対パスの解決先を与えない)。
+    /// フォントは`fonts`から受け取ったものだけを使い、usvgに
+    /// `load_system_fonts()`はさせない。この処理系はシステムフォントの探索を
+    /// 自前で持っている(`fonts::system`)ので、二重に走らせる意味が無く、
+    /// また「HTMLで使えるフォントがSVGでも使える」という対応が崩れるため。
+    fn svg_options(fonts: &SvgFontDb) -> svg2pdf::usvg::Options<'static> {
+        #[allow(unused_mut)]
         let mut options = svg2pdf::usvg::Options {
             image_href_resolver: svg2pdf::usvg::ImageHrefResolver {
                 resolve_string: Box::new(|href, _| {
@@ -168,13 +303,18 @@ mod convert {
             },
             ..Default::default()
         };
-        // `svg-text`が有効なときだけ、SVG内の`<text>`用にシステムフォントを
-        // 読み込む。本体のフォント解決(`fonts`モジュールのfontdb)とは別の
-        // インスタンスになる。
-        #[cfg(not(feature = "svg-text"))]
-        let _ = &mut options;
         #[cfg(feature = "svg-text")]
-        options.fontdb_mut().load_system_fonts();
+        {
+            options.fontdb = fonts.db.clone();
+            // `font-family`を持たない`<text>`はusvgの既定("Times New Roman")
+            // ではなく文書の既定フォントで描く。手元に無いフォント名を既定に
+            // 置くと、指定の無いテキストが必ず描けなくなる。
+            if let Some(family) = &fonts.default_family {
+                options.font_family = family.clone();
+            }
+        }
+        #[cfg(not(feature = "svg-text"))]
+        let _ = fonts;
         options
     }
 
@@ -286,7 +426,8 @@ mod convert {
 
         #[test]
         fn converts_an_svg_and_reports_its_intrinsic_size() {
-            let (width, height, graphic) = convert_svg(CIRCLE.as_bytes()).expect("should convert");
+            let (width, height, graphic) =
+                convert_svg(CIRCLE.as_bytes(), &SvgFontDb::empty()).expect("should convert");
             assert_eq!((width, height), (20, 10));
             assert!(
                 graphic.chunk.refs().len() >= 1,
@@ -296,12 +437,12 @@ mod convert {
 
         #[test]
         fn rejects_bytes_that_are_not_svg() {
-            assert!(convert_svg(b"not an svg at all").is_err());
+            assert!(convert_svg(b"not an svg at all", &SvgFontDb::empty()).is_err());
         }
 
         #[test]
         fn renumbering_maps_every_object_into_the_documents_ref_space() {
-            let (.., graphic) = convert_svg(CIRCLE.as_bytes()).unwrap();
+            let (.., graphic) = convert_svg(CIRCLE.as_bytes(), &SvgFontDb::empty()).unwrap();
             let mut alloc = RefAllocator::default();
             // SVGより先に何かを払い出しておき、1始まりに戻らないことを確かめる。
             let first = alloc.next();
@@ -321,7 +462,7 @@ mod convert {
 
         #[test]
         fn object_offsets_point_at_every_object_header() {
-            let (.., graphic) = convert_svg(CIRCLE.as_bytes()).unwrap();
+            let (.., graphic) = convert_svg(CIRCLE.as_bytes(), &SvgFontDb::empty()).unwrap();
             let mut alloc = RefAllocator::default();
             let renumbered = renumber_into_document(&graphic, &mut alloc).unwrap();
 

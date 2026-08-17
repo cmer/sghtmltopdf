@@ -25,9 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and per-`src` caching all apply unchanged. `.svgz` (gzipped) is accepted too.
   Behind the `svg` feature, on by default.
 - The `svg-text` feature (off by default) renders `<text>` inside an SVG as embedded,
-  selectable glyphs. It resolves system fonts through a second `fontdb`, separate from the
-  one used for the document's own fonts, which is why it is not on by default. Without it,
-  text inside an SVG is not drawn.
+  selectable glyphs, using **the document's own fonts**. Whatever is available to the HTML
+  — `--font`, `@font-face`, the resolved generic families — is available inside the SVG,
+  matched either by the font's internal family name or by the name it is declared under in
+  CSS. Text with no `font-family` uses the document's default font rather than usvg's
+  "Times New Roman". A family the document does not have is not substituted: no separate
+  system-font scan happens for SVG, so an SVG cannot come out in a font the document never
+  had. It is off by default because enabling it adds 25 crates (rustybuzz, resvg and
+  friends, pulled in by svg2pdf's `text` feature). Without it, text inside an SVG is not
+  drawn at all.
 
 ### Changed
 

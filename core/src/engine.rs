@@ -40,7 +40,7 @@ use crate::layout::{
 };
 use crate::pdf::{
     anchor_destination_name, ImageAssetCache, LinkSettings, PageOverlay, PdfOutputOptions,
-    PreparedImage, StreamingPdfWriter,
+    PreparedImage, StreamingPdfWriter, SvgFontDb,
 };
 use crate::sink::Sink;
 use crate::style::{
@@ -1189,7 +1189,10 @@ impl<S: Sink> Engine<S> {
                     self.options.local_access.allow,
                     self.options.local_access.allowed_dirs.clone(),
                 ),
-        );
+        )
+        // SVG内の`<text>`は文書と同じフォントで描く。`fonts`はここまでで
+        // 出揃っている(以降は変更しない)ので、この時点で組める。
+        .with_svg_fonts(SvgFontDb::from_collection(&fonts));
 
         // 直前の兄弟が要るセレクタを使っていない文書では、従来どおり
         // サブツリーごと解放する(要素を残すとトップレベル要素1個につき
@@ -1505,7 +1508,10 @@ impl<S: Sink> Engine<S> {
                     options.local_access.allow,
                     options.local_access.allowed_dirs.clone(),
                 ),
-        );
+        )
+        // SVG内の`<text>`は文書と同じフォントで描く。フォントの補完
+        // (`load_missing_system_fonts`等)はここより前に済んでいる。
+        .with_svg_fonts(SvgFontDb::from_collection(&fonts));
         // `background-image`はレイアウトのサイズ計算に影響しない描画専用の
         // 情報なので、`resolve_images`(box tree構築)とは独立に、文書全体の
         // `styles`から一度だけ構築できる。
