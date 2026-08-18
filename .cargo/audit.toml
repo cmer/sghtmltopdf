@@ -2,4 +2,24 @@
 # ここに挙げていないアドバイザリが1件でも出ればビルドが落ちる。
 
 [advisories]
-ignore = []
+# どちらも脆弱性ではなく `unmaintained`(メンテナンス終了)の通知で、
+# 修正版は存在しない(advisoryの `patched = []`)。
+#
+# 出どころはsvg2pdfの`text` feature(=こちらの`svg-text`)が使うusvg/fontdbで、
+# **既定のビルドではコンパイルされない**。cargo-auditはfeatureの有効・無効に
+# 関わらずCargo.lockを見るため、依存グラフに載っているだけで検出される。
+#
+# 皮肉なことに、両advisoryが移行先として挙げているのは skrifa と harfrust で、
+# この処理系が本体のフォント処理に既に使っているものそのもの。つまり本体の
+# フォント経路はメンテナンスされている側に乗っており、古い方はSVG内の
+# `<text>`を描くときだけ通る。`svg-text`を既定で切っている理由がもう1つ増えた形。
+#
+# svg2pdf自体がアーカイブ済みなので、この2件は上流では解消されない。SVG内の
+# テキスト描画をやめるか、フォークしてusvgを上げるかしない限り残る
+# (krillaへ移っても krilla-svg が rustybuzz 0.20 に依存しているので同じ)。
+ignore = [
+    # ttf-parser is unmaintained (2026-06-28)。移行先の提案は skrifa。
+    "RUSTSEC-2026-0192",
+    # rustybuzz is unmaintained (2026-07-11)。移行先の提案は harfrust。
+    "RUSTSEC-2026-0206",
+]
