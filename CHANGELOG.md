@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
+  layout to integers so that a rasteriser does not leave gaps or overlaps between boxes;
+  the output here is PDF, which has no such constraint, and the rounding truncated the
+  measured max-content width so that text which fit was wrapped onto a second line. Which
+  way the fraction rounded depended on the exact string, so the same row wrapped for one
+  value and not for another (`1 USD = 0.9143 EUR` wrapped, `1 USD 0.9143 EUR` did not).
+
 ## 0.2.0 - 2026-08-16
 
 ### Added

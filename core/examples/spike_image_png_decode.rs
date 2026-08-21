@@ -51,7 +51,7 @@ fn main() {
             let pixel_count = (width * height) as usize;
             let mut rgb = Vec::with_capacity(pixel_count * 3);
             let mut alpha = Vec::with_capacity(pixel_count);
-            for px in buf.chunks_exact(4) {
+            for px in buf.as_chunks::<4>().0 {
                 rgb.extend_from_slice(&px[0..3]);
                 alpha.push(px[3]);
             }
@@ -65,7 +65,7 @@ fn main() {
             let pixel_count = (width * height) as usize;
             let mut rgb = Vec::with_capacity(pixel_count * 3);
             let mut alpha = Vec::with_capacity(pixel_count);
-            for px in buf.chunks_exact(2) {
+            for px in buf.as_chunks::<2>().0 {
                 rgb.extend_from_slice(&[px[0], px[0], px[0]]);
                 alpha.push(px[1]);
             }

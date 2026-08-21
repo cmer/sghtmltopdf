@@ -292,12 +292,12 @@ impl StreamingPaginator {
     }
 
     /// これ以上アイテムが無いことを伝え、残っている全ページを返す。
-    pub fn finish(mut self) -> Vec<Page> {
+    pub fn finish(self) -> Vec<Page> {
         debug_assert!(
             self.buffer.active_min_page.is_empty(),
             "finishはすべてのplace_split呼び出しを抜けた後に呼ばれるはず"
         );
-        self.buffer.buffer.drain(..).collect()
+        self.buffer.buffer
     }
 }
 

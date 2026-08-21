@@ -510,7 +510,7 @@ pub fn to_grayscale_plane(plane: &ImagePlane) -> (ImagePlane, bool) {
     };
 
     let mut gray = Vec::with_capacity(raw.len() / 3);
-    for px in raw.chunks_exact(3) {
+    for px in raw.as_chunks::<3>().0 {
         let y = 0.2126 * px[0] as f32 + 0.7152 * px[1] as f32 + 0.0722 * px[2] as f32;
         gray.push(y.round().clamp(0.0, 255.0) as u8);
     }

@@ -482,3 +482,63 @@ fn a_flex_inside_a_flex_item_does_not_collapse_to_zero() {
         item.layout.content
     );
 }
+
+// ===== 採寸した自然幅を丸めない =====
+
+/// 与えられたノードのレイアウト済み行数を返す。
+fn line_count(b: &LaidOutBox) -> usize {
+    match &b.content {
+        LaidOutContent::Inline(lines) => lines.len(),
+        _ => panic!("インラインの内容を持つ箱ではない"),
+    }
+}
+
+#[test]
+fn a_flex_item_is_not_rounded_below_the_width_its_text_needs() {
+    // 回帰テスト: taffyが既定で最終レイアウトを整数へ丸めるため、採寸で得た
+    // 自然幅が切り捨てられ、内容より狭いアイテムになって収まるはずの行が
+    // 折り返されていた。丸めの向きは端数次第なので、同じ書式の文字列でも
+    // 特定の内容だけ折り返す、という形で表面化する。
+    //
+    // 下の2つはDejaVuSans 14pxで自然幅146.16pxと129.98px。丸めると前者だけが
+    // 146へ切り捨てられて0.16px足りなくなり、`EUR`が2行目へ落ちていた。
+    for value in ["1 USD = 0.9143 EUR", "1 USD 0.9143 EUR"] {
+        let (dom, laid) = layout(
+            &format!(
+                r#"<div class="row"><span class="k">Exchange rate</span><span class="v">{value}</span></div>"#
+            ),
+            "body { margin: 0; font-size: 14px; } \
+             .row { display: flex; justify-content: space-between; gap: 24px; } \
+             .k { white-space: nowrap; } \
+             .v { text-align: right; }",
+        );
+        let mut spans = Vec::new();
+        find_all_tags(&dom, dom.document(), "span", &mut spans);
+        let v = find_laid_out(&laid, spans[1]).unwrap();
+        assert_eq!(
+            line_count(v),
+            1,
+            "行に余裕があるので折り返してはならない: {value:?} width={:?}",
+            v.layout.content
+        );
+    }
+}
+
+#[test]
+fn flex_item_widths_keep_their_fractional_part() {
+    // 上のテストの土台。アイテムの幅が整数へ丸められていないことを直接見る
+    // (丸めが復活すると、端数が消えることで先に気付ける)。
+    let (dom, laid) = layout(
+        r#"<div class="row"><span class="v">1 USD = 0.9143 EUR</span></div>"#,
+        "body { margin: 0; font-size: 14px; } \
+         .row { display: flex; }",
+    );
+    let mut spans = Vec::new();
+    find_all_tags(&dom, dom.document(), "span", &mut spans);
+    let v = find_laid_out(&laid, spans[0]).unwrap();
+    assert!(
+        v.layout.content.width.fract() != 0.0,
+        "自然幅の端数が失われている: {:?}",
+        v.layout.content
+    );
+}
