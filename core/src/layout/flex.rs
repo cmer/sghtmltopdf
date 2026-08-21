@@ -108,6 +108,11 @@ pub(super) fn layout_taffy_subtree(
     }
 
     let mut tree: tf::TaffyTree<usize> = tf::TaffyTree::new();
+    // taffyは既定で最終レイアウトを整数へ丸める。整数ピクセルのラスタライズで
+    // 隙間や重なりを出さないための処理だが、出力先がPDF(浮動小数座標)のこちらでは
+    // 利点が無く、採寸で得た自然幅が切り捨てられてアイテムが内容より狭くなり、
+    // 収まるはずのテキストが折り返される。丸めは行わない。
+    tree.disable_rounding();
 
     // `box_style`は`ComputedStyle`(1KB超)を複製するので、アイテムごとに1回だけ
     // 作って以降は使い回す(採寸コールバックは1アイテムにつき何度も呼ばれる)。
