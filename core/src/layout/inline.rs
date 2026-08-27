@@ -191,6 +191,10 @@ enum InlineItem<'a> {
 /// 占有帯を問い合わせ、`available_width`/`origin_x`を動的に狭める(float周りの
 /// テキスト回り込み)。`None`(floatが無い、またはテーブル列幅の事前測定など
 /// 無関係な呼び出し)なら固定の`available_width`/`origin_x`のまま(既存動作)。
+///
+/// `container_style`はこのIFCを確立するブロックコンテナの計算スタイル
+/// (無名ボックスや採寸パスなら`None`)。テキストが1つも無く`<img>`や
+/// `display: inline-block`の箱だけの行で`text-align`を決めるために使う。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_inline_content(
     spans: &[InlineSpan],
@@ -200,6 +204,7 @@ pub(crate) fn layout_inline_content(
     origin_x: f32,
     origin_y: f32,
     float_ctx: Option<&FloatContext>,
+    container_style: Option<&ComputedStyle>,
     pos: &mut PosCtx,
 ) -> Vec<LineBox> {
     if fonts.is_empty() || spans.is_empty() {
@@ -214,13 +219,20 @@ pub(crate) fn layout_inline_content(
     // スタイルシートが`input`に付ける`white-space: pre`が段落全体をpre
     // 扱いにしてしまう)。箱しか無いIFC(`<p><input></p>`等)ではテキスト由来の
     // 代表値が存在しないため、初期値
-    // (`white-space: normal`/`text-align: left`/`text-indent: 0`)を使う
+    // (`white-space: normal`/`text-indent: 0`)を使う
     let representative = spans
         .iter()
         .position(|span| span.atomic.is_none())
         .and_then(|i| span_styles.get(i));
     let white_space = representative.map(|s| s.white_space).unwrap_or_default();
-    let text_align = representative.map(|s| s.text_align).unwrap_or_default();
+    // `text-align`だけは、箱しか無いIFCでもコンテナの値を使う。
+    // `<div style="text-align: right"><img></div>`のロゴを右に寄せるため
+    // (issue #19)。箱自身のスタイルは使えない: UAスタイルシートが
+    // `input`/`button`に`text-align`を直接指定しており、継承値と区別できない。
+    let text_align = representative
+        .map(|s| s.text_align)
+        .or_else(|| container_style.map(|s| s.text_align))
+        .unwrap_or_default();
     // `word-break`/`overflow-wrap`も`white-space`と同じくIFCの代表値で扱う。
     let word_break = representative.map(|s| s.word_break).unwrap_or_default();
     let overflow_wrap = representative.map(|s| s.overflow_wrap).unwrap_or_default();
@@ -261,10 +273,13 @@ pub(crate) fn layout_inline_content(
     let mut cursor_y = origin_y;
     let mut line_left = origin_x;
     let mut line_available_width = available_width;
-    // 現在組み立て中の行における、単語境界の位置(`current_runs`のインデックス)。
-    // `text-align: justify`がここに追加スペースを配分する(行頭に来た単語は
-    // 境界として記録しない、既存の行の左端そのものだから)。
-    let mut word_boundaries: Vec<usize> = Vec::new();
+    // 現在組み立て中の行における、単語境界の位置(行ボックス左端からのx、
+    // 単語間スペースを入れる前の`current_width`)。`text-align: justify`が
+    // ここに追加スペースを配分する(行頭に来た単語は境界として記録しない、
+    // 既存の行の左端そのものだから)。テキストランと`<img>`等の箱はそれぞれ
+    // `current_runs`/`current_atomics`に分かれて積まれるため、両方に同じ
+    // 規則で適用できるようインデックスではなくxで持つ。
+    let mut word_boundaries: Vec<f32> = Vec::new();
     // 直前のアイテムが強制改行だった場合の、その`<br>`が要求する行高さ。
     // 末尾の`<br>`に対して空行を1つ足すために使う。
     let mut trailing_break_height: Option<f32> = None;
@@ -348,6 +363,10 @@ pub(crate) fn layout_inline_content(
                         available_width,
                     );
                 } else if !line_is_empty {
+                    // 箱の前の空白も`justify`の伸縮対象(テキストランと同じ)。
+                    if space_before {
+                        word_boundaries.push(current_width);
+                    }
                     current_width += gap_width;
                 }
 
@@ -537,7 +556,7 @@ pub(crate) fn layout_inline_content(
                 continue;
             } else if !starting_new_line {
                 if is_first_chunk_of_word {
-                    word_boundaries.push(current_runs.len());
+                    word_boundaries.push(current_width);
                 }
                 current_width += gap_width;
             }
@@ -710,13 +729,17 @@ fn append_run(prev: &mut TextRun, next: TextRun, gap: f32, fonts: &FontCollectio
 
 /// 確定した行に`text-align`を適用する。`is_last_line`は`justify`が最後の行を
 /// 伸縮しない(CSS仕様)ための判定。`word_boundaries`は行内の単語境界の位置
-/// (`line.runs`のインデックス)で、`justify`がそこに追加スペースを配分する。
+/// (行ボックス左端からのx、単語間スペースの手前)で、`justify`がそこに追加
+/// スペースを配分する。
+///
+/// 行の中身はテキストラン(`line.runs`)と`<img>`/`display: inline-block`の箱
+/// (`line.atomics`)に分かれて持たれているので、どの分岐も両方をずらす。
 fn apply_text_align(
     line: &mut LineBox,
     text_align: TextAlign,
     is_last_line: bool,
     line_available_width: f32,
-    word_boundaries: &[usize],
+    word_boundaries: &[f32],
 ) {
     let leftover = line_available_width - line.rect.width;
     match text_align {
@@ -725,12 +748,16 @@ fn apply_text_align(
         TextAlign::Center => shift_all_runs(line, leftover / 2.0),
         TextAlign::Justify if !is_last_line && !word_boundaries.is_empty() && leftover > 0.0 => {
             let extra = leftover / word_boundaries.len() as f32;
-            let mut shift = 0.0;
-            for (i, run) in line.runs.iter_mut().enumerate() {
-                if word_boundaries.contains(&i) {
-                    shift += extra;
-                }
-                run.x_offset += shift;
+            // ランも箱も、自分より左にある境界の数ぶんだけ右へずれる
+            // (境界は各単語の直前の空白の手前にあるので、単語の先頭ランは
+            // 自分の境界を含めて数える)。
+            let shift_at =
+                |x: f32| extra * word_boundaries.iter().filter(|&&b| b <= x).count() as f32;
+            for run in &mut line.runs {
+                run.x_offset += shift_at(run.x_offset);
+            }
+            for atomic in &mut line.atomics {
+                atomic.x_offset += shift_at(atomic.x_offset);
             }
             line.rect.width = line_available_width;
         }
@@ -738,12 +765,19 @@ fn apply_text_align(
     }
 }
 
+/// 行の中身(テキストランとアトミックインラインボックス)をまとめて右へ`shift`px
+/// ずらす。`<img>`や`display: inline-block`の箱は`line.runs`ではなく
+/// `line.atomics`に載っているので、ランだけをずらすと箱が左端に取り残される
+/// (issue #19)。
 fn shift_all_runs(line: &mut LineBox, shift: f32) {
     if shift <= 0.0 {
         return;
     }
     for run in &mut line.runs {
         run.x_offset += shift;
+    }
+    for atomic in &mut line.atomics {
+        atomic.x_offset += shift;
     }
 }
 
@@ -1845,6 +1879,7 @@ mod tests {
             origin_x,
             origin_y,
             float_ctx,
+            None,
             &mut pos,
         )
     }
@@ -2460,6 +2495,60 @@ mod tests {
         assert!(
             last.rect.width < 150.0,
             "the last line should not be stretched by justify"
+        );
+    }
+
+    #[test]
+    fn text_align_justify_does_not_push_text_over_an_inline_block_on_the_same_line() {
+        // 「aa bb [箱] cc」の後に長い単語が来て折り返すと、最初の行は
+        // justifyで引き伸ばされる。単語境界(bb・cc)にだけ余りを配ると
+        // 箱が置き去りになり、右へずれたbbが箱に重なっていた。
+        let (_, spans, styles) = spans_for(
+            r#"aa bb <input style="width: 40px;"> cc dddddddddddddddddddddd"#,
+            "p { text-align: justify; }",
+        );
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 180.0, 0.0, 0.0, None);
+        assert!(lines.len() >= 2, "expected the long word to wrap");
+        let line = &lines[0];
+        assert_eq!(line.atomics.len(), 1, "the box should be on the first line");
+        assert_eq!(line.rect.width, 180.0, "the first line should be justified");
+
+        let atomic = &line.atomics[0];
+        let box_left = atomic.x_offset;
+        let box_right = atomic.x_offset + atomic.margin_box_width;
+        for run in &line.runs {
+            let run_right = run.x_offset + run.width;
+            assert!(
+                run_right <= box_left + 0.01 || run.x_offset >= box_right - 0.01,
+                "run {:?} at [{}, {}] overlaps the box at [{}, {}]",
+                run.text,
+                run.x_offset,
+                run_right,
+                box_left,
+                box_right
+            );
+        }
+        // 箱の直前のラン("aa bb"、隣接ランは結合済み)と直後のラン("cc")の
+        // 隙間も、他の単語間と同じく広がっている(箱の前後で一方だけが
+        // 広がるのではない)。
+        let before = line
+            .runs
+            .iter()
+            .filter(|r| r.x_offset < box_left)
+            .max_by(|a, b| a.x_offset.total_cmp(&b.x_offset))
+            .expect("a run before the box");
+        let after = line
+            .runs
+            .iter()
+            .filter(|r| r.x_offset >= box_right - 0.01)
+            .min_by(|a, b| a.x_offset.total_cmp(&b.x_offset))
+            .expect("a run after the box");
+        let gap_before = box_left - (before.x_offset + before.width);
+        let gap_after = after.x_offset - box_right;
+        assert!(
+            (gap_before - gap_after).abs() < 0.01,
+            "expected equal gaps around the box, got before={gap_before} after={gap_after}"
         );
     }
 

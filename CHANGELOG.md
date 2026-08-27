@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
+  A line box keeps its text runs and its atomic inline boxes (`<img>`, `display: inline-block`,
+  form controls) in separate lists, and the alignment step only shifted the runs, so a
+  right-aligned header rendered its title on the right and its logo flush left. `justify`
+  counts the space before a box as a justification opportunity and shifts the box together
+  with the words around it, rather than pushing the words into it.
+- `text-align` is now read from the block container that establishes the inline formatting
+  context, rather than from the first text span in it. `text-align` applies to block
+  containers and is only inherited by inline boxes, so a value set on an inline one was
+  never meant to win: `<div style="text-align: right"><span style="text-align: left">WORD</span></div>`
+  left the word at x=0. A line holding nothing but boxes (`<div style="text-align: right"><img></div>`)
+  had no text span to read at all and was therefore always aligned left.
+
 ## 0.3.0 - 2026-08-30
 
 ### Added
