@@ -287,6 +287,26 @@ fn calc_padding_resolves_em_and_pixels() {
 }
 
 #[test]
+fn calc_nested_inside_calc_resolves_like_parentheses() {
+    // issue #17: `calc()`の項に`calc()`を書くと宣言ごと無効化されていた。
+    // 括弧で書いた同じ式と同じ90pxになるべき。
+    for css in [
+        "body { margin: 0; } .c { margin-left: calc(calc(45px * 2) * calc(1 - 0)); }",
+        "body { margin: 0; } .c { margin-left: calc((45px * 2) * (1 - 0)); }",
+    ] {
+        let (dom, laid) = layout(r#"<div class="c">x</div>"#, css);
+        let mut divs = Vec::new();
+        find_all_tags(&dom, dom.document(), "div", &mut divs);
+        let c = find_laid_out(&laid, divs[0]).unwrap();
+        assert!(
+            (c.layout.margin.left - 90.0).abs() < 0.5,
+            "margin-left should be 90 but was {} for {css}",
+            c.layout.margin.left
+        );
+    }
+}
+
+#[test]
 fn a_document_using_calc_renders_a_valid_pdf() {
     let (_, bytes) = build_pdf(
         r#"<div style="width: calc(50% + 2em); margin-left: calc(10px + 5%);">x</div>"#,

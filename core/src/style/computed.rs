@@ -3214,6 +3214,83 @@ mod tests {
     }
 
     #[test]
+    fn calc_accepts_a_nested_calc_as_a_term() {
+        // CSS Values 4: `calc()`は`calc()`の項として使える(括弧と同等)。
+        // Tailwind v4の`space-y-*`/`divide-*`がこの形を出力する。
+        use crate::style::LengthPercentage;
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        for css in [
+            // 左右両方の項
+            "div { margin-left: calc(calc(45px * 2) * calc(1 - 0)); }",
+            // 左の項のみ
+            "div { margin-left: calc(calc(45px * 2) * 1); }",
+            // 右の項のみ
+            "div { margin-left: calc(90px * calc(1 - 0)); }",
+            // 加算
+            "div { margin-left: calc(calc(45px) + calc(45px)); }",
+            // 冗長な1段ネスト
+            "div { margin-left: calc(calc(90px)); }",
+            // 2段ネスト
+            "div { margin-left: calc(calc(calc(30px) * 3)); }",
+            // 括弧との混在
+            "div { margin-left: calc((calc(45px) + 45px) * calc(2 / 2)); }",
+        ] {
+            let styles = compute_styles(&dom, &Stylesheet::default(), &parse_stylesheet(css));
+            match styles[&div].margin_left {
+                super::LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc {
+                    px,
+                    percent,
+                }) => {
+                    assert!((px - 90.0).abs() < 0.001, "px={px} for {css}");
+                    assert_eq!(percent, 0.0, "{css}");
+                }
+                other => panic!("expected a 90px calc value for {css}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn nested_calc_overrides_an_earlier_declaration_in_the_cascade() {
+        // 無効な宣言として捨てられると、直前の`margin-left: 20px`が残ってしまう
+        // (issue #17のケース4)。有効な宣言なので後勝ちで90pxになるべき。
+        use crate::style::LengthPercentage;
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let styles = compute_styles(
+            &dom,
+            &Stylesheet::default(),
+            &parse_stylesheet("div { margin-left: 20px; margin-left: calc(calc(45px * 2) * 1); }"),
+        );
+        match styles[&div].margin_left {
+            super::LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Calc {
+                px, ..
+            }) => assert!((px - 90.0).abs() < 0.001, "px={px}"),
+            other => panic!("expected a 90px calc value, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn nested_calc_still_rejects_invalid_expressions() {
+        // ネストしても型検査は維持: 裸の数値・次元×次元・不明な関数は無効。
+        let dom = html::parse(br#"<div>x</div>"#);
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        for css in [
+            "div { width: calc(calc(2)); }",
+            "div { width: calc(calc(2px) * calc(3px)); }",
+            "div { width: calc(calc(2px * 3px)); }",
+            "div { width: calc(foo(2px)); }",
+        ] {
+            let styles = compute_styles(&dom, &Stylesheet::default(), &parse_stylesheet(css));
+            assert_eq!(
+                styles[&div].width,
+                super::LengthPercentageOrAuto::Auto,
+                "invalid calc should be dropped, leaving the initial value: {css}"
+            );
+        }
+    }
+
+    #[test]
     fn absolute_and_fixed_are_block_level() {
         // CSS2.1 9.7: absolute/fixedはdisplayをblock化する。これにより
         // インライン要素(span)も絶対配置の対象になる。
