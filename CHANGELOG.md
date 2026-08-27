@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Parse nested style rules (CSS Nesting) instead of silently dropping them (#25).
+  `.wrap { & .probe { } }`, `.wrap { .probe { } }`, `.wrap { &.probe { } }` and
+  `.list { > li { } }` now reach the cascade with the meaning the spec gives them; `&`
+  takes the parent's specificity, and declarations written after a nested rule keep
+  their source position instead of being hoisted above it. Nested at-rules such as
+  `@media` inside a style rule are still ignored.
 - Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
   layout to integers so that a rasteriser does not leave gaps or overlaps between boxes;
   the output here is PDF, which has no such constraint, and the rounding truncated the
