@@ -477,3 +477,70 @@ fn auto_tracks_absorb_the_free_space_unless_justify_content_says_otherwise() {
         "flex-startなら内容幅のまま左に寄る: {packed:?}"
     );
 }
+
+/// ページ上の全テキスト行を(テキスト, ページ内y, 高さ)で文書順に返す。
+fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32, f32)> {
+    fn walk(b: &LaidOutBox, out: &mut Vec<(String, f32, f32)>) {
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                for child in children {
+                    walk(child, out);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for item in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(item, out);
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    let text: String = line.runs.iter().map(|run| run.text.as_str()).collect();
+                    if !text.trim().is_empty() {
+                        out.push((text, line.rect.y, line.rect.height));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for b in &page.boxes {
+        walk(b, &mut out);
+    }
+    out
+}
+
+#[test]
+fn grid_items_on_later_pages_are_placed_within_the_page() {
+    // #18: 2ページ目以降の行帯では、帯の座標はページ内座標へ直されている
+    // のにアイテムが逆方向へずらされ、ページの遥か下(=描画されない位置)に
+    // 置かれていた。ページ数は正しいのに2ページ目以降が白紙になる。
+    let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
+    let html = format!(r#"<div class="g">{paragraphs}</div>"#);
+    let css = "* { margin: 0; padding: 0 } .g { display: grid; }";
+    let dom = html::parse(html.as_bytes());
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(css));
+    let fonts = test_fonts();
+    let settings = PageSettings::default();
+    let page_height = settings.content_height();
+    let pages = paginate_document(&dom, &styles, &fonts, &settings);
+
+    assert!(pages.len() > 1, "150段落は1ページに収まらない");
+    let mut seen = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        let lines = text_lines_on_page(page);
+        assert!(!lines.is_empty(), "page {page_index} must not be blank");
+        for (text, y, height) in lines {
+            assert!(
+                y >= -0.01 && y + height <= page_height + 0.01,
+                "{text:?} on page {page_index} is outside the page: y={y} height={height} page_height={page_height}"
+            );
+            seen.push(text);
+        }
+    }
+    let expected: Vec<String> = (0..150).map(|i| format!("Line {i}")).collect();
+    assert_eq!(
+        seen, expected,
+        "every paragraph appears exactly once, in order"
+    );
+}

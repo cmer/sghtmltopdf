@@ -542,3 +542,183 @@ fn flex_item_widths_keep_their_fractional_part() {
         v.layout.content
     );
 }
+
+// ===== 1ページに収まらないflexコンテナのページ分割(#18) =====
+
+fn paginate_pages(html_src: &str, css: &str) -> Vec<sghtmltopdf_core::layout::Page> {
+    let dom = html::parse(html_src.as_bytes());
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(css));
+    let fonts = test_fonts();
+    paginate_document(&dom, &styles, &fonts, &PageSettings::default())
+}
+
+/// ページ上の全テキスト行を(テキスト, ページ内y, 高さ)で文書順に返す。
+fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32, f32)> {
+    fn walk(b: &LaidOutBox, out: &mut Vec<(String, f32, f32)>) {
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                for child in children {
+                    walk(child, out);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for item in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(item, out);
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    let text: String = line.runs.iter().map(|run| run.text.as_str()).collect();
+                    if !text.trim().is_empty() {
+                        out.push((text, line.rect.y, line.rect.height));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for b in &page.boxes {
+        walk(b, &mut out);
+    }
+    out
+}
+
+/// 全ページのテキスト行を集め、どの行もページ内に収まっていることを確認する。
+fn all_lines_within_pages(pages: &[sghtmltopdf_core::layout::Page]) -> Vec<Vec<String>> {
+    let page_height = PageSettings::default().content_height();
+    pages
+        .iter()
+        .enumerate()
+        .map(|(page_index, page)| {
+            text_lines_on_page(page)
+                .into_iter()
+                .map(|(text, y, height)| {
+                    assert!(
+                        y >= -0.01 && y + height <= page_height + 0.01,
+                        "{text:?} on page {page_index} is outside the page: y={y} height={height}"
+                    );
+                    text
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_flex_column_taller_than_a_page_is_split_between_its_items() {
+    let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
+    let pages = paginate_pages(
+        &format!(r#"<div class="f">{paragraphs}</div>"#),
+        "* { margin: 0; padding: 0 } .f { display: flex; flex-direction: column }",
+    );
+
+    assert!(
+        pages.len() > 1,
+        "150段落は1ページに収まらない: {} page(s)",
+        pages.len()
+    );
+    let per_page = all_lines_within_pages(&pages);
+    for (i, page) in per_page.iter().enumerate() {
+        assert!(!page.is_empty(), "page {i} must not be blank");
+    }
+    let seen: Vec<String> = per_page.into_iter().flatten().collect();
+    let expected: Vec<String> = (0..150).map(|i| format!("Line {i}")).collect();
+    assert_eq!(
+        seen, expected,
+        "every paragraph appears exactly once, in order"
+    );
+}
+
+#[test]
+fn a_flex_item_taller_than_a_page_is_split_inside_like_a_block() {
+    // 列flexのアイテム自体が1ページより高い(契約書の本文など)。アイテムの
+    // 境界で切るだけでは足りず、ブロックと同様にアイテムの内部でも分割する。
+    let paragraphs: String = (0..120).map(|i| format!("<p>Clause {i}</p>")).collect();
+    let pages = paginate_pages(
+        &format!(
+            r#"<div class="f"><div class="head">Header</div><div class="body">{paragraphs}</div><div class="foot">Footer</div></div>"#
+        ),
+        "* { margin: 0; padding: 0 } .f { display: flex; flex-direction: column }",
+    );
+
+    assert!(pages.len() > 1, "{} page(s)", pages.len());
+    let per_page = all_lines_within_pages(&pages);
+    assert_eq!(per_page[0][0], "Header");
+    let last = per_page.last().unwrap();
+    assert_eq!(
+        last.last().unwrap(),
+        "Footer",
+        "footer follows the last clause"
+    );
+    let mut expected = vec!["Header".to_string()];
+    expected.extend((0..120).map(|i| format!("Clause {i}")));
+    expected.push("Footer".to_string());
+    let seen: Vec<String> = per_page.into_iter().flatten().collect();
+    assert_eq!(seen, expected);
+}
+
+#[test]
+fn a_wrapped_row_flex_taller_than_a_page_is_split_between_its_lines() {
+    // 行方向で折り返すflexは、flex line(横に並ぶアイテム群)を単位に分割する。
+    // 同じ行のアイテムは同じページの同じyに並んだままになる。
+    let items: String = (0..80).map(|i| format!("<div>i{i}</div>")).collect();
+    let pages = paginate_pages(
+        &format!(r#"<div class="f">{items}</div>"#),
+        "* { margin: 0; padding: 0 } \
+         .f { display: flex; flex-wrap: wrap } \
+         .f > div { width: 50%; height: 40px }",
+    );
+
+    assert!(
+        pages.len() > 1,
+        "40行×40px は1ページに収まらない: {} page(s)",
+        pages.len()
+    );
+    let page_height = PageSettings::default().content_height();
+    let mut seen = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        let lines = text_lines_on_page(page);
+        assert!(
+            lines.len() % 2 == 0,
+            "page {page_index} splits a flex line: {lines:?}"
+        );
+        for pair in lines.chunks(2) {
+            let (ref a, ay, ah) = pair[0];
+            let (ref b, by, _) = pair[1];
+            assert_eq!(ay, by, "{a} and {b} share a flex line but not a y");
+            assert!(
+                ay >= -0.01 && ay + ah <= page_height + 0.01,
+                "{a} is outside page {page_index}"
+            );
+            seen.push(a.clone());
+            seen.push(b.clone());
+        }
+    }
+    let expected: Vec<String> = (0..80).map(|i| format!("i{i}")).collect();
+    assert_eq!(seen, expected);
+}
+
+#[test]
+fn a_flex_column_taller_than_a_page_renders_as_many_pages_as_block_end_to_end() {
+    let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
+    let html = format!(r#"<div class="box">{paragraphs}</div>"#);
+    // 枠線を付けて、分割されたコンテナの装飾フラグメント生成も通す。
+    let flex = build_pdf(
+        &html,
+        "* { margin: 0; padding: 0 } \
+         .box { display: flex; flex-direction: column; border: 1px solid #000 }",
+    );
+    let block = build_pdf(
+        &html,
+        "* { margin: 0; padding: 0 } .box { display: block; border: 1px solid #000 }",
+    );
+
+    let flex_pages = count_occurrences(&flex, b"/MediaBox");
+    let block_pages = count_occurrences(&block, b"/MediaBox");
+    assert!(block_pages > 1);
+    assert_eq!(
+        flex_pages, block_pages,
+        "the flex column must not lose pages"
+    );
+}

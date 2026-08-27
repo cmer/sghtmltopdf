@@ -503,9 +503,11 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
                 collect_completed_subtree_roots_in_box(child, roots);
             }
         }
-        // flexコンテナはページ分割に対してアトミック(`display: table`と同じ
-        // 扱い)。グリッドは行単位で分割するが、断片ごとの完了判定は
-        // `place_grid`が`FragmentPosition`で表現するため、
+        // flexコンテナは収まればアトミック(`display: table`と同じ扱い)。
+        // 1ページより高いものは`place_split`で分割され、その場合アイテムは
+        // ページへ直接置かれる(`Flex`のまま断片になることはない)ので、ここで
+        // `Flex`を見たら常に丸ごと完了している。グリッドは行単位で分割するが、
+        // 断片ごとの完了判定は`place_grid`が`FragmentPosition`で表現するため、
         // ここではテーブルと同じく再帰しない。
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
@@ -611,6 +613,30 @@ fn place_box(
             );
             return;
         }
+        // flexコンテナは原則アトミック(残りに収まらなければ丸ごと次ページへ
+        // 送る)。ただし1ページより高いコンテナは送っても収まらず、はみ出した
+        // 部分が描画されずに消えてしまう(#18)。その場合に限り、垂直方向に
+        // 重ならないアイテム群(帯)を単位に、ブロックと同じ経路で分割する。
+        LaidOutContent::Flex(children) if !children.is_empty() && height > page_height => {
+            let mut bands = group_flex_items_into_bands(std::mem::take(children));
+            place_split(
+                &mut container,
+                &mut bands,
+                page_height,
+                state,
+                cursor,
+                // 帯に強制改ページの概念は持ち込まない。コンテナが収まる場合は
+                // アトミックでアイテムの`break-*`を見ていないので、分割時だけ
+                // 効くと挙動が読みにくくなる。
+                |_i, _band: &FlexBand| (false, false),
+                |_band: &FlexBand| false,
+                |band: &FlexBand| band.top,
+                |band, ph, ps, c| {
+                    place_flex_band(band, ph, ps, c);
+                },
+            );
+            return;
+        }
         _ => {}
     }
 
@@ -644,8 +670,9 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        // flexコンテナはアトミック。グリッドの行分割は`place_grid`が
-        // 担うため、ここでは再帰しない。
+        // flexコンテナは収まればアトミックで、1ページより高い場合の分割でも
+        // アイテムの`break-*`は見ない。グリッドの行分割は`place_grid`が
+        // 担う。どちらもここでは再帰しない。
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -1155,13 +1182,14 @@ fn place_grid(
     *cursor += bottom_extra;
 }
 
-/// 行帯とその中のアイテムをまとめてY方向へ平行移動する。
+/// 行帯とその中のアイテムをまとめてY方向へ平行移動する。`delta`は
+/// `shift_box_y`と同じく「引く量」(絶対y座標→ページ内y座標の差)。
 fn shift_grid_row_y(row: &LaidOutGridRow, delta: f32) -> LaidOutGridRow {
     LaidOutGridRow {
         items: row
             .items
             .iter()
-            .map(|item| shift_box_y(item, -delta))
+            .map(|item| shift_box_y(item, delta))
             .collect(),
         top: row.top - delta,
         bottom: row.bottom - delta,
@@ -1213,6 +1241,75 @@ fn flush_grid_fragment(
         }),
     };
     state.last_mut().boxes.push(fragment);
+}
+
+/// 1ページより高いflexコンテナを分割する単位。垂直方向に重なるアイテム同士を
+/// まとめた帯で、列flexなら各アイテム、行flexなら各flex lineが1帯になる。
+/// `top`/`bottom`はマージンボックスの絶対y座標。
+struct FlexBand {
+    items: Vec<LaidOutBox>,
+    top: f32,
+    bottom: f32,
+}
+
+/// 帯の境界判定に使う許容誤差(px)。taffyが返す座標は浮動小数のため、
+/// ちょうど接しているだけのアイテムを「重なっている」と誤判定しないようにする。
+const FLEX_BAND_EPSILON: f32 = 0.01;
+
+/// flexアイテムを垂直方向の重なりで帯へまとめる。
+///
+/// `flex-direction: column`なら各アイテムが1帯、`flex-wrap: wrap`の行flexなら
+/// 各flex lineが1帯、折り返さない行flexは全体が1帯(=これまで通りアトミック)
+/// になる。`order`等で視覚順が文書順と違っても、幾何で判定するので問題ない。
+fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
+    // 上端順に並べる(安定ソートなので同じ上端同士は文書順を保つ)。
+    items.sort_by(|a, b| margin_box_top(a).total_cmp(&margin_box_top(b)));
+    let mut bands: Vec<FlexBand> = Vec::new();
+    for item in items {
+        let top = margin_box_top(&item);
+        let bottom = top + item.layout.margin_box_height();
+        match bands.last_mut() {
+            Some(band) if top < band.bottom - FLEX_BAND_EPSILON => {
+                band.items.push(item);
+                band.bottom = band.bottom.max(bottom);
+            }
+            _ => bands.push(FlexBand {
+                items: vec![item],
+                top,
+                bottom,
+            }),
+        }
+    }
+    bands
+}
+
+/// [`place_split`]から呼ばれ、flexの帯を1つページへ置く。
+///
+/// アイテムが1つだけの帯(列flexの各アイテム)は通常のボックスとして
+/// [`place_box`]へ渡す。これにより1ページより高いアイテムはブロックと同様に
+/// 内部で分割される。横に複数のアイテムが並ぶ帯は、アイテムの相対位置を保つ
+/// ため1つのリーフとして扱う(残りに収まらなければ次ページの先頭へ送る。帯
+/// 自体が1ページより高い場合は、これまで通りはみ出す)。
+fn place_flex_band(
+    band: &mut FlexBand,
+    page_height: f32,
+    state: &mut PaginationState<'_>,
+    cursor: &mut f32,
+) {
+    if let [item] = band.items.as_mut_slice() {
+        place_box(item, page_height, state, cursor);
+        return;
+    }
+    let height = band.bottom - band.top;
+    if *cursor > 0.0 && *cursor + height > page_height {
+        new_page(state, cursor);
+    }
+    let base = *cursor;
+    for item in band.items.iter_mut() {
+        let mut local_cursor = base + (margin_box_top(item) - band.top);
+        place_leaf(item, state, &mut local_cursor);
+    }
+    *cursor = base + height;
 }
 
 fn place_table(
