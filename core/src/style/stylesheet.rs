@@ -51,14 +51,16 @@ impl Stylesheet {
 }
 
 /// トップレベルルールの中間表現。通常のスタイルルール・`@font-face`・
-/// `@media`・`@page`は`StyleSheetParser`の型システム上、同じ`Prelude`/
-/// `Rule`型を共有する必要があるため、この列挙型で束ねる
+/// `@media`・`@layer`・`@page`は`StyleSheetParser`の型システム上、同じ
+/// `Prelude`/`Rule`型を共有する必要があるため、この列挙型で束ねる
 /// ([`parse_stylesheet`]で仕分ける)。
 enum TopLevelRule {
     Style(StyleRule),
     FontFace(FontFaceRule),
-    /// `@media`の中身(マッチしなかった場合は空のVec)。
-    Media(Vec<TopLevelRule>),
+    /// ルールをまとめるat-rule(`@media`/`@layer`)の中身。書かれた順に
+    /// トップレベルへ展開する。マッチしなかった`@media`と、ブロックを持たない
+    /// `@layer a, b;`は空のVec。
+    Nested(Vec<TopLevelRule>),
     Page(PageRule),
 }
 
@@ -92,7 +94,7 @@ fn flatten_top_level_rule(
         TopLevelRule::Style(r) => rules.push(r),
         TopLevelRule::FontFace(r) => font_faces.push(r),
         TopLevelRule::Page(r) => page_rules.push(r),
-        TopLevelRule::Media(inner) => {
+        TopLevelRule::Nested(inner) => {
             for r in inner {
                 flatten_top_level_rule(r, rules, font_faces, page_rules);
             }
@@ -146,13 +148,16 @@ impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser {
     }
 }
 
-/// `@font-face`/`@media`/`@page`を認識する。
+/// `@font-face`/`@media`/`@layer`/`@page`を認識する。
 enum TopLevelAtRulePrelude {
     FontFace,
     /// `applies`は[`media_query_list_matches`]による判定結果。
     Media {
         applies: bool,
     },
+    /// `@layer`。レイヤーの優先順位は実装せず、ブロックの中身を書かれた順に
+    /// トップレベルへ展開するだけなので、レイヤー名は保持しない(#20)。
+    Layer,
     Page(super::page_rule::PageSelector),
 }
 
@@ -173,11 +178,29 @@ impl<'i> AtRuleParser<'i> for TopLevelRuleParser {
             let applies = media_query_list_matches(input)?;
             return Ok(TopLevelAtRulePrelude::Media { applies });
         }
+        if name.eq_ignore_ascii_case("layer") {
+            skip_layer_name_list(input)?;
+            return Ok(TopLevelAtRulePrelude::Layer);
+        }
         if name.eq_ignore_ascii_case("page") {
             let selector = parse_page_selector(input)?;
             return Ok(TopLevelAtRulePrelude::Page(selector));
         }
         Err(input.new_custom_error(()))
+    }
+
+    /// ブロックを持たない形(`@layer theme, base;`)。レイヤーの順序を宣言する
+    /// だけでルールを含まないので、空のグループとして受理する。他のat-ruleに
+    /// この形はない。
+    fn rule_without_block(
+        &mut self,
+        prelude: Self::Prelude,
+        _start: &cssparser::ParserState,
+    ) -> Result<Self::AtRule, ()> {
+        match prelude {
+            TopLevelAtRulePrelude::Layer => Ok(TopLevelRule::Nested(Vec::new())),
+            _ => Err(()),
+        }
     }
 
     fn parse_block<'t>(
@@ -196,15 +219,40 @@ impl<'i> AtRuleParser<'i> for TopLevelRuleParser {
             // マッチしなかった`@media`ブロックの中身は読み飛ばすだけでよい
             // (`input`は既にこのブロックにスコープされているため、何も
             // 消費せず返しても呼び出し元が正しくブロックの終端まで進める)。
-            TopLevelAtRulePrelude::Media { applies: false } => Ok(TopLevelRule::Media(Vec::new())),
-            TopLevelAtRulePrelude::Media { applies: true } => {
-                let mut rule_parser = TopLevelRuleParser;
-                let rules = StyleSheetParser::new(input, &mut rule_parser)
-                    .flatten()
-                    .collect();
-                Ok(TopLevelRule::Media(rules))
+            TopLevelAtRulePrelude::Media { applies: false } => Ok(TopLevelRule::Nested(Vec::new())),
+            TopLevelAtRulePrelude::Media { applies: true } | TopLevelAtRulePrelude::Layer => {
+                Ok(TopLevelRule::Nested(parse_nested_rules(input)))
             }
         }
+    }
+}
+
+/// `@media`/`@layer`のブロックの中身を、トップレベルと同じ文法でパースする。
+/// 中でさらに`@media`/`@layer`が入れ子になっていてもよい。
+fn parse_nested_rules<'i, 't>(input: &mut Parser<'i, 't>) -> Vec<TopLevelRule> {
+    let mut rule_parser = TopLevelRuleParser;
+    StyleSheetParser::new(input, &mut rule_parser)
+        .flatten()
+        .collect()
+}
+
+/// `@layer`のprelude(`<layer-name>#`または空)を読み飛ばす。レイヤー名は
+/// `a`や`a.b`(`.`区切りの入れ子)で、ブロック形は高々1つ、文形はカンマ区切りで
+/// 複数書ける。ここでは文法だけ確かめて名前は捨てる。名前が要らないとはいえ
+/// 何でも受理すると、壊れた`@layer`の中身までトップレベルに漏れてしまう。
+fn skip_layer_name_list<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), ParseError<'i, ()>> {
+    if input.is_exhausted() {
+        return Ok(());
+    }
+    loop {
+        input.expect_ident()?;
+        while input.try_parse(|input| input.expect_delim('.')).is_ok() {
+            input.expect_ident()?;
+        }
+        if input.is_exhausted() {
+            return Ok(());
+        }
+        input.expect_comma()?;
     }
 }
 
@@ -633,5 +681,120 @@ mod tests {
     #[test]
     fn parse_inline_style_handles_empty_string() {
         assert!(parse_inline_style("").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod layer_tests {
+    use super::*;
+
+    /// #20: Tailwind v4は出力全体を`@layer`ブロックで包む。ブロックごと捨てると
+    /// 文書が丸ごと無装飾になるので、中のルールをトップレベルへ展開する。
+    #[test]
+    fn layer_block_rules_are_flattened() {
+        let sheet = parse_stylesheet("@layer utilities { div { color: rgb(1, 2, 3); } }");
+        assert_eq!(sheet.rules.len(), 1);
+    }
+
+    #[test]
+    fn anonymous_layer_block_rules_are_flattened() {
+        let sheet = parse_stylesheet("@layer { div { color: rgb(1, 2, 3); } }");
+        assert_eq!(sheet.rules.len(), 1);
+    }
+
+    /// `@layer a.b { }`(入れ子を`.`で書く形)と`@layer a { @layer b { } }`。
+    #[test]
+    fn nested_layer_blocks_are_flattened() {
+        for css in [
+            "@layer a { @layer b { div { color: rgb(1, 2, 3); } } }",
+            "@layer a.b { div { color: rgb(1, 2, 3); } }",
+        ] {
+            let sheet = parse_stylesheet(css);
+            assert_eq!(sheet.rules.len(), 1, "{css}");
+        }
+    }
+
+    /// `@layer theme, base, components, utilities;`(順序宣言だけの文)は
+    /// 従来どおり無視し、後続のルールを壊さない。
+    #[test]
+    fn layer_statement_is_ignored_and_keeps_subsequent_rules() {
+        for css in [
+            "@layer base, utilities; div { color: rgb(1, 2, 3); }",
+            "@layer base; div { color: rgb(1, 2, 3); }",
+        ] {
+            let sheet = parse_stylesheet(css);
+            assert_eq!(sheet.rules.len(), 1, "{css}");
+        }
+    }
+
+    #[test]
+    fn layer_and_media_nest_either_way() {
+        for css in [
+            "@layer base { @media print { div { color: rgb(1, 2, 3); } } }",
+            "@media print { @layer base { div { color: rgb(1, 2, 3); } } }",
+        ] {
+            let sheet = parse_stylesheet(css);
+            assert_eq!(sheet.rules.len(), 1, "{css}");
+        }
+        let sheet =
+            parse_stylesheet("@layer base { @media screen { div { color: rgb(1, 2, 3); } } }");
+        assert!(
+            sheet.rules.is_empty(),
+            "@media screen inside @layer must still be dropped"
+        );
+    }
+
+    #[test]
+    fn font_face_and_page_inside_a_layer_are_still_recognized() {
+        let sheet = parse_stylesheet(
+            r#"@layer base {
+                @font-face { font-family: "Test"; src: url("test.ttf"); }
+                @page { margin: 10mm; }
+            }"#,
+        );
+        assert_eq!(sheet.font_faces.len(), 1);
+        assert_eq!(sheet.page_rules.len(), 1);
+    }
+
+    /// 展開は書かれた順を保つ(レイヤーの優先順位は実装しないので、通常の
+    /// カスケード=後勝ちに委ねる)。
+    #[test]
+    fn layer_rules_keep_source_order() {
+        let sheet = parse_stylesheet(
+            "@layer a { div { color: rgb(1, 1, 1); } } \
+             div { color: rgb(2, 2, 2); } \
+             @layer b { div { color: rgb(3, 3, 3); } }",
+        );
+        let colors: Vec<String> = sheet
+            .rules
+            .iter()
+            .map(|r| format!("{:?}", r.declarations[0]))
+            .collect();
+        assert_eq!(colors.len(), 3);
+        assert!(colors[0].contains("red: 1,"), "{colors:?}");
+        assert!(colors[1].contains("red: 2,"), "{colors:?}");
+        assert!(colors[2].contains("red: 3,"), "{colors:?}");
+    }
+
+    /// `@layer`以外の非対応at-ruleは引き続きブロックごと無視される。
+    #[test]
+    fn other_unsupported_at_rule_blocks_are_still_dropped() {
+        for css in [
+            "@supports (display: grid) { div { color: rgb(1, 2, 3); } }",
+            "@container (min-width: 1px) { div { color: rgb(1, 2, 3); } }",
+            "@keyframes spin { from { color: rgb(1, 2, 3); } }",
+        ] {
+            let sheet = parse_stylesheet(css);
+            assert!(sheet.rules.is_empty(), "{css}");
+        }
+    }
+
+    /// 壊れたpreludeの`@layer`はブロックごと捨て、後続のルールは生かす。
+    #[test]
+    fn layer_with_invalid_prelude_is_dropped_and_subsequent_rules_kept() {
+        let sheet = parse_stylesheet(
+            "@layer 42 { div { color: rgb(1, 2, 3); } } p { color: rgb(4, 5, 6); }",
+        );
+        assert_eq!(sheet.rules.len(), 1);
     }
 }
