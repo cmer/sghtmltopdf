@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html><head><style>
+  @page { size: letter; margin: 0.5in }
+  * { margin: 0; padding: 0; box-sizing: border-box }
+  body { font-family: sans-serif; font-size: 14px }
+  .card { border: 2px solid #333; margin-block-end: 24px; padding-inline: 32px; padding-block: 16px; background: #eef }
+  .card.physical { padding-left: 32px; padding-right: 32px; padding-top: 16px; padding-bottom: 16px; margin-bottom: 24px }
+  .centered { width: 200px; margin-inline: auto; border: 2px solid #900; padding: 8px; text-align: center; background: #fee }
+  .indent { margin-inline-start: 90px; border-inline-start: 4px solid #090; padding-inline-start: 8px; margin-block: 12px }
+  .rel { position: relative; inset-inline-start: 120px; inset-block-start: 6px; background: #ffd; width: 160px; padding: 4px }
+</style></head><body>
+  <div class="card physical">CONTROL: physical padding-left/right 32px, padding-top/bottom 16px</div>
+  <div class="card">padding-inline: 32px; padding-block: 16px; margin-block-end: 24px</div>
+  <div class="centered">width 200px + margin-inline: auto</div>
+  <div class="indent">margin-inline-start 90px + border-inline-start</div>
+  <div class="rel">relative, inset-inline-start 120px</div>
+  <div>trailing block (checks margin-block-end spacing above)</div>
+</body></html>
