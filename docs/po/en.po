@@ -4180,6 +4180,31 @@ msgstr "The one to four value shorthand"
 msgid "`padding-top` / `-right` / `-bottom` / `-left`"
 msgstr "`padding-top`, `-right`, `-bottom`, `-left`"
 
+#: src/supports/properties.md:41
+msgid "`margin-inline` / `margin-block` / `margin-inline-start`等"
+msgstr "`margin-inline`, `margin-block`, `margin-inline-start` and so on"
+
+#: src/supports/properties.md:41
+msgid ""
+"論理プロパティ。対応する書字方向が`horizontal-tb`+LTRのみなので、`inline-start`=左、"
+"`inline-end`=右、`block-start`=上、`block-end`=下へ固定で写像する(`writing-mode`/"
+"`direction`は非対応)。2辺ショートハンドは1〜2値(`start end`の順)。`auto`も通るので"
+"`margin-inline: auto`で中央寄せできる"
+msgstr ""
+"Logical properties. The only writing mode supported is `horizontal-tb` LTR, so "
+"they map to fixed physical sides: `inline-start` is left, `inline-end` is right, "
+"`block-start` is top and `block-end` is bottom (`writing-mode` and `direction` "
+"are not supported). The two-side shorthands take one or two values, start then "
+"end. `auto` passes through, so `margin-inline: auto` centres a block"
+
+#: src/supports/properties.md:42
+msgid "`padding-inline` / `padding-block` / `padding-inline-start`等"
+msgstr "`padding-inline`, `padding-block`, `padding-inline-start` and so on"
+
+#: src/supports/properties.md:42
+msgid "論理プロパティ。写像規則は`margin-inline`と同じ"
+msgstr "Logical properties, mapped the same way as `margin-inline`"
+
 #: src/supports/properties.md:40
 msgid "パーセンテージはcontaining block幅基準(仕様通り)"
 msgstr ""
@@ -4205,6 +4230,14 @@ msgstr ""
 #: src/supports/properties.md:47
 msgid "`border-top` / `-right` / `-bottom` / `-left`"
 msgstr "`border-top`, `-right`, `-bottom`, `-left`"
+
+#: src/supports/properties.md:50
+msgid ""
+"`border-inline` / `border-block` / `border-inline-start`等(`-width`/`-style`/"
+"`-color`のロングハンドを含む)"
+msgstr ""
+"`border-inline`, `border-block`, `border-inline-start` and so on, including the "
+"`-width`, `-style` and `-color` longhands"
 
 #: src/supports/properties.md:47
 msgid "辺別ショートハンド(値文法は`border`と同じ)"
@@ -4379,6 +4412,18 @@ msgstr ""
 #: src/supports/properties.md:67
 msgid "`inset`(ショートハンド)"
 msgstr "`inset`, the shorthand"
+
+#: src/supports/properties.md:67
+msgid "1〜4値ショートハンド(展開規則は`margin`と同じ)"
+msgstr "The one to four value shorthand, expanded the same way as `margin`"
+
+#: src/supports/properties.md:68
+msgid "`inset-inline` / `inset-block` / `inset-inline-start`等"
+msgstr "`inset-inline`, `inset-block`, `inset-inline-start` and so on"
+
+#: src/supports/properties.md:68
+msgid "論理プロパティ。写像規則は[`margin-inline`](#ボックスモデル)と同じ"
+msgstr "Logical properties, mapped the same way as [`margin-inline`](#box-model)"
 
 #: src/supports/properties.md:67
 msgid "個別の`top`/`right`/`bottom`/`left`を使う"
@@ -5453,19 +5498,20 @@ msgstr ""
 
 #: src/supports/properties.md:245
 msgid ""
-"ショートハンド: `font`/`inset`/`place-content`/`place-items`/`place-self`/"
+"ショートハンド: `font`/`place-content`/`place-items`/`place-self`/"
 "`text-decoration`の色・線種部分"
 msgstr ""
-"Shorthands: `font`, `inset`, `place-content`, `place-items`, `place-self`, "
+"Shorthands: `font`, `place-content`, `place-items`, `place-self`, "
 "and the colour and line-style parts of `text-decoration`"
 
 #: src/supports/properties.md:246
 msgid ""
-"論理プロパティ: `inline-size`/`block-size`/`margin-inline`/`padding-block`/"
-"`border-inline`等すべて"
+"論理プロパティのうち寸法系: `inline-size`/`block-size`/`min-inline-size`/"
+"`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応済み)"
 msgstr ""
-"Logical properties: `inline-size`, `block-size`, `margin-inline`, `padding-"
-"block`, `border-inline`, and all the rest"
+"The sizing logical properties: `inline-size`, `block-size`, `min-inline-size`, "
+"`max-block-size` and so on (the `margin`, `padding`, `inset` and `border` "
+"logical properties are supported)"
 
 #: src/supports/properties.md:247
 msgid ""
@@ -8999,12 +9045,12 @@ msgstr "Taken feature by feature, the following are not supported."
 
 #: src/appendix/limitations.md:48
 msgid ""
-"縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`"
-"等)、`direction`による右横書き"
+"縦書き(`writing-mode`/`text-orientation`)と`direction`による右横書き"
+"(`margin-inline`等の論理プロパティは`horizontal-tb`+LTRの固定写像としてのみ対応)"
 msgstr ""
-"Vertical writing with `writing-mode` and `text-orientation`, the logical "
-"properties such as `margin-inline`, and right-to-left text through "
-"`direction`"
+"Vertical writing with `writing-mode` and `text-orientation`, and right-to-left "
+"text through `direction` (logical properties such as `margin-inline` are "
+"supported only as a fixed mapping for `horizontal-tb` and LTR)"
 
 #: src/appendix/limitations.md:49
 msgid "多段組み(`columns`/`column-count`)"

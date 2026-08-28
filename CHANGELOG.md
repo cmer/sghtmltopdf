@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Map the logical box properties to their physical sides (#21). `margin-inline-start`
+  becomes `margin-left`, `padding-block` becomes `padding-top` and `padding-bottom`, and so
+  on for `margin-*`, `padding-*`, `inset-*` and `border-*` (including the `-width`, `-style`
+  and `-color` longhands), plus the `inset` shorthand. The engine only supports
+  `horizontal-tb` LTR, so the mapping is fixed rather than driven by `writing-mode`.
+  Tailwind v4 emits these for `px-*`, `py-*`, `mx-auto` and `space-y-*`, and until now a
+  document built with it silently lost its horizontal padding and every centred block.
+
 ### Fixed
 
 - Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
