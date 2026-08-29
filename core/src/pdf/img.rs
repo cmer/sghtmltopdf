@@ -403,7 +403,7 @@ fn split_interleaved_alpha(buf: &[u8], stride: usize) -> (Vec<u8>, Vec<u8>) {
 // 割当・書き出しはフォントと同じ既存のタイミング(レイアウト確定後)に置ける。
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -518,8 +518,27 @@ enum ImageIdsKind {
     Raster { alpha: Option<Ref> },
     /// 文書の`Ref`空間へ振り直し済みのsvg2pdfのチャンク。書き出す内容が
     /// 既に確定しているのでここに持たせている。
+    ///
+    /// ストリーミング書き出しでは1度書き終えれば以降は`root`(=`ImageIds::root`)
+    /// しか要らないので、`graphic`を`None`にして`Chunk`を早く解放する
+    /// ([`ImageIds::forget_written_chunk`])。ラスタ画像がデコード結果とは別に
+    /// XObjectのバイト列を残さないのと揃える意図。
     #[cfg(feature = "svg")]
-    Vector(Box<super::svg::RenumberedVectorGraphic>),
+    Vector {
+        graphic: Option<Box<super::svg::RenumberedVectorGraphic>>,
+    },
+}
+
+impl ImageIds {
+    /// 書き出し済みのSVGチャンクを解放する(ストリーミング書き出しで、
+    /// 1度`Sink`へ流し終えた後に呼ぶ)。`root`は後続ページの`Do`参照のために
+    /// 残す。ラスタ画像・未書き出しのSVG・SVG feature無効時では何もしない。
+    pub fn forget_written_chunk(&mut self) {
+        #[cfg(feature = "svg")]
+        if let ImageIdsKind::Vector { graphic } = &mut self.kind {
+            *graphic = None;
+        }
+    }
 }
 
 /// `image`に対応する`Ref`を、`image_ids`に無ければ新規に払い出す
@@ -532,12 +551,19 @@ enum ImageIdsKind {
 /// (=同じ画像はPDFへ2回書き出さない)。
 ///
 /// SVGの`Ref`振り直しに失敗した場合は`None`を返す(その画像は描画されない)。
+/// `failed`は失敗を記録するセットで、**同じSVGが何度使われても警告を1回に
+/// 抑える**ために使う(ラスタ画像はここへ来る前にデコード段階で失敗するので
+/// 対象外)。
 pub fn ids_for_image<'a>(
     alloc: &mut RefAllocator,
     image_ids: &'a mut HashMap<usize, ImageIds>,
+    failed: &mut HashSet<usize>,
     image: &Rc<PreparedImage>,
 ) -> Option<(&'a ImageIds, bool)> {
     let key = Rc::as_ptr(image) as usize;
+    if failed.contains(&key) {
+        return None;
+    }
     let is_new = !image_ids.contains_key(&key);
     if is_new {
         let ids = match &image.content {
@@ -557,10 +583,13 @@ pub fn ids_for_image<'a>(
                 match super::svg::renumber_into_document(graphic, alloc) {
                     Ok(renumbered) => ImageIds {
                         root: renumbered.root,
-                        kind: ImageIdsKind::Vector(Box::new(renumbered)),
+                        kind: ImageIdsKind::Vector {
+                            graphic: Some(Box::new(renumbered)),
+                        },
                     },
                     Err(e) => {
                         eprintln!("警告: {e}");
+                        failed.insert(key);
                         return None;
                     }
                 }
@@ -602,7 +631,10 @@ pub fn embed_image(
             );
         }
         #[cfg(feature = "svg")]
-        ImageIdsKind::Vector(graphic) => {
+        ImageIdsKind::Vector { graphic } => {
+            let graphic = graphic
+                .as_ref()
+                .expect("SVGチャンクはバッチモードでは書き出す直前に1度だけ参照される");
             warn_if_grayscale_svg(grayscale);
             // `Chunk::extend`がオフセットの付け替えまでやってくれる。
             pdf.extend(&graphic.chunk);
@@ -648,11 +680,15 @@ pub fn embed_image_streaming_chunks(
             chunks
         }
         #[cfg(feature = "svg")]
-        ImageIdsKind::Vector(graphic) => {
+        ImageIdsKind::Vector { graphic } => {
+            let graphic = graphic
+                .as_ref()
+                .expect("SVGチャンクはストリーミング書き出しでも1度だけ参照される");
             warn_if_grayscale_svg(grayscale);
             // チャンクを複製するが、ここへ来るのは`src`ごとに1回だけで、
             // 中身はベクタの描画命令(数KB程度)なので借用にして
-            // ライフタイムを持ち回るほどの量ではない。
+            // ライフタイムを持ち回るほどの量ではない。書き出し後に
+            // 呼び出し側が[`ImageIds::forget_written_chunk`]で元を解放する。
             vec![EmbedChunk {
                 chunk: graphic.chunk.clone(),
                 offsets: graphic.offsets.clone(),

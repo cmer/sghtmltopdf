@@ -40,7 +40,7 @@
 //!   ブレンド処理は非対応)
 //! - `border-style`の`groove`/`ridge`/`inset`/`outset`(2階調の疑似立体陰影)は非対応
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use pdf_writer::types::{ActionType, AnnotationType, LineCapStyle, TextRenderingMode};
@@ -230,6 +230,8 @@ pub fn encode_pdf_with_options(
     // フォントと違ってページ間で使い回すための事前サブセット化情報が
     // 不要なため、ページごとに「初出なら書き出す」形で済ませる。
     let mut image_ids: HashMap<usize, ImageIds> = HashMap::new();
+    // 振り直しに失敗したSVGを1文書内で1回しか警告しないための記録。
+    let mut failed_svg_ids: HashSet<usize> = HashSet::new();
     let mut page_ids = Vec::with_capacity(pages.len());
     // 名前付き宛先(`/Dests`)は全ページを書き終えてから解決する。
     let mut destinations: Vec<(String, Ref, f32, f32)> = Vec::new();
@@ -246,7 +248,9 @@ pub fn encode_pdf_with_options(
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
             // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
-            let Some((ids, is_new)) = ids_for_image(&mut alloc, &mut image_ids, image) else {
+            let Some((ids, is_new)) =
+                ids_for_image(&mut alloc, &mut image_ids, &mut failed_svg_ids, image)
+            else {
                 continue;
             };
             if is_new {

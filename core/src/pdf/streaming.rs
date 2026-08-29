@@ -13,7 +13,7 @@
 //! `(Ref, 書き込み済みオフセット)`を自前で記録し、[`StreamingPdfWriter::finish`]
 //! でxref/trailerを組み立てる。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use pdf_writer::writers::Catalog;
@@ -60,6 +60,10 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// 集計(サブセット化)が不要なため、`finish`まで待たずページごとに
     /// 「初出なら書き出す」形で埋めていく。
     image_ids: HashMap<usize, ImageIds>,
+    /// `ids_for_image`が振り直しに失敗したSVGのキー。同じSVGが何度使われても
+    /// 警告を1回で済ませるためのキャッシュ(ラスタ画像はデコード段階で失敗する
+    /// のでここには来ない)。
+    failed_svg_ids: HashSet<usize>,
     /// `@page`ルール(margin box描画用)。
     page_rules: Vec<PageRule>,
     /// `background-color`/`box-shadow`の半透明描画用ExtGState(0.05刻み・
@@ -148,6 +152,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
             page_ids: Vec::new(),
             settings,
             image_ids: HashMap::new(),
+            failed_svg_ids: HashSet::new(),
             page_rules,
             alpha_gs_ids: alpha_gs_ids.clone(),
             alpha_gs_names,
@@ -251,8 +256,12 @@ impl<S: Sink> StreamingPdfWriter<S> {
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
             // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
-            let Some((ids, is_new)) = ids_for_image(&mut self.alloc, &mut self.image_ids, image)
-            else {
+            let Some((ids, is_new)) = ids_for_image(
+                &mut self.alloc,
+                &mut self.image_ids,
+                &mut self.failed_svg_ids,
+                image,
+            ) else {
                 continue;
             };
             let root = ids.root;
@@ -265,6 +274,14 @@ impl<S: Sink> StreamingPdfWriter<S> {
             };
             for embed in &embedded {
                 self.write_objects(&embed.chunk, &embed.offsets)?;
+            }
+            // 書き出し済みのSVGチャンクは以降不要なので解放する。`root`は
+            // `ImageIds`側に残るので、後続ページの`Do`参照は引き続き引ける。
+            // ラスタ画像・未書き出しのSVGはこの呼び出しで何も起きない。
+            if is_new {
+                if let Some(entry) = self.image_ids.get_mut(&(Rc::as_ptr(image) as usize)) {
+                    entry.forget_written_chunk();
+                }
             }
             page_image_refs.push(root);
         }
