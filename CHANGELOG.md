@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `position: relative` now moves the content of the element together with its background
+  and border (#29). The offset was applied to the box's own rectangle after its lines and
+  child boxes had been placed, so text, images, nested blocks and list markers were left
+  at the unoffset position. A `position: relative` inline element (`<span>`) now shifts
+  its own text too, and an absolutely positioned descendant of a relative element uses the
+  offset padding box as its containing block.
+
 - Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
   layout to integers so that a rasteriser does not leave gaps or overlaps between boxes;
   the output here is PDF, which has no such constraint, and the rounding truncated the

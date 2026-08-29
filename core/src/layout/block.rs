@@ -13,7 +13,7 @@ use crate::style::{
     Position,
 };
 
-use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox, TableSection};
+use super::box_tree::{BoxContent, ImageBoxContent, LayoutBox, RelativeInset, TableSection};
 use super::flex::layout_flex;
 use super::float_ctx::FloatContext;
 use super::geometry::{EdgeSizes, FragmentPosition, Layout, Rect};
@@ -622,17 +622,28 @@ fn layout_box_impl(
     let content_x = x + margin.left + border.left + padding.left;
     let mut content_y = y + margin.top + border.top + padding.top;
 
+    // `position: relative`の視覚的オフセット。中身は先にオフセット無しの
+    // 座標でレイアウトし、最後にボックス全体(装飾・行・子ボックス・マーカー)
+    // を`shift_box_*_in_place`で平行移動する(#29: 装飾だけずらすと中身が
+    // 取り残される)。後続兄弟の`cursor_y`計算は`margin_box_height`
+    // (座標に依存しない)を使うため、ずらしても後続要素のフローには影響しない。
+    let (offset_x, offset_y) = match RelativeInset::of(&style) {
+        Some(inset) => resolve_relative_offset(&inset, content_width),
+        None => (0.0, 0.0),
+    };
+
     // positioned要素(relative/absolute/fixed)は、子孫の`absolute`の
     // containing blockを自分のpadding boxにする。高さは循環を避けるため
-    // 使わない(bottom配置は非対応)。
+    // 使わない(bottom配置は非対応)。relativeのオフセットはpadding boxの
+    // 位置にも効く(CSS2.1 §9.4.3)ので、ここで先に加えておく。
     let saved_cb = pos.abs_cb;
     if style.position != Position::Static {
         if let Some(node) = b.node {
             pos.abs_cb = AbsCB::Ancestor {
                 node,
                 rect: Rect {
-                    x: content_x - padding.left,
-                    y: content_y - padding.top,
+                    x: content_x - padding.left + offset_x,
+                    y: content_y - padding.top + offset_y,
                     width: padding.left + content_width + padding.right,
                     height: 0.0,
                 },
@@ -833,32 +844,16 @@ fn layout_box_impl(
         height_is_auto,
     );
 
-    // `position: relative`の視覚的オフセット。後続兄弟の`cursor_y`計算は
-    // `margin_box_height`(座標に依存しない)を使うため、ここでcontent
-    // 座標をずらしても後続要素のフローには影響しない。
-    let (offset_x, offset_y) = if style.position == Position::Relative {
-        resolve_relative_offset(&style, content_width)
-    } else {
-        (0.0, 0.0)
-    };
-
     let marker = b.marker.as_deref().and_then(|text| {
-        layout_list_marker(
-            text,
-            &style,
-            fonts,
-            content_x + offset_x,
-            content_y + offset_y,
-        )
-        .map(Box::new)
+        layout_list_marker(text, &style, fonts, content_x, content_y).map(Box::new)
     });
 
-    LaidOutBox {
+    let mut laid = LaidOutBox {
         node: b.node,
         layout: Layout {
             content: Rect {
-                x: content_x + offset_x,
-                y: content_y + offset_y,
+                x: content_x,
+                y: content_y,
                 width: content_width,
                 height: content_height,
             },
@@ -872,7 +867,15 @@ fn layout_box_impl(
         is_float: style.float != Float::None,
         content,
         marker,
+    };
+    if offset_x != 0.0 {
+        shift_box_x_in_place(&mut laid, offset_x);
     }
+    if offset_y != 0.0 {
+        // `shift_box_y_in_place`のdeltaは「引く量」なので、下げるには`-dy`。
+        shift_box_y_in_place(&mut laid, -offset_y);
+    }
+    laid
 }
 
 /// `display: list-item`のマーカー(`list-style-position: outside`、または
@@ -967,7 +970,9 @@ fn layout_float_child(
 
 /// `position: relative`のtop/right/bottom/leftから視覚的オフセット`(dx, dy)`を
 /// 解決する。優先順位はCSS仕様通り`top` > `bottom`、`left` > `right`。
-fn resolve_relative_offset(style: &ComputedStyle, containing_width: f32) -> (f32, f32) {
+/// `top`/`bottom`のパーセンテージはcontaining blockの高さ基準だが、高さは
+/// 確定していない(循環を避ける)ため0として扱う(既知の簡略化)。
+pub(super) fn resolve_relative_offset(inset: &RelativeInset, containing_width: f32) -> (f32, f32) {
     let resolve =
         |primary: LengthPercentageOrAuto, secondary: LengthPercentageOrAuto, basis: f32| {
             match primary {
@@ -978,8 +983,8 @@ fn resolve_relative_offset(style: &ComputedStyle, containing_width: f32) -> (f32
                 },
             }
         };
-    let dx = resolve(style.left, style.right, containing_width);
-    let dy = resolve(style.top, style.bottom, 0.0);
+    let dx = resolve(inset.left, inset.right, containing_width);
+    let dy = resolve(inset.top, inset.bottom, 0.0);
     (dx, dy)
 }
 
@@ -2597,5 +2602,118 @@ mod tests {
             }
         }
         dom.children(id).find_map(|child| find(dom, child, tag))
+    }
+
+    /// `position: relative`のオフセットは、装飾(背景・枠線)だけでなく中身
+    /// (行・子ブロック・マーカー)も一緒に動かす(waka/sghtmltopdf#29)。
+    #[test]
+    fn position_relative_moves_inline_content_and_block_children_with_the_box() {
+        let dom = html::parse(
+            br#"<div class="rel"><p>child</p></div><ul><li class="rel">item</li></ul>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body, p, ul { margin: 0; padding: 0; } \
+             .rel { position: relative; top: 5px; left: 7px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, 800.0);
+
+        let div = find(&dom, dom.document(), "div").expect("div not found");
+        let p = find(&dom, dom.document(), "p").expect("p not found");
+        let div_box = find_laid_out(&laid, div).expect("div not laid out");
+        let p_box = find_laid_out(&laid, p).expect("p not laid out");
+        assert_eq!(
+            (div_box.layout.content.x, div_box.layout.content.y),
+            (7.0, 5.0)
+        );
+        // 子ブロックも親と一緒に動く。
+        assert_eq!((p_box.layout.content.x, p_box.layout.content.y), (7.0, 5.0));
+        // その行ボックスも同じ位置にある。
+        let LaidOutContent::Inline(lines) = &p_box.content else {
+            panic!("p should hold inline content");
+        };
+        assert_eq!((lines[0].rect.x, lines[0].rect.y), (7.0, 5.0));
+
+        // リストマーカーも中身と一緒に動く(content boxの左側に留まる)。
+        let li = find(&dom, dom.document(), "li").expect("li not found");
+        let li_box = find_laid_out(&laid, li).expect("li not laid out");
+        let marker = li_box.marker.as_ref().expect("li should have a marker");
+        let LaidOutContent::Inline(lines) = &li_box.content else {
+            panic!("li should hold inline content");
+        };
+        assert_eq!(lines[0].rect.x, li_box.layout.content.x);
+        assert!(marker.rect.x < li_box.layout.content.x);
+        assert_eq!(marker.rect.y, lines[0].rect.y);
+    }
+
+    /// 相対配置された祖先を持つ絶対配置要素は、オフセット後のpadding boxを
+    /// containing blockにする。
+    #[test]
+    fn position_relative_offset_shifts_the_containing_block_of_absolute_children() {
+        let dom = html::parse(br#"<div class="rel"><div class="abs">x</div></div>"#);
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .rel { position: relative; top: 5px; left: 7px; height: 50px; } \
+             .abs { position: absolute; top: 0; left: 0; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let (_, positioned) = layout_document_positioned(&tree, &styles, &fonts, (800.0, 600.0));
+        assert_eq!(positioned.len(), 1);
+        let abs = &positioned[0].laid;
+        assert_eq!((abs.layout.content.x, abs.layout.content.y), (7.0, 5.0));
+    }
+
+    /// インライン要素(`<span>`)の`position: relative`は、そのランだけを
+    /// ずらす(waka/sghtmltopdf#29の`<span>`のケース)。
+    #[test]
+    fn position_relative_on_an_inline_element_shifts_only_its_runs() {
+        let html_src = br#"<div>A <span class="s">TEXT</span> B</div>"#;
+        let ua = user_agent_stylesheet();
+        let fonts = test_fonts();
+        let runs_of = |css: &str| -> Vec<(String, f32, f32)> {
+            let dom = html::parse(html_src);
+            let styles = compute_styles(&dom, &ua, &parse_stylesheet(css));
+            let tree = build_box_tree(&dom, &styles);
+            let laid = layout_document(&tree, &styles, &fonts, 800.0);
+            let div = find(&dom, dom.document(), "div").expect("div not found");
+            let div_box = find_laid_out(&laid, div).expect("div not laid out");
+            let LaidOutContent::Inline(lines) = &div_box.content else {
+                panic!("div should hold inline content");
+            };
+            lines[0]
+                .runs
+                .iter()
+                .map(|r| (r.text.clone(), r.x_offset, r.baseline_shift))
+                .collect()
+        };
+        let plain = runs_of("body { margin: 0; }");
+        let shifted =
+            runs_of("body { margin: 0; } .s { position: relative; left: 120px; top: 3px; }");
+        assert_eq!(plain.len(), shifted.len());
+        for (before, after) in plain.iter().zip(&shifted) {
+            assert_eq!(before.0, after.0);
+            if before.0 == "TEXT" {
+                assert_eq!(
+                    after.1,
+                    before.1 + 120.0,
+                    "span run should move right by 120px"
+                );
+                // `baseline_shift`は正=上なので、`top: 3px`は-3。
+                assert_eq!(after.2, before.2 - 3.0, "span run should move down by 3px");
+            } else {
+                assert_eq!(
+                    (after.1, after.2),
+                    (before.1, before.2),
+                    "{:?} should not move",
+                    before.0
+                );
+            }
+        }
     }
 }

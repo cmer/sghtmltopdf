@@ -11,7 +11,7 @@ use crate::style::{
     RgbaColor, TextAlign, TextOverflow, TextTransform, VerticalAlign, WhiteSpace, WordBreak,
 };
 
-use super::block::{LaidOutBox, PosCtx};
+use super::block::{resolve_relative_offset, LaidOutBox, PosCtx};
 use super::box_tree::{BoxContent, InlineSpan, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::Rect;
@@ -193,6 +193,64 @@ enum InlineItem<'a> {
 /// 無関係な呼び出し)なら固定の`available_width`/`origin_x`のまま(既存動作)。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_inline_content(
+    spans: &[InlineSpan],
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+    available_width: f32,
+    origin_x: f32,
+    origin_y: f32,
+    float_ctx: Option<&FloatContext>,
+    pos: &mut PosCtx,
+) -> Vec<LineBox> {
+    let mut lines = layout_inline_content_in_flow(
+        spans,
+        styles,
+        fonts,
+        available_width,
+        origin_x,
+        origin_y,
+        float_ctx,
+        pos,
+    );
+    apply_relative_span_offsets(&mut lines, spans, available_width);
+    lines
+}
+
+/// `position: relative`なインライン要素(`<span>`等)の子孫のランを、
+/// 行組みが終わった後で視覚的にずらす(#29)。行の高さ・折り返し・後続の
+/// ランの位置には影響しない(CSS仕様通り、relativeはフローに影響しない)。
+/// 縦方向は`baseline_shift`(正=上)に載せるので、描画層はそのままでよい。
+///
+/// ランの`style_index`は`flatten_spans`が`spans`と同じ順で振るため、
+/// `spans[style_index]`がそのランの元スパン(ハイフンや省略記号として後から
+/// 生成されたランも、元のスパンのインデックスを引き継ぐ)。
+fn apply_relative_span_offsets(lines: &mut [LineBox], spans: &[InlineSpan], available_width: f32) {
+    if spans.iter().all(|span| span.relative_insets.is_empty()) {
+        return;
+    }
+    let offsets: Vec<(f32, f32)> = spans
+        .iter()
+        .map(|span| {
+            span.relative_insets
+                .iter()
+                .fold((0.0, 0.0), |(dx, dy), inset| {
+                    let (x, y) = resolve_relative_offset(inset, available_width);
+                    (dx + x, dy + y)
+                })
+        })
+        .collect();
+    for run in lines.iter_mut().flat_map(|line| line.runs.iter_mut()) {
+        let Some(&(dx, dy)) = offsets.get(run.style_index) else {
+            continue;
+        };
+        run.x_offset += dx;
+        run.baseline_shift -= dy;
+    }
+}
+
+/// [`layout_inline_content`]の本体(relativeのオフセット適用前)。
+#[allow(clippy::too_many_arguments)]
+fn layout_inline_content_in_flow(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
