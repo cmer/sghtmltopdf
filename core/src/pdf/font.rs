@@ -181,6 +181,12 @@ pub fn embed_font(
     }
     let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut to_unicode = pdf.cmap(ids.to_unicode, &cmap_bytes);
+    to_unicode.name(Name(b"Custom"));
+    to_unicode.system_info(SystemInfo {
+        registry: Str(b"Adobe"),
+        ordering: Str(b"UCS"),
+        supplement: 0,
+    });
     if compress {
         to_unicode.filter(Filter::FlateDecode);
     }
@@ -313,6 +319,12 @@ pub fn embed_font_streaming_chunks(
     let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut chunk = Chunk::new();
     let mut to_unicode = chunk.cmap(ids.to_unicode, &cmap_bytes);
+    to_unicode.name(Name(b"Custom"));
+    to_unicode.system_info(SystemInfo {
+        registry: Str(b"Adobe"),
+        ordering: Str(b"UCS"),
+        supplement: 0,
+    });
     if compress {
         to_unicode.filter(Filter::FlateDecode);
     }

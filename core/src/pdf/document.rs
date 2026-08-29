@@ -4427,6 +4427,18 @@ mod tests {
             "ToUnicode CMap should be embedded"
         );
         assert!(
+            count_occurrences(&bytes, b"/CMapName /Custom") > 0,
+            "CMap stream dictionary must carry /CMapName (ISO 32000-1 table 120)"
+        );
+        assert!(
+            count_occurrences(&bytes, b"/CIDSystemInfo") >= 2,
+            "CMap stream dictionary must carry /CIDSystemInfo (ISO 32000-1 table 120)"
+        );
+        assert!(
+            count_occurrences(&bytes, b"/Ordering (UCS)") > 0,
+            "ToUnicode CMap /CIDSystemInfo should be Adobe-UCS-0"
+        );
+        assert!(
             count_occurrences(&bytes, b"/FlateDecode") > 0,
             "font stream should be compressed"
         );
