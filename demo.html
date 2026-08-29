@@ -1,0 +1,23 @@
+<!DOCTYPE html><html><head><style>
+  @page { size: A5; margin: 0.5in }
+  * { margin: 0; padding: 0 }
+  body { font-family: sans-serif; font-size: 14px }
+  h2 { font-size: 13px; margin: 0 0 8px; color: #444 }
+  .rel-bg   { position: relative; left: 120px; background: #ffd; width: 160px }
+  .rel-brd  { position: relative; left: 120px; border: 2px solid #000; width: 160px }
+  .rel-kid  { position: relative; left: 120px; background: #fdd; width: 160px }
+  .rel-span { position: relative; left: 120px; background: #ddf }
+  .rel-img  { position: relative; left: 120px; width: 160px }
+  .rel-top  { position: relative; top: 20px; background: #dfd; width: 160px }
+  li.rel    { position: relative; left: 120px; background: #fed }
+  ul { padding-left: 24px }
+</style></head><body>
+<h2>#29 position: relative — background/border should stay with the content</h2>
+<div class="rel-bg">left:120 bg</div>
+<div class="rel-brd">left:120 border</div>
+<div class="rel-kid"><p>left:120 child p</p></div>
+<div>A <span class="rel-span">span left:120</span></div>
+<div class="rel-img"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" style="width:40px;height:14px"> img left:120</div>
+<ul><li class="rel">list item left:120</li></ul>
+<div class="rel-top">top:20 bg</div>
+</body></html>
