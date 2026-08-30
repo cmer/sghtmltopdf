@@ -1065,12 +1065,15 @@ fn header_and_footer_lines_are_drawn() {
 
 #[test]
 fn header_spacing_increases_the_top_margin() {
+    // 1ページの残り高さの差がページ数の差として現れるだけの分量と余白を使う
+    // (行送りはフォントのメトリクス由来なので、境界ぎりぎりの分量にすると
+    // フォントを変えただけでページ数が並んでしまう)。
     let html = format!(
         "<html><body>{}</body></html>",
-        "<p style=\"margin:0\">line</p>".repeat(40)
+        "<p style=\"margin:0\">line</p>".repeat(90)
     );
     let normal = run_cli_with(&html, &[], "spacing-none");
-    let spaced = run_cli_with(&html, &["--header-spacing", "40"], "spacing-40");
+    let spaced = run_cli_with(&html, &["--header-spacing", "100"], "spacing-100");
     assert!(
         count_occurrences(&spaced, b"/MediaBox") > count_occurrences(&normal, b"/MediaBox"),
         "a larger top margin should need more pages"
