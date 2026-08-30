@@ -275,14 +275,6 @@ impl<S: Sink> StreamingPdfWriter<S> {
             for embed in &embedded {
                 self.write_objects(&embed.chunk, &embed.offsets)?;
             }
-            // 書き出し済みのSVGチャンクは以降不要なので解放する。`root`は
-            // `ImageIds`側に残るので、後続ページの`Do`参照は引き続き引ける。
-            // ラスタ画像・未書き出しのSVGはこの呼び出しで何も起きない。
-            if is_new {
-                if let Some(entry) = self.image_ids.get_mut(&(Rc::as_ptr(image) as usize)) {
-                    entry.forget_written_chunk();
-                }
-            }
             page_image_refs.push(root);
         }
 

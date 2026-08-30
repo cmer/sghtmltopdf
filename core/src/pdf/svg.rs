@@ -270,6 +270,7 @@ pub fn warn_about_inline_svg(dom: &crate::html::Dom, root: crate::html::NodeId, 
 
 #[cfg(feature = "svg")]
 mod convert {
+    use std::cell::RefCell;
     use std::collections::HashMap;
 
     use pdf_writer::{Chunk, Ref};
@@ -285,7 +286,11 @@ mod convert {
     /// [`renumber_into_document`]で振り直す。
     #[derive(Debug, Clone)]
     pub struct VectorGraphic {
-        chunk: Chunk,
+        /// 振り直しは画像1枚につき1度だけなので、[`renumber_into_document`]が
+        /// ここから取り出して手放す。デコード結果は`src`をキーにした
+        /// キャッシュが文書の最後まで持つため、振り直し前のチャンクを
+        /// 残しておくと同じ内容を二重に抱えることになる。
+        chunk: RefCell<Option<Chunk>>,
         /// `chunk`内のForm XObjectのRef(コンテンツストリームから`Do`する対象)。
         root: Ref,
     }
@@ -350,7 +355,14 @@ mod convert {
         // 丸めるとアスペクト比が変わり、`object-fit: contain`/`cover`や
         // `width`だけ指定したときの高さの導出が目に見えてずれる
         // (40.6x10.4 → 41x10で比が5%変わる)。
-        Ok((size.width(), size.height(), VectorGraphic { chunk, root }))
+        Ok((
+            size.width(),
+            size.height(),
+            VectorGraphic {
+                chunk: RefCell::new(Some(chunk)),
+                root,
+            },
+        ))
     }
 
     /// usvgのパースオプション。
@@ -430,9 +442,17 @@ mod convert {
         graphic: &VectorGraphic,
         alloc: &mut RefAllocator,
     ) -> Result<RenumberedVectorGraphic, SvgError> {
+        // 振り直した時点で元のチャンクは要らないので、取り出して手放す。
+        // 2度目はここで止まる(`ids_for_image`が画像1枚につき1度しか
+        // 呼ばないため、実際には起きない)。
+        let Some(source) = graphic.chunk.borrow_mut().take() else {
+            return Err(SvgError(
+                "振り直し済みのSVGをもう一度埋め込もうとしました".to_string(),
+            ));
+        };
         let mut next = alloc.peek().get();
         let mut mapping: HashMap<Ref, Ref> = HashMap::new();
-        let chunk = graphic.chunk.renumber(|old| {
+        let chunk = source.renumber(|old| {
             *mapping.entry(old).or_insert_with(|| {
                 let assigned = Ref::new(next);
                 next += 1;
@@ -440,6 +460,7 @@ mod convert {
             })
         });
 
+        drop(source);
         let root = *mapping
             .get(&graphic.root)
             .ok_or_else(|| SvgError("Form XObjectのRefが振り直されませんでした".to_string()))?;
@@ -527,9 +548,23 @@ mod convert {
                 convert_svg(CIRCLE.as_bytes(), &SvgFontDb::empty()).expect("should convert");
             assert_eq!((width, height), (20.0, 10.0));
             assert!(
-                graphic.chunk.refs().len() >= 1,
+                graphic.chunk.borrow().as_ref().unwrap().refs().len() >= 1,
                 "the chunk should hold at least the form XObject"
             );
+        }
+
+        #[test]
+        fn renumbering_hands_off_the_original_chunk() {
+            // 振り直し前のチャンクはキャッシュが文書の最後まで持つため、
+            // 振り直した時点で手放す(二重に抱えない)。
+            let (.., graphic) = convert_svg(CIRCLE.as_bytes(), &SvgFontDb::empty()).unwrap();
+            let mut alloc = RefAllocator::default();
+            renumber_into_document(&graphic, &mut alloc).expect("should renumber");
+            assert!(graphic.chunk.borrow().is_none());
+            // 2度目は番号を消費せずエラーになる。
+            let before = alloc.peek();
+            assert!(renumber_into_document(&graphic, &mut alloc).is_err());
+            assert_eq!(alloc.peek(), before);
         }
 
         #[test]

@@ -797,7 +797,10 @@ mod tests {
             )
         };
         assert_eq!(parse_stylesheet(&nested(32)).rules.len(), 1, "32段は通す");
-        assert!(parse_stylesheet(&nested(33)).rules.is_empty(), "33段は捨てる");
+        assert!(
+            parse_stylesheet(&nested(33)).rules.is_empty(),
+            "33段は捨てる"
+        );
 
         // 括弧も`calc()`と同じ深さに数える。
         let parens = format!(

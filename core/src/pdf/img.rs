@@ -519,26 +519,15 @@ enum ImageIdsKind {
     /// 文書の`Ref`空間へ振り直し済みのsvg2pdfのチャンク。書き出す内容が
     /// 既に確定しているのでここに持たせている。
     ///
-    /// ストリーミング書き出しでは1度書き終えれば以降は`root`(=`ImageIds::root`)
-    /// しか要らないので、`graphic`を`None`にして`Chunk`を早く解放する
-    /// ([`ImageIds::forget_written_chunk`])。ラスタ画像がデコード結果とは別に
+    /// 書き出しは`src`ごとに1回だけなので、[`embed_image`]/
+    /// [`embed_image_streaming_chunks`]が複製ではなく`take`で取り出し、
+    /// 書き終えた時点で`None`になる。以降は`root`(=[`ImageIds::root`])だけが
+    /// 後続ページの`Do`参照のために残る。ラスタ画像がデコード結果とは別に
     /// XObjectのバイト列を残さないのと揃える意図。
     #[cfg(feature = "svg")]
     Vector {
         graphic: Option<Box<super::svg::RenumberedVectorGraphic>>,
     },
-}
-
-impl ImageIds {
-    /// 書き出し済みのSVGチャンクを解放する(ストリーミング書き出しで、
-    /// 1度`Sink`へ流し終えた後に呼ぶ)。`root`は後続ページの`Do`参照のために
-    /// 残す。ラスタ画像・未書き出しのSVG・SVG feature無効時では何もしない。
-    pub fn forget_written_chunk(&mut self) {
-        #[cfg(feature = "svg")]
-        if let ImageIdsKind::Vector { graphic } = &mut self.kind {
-            *graphic = None;
-        }
-    }
 }
 
 /// `image`に対応する`Ref`を、`image_ids`に無ければ新規に払い出す
@@ -559,7 +548,7 @@ pub fn ids_for_image<'a>(
     image_ids: &'a mut HashMap<usize, ImageIds>,
     failed: &mut HashSet<usize>,
     image: &Rc<PreparedImage>,
-) -> Option<(&'a ImageIds, bool)> {
+) -> Option<(&'a mut ImageIds, bool)> {
     let key = Rc::as_ptr(image) as usize;
     if failed.contains(&key) {
         return None;
@@ -597,7 +586,7 @@ pub fn ids_for_image<'a>(
         };
         image_ids.insert(key, ids);
     }
-    Some((&image_ids[&key], is_new))
+    Some((image_ids.get_mut(&key)?, is_new))
 }
 
 /// バッチモード向け: `image`のXObjectを`pdf`(`DerefMut<Target = Chunk>`)へ
@@ -605,16 +594,17 @@ pub fn ids_for_image<'a>(
 pub fn embed_image(
     pdf: &mut impl std::ops::DerefMut<Target = Chunk>,
     image: &PreparedImage,
-    ids: &ImageIds,
+    ids: &mut ImageIds,
     grayscale: bool,
 ) {
-    match &ids.kind {
-        ImageIdsKind::Raster { alpha: alpha_id } => {
+    match &mut ids.kind {
+        ImageIdsKind::Raster { alpha } => {
+            let alpha_id = *alpha;
             let (color, alpha) = raster_planes(image, grayscale);
             if let (Some(alpha), Some(alpha_id)) = (&alpha, alpha_id) {
                 write_plane(
                     pdf,
-                    *alpha_id,
+                    alpha_id,
                     pixels(image.width),
                     pixels(image.height),
                     alpha,
@@ -627,17 +617,18 @@ pub fn embed_image(
                 pixels(image.width),
                 pixels(image.height),
                 &color,
-                *alpha_id,
+                alpha_id,
             );
         }
         #[cfg(feature = "svg")]
         ImageIdsKind::Vector { graphic } => {
-            let graphic = graphic
-                .as_ref()
-                .expect("SVGチャンクはバッチモードでは書き出す直前に1度だけ参照される");
-            warn_if_grayscale_svg(grayscale);
-            // `Chunk::extend`がオフセットの付け替えまでやってくれる。
-            pdf.extend(&graphic.chunk);
+            // 書き出しは`src`ごとに1回だけなので、取り出して手放す
+            // (ここで`Chunk`を解放できる)。
+            if let Some(graphic) = graphic.take() {
+                warn_if_grayscale_svg(grayscale);
+                // `Chunk::extend`がオフセットの付け替えまでやってくれる。
+                pdf.extend(&graphic.chunk);
+            }
         }
     }
 }
@@ -646,11 +637,12 @@ pub fn embed_image(
 /// (フォントの`embed_font_streaming_chunks`と同じ形)。
 pub fn embed_image_streaming_chunks(
     image: &PreparedImage,
-    ids: &ImageIds,
+    ids: &mut ImageIds,
     grayscale: bool,
 ) -> Vec<EmbedChunk> {
-    match &ids.kind {
-        ImageIdsKind::Raster { alpha: alpha_id } => {
+    match &mut ids.kind {
+        ImageIdsKind::Raster { alpha } => {
+            let alpha_id = *alpha;
             let (color, alpha) = raster_planes(image, grayscale);
             // アルファと本体は別チャンクにして1枚ずつ書き出す
             // (両方を同時にメモリへ載せないため)。
@@ -659,13 +651,13 @@ pub fn embed_image_streaming_chunks(
                 let mut chunk = Chunk::new();
                 write_plane(
                     &mut chunk,
-                    *alpha_id,
+                    alpha_id,
                     pixels(image.width),
                     pixels(image.height),
                     alpha,
                     None,
                 );
-                chunks.push(EmbedChunk::single(*alpha_id, chunk));
+                chunks.push(EmbedChunk::single(alpha_id, chunk));
             }
             let mut chunk = Chunk::new();
             write_plane(
@@ -674,26 +666,24 @@ pub fn embed_image_streaming_chunks(
                 pixels(image.width),
                 pixels(image.height),
                 &color,
-                *alpha_id,
+                alpha_id,
             );
             chunks.push(EmbedChunk::single(ids.root, chunk));
             chunks
         }
         #[cfg(feature = "svg")]
-        ImageIdsKind::Vector { graphic } => {
-            let graphic = graphic
-                .as_ref()
-                .expect("SVGチャンクはストリーミング書き出しでも1度だけ参照される");
-            warn_if_grayscale_svg(grayscale);
-            // チャンクを複製するが、ここへ来るのは`src`ごとに1回だけで、
-            // 中身はベクタの描画命令(数KB程度)なので借用にして
-            // ライフタイムを持ち回るほどの量ではない。書き出し後に
-            // 呼び出し側が[`ImageIds::forget_written_chunk`]で元を解放する。
-            vec![EmbedChunk {
-                chunk: graphic.chunk.clone(),
-                offsets: graphic.offsets.clone(),
-            }]
-        }
+        ImageIdsKind::Vector { graphic } => match graphic.take() {
+            // 書き出しは`src`ごとに1回だけなので、複製せず取り出して渡す
+            // (`Sink`へ流し終えた時点で`Chunk`が解放される)。
+            Some(graphic) => {
+                warn_if_grayscale_svg(grayscale);
+                vec![EmbedChunk {
+                    chunk: graphic.chunk,
+                    offsets: graphic.offsets,
+                }]
+            }
+            None => Vec::new(),
+        },
     }
 }
 
