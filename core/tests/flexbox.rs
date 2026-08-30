@@ -680,7 +680,7 @@ fn a_wrapped_row_flex_taller_than_a_page_is_split_between_its_lines() {
     for (page_index, page) in pages.iter().enumerate() {
         let lines = text_lines_on_page(page);
         assert!(
-            lines.len() % 2 == 0,
+            lines.len().is_multiple_of(2),
             "page {page_index} splits a flex line: {lines:?}"
         );
         for pair in lines.chunks(2) {
