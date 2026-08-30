@@ -38,6 +38,8 @@
 | `margin-top` / `-right` / `-bottom` / `-left` | ✅ | 隣接兄弟間・親子間のマージン相殺に対応 |
 | `padding` | ✅ | 1〜4値ショートハンド |
 | `padding-top` / `-right` / `-bottom` / `-left` | ✅ | パーセンテージはcontaining block幅基準(仕様通り) |
+| `margin-inline` / `margin-block` / `margin-inline-start`等 | ⚠️ | 論理プロパティ。対応する書字方向が`horizontal-tb`+LTRのみなので、`inline-start`=左、`inline-end`=右、`block-start`=上、`block-end`=下へ固定で写像する(`writing-mode`/`direction`は非対応)。2辺ショートハンドは1〜2値(`start end`の順)。`auto`も通るので`margin-inline: auto`で中央寄せできる |
+| `padding-inline` / `padding-block` / `padding-inline-start`等 | ⚠️ | 論理プロパティ。写像規則は`margin-inline`と同じ |
 
 ## 枠線・角丸・アウトライン・影
 
@@ -45,6 +47,7 @@
 | - | - | - |
 | `border` | ✅ | `<width> \|\| <style> \|\| <color>`を任意順・任意省略で受け付け、4辺へ適用 |
 | `border-top` / `-right` / `-bottom` / `-left` | ✅ | 辺別ショートハンド(値文法は`border`と同じ) |
+| `border-inline` / `border-block` / `border-inline-start`等(`-width`/`-style`/`-color`のロングハンドを含む) | ⚠️ | 論理プロパティ。写像規則は[`margin-inline`](#ボックスモデル)と同じ |
 | `border-width` / `border-style` / `border-color` | ✅ | 1〜4値ショートハンド |
 | `border-*-width` | ⚠️ | `<length>`のみ。`thin`/`medium`/`thick`キーワードは非対応 |
 | `border-*-style` | ⚠️ | `none`/`hidden`/`solid`/`dashed`/`dotted`/`double`/`groove`/`ridge`/`inset`/`outset`。`hidden`は`none`と同一視(テーブルの枠線競合解決でも区別しない)。`groove`/`ridge`/`inset`/`outset`は`border-color`から2階調の陰影を算出して描画 |
@@ -64,7 +67,8 @@
 | `clear` | ✅ | `none`/`left`/`right`/`both` |
 | `position` | ⚠️ | `static`/`relative`/`absolute`/`fixed`。`sticky`は非対応。`absolute`/`fixed`には後述の制約あり |
 | `top` / `right` / `bottom` / `left` | ⚠️ | `absolute`/`fixed`では`bottom`単独指定による下端揃えが非対応(高さの循環参照を避けるため`top`基準に解決する)。`relative`ではオフセットとして機能する |
-| `inset`(ショートハンド) | ❌ | 個別の`top`/`right`/`bottom`/`left`を使う |
+| `inset`(ショートハンド) | ✅ | 1〜4値ショートハンド(展開規則は`margin`と同じ) |
+| `inset-inline` / `inset-block` / `inset-inline-start`等 | ⚠️ | 論理プロパティ。写像規則は[`margin-inline`](#ボックスモデル)と同じ |
 | `transform` | ⚠️ | `translate`/`translateX`/`translateY`/`scale`/`scaleX`/`scaleY`/`rotate`/`skew`/`skewX`/`skewY`/`matrix`。3D系(`translate3d`/`rotate3d`/`perspective()`等)は非対応。PDFのCTM変換で実装するため、変換後の内容はページ分割の判定に影響しない |
 | `transform-origin` | ⚠️ | `background-position`と同じ値文法(キーワード/長さ/パーセンテージの1〜2値)。初期値`50% 50%`。3値目(Z軸)は非対応 |
 
@@ -242,8 +246,8 @@ CSSで`width`/`height`の片方だけを指定した場合は内在アスペク�
 実装が無いだけで、意図的に永久除外と決めたものだけではない。
 カテゴリ表の`❌`行も参照。
 
-* ショートハンド: `font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分
-* 論理プロパティ: `inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて
+* ショートハンド: `font`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分
+* 論理プロパティのうち寸法系: `inline-size`/`block-size`/`min-inline-size`/`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応済み)
 * 書字方向: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`
 * テキスト詳細: `text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`
 * フォント詳細: `font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`
