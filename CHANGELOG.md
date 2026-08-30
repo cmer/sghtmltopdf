@@ -16,14 +16,160 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against, so plain source order gives the same result, and where it differs the usual
   specificity contest decides. The bare `@layer a, b;` ordering statement is still ignored.
 
+## 0.3.0 - 2026-08-30
+
+### Added
+
+- Map the logical box properties to their physical sides (#21). `margin-inline-start`
+  becomes `margin-left`, `padding-block` becomes `padding-top` and `padding-bottom`, and so
+  on for `margin-*`, `padding-*`, `inset-*` and `border-*` (including the `-width`, `-style`
+  and `-color` longhands), plus the `inset` shorthand and the logical corner radii
+  (`border-start-start-radius` and its three siblings). The engine only supports
+  `horizontal-tb` LTR, so the mapping is fixed rather than driven by `writing-mode`.
+  Tailwind v4 emits these for `px-*`, `py-*`, `mx-auto` and `space-y-*`, and until now a
+  document built with it silently lost its horizontal padding and every centred block.
+
+- Render SVG referenced from `<img src>` and `background-image: url()`, as vector graphics
+  rather than by rasterising. Parsing goes through [usvg] and the translation to PDF
+  drawing operators through [svg2pdf], both from typst. An SVG becomes a form XObject
+  normalised to the unit square, so the existing drawing, `object-fit`, background tiling
+  and per-`src` caching all apply unchanged. `.svgz` (gzipped) is accepted too.
+  Behind the `svg` feature, on by default.
+- The `svg-text` feature (off by default) renders `<text>` inside an SVG as embedded,
+  selectable glyphs, using **the document's own fonts**. Whatever is available to the HTML
+  is available inside the SVG, resolved the same way: by the font's internal family name, by
+  the name it is declared under in CSS (`@font-face`), or through the generic families —
+  `serif` / `sans-serif` / `monospace` in an SVG land on `--serif-font` / `--gothic-font` /
+  `--mono-font`. Text with no `font-family`, and text naming a family the document does not
+  have, both fall back to the document's default font. No separate system-font scan happens
+  for SVG, so an SVG can never come out in a font the document never had.
+
+  It is off by default because enabling it adds 25 crates (rustybuzz, resvg and friends,
+  pulled in by svg2pdf's `text` feature). Without it, text inside an SVG is **not drawn at
+  all** — not even converted to paths, since svg2pdf discards text nodes outright. That is
+  now reported: an SVG containing `<text>` warns once per document. usvg and svg2pdf do log
+  it themselves, but through the `log` crate, and this crate installs no logger, so it never
+  reached anyone.
+
+- Accept non-base64 `data:` URIs. A payload without `;base64` is now percent-decoded per
+  RFC 2397 instead of rejected. This is how SVG data URIs are normally written
+  (`data:image/svg+xml,%3Csvg...%3E`), in `<img src>` and CSS `url()` alike; requiring
+  base64 made the common form fail. Tabs and newlines are dropped from the payload (as the
+  URL standard does) but spaces are kept, since they separate tokens in an unencoded SVG.
+
+### Changed
+
+- Pinned `pdf-writer` to 0.12 so that svg2pdf's `Chunk` is the same type as the one used to
+  write the document, which is what lets an SVG be spliced in without going through bytes.
+  No API of ours changed as a result.
+- `PreparedImage`'s intrinsic size is now `f32` rather than `u32`. An SVG's intrinsic size
+  can be fractional (`width="40.6"`, a fractional `viewBox`), and rounding it changed the
+  aspect ratio — 40.6×10.4 became 41×10, a 5% error that visibly skewed `object-fit`
+  (`contain` gave a height of 24.4 instead of 25.6) and the height derived from a
+  `width`-only rule. Raster sizes are unaffected: they are whole pixels either way.
+- An inline `<svg>` in the HTML now warns once per document instead of silently rendering
+  nothing. It is still not drawn — only `<img>` and `background-image` references are — but
+  saying "SVG is supported" and then dropping inline SVG without a word was misleading.
+- `line-height: normal` is now the font's own recommended line spacing (ascent + descent +
+  line gap), as CSS defines it, rather than a fixed 1.2em (#33). The fixed ratio only worked
+  for fonts whose content area fits inside it: DejaVu Sans needs 1.164em and Liberation Sans
+  1.150em, but Noto Sans CJK needs 1.448em, and CJK fonts around 1.4em are common. Where the
+  ratio was too small the half-leading went negative and the glyphs spilled out of their line
+  box, so the last line of a block overlapped whatever came next — a table cell's
+  `border-bottom` drawn through the text, for instance. The overflow scales with `font-size`,
+  which is why it appeared when a larger font followed a smaller one and stayed invisible in
+  the other order.
+
+  Line spacing therefore changes in any document that leaves `line-height` unset. Latin text
+  tightens slightly (1.2em to 1.164em with DejaVu Sans); Japanese text loosens by roughly a
+  fifth (1.2em to 1.448em with Noto Sans CJK), so some documents will gain pages. A document
+  that sets `line-height` explicitly, as a number or a length, is unaffected and its output is
+  unchanged byte for byte. An explicit value smaller than the font's content area still
+  overflows its line box, exactly as it does in a browser; that is the specified behaviour and
+  is deliberately left alone.
+
+- Write a file identifier (`/ID`) into the PDF trailer. PDF/A requires one, and tooling that
+  tracks a file across revisions expects it. The value is 16 bytes of a hash over the same
+  metadata, creation date and page count that go into the `/Info` dictionary, so it is stable
+  for a given document; batch and streaming output produce it the same way. No incremental
+  update is ever written, so the two array elements are equal.
+- Reject a `calc()` or a parenthesised group nested deeper than 32 levels, dropping the
+  declaration as an invalid value. The value parser is recursive descent, so nesting depth is
+  stack depth, and untrusted CSS could overflow the stack (even the 16 MB rendering stack goes
+  at around twenty thousand levels). Real stylesheets stay within a handful of levels.
+
 ### Fixed
 
+- Parse nested style rules (CSS Nesting) instead of silently dropping them (#25).
+  `.wrap { & .probe { } }`, `.wrap { .probe { } }`, `.wrap { &.probe { } }` and
+  `.list { > li { } }` now reach the cascade with the meaning the spec gives them; `&`
+  takes the parent's specificity, and declarations written after a nested rule keep
+  their source position instead of being hoisted above it. Nested at-rules such as
+  `@media` inside a style rule are still ignored.
+- Accept `calc()` as a term inside another `calc()` (#17). CSS Values 4 treats a nested
+  `calc()` the same as a parenthesised group, but the parser only handled the parentheses,
+  so `calc(calc(45px * 2) * calc(1 - 0))` was rejected as invalid and the declaration was
+  dropped while `calc((45px * 2) * (1 - 0))` resolved to 90px. Tailwind v4 emits the nested
+  form for every `space-y-*` and `divide-*` utility, so a Tailwind bundle lost all of its
+  vertical rhythm and divider gaps.
 - Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
   layout to integers so that a rasteriser does not leave gaps or overlaps between boxes;
   the output here is PDF, which has no such constraint, and the rounding truncated the
   measured max-content width so that text which fit was wrapped onto a second line. Which
   way the fraction rounded depended on the exact string, so the same row wrapped for one
   value and not for another (`1 USD = 0.9143 EUR` wrapped, `1 USD 0.9143 EUR` did not).
+- Write the required `/CMapName` and `/CIDSystemInfo` entries into the `/ToUnicode`
+  CMap stream dictionary. ISO 32000-1 table 120 lists both as required for a CMap
+  stream dictionary; the values were already declared inside the embedded CMap
+  program but not lifted into the dictionary. Strict PDF tooling (e.g. HexaPDF,
+  veraPDF) rejects the file without them, which blocks PDF/A-3 validation and
+  therefore Factur-X / ZUGFeRD hybrid e-invoice embedding.
+- Keep the outside marker on a list item that is split across pages (#31). An item that did
+  not fit in what was left of a page kept its marker gutter but lost the marker itself, so an
+  ordered list that paginated silently skipped numbers (7., 14. and 21. in the reported
+  document); the numbers were missing from the text layer too, not merely clipped. Pagination
+  moves the marker onto the item's first fragment, but fragments were only produced for a
+  container that actually paints a background or border. A plain `li` paints neither, so the
+  marker was taken off the container with nowhere to put it back. On a decorated item the
+  marker survived but carried its pre-pagination coordinates, which placed it at a position
+  belonging to another page; that is corrected as well.
+- Count a table's columns with the occupancy of `rowspan` taken into account (#32). The column
+  count was the largest per-row sum of `colspan`, while cell placement skips the columns still
+  held by a `rowspan` from an earlier row. When the first row held nothing but a `rowspan="2"`
+  cell, both rows summed to one column, so the second row's cell was placed in a column the
+  table did not have, given zero width, and dropped from the output with no error or warning —
+  a logo beside a label that appears on the following row, a common invoice-table shape. The
+  count now falls out of the placement walk itself, so the two can no longer disagree.
+- Generate the anonymous table boxes that CSS 2.1 §17.2.1 calls for (#34). Content inside a
+  `display: table` was laid out only when every cell sat inside an explicit `display: table-row`
+  box; a stray `table-cell`, or a plain block child, was dropped from the output with no text,
+  no ink and no warning. Consecutive cells without a row now get an anonymous row (rule 2.1),
+  and consecutive children of a table or a row that are not cells get an anonymous cell
+  (rule 2.2). Whitespace between proper table children, and `<colgroup>` / `<col>`, still
+  generate nothing. `display: table` with `display: table-cell` and no row in between is a
+  common pre-flexbox column idiom, so a document using it lost whole columns silently.
+- Drop a negative `padding` declaration instead of honouring it. CSS defines a padding of less
+  than zero as invalid, and a negative value shrank the content box in a way no browser
+  reproduces. A `calc()` is still accepted, since its sign is not known until it is resolved.
+
+### Known limitations
+
+- SVG filters (`<filter>`) and raster images inside an SVG (`<image>`) are not drawn.
+  Filters would require rasterising, which this deliberately avoids.
+- Inline `<svg>` written directly in the HTML is not rendered; reference the SVG from
+  `<img>` or `background-image` instead. Supporting it means rebuilding SVG XML out of the
+  HTML DOM and deciding how attribute case (`viewBox`), CSS inheritance and `currentColor`
+  carry across — a different problem from referencing a file, so this phase covers only
+  references.
+- `--grayscale` does not apply to SVG. It warns and leaves the SVG in colour.
+- External references from inside an SVG (`<image href="...">`) are refused with a warning
+  rather than resolved. usvg's default resolver reads such an href straight off disk, which
+  would bypass the containment that applies to `<img>` (base directory, `--allow`,
+  `--disable-local-file-access`), so the path is closed off entirely. `data:` URIs are
+  unaffected, being self-contained.
+
+[usvg]: https://github.com/linebender/resvg
+[svg2pdf]: https://github.com/typst/svg2pdf
 
 ## 0.2.0 - 2026-08-16
 

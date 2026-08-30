@@ -88,12 +88,11 @@ pub(super) fn layout_table(
     };
     let rows_start_y = rows_block_start + v_spacing;
 
-    let column_count = table
-        .rows
-        .iter()
-        .map(|row| row.cells.iter().map(|cell| cell.colspan).sum::<usize>())
-        .max()
-        .unwrap_or(0);
+    // rowspan/colspanのoccupancyを考慮したグリッド配置。以降の列幅・行の
+    // 高さ・セル配置は全てこのグリッド経由で計算する。列数はこの配置の結果
+    // として決まる(行ごとのcolspan合計の最大値では、rowspanで埋まった列を
+    // 飛ばした先に置かれるセルを数え落とす)。
+    let (grid, column_count) = build_table_grid(&table.rows);
 
     if column_count == 0 {
         let (caption, total_height) = match laid_caption {
@@ -115,12 +114,6 @@ pub(super) fn layout_table(
     // `h_spacing`を差し引いたもの。
     let available_column_width =
         (containing_width - h_spacing * (column_count + 1) as f32).max(0.0);
-
-    // rowspan/colspanのoccupancyを考慮したグリッド配置。以降の列幅・行の
-    // 高さ・セル配置は全てこのグリッド経由で計算する。rowspanが全て1の場合、
-    // `col += cell.colspan`による単純な列
-    // カーソル走査と完全に同一の結果になる。
-    let grid = build_table_grid(&table.rows, column_count);
 
     // `<colgroup>`/`<col>`由来の列幅ヒントを、この時点で使用幅(px)へ
     // 解決する。列数を超える分は捨て、足りない分は指定なしとして扱う。
@@ -403,24 +396,33 @@ struct GridCell<'a> {
 }
 
 /// `rows`から、rowspan/colspanのoccupancy(rowspanで埋まっている列を後続行が
-/// スキップする)を考慮したグリッド配置を求める。戻り値は行ごとの`GridCell`
-/// 一覧(外側の`Vec`が行、内側がその行に属するセル)。rowspanが全て1の場合、列
-/// カーソルを`col += cell.colspan`で単純に進める走査と完全に同一の結果を
-/// 返すため、既存の(rowspanを使わない)テストへの後方互換性が保たれる。
-fn build_table_grid(rows: &[TableRow], column_count: usize) -> Vec<Vec<GridCell<'_>>> {
+/// スキップする)を考慮したグリッド配置と、その結果決まる列数を求める。戻り値の
+/// グリッドは行ごとの`GridCell`一覧(外側の`Vec`が行、内側がその行に属する
+/// セル)。rowspanが全て1の場合、列カーソルを`col += cell.colspan`で単純に
+/// 進める走査と完全に同一の結果を返すため、既存の(rowspanを使わない)テストへの
+/// 後方互換性が保たれる。
+///
+/// 列数を呼び出し元から受け取らずここで数えるのは、rowspanで埋まった列を飛ばす
+/// 配置と列数の数え方が食い違うと、行き場を失ったセルが黙って消えるため
+/// (「1行目がrowspanセル1つだけ、2行目が残りの列を埋める」形が典型)。
+fn build_table_grid(rows: &[TableRow]) -> (Vec<Vec<GridCell<'_>>>, usize) {
     // occupied[col]: その列を占有しているrowspanの残り行数(0なら空き)。
-    let mut occupied = vec![0usize; column_count];
+    // 配置先が既知の列数を超えたらその都度伸ばし、最終的な長さが列数になる。
+    let mut occupied: Vec<usize> = Vec::new();
     let mut grid = Vec::with_capacity(rows.len());
 
     for (row_index, row) in rows.iter().enumerate() {
         let mut row_cells = Vec::with_capacity(row.cells.len());
         let mut col = 0usize;
         for cell in &row.cells {
-            while col < column_count && occupied[col] > 0 {
+            while col < occupied.len() && occupied[col] > 0 {
                 col += 1;
             }
             let col_start = col;
-            let col_end = (col_start + cell.colspan).min(column_count);
+            let col_end = col_start + cell.colspan;
+            if occupied.len() < col_end {
+                occupied.resize(col_end, 0);
+            }
             for slot in &mut occupied[col_start..col_end] {
                 *slot = cell.rowspan;
             }
@@ -440,7 +442,8 @@ fn build_table_grid(rows: &[TableRow], column_count: usize) -> Vec<Vec<GridCell<
         }
     }
 
-    grid
+    let column_count = occupied.len();
+    (grid, column_count)
 }
 
 /// `table-layout: fixed`用の列幅決定(CSS2.1 §17.5.2.1の簡略版)。
@@ -783,7 +786,7 @@ fn compute_natural_content_width(
         BoxContent::Image(image_content) => image_content
             .attr_width
             .map(|w| w as f32)
-            .or_else(|| image_content.image.as_ref().map(|img| img.width as f32))
+            .or_else(|| image_content.image.as_ref().map(|img| img.width))
             .unwrap_or(0.0),
     }
 }
@@ -1294,7 +1297,7 @@ mod tests {
 
     fn grid_cell(colspan: usize, rowspan: usize) -> TableCell {
         TableCell {
-            node: NodeId(0),
+            node: Some(NodeId(0)),
             colspan,
             rowspan,
             content: LayoutBox::anonymous(BoxContent::Inline(Vec::new())),
@@ -1303,7 +1306,7 @@ mod tests {
 
     fn grid_row(cells: Vec<TableCell>) -> TableRow {
         TableRow {
-            node: NodeId(0),
+            node: Some(NodeId(0)),
             cells,
             section: super::super::box_tree::TableSection::Body,
         }
@@ -1322,7 +1325,8 @@ mod tests {
             grid_row(vec![grid_cell(2, 1), grid_cell(1, 1)]),
             grid_row(vec![grid_cell(1, 1), grid_cell(1, 1), grid_cell(1, 1)]),
         ];
-        let grid = build_table_grid(&rows, 3);
+        let (grid, column_count) = build_table_grid(&rows);
+        assert_eq!(column_count, 3);
         assert_eq!(
             grid_spans(&grid),
             vec![vec![(0, 2), (2, 3)], vec![(0, 1), (1, 2), (2, 3)]]
@@ -1340,7 +1344,8 @@ mod tests {
             grid_row(vec![grid_cell(1, 1)]),
             grid_row(vec![grid_cell(1, 1), grid_cell(1, 1)]),
         ];
-        let grid = build_table_grid(&rows, 2);
+        let (grid, column_count) = build_table_grid(&rows);
+        assert_eq!(column_count, 2);
         assert_eq!(
             grid_spans(&grid),
             vec![vec![(0, 1), (1, 2)], vec![(1, 2)], vec![(0, 1), (1, 2)]]
@@ -1355,8 +1360,25 @@ mod tests {
             grid_row(vec![grid_cell(2, 2), grid_cell(1, 1)]),
             grid_row(vec![grid_cell(1, 1)]),
         ];
-        let grid = build_table_grid(&rows, 3);
+        let (grid, column_count) = build_table_grid(&rows);
+        assert_eq!(column_count, 3);
         assert_eq!(grid_spans(&grid), vec![vec![(0, 2), (2, 3)], vec![(2, 3)]]);
+    }
+
+    #[test]
+    fn build_table_grid_counts_a_column_that_only_exists_after_a_rowspan_is_skipped() {
+        // 行0はrowspan=2のセル1つだけ。行0のcolspan合計は1だが、行1のセルは
+        // col0がまだ埋まっているためcol1へ回るので、テーブルの列数は2になる。
+        let rows = vec![
+            grid_row(vec![grid_cell(1, 2)]),
+            grid_row(vec![grid_cell(1, 1)]),
+        ];
+        let (grid, column_count) = build_table_grid(&rows);
+        assert_eq!(
+            column_count, 2,
+            "the column opened up next to the rowspan cell must be counted"
+        );
+        assert_eq!(grid_spans(&grid), vec![vec![(0, 1)], vec![(1, 2)]]);
     }
 
     #[test]

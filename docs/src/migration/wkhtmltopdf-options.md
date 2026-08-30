@@ -79,7 +79,7 @@ PDFのアウトライン(ブックマーク)自体が非対応のため、この
 | `--background` / `--no-background` | ✅ 対応 | |
 | `--bypass-proxy-for <value>` | ❌ 非対応 | プロキシ非対応 |
 | `--cache-dir <path>` | ❌ 非対応 | フェッチキャッシュは持たない(必要になれば別途) |
-| `--checkbox-checked-svg` / `--checkbox-svg` / `--radiobutton-checked-svg` / `--radiobutton-svg` | ❌ 非対応 | SVG描画が非対応。フォーム要素の見た目は内蔵の描画で再現する |
+| `--checkbox-checked-svg` / `--checkbox-svg` / `--radiobutton-checked-svg` / `--radiobutton-svg` | ❌ 非対応 | SVG自体は描画できるが、フォーム要素の見た目の差し替えには対応しない(内蔵の描画で再現する) |
 | `--cookie <name> <value>` | ❌ 非対応 | 認証付きフェッチはスコープ外 |
 | `--custom-header <name> <value>` / `--custom-header-propagation` | ❌ 非対応 | 同上 |
 | `--debug-javascript` / `--no-debug-javascript` | ❌ 非対応 | JS非対応 |

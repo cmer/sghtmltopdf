@@ -26,7 +26,7 @@ enum Bucket {
     Class(String),
     LocalName(String),
     /// タグ名・クラス・idのいずれも要求しない(`*`、属性セレクタ、
-    /// `:is()`など)。どの要素に対しても候補になる。
+    /// 複数セレクタの`:is()`など)。どの要素に対しても候補になる。
     Any,
 }
 
@@ -144,6 +144,20 @@ fn bucket_of(selector: &selectors::parser::Selector<SgSelectorImpl>) -> Bucket {
             {
                 bucket = Bucket::LocalName(name.lower_name.0.to_string());
             }
+            // CSS Nestingの`&`は`:is(親セレクタ)`へ展開されるため、
+            // `&:hover`のように`&`が絞り込みキーを担う形は、中を見ないと
+            // 全て`Bucket::Any`に落ちて全要素と照合される。
+            // 中が単一セレクタのときは、その絞り込みキーをそのまま引き継ぐ。
+            // (`:is(.a, .b)`のような複数セレクタは、どれか1つを選ぶと
+            // 取りこぼすため`Bucket::Any`のままにする。)
+            Component::Is(list) if list.slice().len() == 1 => match bucket_of(&list.slice()[0]) {
+                Bucket::Id(name) => return Bucket::Id(name),
+                Bucket::Class(name) => bucket = Bucket::Class(name),
+                Bucket::LocalName(name) if matches!(bucket, Bucket::Any) => {
+                    bucket = Bucket::LocalName(name)
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -229,6 +243,27 @@ mod tests {
             candidates_for(css, r#"<p class="lead">t</p>"#, "p"),
             vec![0]
         );
+    }
+
+    #[test]
+    fn a_nested_rule_is_narrowed_by_the_parent_inside_is() {
+        // `&:hover`は`:is(.lead):hover`へ展開される。`:is()`の中を見ないと
+        // 絞り込みキーが取れず、全要素の候補になってしまう。
+        let css = ".lead { &:hover { color: red; } } .other { &:hover { color: blue; } }";
+        assert_eq!(
+            candidates_for(css, r#"<p class="lead">t</p>"#, "p"),
+            vec![0]
+        );
+        // クラスの違う要素の候補には入らない。
+        assert!(candidates_for(css, "<p>t</p>", "p").is_empty());
+    }
+
+    #[test]
+    fn a_multi_selector_is_stays_a_candidate_for_every_element() {
+        // `:is(.a, .b)`はどれか1つのバケットを選ぶと取りこぼすため、
+        // 絞り込まずに常に候補へ入れる。
+        let out = candidates_for(":is(.a, .b):hover { color: red; }", "<p>t</p>", "p");
+        assert_eq!(out, vec![0]);
     }
 
     #[test]

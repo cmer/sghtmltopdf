@@ -117,6 +117,9 @@ struct Metrics {
     units_per_em: u16,
     ascender: i16,
     descender: i16,
+    /// 行間(`hhea`の`lineGap`。`OS/2`がUSE_TYPO_METRICSを立てていれば
+    /// `sTypoLineGap`)。`line-height: normal`の算出に使う。
+    line_gap: i16,
     capital_height: Option<i16>,
     x_height: Option<i16>,
     subscript_y_offset: Option<i16>,
@@ -161,6 +164,7 @@ impl Metrics {
             units_per_em: m.units_per_em,
             ascender: m.ascent as i16,
             descender: m.descent as i16,
+            line_gap: m.leading as i16,
             capital_height: m.cap_height.map(|v| v as i16),
             x_height: m.x_height.map(|v| v as i16),
             subscript_y_offset: os2.as_ref().map(|t| t.y_subscript_y_offset()),
@@ -315,6 +319,22 @@ impl Font {
 
     pub fn descender(&self) -> i16 {
         self.metrics.descender
+    }
+
+    /// `line-height: normal`の使用値(px)。
+    ///
+    /// CSSの`normal`は「フォントが推奨する行送り」で、その実体は
+    /// アセント+ディセント+行間(`lineGap`)。固定倍率(1.2em等)で近似すると、
+    /// アセント+ディセントがそれを超えるフォント(CJKのフォントは1.4em前後の
+    /// ものが珍しくない)でグリフが行ボックスからはみ出し、隣接する行や
+    /// 枠線と重なる。
+    pub fn normal_line_height(&self, font_size: f32) -> f32 {
+        let units_per_em = self.units_per_em() as f32;
+        if units_per_em <= 0.0 {
+            return 0.0;
+        }
+        let content = self.ascender() as f32 - self.descender() as f32;
+        (content + self.metrics.line_gap as f32) / units_per_em * font_size
     }
 
     pub fn capital_height(&self) -> Option<i16> {
@@ -546,6 +566,44 @@ mod tests {
             "with no extra leading, the baseline offset should equal the ascent: {offset} vs {ascent}"
         );
         assert!(offset > 0.0 && offset < line_height);
+    }
+
+    #[test]
+    fn normal_line_height_is_the_fonts_own_content_area_plus_line_gap() {
+        let font = Font::load(TEST_FONT_PATH).expect("should load bundled test font");
+        let units_per_em = font.units_per_em() as f32;
+        let expected = (font.ascender() as f32 - font.descender() as f32) / units_per_em * 16.0;
+
+        // DejaVu Sansは`lineGap`が0なので、アセント+ディセントがそのまま
+        // `normal`の行送りになる。
+        let normal = font.normal_line_height(16.0);
+        assert!(
+            (normal - expected).abs() < 0.01,
+            "normal line height should be ascent + descent (+ line gap): {normal} vs {expected}"
+        );
+    }
+
+    #[test]
+    fn normal_line_height_always_covers_the_glyphs_content_area() {
+        // `normal`が「アセント+ディセント」を下回るフォントがあると、
+        // 半行送りが負になってグリフが行ボックスからはみ出す。
+        let paths = [
+            TEST_FONT_PATH,
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/fonts/NotoSansCJK-Regular.ttc"
+            ),
+        ];
+        for path in paths {
+            let font = Font::load(path).expect("should load test font");
+            let units_per_em = font.units_per_em() as f32;
+            let content = (font.ascender() as f32 - font.descender() as f32) / units_per_em * 16.0;
+            assert!(
+                font.normal_line_height(16.0) >= content - 0.01,
+                "{path}: normal line height {} must not be shorter than the content area {content}",
+                font.normal_line_height(16.0)
+            );
+        }
     }
 }
 

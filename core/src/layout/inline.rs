@@ -3,7 +3,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
-use crate::fonts::{measure_text, shape_text, FontCollection, ShapedGlyph};
+use crate::fonts::{measure_text, shape_text, Font, FontCollection, ShapedGlyph};
 use crate::html::NodeId;
 use crate::style::{
     BoxSizing, ComputedStyle, ComputedTextShadow, EmphasisPosition, EmphasisStyle, FontStyle,
@@ -70,8 +70,8 @@ pub struct TextRun {
     /// 行ボックス(`LineBox::rect`)の左端からの相対x座標。
     pub x_offset: f32,
     pub width: f32,
-    /// このランの計算済み行高さ(px)。`line-height: normal`は`font_size*1.2`の
-    /// 近似、`<number>`はこのランの`font_size`で乗算済み。
+    /// このランの計算済み行高さ(px)。`line-height: normal`はこのランのフォントの
+    /// メトリクス由来、`<number>`はこのランの`font_size`で乗算済み。
     pub line_height: f32,
     /// `letter-spacing`の解決済みpx。PDF描画層(`pdf::document::render_line`)
     /// が`Tc`(character spacing)としてそのまま
@@ -367,7 +367,7 @@ pub(crate) fn layout_inline_content(
                 // (`white-space: nowrap`でも効く)。
                 let break_height = span_styles
                     .get(style_index)
-                    .map(resolve_line_height)
+                    .map(|style| empty_line_height(style, fonts))
                     .unwrap_or(0.0);
                 if current_runs.is_empty() && current_atomics.is_empty() {
                     // 行に何も無い状態での強制改行(連続する`<br>`や段落先頭の
@@ -442,8 +442,8 @@ pub(crate) fn layout_inline_content(
             let starting_new_line = current_runs.is_empty() && current_atomics.is_empty();
 
             if starting_new_line {
-                // 新しい行の先頭: floatに応じた帯を、このchunkのフォントサイズ
-                // から近似した行高さ(`line_height_for`と同じ*1.2)で問い合わせる
+                // 新しい行の先頭: floatに応じた帯を、このchunkの先頭ランの
+                // 行高さ(`line_height_for`と同じ計算値)で問い合わせる
                 // (既知の簡略化: 行内でフォントサイズが極端に混在する場合は
                 // 帯判定がわずかに不正確になり得るが、帳票用途では稀)。
                 let hint = line_height_hint_for_chunk(&chunk);
@@ -1314,15 +1314,41 @@ fn resolve_length_percentage(lp: LengthPercentage, basis: f32) -> f32 {
     }
 }
 
+/// `line-height: normal`をフォントメトリクスから求められない場合
+/// (コレクションが空でフォントを1つも選べない)の倍率。実際に使われるのは
+/// フォントを持たないテスト用の経路くらいで、通常の文書では
+/// [`Font::normal_line_height`]が使われる。
+const NORMAL_LINE_HEIGHT_FALLBACK: f32 = 1.2;
+
 /// `line-height`の計算値からこの要素自身の`font_size`を使ってpx値を求める
 /// (`Number`/`Normal`は使用側=ここでその要素のfont-sizeを使って乗算する)。
-fn resolve_line_height(style: &ComputedStyle) -> f32 {
+///
+/// `normal`はフォントごとに異なる(アセント+ディセント+行間)ため、そのランで
+/// 実際に使うフォントを渡す必要がある。`font`が`None`なら固定倍率で近似する。
+fn resolve_line_height(style: &ComputedStyle, font: Option<&Font>) -> f32 {
     let font_size = style.font_size.0;
     match style.line_height {
-        LineHeight::Normal => font_size * 1.2,
+        LineHeight::Normal => match font {
+            Some(font) => font.normal_line_height(font_size),
+            None => font_size * NORMAL_LINE_HEIGHT_FALLBACK,
+        },
         LineHeight::Number(n) => n * font_size,
         LineHeight::Length(px) => px,
     }
+}
+
+/// `style`の`font-family`に対する「最初に使えるフォント」(CSSのfirst available
+/// font)。テキストを持たない行(`<br>`だけの行や`white-space: pre`の空行)でも
+/// `line-height: normal`を解決できるように、半角スペースを代表文字として選ぶ。
+fn first_available_font<'a>(style: &ComputedStyle, fonts: &'a FontCollection) -> Option<&'a Font> {
+    fonts
+        .select_for_char(&style.font_family, style.font_weight, style.font_style, ' ')
+        .and_then(|index| fonts.get(index))
+}
+
+/// テキストを持たない行の高さ(`line-height`の使用値)。
+fn empty_line_height(style: &ComputedStyle, fonts: &FontCollection) -> f32 {
+    resolve_line_height(style, first_available_font(style, fonts))
 }
 
 /// `white-space: pre`用のレイアウト。改行文字(`\n`)で明示的に行を分割し、
@@ -1358,7 +1384,7 @@ fn layout_pre_content(
             .first()
             .and_then(|sc| span_styles.get(sc.style_index))
             .or_else(|| span_styles.first())
-            .map(resolve_line_height)
+            .map(|style| empty_line_height(style, fonts))
             .unwrap_or(0.0);
         let (mut line_left, _) = line_band(float_ctx, cursor_y, hint, origin_x, available_width);
         // `text-indent`は最初の物理行のみに適用する(CSS2.1 §16.1)。
@@ -1425,7 +1451,7 @@ pub(super) fn shape_run(
     let needs_synthetic_bold = style.font_weight == FontWeight::Bold && !fonts.is_bold(font_index);
     let needs_synthetic_italic =
         style.font_style == FontStyle::Italic && !fonts.is_italic(font_index);
-    let mut line_height = resolve_line_height(style);
+    let mut line_height = resolve_line_height(style, Some(font));
     // `letter-spacing`はグリフ数分だけ幅に加算する(行末にも均等加算する
     // 既知の簡略化)。PDF描画層は`run.letter_spacing`を`Tc`として使う
     // ため、ここでの幅計算とレンダリング結果が一致する。
@@ -1837,6 +1863,15 @@ mod tests {
         FontCollection::new(vec![Font::load(DEJAVU_PATH).unwrap()])
     }
 
+    /// 既定スタイル(`line-height: normal`)での1行の高さ。`normal`はフォントの
+    /// メトリクス由来なので、テスト用フォントから求める。
+    fn default_line_height(fonts: &FontCollection) -> f32 {
+        fonts
+            .get(0)
+            .expect("テスト用フォントは必ず1本ある")
+            .normal_line_height(ComputedStyle::default().font_size.0)
+    }
+
     fn dejavu_regular_and_bold() -> FontCollection {
         FontCollection::new(vec![
             Font::load(DEJAVU_PATH).unwrap(),
@@ -1917,10 +1952,7 @@ mod tests {
         assert_eq!(lines[0].rect.x, 10.0);
         assert_eq!(lines[0].rect.y, 20.0);
         assert!(lines[0].rect.width > 0.0);
-        assert_eq!(
-            lines[0].rect.height,
-            ComputedStyle::default().font_size.0 * 1.2
-        );
+        assert_eq!(lines[0].rect.height, default_line_height(&fonts));
         // 同じ体裁で連続するので1ランにまとまり、単語間の空白も復元される。
         assert_eq!(lines[0].runs.len(), 1);
         assert_eq!(lines[0].runs[0].text, "hello world");
@@ -1975,7 +2007,7 @@ mod tests {
         let wrapped = layout_inline_content(&spans, &styles, &fonts, 60.0, 0.0, 0.0, None);
         assert!(wrapped.len() > 1);
 
-        let line_height = ComputedStyle::default().font_size.0 * 1.2;
+        let line_height = default_line_height(&fonts);
         assert_eq!(wrapped[1].rect.y, wrapped[0].rect.y + line_height);
     }
 
@@ -2009,7 +2041,7 @@ mod tests {
 
         let fonts = dejavu_only();
         let (_, spans, styles) = spans_for("hello world foo bar baz", "");
-        let line_height = ComputedStyle::default().font_size.0 * 1.2;
+        let line_height = default_line_height(&fonts);
 
         // floatの高さは1行分だけ: 1行目はfloatの右に押し込まれ、2行目以降は
         // floatの下に出るため元の幅・左端に戻るはず。
@@ -2330,7 +2362,7 @@ mod tests {
             lines[1].rect.width > 60.0,
             "the second physical line should not wrap despite overflowing"
         );
-        let line_height = ComputedStyle::default().font_size.0 * 1.2;
+        let line_height = default_line_height(&fonts);
         assert_eq!(lines[1].rect.y, lines[0].rect.y + line_height);
     }
 

@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use magnus::rb_sys::AsRawValue;
 use magnus::{block::Proc, function, prelude::*, Error, RString, Ruby};
 use sghtmltopdf_core::cli::{self, convert};
+use sghtmltopdf_core::render_stack;
 use sghtmltopdf_core::sink::{FileSink, MemorySink};
 
 use callback_sink::{pump_to_block, BlockSlot, PendingUnwind, ValueSlot};
@@ -36,7 +37,7 @@ fn render_inner(html: Vec<u8>, argv: Vec<String>) -> Result<RString, Error> {
     // レイアウト・描画の再帰に耐えられないため(`callback_sink`のモジュール
     // doc参照)。この経路はRubyへコールバックしないので、そのまま移せる。
     let pdf = gvl::without_gvl(move || {
-        cli::with_render_stack(move || {
+        render_stack::with_render_stack(move || {
             convert::render_to_memory(&args, &fonts, Cursor::new(html), MemorySink::new())
         })
     })
@@ -69,7 +70,7 @@ fn render_to_file_inner(html: Vec<u8>, argv: Vec<String>, path: String) -> Resul
     })?;
 
     gvl::without_gvl(move || {
-        cli::with_render_stack(move || convert::render(&args, &fonts, Cursor::new(html), sink))
+        render_stack::with_render_stack(move || convert::render(&args, &fonts, Cursor::new(html), sink))
     })
     .map_err(|e| errors::to_ruby(&ruby, e))?;
     Ok(())

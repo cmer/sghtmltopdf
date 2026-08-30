@@ -36,6 +36,19 @@ use subsetter::GlyphRemapper;
 
 use crate::fonts::Font;
 
+/// `/ToUnicode` CMapの`/CMapName`と埋め込みプログラム側の`CMapName`双方に
+/// 使用する名前。両者が一致しないとPDF仕様上ill-formedになるので、
+/// 単一の定数からすべての利用箇所に配る。
+const TO_UNICODE_CMAP_NAME: Name<'static> = Name(b"Custom");
+
+/// `/ToUnicode` CMapの`/CIDSystemInfo`と埋め込みプログラム側の`CIDSystemInfo`
+/// 双方に使用する値(Adobe-UCS-0固定)。同上の理由で単一の定数から配る。
+const TO_UNICODE_SYSTEM_INFO: SystemInfo<'static> = SystemInfo {
+    registry: Str(b"Adobe"),
+    ordering: Str(b"UCS"),
+    supplement: 0,
+};
+
 /// 埋め込むフォント一式のオブジェクトID。
 ///
 /// `cid_to_gid_map`は[`embed_font_streaming_chunks`]専用(`embed_font`は
@@ -168,19 +181,14 @@ pub fn embed_font(
     cid_font.cid_to_gid_map_predefined(Name(b"Identity"));
     cid_font.finish();
 
-    let mut cmap = UnicodeCmap::<u16>::new(
-        Name(b"Custom"),
-        SystemInfo {
-            registry: Str(b"Adobe"),
-            ordering: Str(b"UCS"),
-            supplement: 0,
-        },
-    );
+    let mut cmap = UnicodeCmap::<u16>::new(TO_UNICODE_CMAP_NAME, TO_UNICODE_SYSTEM_INFO);
     for (&old_gid, (_, text)) in &usage.glyphs {
         cmap.pair_with_multiple(old_to_new[&old_gid], text.chars());
     }
     let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut to_unicode = pdf.cmap(ids.to_unicode, &cmap_bytes);
+    to_unicode.name(TO_UNICODE_CMAP_NAME);
+    to_unicode.system_info(TO_UNICODE_SYSTEM_INFO);
     if compress {
         to_unicode.filter(Filter::FlateDecode);
     }
@@ -299,20 +307,15 @@ pub fn embed_font_streaming_chunks(
     cid_font.finish();
     chunks.push((ids.cid_font, chunk));
 
-    let mut cmap = UnicodeCmap::<u16>::new(
-        Name(b"Custom"),
-        SystemInfo {
-            registry: Str(b"Adobe"),
-            ordering: Str(b"UCS"),
-            supplement: 0,
-        },
-    );
+    let mut cmap = UnicodeCmap::<u16>::new(TO_UNICODE_CMAP_NAME, TO_UNICODE_SYSTEM_INFO);
     for (&old_gid, (_, text)) in &usage.glyphs {
         cmap.pair_with_multiple(old_gid, text.chars());
     }
     let cmap_bytes = maybe_deflate(&cmap.finish(), compress);
     let mut chunk = Chunk::new();
     let mut to_unicode = chunk.cmap(ids.to_unicode, &cmap_bytes);
+    to_unicode.name(TO_UNICODE_CMAP_NAME);
+    to_unicode.system_info(TO_UNICODE_SYSTEM_INFO);
     if compress {
         to_unicode.filter(Filter::FlateDecode);
     }
