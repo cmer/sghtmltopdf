@@ -5,70 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.3.0 - 2026-08-30
 
 ### Added
 
 - Map the logical box properties to their physical sides (#21). `margin-inline-start`
   becomes `margin-left`, `padding-block` becomes `padding-top` and `padding-bottom`, and so
   on for `margin-*`, `padding-*`, `inset-*` and `border-*` (including the `-width`, `-style`
-  and `-color` longhands), plus the `inset` shorthand. The engine only supports
+  and `-color` longhands), plus the `inset` shorthand and the logical corner radii
+  (`border-start-start-radius` and its three siblings). The engine only supports
   `horizontal-tb` LTR, so the mapping is fixed rather than driven by `writing-mode`.
   Tailwind v4 emits these for `px-*`, `py-*`, `mx-auto` and `space-y-*`, and until now a
   document built with it silently lost its horizontal padding and every centred block.
-
-### Fixed
-
-- Parse nested style rules (CSS Nesting) instead of silently dropping them (#25).
-  `.wrap { & .probe { } }`, `.wrap { .probe { } }`, `.wrap { &.probe { } }` and
-  `.list { > li { } }` now reach the cascade with the meaning the spec gives them; `&`
-  takes the parent's specificity, and declarations written after a nested rule keep
-  their source position instead of being hoisted above it. Nested at-rules such as
-  `@media` inside a style rule are still ignored.
-- Accept `calc()` as a term inside another `calc()` (#17). CSS Values 4 treats a nested
-  `calc()` the same as a parenthesised group, but the parser only handled the parentheses,
-  so `calc(calc(45px * 2) * calc(1 - 0))` was rejected as invalid and the declaration was
-  dropped while `calc((45px * 2) * (1 - 0))` resolved to 90px. Tailwind v4 emits the nested
-  form for every `space-y-*` and `divide-*` utility, so a Tailwind bundle lost all of its
-  vertical rhythm and divider gaps.
-- Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
-  layout to integers so that a rasteriser does not leave gaps or overlaps between boxes;
-  the output here is PDF, which has no such constraint, and the rounding truncated the
-  measured max-content width so that text which fit was wrapped onto a second line. Which
-  way the fraction rounded depended on the exact string, so the same row wrapped for one
-  value and not for another (`1 USD = 0.9143 EUR` wrapped, `1 USD 0.9143 EUR` did not).
-- Write the required `/CMapName` and `/CIDSystemInfo` entries into the `/ToUnicode`
-  CMap stream dictionary. ISO 32000-1 table 120 lists both as required for a CMap
-  stream dictionary; the values were already declared inside the embedded CMap
-  program but not lifted into the dictionary. Strict PDF tooling (e.g. HexaPDF,
-  veraPDF) rejects the file without them, which blocks PDF/A-3 validation and
-  therefore Factur-X / ZUGFeRD hybrid e-invoice embedding.
-- Keep the outside marker on a list item that is split across pages (#31). An item that did
-  not fit in what was left of a page kept its marker gutter but lost the marker itself, so an
-  ordered list that paginated silently skipped numbers (7., 14. and 21. in the reported
-  document); the numbers were missing from the text layer too, not merely clipped. Pagination
-  moves the marker onto the item's first fragment, but fragments were only produced for a
-  container that actually paints a background or border. A plain `li` paints neither, so the
-  marker was taken off the container with nowhere to put it back. On a decorated item the
-  marker survived but carried its pre-pagination coordinates, which placed it at a position
-  belonging to another page; that is corrected as well.
-- Count a table's columns with the occupancy of `rowspan` taken into account (#32). The column
-  count was the largest per-row sum of `colspan`, while cell placement skips the columns still
-  held by a `rowspan` from an earlier row. When the first row held nothing but a `rowspan="2"`
-  cell, both rows summed to one column, so the second row's cell was placed in a column the
-  table did not have, given zero width, and dropped from the output with no error or warning —
-  a logo beside a label that appears on the following row, a common invoice-table shape. The
-  count now falls out of the placement walk itself, so the two can no longer disagree.
-- Generate the anonymous table boxes that CSS 2.1 §17.2.1 calls for (#34). Content inside a
-  `display: table` was laid out only when every cell sat inside an explicit `display: table-row`
-  box; a stray `table-cell`, or a plain block child, was dropped from the output with no text,
-  no ink and no warning. Consecutive cells without a row now get an anonymous row (rule 2.1),
-  and consecutive children of a table or a row that are not cells get an anonymous cell
-  (rule 2.2). Whitespace between proper table children, and `<colgroup>` / `<col>`, still
-  generate nothing. `display: table` with `display: table-cell` and no row in between is a
-  common pre-flexbox column idiom, so a document using it lost whole columns silently.
-
-### Added
 
 - Render SVG referenced from `<img src>` and `background-image: url()`, as vector graphics
   rather than by rasterising. Parsing goes through [usvg] and the translation to PDF
@@ -128,6 +76,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged byte for byte. An explicit value smaller than the font's content area still
   overflows its line box, exactly as it does in a browser; that is the specified behaviour and
   is deliberately left alone.
+
+- Write a file identifier (`/ID`) into the PDF trailer. PDF/A requires one, and tooling that
+  tracks a file across revisions expects it. The value is 16 bytes of a hash over the same
+  metadata, creation date and page count that go into the `/Info` dictionary, so it is stable
+  for a given document; batch and streaming output produce it the same way. No incremental
+  update is ever written, so the two array elements are equal.
+- Reject a `calc()` or a parenthesised group nested deeper than 32 levels, dropping the
+  declaration as an invalid value. The value parser is recursive descent, so nesting depth is
+  stack depth, and untrusted CSS could overflow the stack (even the 16 MB rendering stack goes
+  at around twenty thousand levels). Real stylesheets stay within a handful of levels.
+
+### Fixed
+
+- Parse nested style rules (CSS Nesting) instead of silently dropping them (#25).
+  `.wrap { & .probe { } }`, `.wrap { .probe { } }`, `.wrap { &.probe { } }` and
+  `.list { > li { } }` now reach the cascade with the meaning the spec gives them; `&`
+  takes the parent's specificity, and declarations written after a nested rule keep
+  their source position instead of being hoisted above it. Nested at-rules such as
+  `@media` inside a style rule are still ignored.
+- Accept `calc()` as a term inside another `calc()` (#17). CSS Values 4 treats a nested
+  `calc()` the same as a parenthesised group, but the parser only handled the parentheses,
+  so `calc(calc(45px * 2) * calc(1 - 0))` was rejected as invalid and the declaration was
+  dropped while `calc((45px * 2) * (1 - 0))` resolved to 90px. Tailwind v4 emits the nested
+  form for every `space-y-*` and `divide-*` utility, so a Tailwind bundle lost all of its
+  vertical rhythm and divider gaps.
+- Stop rounding flex and grid item sizes to whole pixels (#15). taffy rounds its final
+  layout to integers so that a rasteriser does not leave gaps or overlaps between boxes;
+  the output here is PDF, which has no such constraint, and the rounding truncated the
+  measured max-content width so that text which fit was wrapped onto a second line. Which
+  way the fraction rounded depended on the exact string, so the same row wrapped for one
+  value and not for another (`1 USD = 0.9143 EUR` wrapped, `1 USD 0.9143 EUR` did not).
+- Write the required `/CMapName` and `/CIDSystemInfo` entries into the `/ToUnicode`
+  CMap stream dictionary. ISO 32000-1 table 120 lists both as required for a CMap
+  stream dictionary; the values were already declared inside the embedded CMap
+  program but not lifted into the dictionary. Strict PDF tooling (e.g. HexaPDF,
+  veraPDF) rejects the file without them, which blocks PDF/A-3 validation and
+  therefore Factur-X / ZUGFeRD hybrid e-invoice embedding.
+- Keep the outside marker on a list item that is split across pages (#31). An item that did
+  not fit in what was left of a page kept its marker gutter but lost the marker itself, so an
+  ordered list that paginated silently skipped numbers (7., 14. and 21. in the reported
+  document); the numbers were missing from the text layer too, not merely clipped. Pagination
+  moves the marker onto the item's first fragment, but fragments were only produced for a
+  container that actually paints a background or border. A plain `li` paints neither, so the
+  marker was taken off the container with nowhere to put it back. On a decorated item the
+  marker survived but carried its pre-pagination coordinates, which placed it at a position
+  belonging to another page; that is corrected as well.
+- Count a table's columns with the occupancy of `rowspan` taken into account (#32). The column
+  count was the largest per-row sum of `colspan`, while cell placement skips the columns still
+  held by a `rowspan` from an earlier row. When the first row held nothing but a `rowspan="2"`
+  cell, both rows summed to one column, so the second row's cell was placed in a column the
+  table did not have, given zero width, and dropped from the output with no error or warning —
+  a logo beside a label that appears on the following row, a common invoice-table shape. The
+  count now falls out of the placement walk itself, so the two can no longer disagree.
+- Generate the anonymous table boxes that CSS 2.1 §17.2.1 calls for (#34). Content inside a
+  `display: table` was laid out only when every cell sat inside an explicit `display: table-row`
+  box; a stray `table-cell`, or a plain block child, was dropped from the output with no text,
+  no ink and no warning. Consecutive cells without a row now get an anonymous row (rule 2.1),
+  and consecutive children of a table or a row that are not cells get an anonymous cell
+  (rule 2.2). Whitespace between proper table children, and `<colgroup>` / `<col>`, still
+  generate nothing. `display: table` with `display: table-cell` and no row in between is a
+  common pre-flexbox column idiom, so a document using it lost whole columns silently.
+- Drop a negative `padding` declaration instead of honouring it. CSS defines a padding of less
+  than zero as invalid, and a negative value shrank the content box in a way no browser
+  reproduces. A `calc()` is still accepted, since its sign is not known until it is resolved.
 
 ### Known limitations
 
