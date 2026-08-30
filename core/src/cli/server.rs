@@ -133,10 +133,10 @@ pub fn run(args: &ServerArgs) -> Result<(), CliError> {
         let shared = Arc::clone(&shared);
         let timeout = Duration::from_secs(args.timeout);
         // 既定の2MiBではレイアウト・描画の再帰に足りないため明示的に確保する
-        // (`super::STACK_SIZE`のdoc参照)。
+        // (`crate::render_stack::STACK_SIZE`のdoc参照)。
         let worker = std::thread::Builder::new()
             .name(format!("render-{index}"))
-            .stack_size(super::STACK_SIZE);
+            .stack_size(crate::render_stack::STACK_SIZE);
         let handle = worker.spawn(move || loop {
             let next = {
                 let guard = rx.lock().expect("受信キューのロックに失敗しました");
@@ -321,7 +321,7 @@ fn respond_chunked(
     // ワーカーと同様、再帰に耐えるスタックを明示的に確保する。
     let spawned = std::thread::Builder::new()
         .name("render-stream".to_string())
-        .stack_size(super::STACK_SIZE)
+        .stack_size(crate::render_stack::STACK_SIZE)
         .spawn(move || {
             if let Err(e) = super::convert::render(
                 &args,

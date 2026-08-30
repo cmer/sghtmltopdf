@@ -54,6 +54,7 @@
 | `border-*-color` | ✅ | 初期値は`currentcolor` |
 | `border-radius` | ⚠️ | 1〜4値+`/`区切りの楕円構文に対応。パーセンテージ指定は非対応(`<length>`のみ)。4辺の太さ・スタイル・色が揃っていない場合は角丸を諦めて直線4辺へフォールバックする。`groove`/`ridge`/`inset`/`outset`との併用も同様にフォールバック |
 | `border-top-left-radius`ほか3隅 | ⚠️ | `<length>{1,2}`(水平/垂直半径)。制約は`border-radius`と同じ |
+| `border-start-start-radius`ほか3隅 | ⚠️ | 論理プロパティ。1つ目がblock方向、2つ目がinline方向を指す(`border-start-end-radius`=右上)。写像規則は[`margin-inline`](#ボックスモデル)と同じ |
 | `outline` | ✅ | `<width> \|\| <style> \|\| <color>`。border-boxの外側に描画し、レイアウトには影響しない |
 | `outline-width` / `outline-style` / `outline-color` | ⚠️ | `outline-style`は`border-style`と同じ値集合。UA依存の`auto`は非対応 |
 | `outline-offset` | ❌ | 常に0固定 |
