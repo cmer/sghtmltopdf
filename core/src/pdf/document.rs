@@ -412,6 +412,9 @@ pub fn encode_pdf_with_options(
     let info_id = alloc.next();
     write_document_info(pdf.document_info(info_id), &output.metadata);
 
+    let id = file_identifier(&output.metadata, pages.len());
+    pdf.set_file_id((id.clone(), id));
+
     pdf.finish()
 }
 
@@ -518,6 +521,38 @@ pub fn write_document_with_options<S: Sink>(
     );
     sink.write(&bytes)?;
     sink.finish()
+}
+
+/// trailerに書く`/ID`(ファイル識別子)。
+///
+/// PDFの規定では2つの文字列の配列で、1つ目は文書の作成時に決まる恒久的な
+/// 識別子、2つ目は更新のたびに変わる識別子。このクレートは追記更新
+/// (incremental update)を行わないので、両方に同じ値を書く。
+///
+/// 値の中身に規定は無く、文書ごとに一意であればよい。Info辞書に書くのと
+/// 同じメタデータ・作成日時・ページ数を混ぜたハッシュから16バイトを作る。
+/// PDF/Aはファイル識別子を要求するため、無いと適合しない。
+pub(super) fn file_identifier(metadata: &DocumentMetadata, page_count: usize) -> Vec<u8> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let datetime = current_datetime();
+    let mut id = Vec::with_capacity(16);
+    // 64bitのハッシュを2本つないで16バイトにする(saltを変えて別の値にする)。
+    for salt in [0u64, 0x9e37_79b9_7f4a_7c15] {
+        let mut hasher = DefaultHasher::new();
+        salt.hash(&mut hasher);
+        producer_string().hash(&mut hasher);
+        metadata.title.hash(&mut hasher);
+        metadata.author.hash(&mut hasher);
+        metadata.subject.hash(&mut hasher);
+        metadata.keywords.hash(&mut hasher);
+        datetime.hash(&mut hasher);
+        page_count.hash(&mut hasher);
+        // `pdf_writer::Finish`もスコープにあるので、どちらの`finish`かを明示する。
+        id.extend_from_slice(&Hasher::finish(&hasher).to_be_bytes());
+    }
+    id
 }
 
 /// PDF Info辞書を書く。`/Producer`と`/CreationDate`は常時、残りは

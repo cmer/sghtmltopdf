@@ -27,7 +27,7 @@ use crate::style::{ComputedStyle, PageRule};
 
 use super::document::{
     alpha_gs_resource_name, collect_anchor_positions, collect_image_uses, collect_link_areas,
-    collect_margin_box_usage, collect_opacity_uses, collect_usage, render_box,
+    collect_margin_box_usage, collect_opacity_uses, collect_usage, file_identifier, render_box,
     render_header_footer_rules, render_margin_boxes, render_page_overlay, write_document_info,
     write_link_annotation, write_resources, LinkSettings, PageOverlay, RefAllocator, RenderTarget,
     ALPHA_STEPS,
@@ -274,14 +274,6 @@ impl<S: Sink> StreamingPdfWriter<S> {
             };
             for embed in &embedded {
                 self.write_objects(&embed.chunk, &embed.offsets)?;
-            }
-            // 書き出し済みのSVGチャンクは以降不要なので解放する。`root`は
-            // `ImageIds`側に残るので、後続ページの`Do`参照は引き続き引ける。
-            // ラスタ画像・未書き出しのSVGはこの呼び出しで何も起きない。
-            if is_new {
-                if let Some(entry) = self.image_ids.get_mut(&(Rc::as_ptr(image) as usize)) {
-                    entry.forget_written_chunk();
-                }
             }
             page_image_refs.push(root);
         }
@@ -560,9 +552,16 @@ impl<S: Sink> StreamingPdfWriter<S> {
         for (_, offset) in &self.offsets {
             buf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
         }
+        // `/ID`(ファイル識別子)はバッチ書き出しと同じ作り方をする。
+        // ここは`pdf_writer::Pdf`を通さず自前でtrailerを書くので、
+        // 16進文字列として直接書く(バイト列としては同じ値)。
+        let id: String = file_identifier(&self.output.metadata, self.page_ids.len())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         buf.extend_from_slice(
             format!(
-                "trailer\n<< /Size {size} /Root {} 0 R /Info {} 0 R >>\n",
+                "trailer\n<< /Size {size} /Root {} 0 R /Info {} 0 R /ID [<{id}> <{id}>] >>\n",
                 self.catalog_id.get(),
                 info_id.get()
             )

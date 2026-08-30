@@ -223,7 +223,9 @@ fn extract_author_stylesheet_resolves_var_via_the_style_tag_helper() {
         ":root { --w: 33px; } .box { width: var(--w); }",
     );
     let sheet = extract_stylesheet(&dom);
-    assert_eq!(sheet.rules.len(), 2);
+    // カスタムプロパティの宣言はテキスト置換で解決済みなので、`:root`側は
+    // 宣言の無いルールとして捨てられ、`.box`の1つだけが残る。
+    assert_eq!(sheet.rules.len(), 1);
 }
 
 #[test]

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-16T19:53:45+09:00\n"
+"POT-Creation-Date: 2026-08-30T16:06:58+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -680,7 +680,7 @@ msgstr ""
 msgid "CSSの指定"
 msgstr ""
 
-#: src/getting-started/docker.md:71
+#: src/getting-started/docker.md:71 src/supports/images.md:75
 msgid "使われるフォント"
 msgstr ""
 
@@ -2449,16 +2449,16 @@ msgid "ビルド済み(precompiled)のgemを配布するため、Rustのツー�
 msgstr ""
 
 #: src/usage/ruby_rails.md:21 src/supports/properties.md:20
-#: src/supports/properties.md:31 src/supports/properties.md:44
-#: src/supports/properties.md:61 src/supports/properties.md:81
-#: src/supports/properties.md:108 src/supports/properties.md:123
-#: src/supports/properties.md:141 src/supports/properties.md:150
-#: src/supports/properties.md:161 src/supports/properties.md:176
-#: src/supports/properties.md:211 src/supports/properties.md:230
-#: src/supports/selectors.md:15 src/supports/selectors.md:27
-#: src/supports/selectors.md:46 src/supports/selectors.md:57
-#: src/supports/selectors.md:76 src/supports/selectors.md:89
-#: src/supports/selectors.md:120
+#: src/supports/properties.md:31 src/supports/properties.md:46
+#: src/supports/properties.md:65 src/supports/properties.md:86
+#: src/supports/properties.md:113 src/supports/properties.md:128
+#: src/supports/properties.md:146 src/supports/properties.md:155
+#: src/supports/properties.md:166 src/supports/properties.md:181
+#: src/supports/properties.md:216 src/supports/properties.md:235
+#: src/supports/selectors.md:15 src/supports/selectors.md:28
+#: src/supports/selectors.md:47 src/supports/selectors.md:58
+#: src/supports/selectors.md:77 src/supports/selectors.md:90
+#: src/supports/selectors.md:121
 msgid "対応"
 msgstr ""
 
@@ -2900,7 +2900,7 @@ msgid "開発環境のようにアセットがまだ`public/`へ書き出され�
 msgstr ""
 
 #: src/usage/ruby_rails.md:177 src/usage/ruby_rails.md:178
-#: src/supports/images.md:14
+#: src/supports/images.md:148
 msgid "\"logo.png\""
 msgstr ""
 
@@ -3127,24 +3127,24 @@ msgid "表示・可視性"
 msgstr ""
 
 #: src/supports/properties.md:20 src/supports/properties.md:31
-#: src/supports/properties.md:44 src/supports/properties.md:61
-#: src/supports/properties.md:81 src/supports/properties.md:108
-#: src/supports/properties.md:123 src/supports/properties.md:141
-#: src/supports/properties.md:150 src/supports/properties.md:161
-#: src/supports/properties.md:176 src/supports/properties.md:211
-#: src/supports/properties.md:230 src/supports/pagination.md:13
+#: src/supports/properties.md:46 src/supports/properties.md:65
+#: src/supports/properties.md:86 src/supports/properties.md:113
+#: src/supports/properties.md:128 src/supports/properties.md:146
+#: src/supports/properties.md:155 src/supports/properties.md:166
+#: src/supports/properties.md:181 src/supports/properties.md:216
+#: src/supports/properties.md:235 src/supports/pagination.md:13
 msgid "プロパティ"
 msgstr ""
 
 #: src/supports/properties.md:20 src/supports/properties.md:31
-#: src/supports/properties.md:44 src/supports/properties.md:61
-#: src/supports/properties.md:81 src/supports/properties.md:108
-#: src/supports/properties.md:123 src/supports/properties.md:141
-#: src/supports/properties.md:150 src/supports/properties.md:161
-#: src/supports/properties.md:176 src/supports/properties.md:211
-#: src/supports/properties.md:230 src/supports/selectors.md:15
-#: src/supports/selectors.md:27 src/supports/selectors.md:46
-#: src/supports/selectors.md:76 src/supports/selectors.md:120
+#: src/supports/properties.md:46 src/supports/properties.md:65
+#: src/supports/properties.md:86 src/supports/properties.md:113
+#: src/supports/properties.md:128 src/supports/properties.md:146
+#: src/supports/properties.md:155 src/supports/properties.md:166
+#: src/supports/properties.md:181 src/supports/properties.md:216
+#: src/supports/properties.md:235 src/supports/selectors.md:15
+#: src/supports/selectors.md:28 src/supports/selectors.md:47
+#: src/supports/selectors.md:77 src/supports/selectors.md:121
 #: src/migration/wkhtmltopdf-options.md:29
 #: src/migration/wkhtmltopdf-options.md:67
 #: src/migration/wkhtmltopdf-options.md:76
@@ -3162,32 +3162,34 @@ msgstr ""
 #: src/supports/properties.md:26 src/supports/properties.md:27
 #: src/supports/properties.md:33 src/supports/properties.md:34
 #: src/supports/properties.md:35 src/supports/properties.md:36
-#: src/supports/properties.md:49 src/supports/properties.md:50
-#: src/supports/properties.md:52 src/supports/properties.md:53
-#: src/supports/properties.md:55 src/supports/properties.md:57
-#: src/supports/properties.md:65 src/supports/properties.md:66
-#: src/supports/properties.md:68 src/supports/properties.md:69
-#: src/supports/properties.md:83 src/supports/properties.md:84
-#: src/supports/properties.md:85 src/supports/properties.md:86
-#: src/supports/properties.md:90 src/supports/properties.md:91
-#: src/supports/properties.md:92 src/supports/properties.md:93
-#: src/supports/properties.md:94 src/supports/properties.md:95
-#: src/supports/properties.md:97 src/supports/properties.md:98
-#: src/supports/properties.md:99 src/supports/properties.md:100
-#: src/supports/properties.md:101 src/supports/properties.md:102
-#: src/supports/properties.md:104 src/supports/properties.md:110
-#: src/supports/properties.md:112 src/supports/properties.md:115
-#: src/supports/properties.md:116 src/supports/properties.md:126
-#: src/supports/properties.md:128 src/supports/properties.md:144
-#: src/supports/properties.md:146 src/supports/properties.md:152
-#: src/supports/properties.md:163 src/supports/properties.md:164
-#: src/supports/properties.md:180 src/supports/properties.md:185
-#: src/supports/properties.md:187 src/supports/selectors.md:37
-#: src/supports/selectors.md:48 src/supports/selectors.md:49
-#: src/supports/selectors.md:78 src/supports/selectors.md:80
-#: src/supports/selectors.md:82 src/supports/selectors.md:122
+#: src/supports/properties.md:41 src/supports/properties.md:42
+#: src/supports/properties.md:50 src/supports/properties.md:52
+#: src/supports/properties.md:53 src/supports/properties.md:55
+#: src/supports/properties.md:56 src/supports/properties.md:57
+#: src/supports/properties.md:59 src/supports/properties.md:61
+#: src/supports/properties.md:69 src/supports/properties.md:70
+#: src/supports/properties.md:72 src/supports/properties.md:73
+#: src/supports/properties.md:74 src/supports/properties.md:88
+#: src/supports/properties.md:89 src/supports/properties.md:90
+#: src/supports/properties.md:91 src/supports/properties.md:95
+#: src/supports/properties.md:96 src/supports/properties.md:97
+#: src/supports/properties.md:98 src/supports/properties.md:99
+#: src/supports/properties.md:100 src/supports/properties.md:102
+#: src/supports/properties.md:103 src/supports/properties.md:104
+#: src/supports/properties.md:105 src/supports/properties.md:106
+#: src/supports/properties.md:107 src/supports/properties.md:109
+#: src/supports/properties.md:115 src/supports/properties.md:117
+#: src/supports/properties.md:120 src/supports/properties.md:121
+#: src/supports/properties.md:131 src/supports/properties.md:133
+#: src/supports/properties.md:149 src/supports/properties.md:151
+#: src/supports/properties.md:157 src/supports/properties.md:168
+#: src/supports/properties.md:169 src/supports/properties.md:185
+#: src/supports/properties.md:190 src/supports/properties.md:192
+#: src/supports/selectors.md:38 src/supports/selectors.md:49
+#: src/supports/selectors.md:50 src/supports/selectors.md:79
+#: src/supports/selectors.md:81 src/supports/selectors.md:83
 #: src/supports/selectors.md:123 src/supports/selectors.md:124
-#: src/supports/selectors.md:125
+#: src/supports/selectors.md:125 src/supports/selectors.md:126
 msgid "⚠️"
 msgstr ""
 
@@ -3291,40 +3293,41 @@ msgstr ""
 
 #: src/supports/properties.md:37 src/supports/properties.md:38
 #: src/supports/properties.md:39 src/supports/properties.md:40
-#: src/supports/properties.md:46 src/supports/properties.md:47
-#: src/supports/properties.md:48 src/supports/properties.md:51
-#: src/supports/properties.md:54 src/supports/properties.md:63
-#: src/supports/properties.md:64 src/supports/properties.md:88
-#: src/supports/properties.md:89 src/supports/properties.md:96
-#: src/supports/properties.md:103 src/supports/properties.md:111
-#: src/supports/properties.md:113 src/supports/properties.md:114
-#: src/supports/properties.md:125 src/supports/properties.md:127
-#: src/supports/properties.md:129 src/supports/properties.md:130
-#: src/supports/properties.md:143 src/supports/properties.md:145
-#: src/supports/properties.md:153 src/supports/properties.md:154
-#: src/supports/properties.md:165 src/supports/properties.md:166
-#: src/supports/properties.md:178 src/supports/properties.md:179
-#: src/supports/properties.md:181 src/supports/properties.md:182
-#: src/supports/properties.md:183 src/supports/properties.md:184
-#: src/supports/properties.md:186 src/supports/properties.md:213
-#: src/supports/properties.md:214 src/supports/properties.md:215
-#: src/supports/properties.md:216 src/supports/properties.md:217
+#: src/supports/properties.md:48 src/supports/properties.md:49
+#: src/supports/properties.md:51 src/supports/properties.md:54
+#: src/supports/properties.md:58 src/supports/properties.md:67
+#: src/supports/properties.md:68 src/supports/properties.md:71
+#: src/supports/properties.md:93 src/supports/properties.md:94
+#: src/supports/properties.md:101 src/supports/properties.md:108
+#: src/supports/properties.md:116 src/supports/properties.md:118
+#: src/supports/properties.md:119 src/supports/properties.md:130
+#: src/supports/properties.md:132 src/supports/properties.md:134
+#: src/supports/properties.md:135 src/supports/properties.md:148
+#: src/supports/properties.md:150 src/supports/properties.md:158
+#: src/supports/properties.md:159 src/supports/properties.md:170
+#: src/supports/properties.md:171 src/supports/properties.md:183
+#: src/supports/properties.md:184 src/supports/properties.md:186
+#: src/supports/properties.md:187 src/supports/properties.md:188
+#: src/supports/properties.md:189 src/supports/properties.md:191
 #: src/supports/properties.md:218 src/supports/properties.md:219
-#: src/supports/properties.md:220 src/supports/properties.md:232
-#: src/supports/properties.md:233 src/supports/selectors.md:17
-#: src/supports/selectors.md:18 src/supports/selectors.md:19
-#: src/supports/selectors.md:20 src/supports/selectors.md:21
-#: src/supports/selectors.md:22 src/supports/selectors.md:29
-#: src/supports/selectors.md:30 src/supports/selectors.md:31
-#: src/supports/selectors.md:32 src/supports/selectors.md:33
-#: src/supports/selectors.md:34 src/supports/selectors.md:35
-#: src/supports/selectors.md:36 src/supports/selectors.md:38
-#: src/supports/selectors.md:59 src/supports/selectors.md:60
-#: src/supports/selectors.md:61 src/supports/selectors.md:62
-#: src/supports/selectors.md:81 src/supports/selectors.md:83
-#: src/supports/selectors.md:91 src/supports/selectors.md:92
-#: src/supports/selectors.md:93 src/supports/selectors.md:94
-#: src/supports/selectors.md:96 src/supports/selectors.md:126
+#: src/supports/properties.md:220 src/supports/properties.md:221
+#: src/supports/properties.md:222 src/supports/properties.md:223
+#: src/supports/properties.md:224 src/supports/properties.md:225
+#: src/supports/properties.md:237 src/supports/properties.md:238
+#: src/supports/selectors.md:17 src/supports/selectors.md:18
+#: src/supports/selectors.md:19 src/supports/selectors.md:20
+#: src/supports/selectors.md:21 src/supports/selectors.md:22
+#: src/supports/selectors.md:23 src/supports/selectors.md:30
+#: src/supports/selectors.md:31 src/supports/selectors.md:32
+#: src/supports/selectors.md:33 src/supports/selectors.md:34
+#: src/supports/selectors.md:35 src/supports/selectors.md:36
+#: src/supports/selectors.md:37 src/supports/selectors.md:39
+#: src/supports/selectors.md:60 src/supports/selectors.md:61
+#: src/supports/selectors.md:62 src/supports/selectors.md:63
+#: src/supports/selectors.md:82 src/supports/selectors.md:84
+#: src/supports/selectors.md:92 src/supports/selectors.md:93
+#: src/supports/selectors.md:94 src/supports/selectors.md:95
+#: src/supports/selectors.md:97 src/supports/selectors.md:127
 msgid "✅"
 msgstr ""
 
@@ -3344,7 +3347,7 @@ msgstr ""
 msgid "`padding`"
 msgstr ""
 
-#: src/supports/properties.md:39 src/supports/properties.md:48
+#: src/supports/properties.md:39 src/supports/properties.md:51
 msgid "1〜4値ショートハンド"
 msgstr ""
 
@@ -3356,811 +3359,852 @@ msgstr ""
 msgid "パーセンテージはcontaining block幅基準(仕様通り)"
 msgstr ""
 
+#: src/supports/properties.md:41
+msgid "`margin-inline` / `margin-block` / `margin-inline-start`等"
+msgstr ""
+
+#: src/supports/properties.md:41
+msgid ""
+"論理プロパティ。対応する書字方向が`horizontal-tb`+LTRのみなので、`inline-start`=左、`inline-end`=右、`block-start`=上、`block-end`=下へ固定で写像する(`writing-mode`/`direction`は非対応)。2辺ショートハンドは1〜2値(`start "
+"end`の順)。`auto`も通るので`margin-inline: auto`で中央寄せできる"
+msgstr ""
+
 #: src/supports/properties.md:42
+msgid "`padding-inline` / `padding-block` / `padding-inline-start`等"
+msgstr ""
+
+#: src/supports/properties.md:42
+msgid "論理プロパティ。写像規則は`margin-inline`と同じ"
+msgstr ""
+
+#: src/supports/properties.md:44
 msgid "枠線・角丸・アウトライン・影"
 msgstr ""
 
-#: src/supports/properties.md:46
+#: src/supports/properties.md:48
 msgid "`border`"
 msgstr ""
 
-#: src/supports/properties.md:46
+#: src/supports/properties.md:48
 msgid "`<width> \\|\\| <style> \\|\\| <color>`を任意順・任意省略で受け付け、4辺へ適用"
 msgstr ""
 
-#: src/supports/properties.md:47
+#: src/supports/properties.md:49
 msgid "`border-top` / `-right` / `-bottom` / `-left`"
 msgstr ""
 
-#: src/supports/properties.md:47
+#: src/supports/properties.md:49
 msgid "辺別ショートハンド(値文法は`border`と同じ)"
 msgstr ""
 
-#: src/supports/properties.md:48
+#: src/supports/properties.md:50
+msgid ""
+"`border-inline` / `border-block` / "
+"`border-inline-start`等(`-width`/`-style`/`-color`のロングハンドを含む)"
+msgstr ""
+
+#: src/supports/properties.md:50 src/supports/properties.md:72
+msgid "論理プロパティ。写像規則は[`margin-inline`](#ボックスモデル)と同じ"
+msgstr ""
+
+#: src/supports/properties.md:51
 msgid "`border-width` / `border-style` / `border-color`"
 msgstr ""
 
-#: src/supports/properties.md:49
+#: src/supports/properties.md:52
 msgid "`border-*-width`"
 msgstr ""
 
-#: src/supports/properties.md:49
+#: src/supports/properties.md:52
 msgid "`<length>`のみ。`thin`/`medium`/`thick`キーワードは非対応"
 msgstr ""
 
-#: src/supports/properties.md:50
+#: src/supports/properties.md:53
 msgid "`border-*-style`"
 msgstr ""
 
-#: src/supports/properties.md:50
+#: src/supports/properties.md:53
 msgid ""
 "`none`/`hidden`/`solid`/`dashed`/`dotted`/`double`/`groove`/`ridge`/`inset`/`outset`。`hidden`は`none`と同一視(テーブルの枠線競合解決でも区別しない)。`groove`/`ridge`/`inset`/`outset`は`border-color`から2階調の陰影を算出して描画"
 msgstr ""
 
-#: src/supports/properties.md:51
+#: src/supports/properties.md:54
 msgid "`border-*-color`"
 msgstr ""
 
-#: src/supports/properties.md:51
+#: src/supports/properties.md:54
 msgid "初期値は`currentcolor`"
 msgstr ""
 
-#: src/supports/properties.md:52
+#: src/supports/properties.md:55
 msgid "`border-radius`"
 msgstr ""
 
-#: src/supports/properties.md:52
+#: src/supports/properties.md:55
 msgid ""
 "1〜4値+`/`区切りの楕円構文に対応。パーセンテージ指定は非対応(`<length>`のみ)。4辺の太さ・スタイル・色が揃っていない場合は角丸を諦めて直線4辺へフォールバックする。`groove`/`ridge`/`inset`/`outset`との併用も同様にフォールバック"
 msgstr ""
 
-#: src/supports/properties.md:53
+#: src/supports/properties.md:56
 msgid "`border-top-left-radius`ほか3隅"
 msgstr ""
 
-#: src/supports/properties.md:53
+#: src/supports/properties.md:56
 msgid "`<length>{1,2}`(水平/垂直半径)。制約は`border-radius`と同じ"
 msgstr ""
 
-#: src/supports/properties.md:54
+#: src/supports/properties.md:57
+msgid "`border-start-start-radius`ほか3隅"
+msgstr ""
+
+#: src/supports/properties.md:57
+msgid ""
+"論理プロパティ。1つ目がblock方向、2つ目がinline方向を指す(`border-start-end-radius`=右上)。写像規則は[`margin-inline`](#ボックスモデル)と同じ"
+msgstr ""
+
+#: src/supports/properties.md:58
 msgid "`outline`"
 msgstr ""
 
-#: src/supports/properties.md:54
+#: src/supports/properties.md:58
 msgid "`<width> \\|\\| <style> \\|\\| <color>`。border-boxの外側に描画し、レイアウトには影響しない"
 msgstr ""
 
-#: src/supports/properties.md:55
+#: src/supports/properties.md:59
 msgid "`outline-width` / `outline-style` / `outline-color`"
 msgstr ""
 
-#: src/supports/properties.md:55
+#: src/supports/properties.md:59
 msgid "`outline-style`は`border-style`と同じ値集合。UA依存の`auto`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:56
+#: src/supports/properties.md:60
 msgid "`outline-offset`"
 msgstr ""
 
-#: src/supports/properties.md:56 src/supports/properties.md:67
-#: src/supports/properties.md:87 src/supports/properties.md:117
-#: src/supports/properties.md:155 src/supports/properties.md:167
-#: src/supports/properties.md:188 src/supports/properties.md:189
-#: src/supports/properties.md:221 src/supports/properties.md:222
-#: src/supports/properties.md:223 src/supports/selectors.md:23
-#: src/supports/selectors.md:50 src/supports/selectors.md:51
-#: src/supports/selectors.md:63 src/supports/selectors.md:79
-#: src/supports/selectors.md:84 src/supports/selectors.md:85
-#: src/supports/selectors.md:97 src/supports/selectors.md:99
-#: src/supports/selectors.md:127 src/supports/selectors.md:128
+#: src/supports/properties.md:60 src/supports/properties.md:92
+#: src/supports/properties.md:122 src/supports/properties.md:160
+#: src/supports/properties.md:172 src/supports/properties.md:193
+#: src/supports/properties.md:194 src/supports/properties.md:226
+#: src/supports/properties.md:227 src/supports/properties.md:228
+#: src/supports/selectors.md:24 src/supports/selectors.md:51
+#: src/supports/selectors.md:52 src/supports/selectors.md:64
+#: src/supports/selectors.md:80 src/supports/selectors.md:85
+#: src/supports/selectors.md:86 src/supports/selectors.md:98
+#: src/supports/selectors.md:100 src/supports/selectors.md:128
+#: src/supports/selectors.md:129
 msgid "❌"
 msgstr ""
 
-#: src/supports/properties.md:56
+#: src/supports/properties.md:60
 msgid "常に0固定"
 msgstr ""
 
-#: src/supports/properties.md:57
+#: src/supports/properties.md:61
 msgid "`box-shadow`"
 msgstr ""
 
-#: src/supports/properties.md:57
+#: src/supports/properties.md:61
 msgid ""
 "`none \\| "
 "<shadow>#`(カンマ区切りで複数指定可、先頭が最前面)。`inset`はパースするが描画は非対応。ぼかしは4段階の同心矩形による近似"
 msgstr ""
 
-#: src/supports/properties.md:59
+#: src/supports/properties.md:63
 msgid "配置(positioning / float / transform)"
 msgstr ""
 
-#: src/supports/properties.md:63
+#: src/supports/properties.md:67
 msgid "`float`"
 msgstr ""
 
-#: src/supports/properties.md:63
+#: src/supports/properties.md:67
 msgid "`none`/`left`/`right`。`width: auto`のshrink-to-fitに対応"
 msgstr ""
 
-#: src/supports/properties.md:64
+#: src/supports/properties.md:68
 msgid "`clear`"
 msgstr ""
 
-#: src/supports/properties.md:64
+#: src/supports/properties.md:68
 msgid "`none`/`left`/`right`/`both`"
 msgstr ""
 
-#: src/supports/properties.md:65
+#: src/supports/properties.md:69
 msgid "`position`"
 msgstr ""
 
-#: src/supports/properties.md:65
+#: src/supports/properties.md:69
 msgid ""
 "`static`/`relative`/`absolute`/`fixed`。`sticky`は非対応。`absolute`/`fixed`には後述の制約あり"
 msgstr ""
 
-#: src/supports/properties.md:66
+#: src/supports/properties.md:70
 msgid "`top` / `right` / `bottom` / `left`"
 msgstr ""
 
-#: src/supports/properties.md:66
+#: src/supports/properties.md:70
 msgid ""
 "`absolute`/`fixed`では`bottom`単独指定による下端揃えが非対応(高さの循環参照を避けるため`top`基準に解決する)。`relative`ではオフセットとして機能する"
 msgstr ""
 
-#: src/supports/properties.md:67
+#: src/supports/properties.md:71
 msgid "`inset`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:67
-msgid "個別の`top`/`right`/`bottom`/`left`を使う"
+#: src/supports/properties.md:71
+msgid "1〜4値ショートハンド(展開規則は`margin`と同じ)"
 msgstr ""
 
-#: src/supports/properties.md:68
+#: src/supports/properties.md:72
+msgid "`inset-inline` / `inset-block` / `inset-inline-start`等"
+msgstr ""
+
+#: src/supports/properties.md:73
 msgid "`transform`"
 msgstr ""
 
-#: src/supports/properties.md:68
+#: src/supports/properties.md:73
 msgid ""
 "`translate`/`translateX`/`translateY`/`scale`/`scaleX`/`scaleY`/`rotate`/`skew`/`skewX`/`skewY`/`matrix`。3D系(`translate3d`/`rotate3d`/`perspective()`等)は非対応。PDFのCTM変換で実装するため、変換後の内容はページ分割の判定に影響しない"
 msgstr ""
 
-#: src/supports/properties.md:69
+#: src/supports/properties.md:74
 msgid "`transform-origin`"
 msgstr ""
 
-#: src/supports/properties.md:69
+#: src/supports/properties.md:74
 msgid ""
 "`background-position`と同じ値文法(キーワード/長さ/パーセンテージの1〜2値)。初期値`50% 50%`。3値目(Z軸)は非対応"
 msgstr ""
 
-#: src/supports/properties.md:71
+#: src/supports/properties.md:76
 msgid "`position: absolute`/`fixed`の既知の制約:"
 msgstr ""
 
-#: src/supports/properties.md:73
+#: src/supports/properties.md:78
 msgid "絶対配置要素は「通常フローから外し、確定したページへ後付けするオーバーレイ」として配置する"
 msgstr ""
 
-#: src/supports/properties.md:74
+#: src/supports/properties.md:79
 msgid "containing blockになれるのは、単一ページに収まっているpositioned祖先(またはページ領域)"
 msgstr ""
 
-#: src/supports/properties.md:75
+#: src/supports/properties.md:80
 msgid "テキストの途中に置いた`absolute`は、その前後のテキストが別々の行に分かれる(ブラウザのように1行のまま残らない)"
 msgstr ""
 
-#: src/supports/properties.md:76
+#: src/supports/properties.md:81
 msgid "絶対配置要素自身がページを跨ぐ分割は非対応(1ページにbest-effortで置く)"
 msgstr ""
 
-#: src/supports/properties.md:77
+#: src/supports/properties.md:82
 msgid "ストリーミングモード(`Mode::Streaming`)では絶対配置を無視する"
 msgstr ""
 
-#: src/supports/properties.md:79
+#: src/supports/properties.md:84
 msgid "フォント・テキスト"
 msgstr ""
 
-#: src/supports/properties.md:83
+#: src/supports/properties.md:88
 msgid "`font-family`"
 msgstr ""
 
-#: src/supports/properties.md:83
+#: src/supports/properties.md:88
 msgid ""
 "カンマ区切りリスト。汎用family名は`serif`/`sans-serif`/`monospace`をシステムフォントから解決する(`cursive`/`fantasy`は解決しない)。`sans-serif`の解決先はCLIの`--gothic-font`で決定的に上書きできる"
 msgstr ""
 
-#: src/supports/properties.md:84
+#: src/supports/properties.md:89
 msgid "`font-size`"
 msgstr ""
 
-#: src/supports/properties.md:84
+#: src/supports/properties.md:89
 msgid ""
 "`<length>`(`px`/`em`/`rem`)のみ。`smaller`/`larger`/`medium`等のキーワード、パーセンテージ指定は非対応"
 msgstr ""
 
-#: src/supports/properties.md:85 src/supports/fonts.md:107
+#: src/supports/properties.md:90 src/supports/fonts.md:107
 msgid "`font-weight`"
 msgstr ""
 
-#: src/supports/properties.md:85
+#: src/supports/properties.md:90
 msgid ""
 "`normal`/`bold`/`100`〜`900`。数値は600以上を`bold`とみなす2値化。太字フォントが無い場合は塗り+縁取りの疑似ボールドで描画"
 msgstr ""
 
-#: src/supports/properties.md:86 src/supports/fonts.md:108
+#: src/supports/properties.md:91 src/supports/fonts.md:108
 msgid "`font-style`"
 msgstr ""
 
-#: src/supports/properties.md:86
+#: src/supports/properties.md:91
 msgid ""
 "`normal`/`italic`/`oblique`(`oblique`は`italic`と同一視、傾斜角の指定は不可)。イタリック字形が無い場合はテキスト行列のせん断による疑似イタリック"
 msgstr ""
 
-#: src/supports/properties.md:87
+#: src/supports/properties.md:92
 msgid "`font`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:87
+#: src/supports/properties.md:92
 msgid "個別のロングハンドを使う"
 msgstr ""
 
-#: src/supports/properties.md:88
+#: src/supports/properties.md:93
 msgid "`color`"
 msgstr ""
 
-#: src/supports/properties.md:88
+#: src/supports/properties.md:93
 msgid "継承プロパティ。指定できる色の記法は[セレクタ・値・at-rule](selectors.md#色)を参照"
 msgstr ""
 
-#: src/supports/properties.md:89
+#: src/supports/properties.md:94
 msgid "`line-height`"
 msgstr ""
 
-#: src/supports/properties.md:89
+#: src/supports/properties.md:94
 msgid "`normal`/`<number>`/`<length>`/`<percentage>`"
 msgstr ""
 
-#: src/supports/properties.md:90
+#: src/supports/properties.md:95
 msgid "`text-align`"
 msgstr ""
 
-#: src/supports/properties.md:90
+#: src/supports/properties.md:95
 msgid ""
 "`left`/`right`/`center`/`justify`。`justify`は最終行以外の単語間で余白を配分する。`start`/`end`は非対応(`direction`自体が非対応のため)"
 msgstr ""
 
-#: src/supports/properties.md:91
+#: src/supports/properties.md:96
 msgid "`text-indent`"
 msgstr ""
 
-#: src/supports/properties.md:91
+#: src/supports/properties.md:96
 msgid "`<length>`/`<percentage>`。`hanging`/`each-line`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:92
+#: src/supports/properties.md:97
 msgid "`text-transform`"
 msgstr ""
 
-#: src/supports/properties.md:92
+#: src/supports/properties.md:97
 msgid ""
 "`none`/`uppercase`/`lowercase`/`capitalize`(語頭のみ変換)。`full-width`/`full-size-kana`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:93
+#: src/supports/properties.md:98
 msgid "`text-decoration` / `text-decoration-line`"
 msgstr ""
 
-#: src/supports/properties.md:93
+#: src/supports/properties.md:98
 msgid ""
 "`none`/`underline`/`line-through`(併記可)。`overline`/`blink`は非対応。ショートハンドの`text-decoration-color`/`-style`/`-thickness`部分も非対応。祖先から子孫への伝播は「継承プロパティとして扱う」簡略実装"
 msgstr ""
 
-#: src/supports/properties.md:94
+#: src/supports/properties.md:99
 msgid "`text-shadow`"
 msgstr ""
 
-#: src/supports/properties.md:94
+#: src/supports/properties.md:99
 msgid ""
 "`none \\| <shadow>#`(`<offset-x> <offset-y> <blur>? "
 "<color>?`)。PDFにぼかしフィルタが無いため、blurはアルファを下げた多重描画による近似。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:95
+#: src/supports/properties.md:100
 msgid "`text-overflow`"
 msgstr ""
 
-#: src/supports/properties.md:95
+#: src/supports/properties.md:100
 msgid ""
 "`clip`/`ellipsis`。`overflow`が`visible`以外のときのみ有効。幅方向にはみ出した行のみが対象(ブロック全体のオーバーフローは扱わない)。`<string>`指定は非対応"
 msgstr ""
 
-#: src/supports/properties.md:96
+#: src/supports/properties.md:101
 msgid "`word-break`"
 msgstr ""
 
-#: src/supports/properties.md:96
+#: src/supports/properties.md:101
 msgid "`normal`(CJK文字が隣接する境界のみ改行可)/`break-all`/`keep-all`。非推奨値`break-word`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:97
+#: src/supports/properties.md:102
 msgid "`overflow-wrap` / `word-wrap`"
 msgstr ""
 
-#: src/supports/properties.md:97
+#: src/supports/properties.md:102
 msgid ""
 "`normal`/`break-word`/`anywhere`(`anywhere`は`break-word`と同一視)。改行機会は増やさず、行頭に置いても収まらない語だけを文字単位で割る"
 msgstr ""
 
-#: src/supports/properties.md:98
+#: src/supports/properties.md:103
 msgid "`hyphens`"
 msgstr ""
 
-#: src/supports/properties.md:98
+#: src/supports/properties.md:103
 msgid ""
 "`none`/`manual`/`auto`。soft "
 "hyphen(U+00AD)でのみ分割し、分割時に行末へハイフンを表示する。`auto`は辞書を持たないため`manual`と同じ挙動(自動ハイフネーションはしない)"
 msgstr ""
 
-#: src/supports/properties.md:99
+#: src/supports/properties.md:104
 msgid "`text-emphasis` / `-style` / `-color` / `-position`"
 msgstr ""
 
-#: src/supports/properties.md:99
+#: src/supports/properties.md:104
 msgid ""
 "`dot`/`circle`/`double-circle`/`triangle`/`sesame`(`filled`/`open`)と`<string>`。キーワードのマークはPDFのパスで描くためフォントの字形に依存しない(`<string>`はグリフ描画で、字形が無ければ描かれない)。`position`は`over`/`under`のみ(`right`/`left`は読み飛ばし)。マーク分だけ行の高さが広がる。句読点をスキップする`text-emphasis-skip`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:100
+#: src/supports/properties.md:105
 msgid "`letter-spacing`"
 msgstr ""
 
-#: src/supports/properties.md:100
+#: src/supports/properties.md:105
 msgid "`normal`/`<length>`。パーセンテージは非対応"
 msgstr ""
 
-#: src/supports/properties.md:101
+#: src/supports/properties.md:106
 msgid "`word-spacing`"
 msgstr ""
 
-#: src/supports/properties.md:101
+#: src/supports/properties.md:106
 msgid "`normal`/`<length>`"
 msgstr ""
 
-#: src/supports/properties.md:102
+#: src/supports/properties.md:107
 msgid "`white-space`"
 msgstr ""
 
-#: src/supports/properties.md:102
+#: src/supports/properties.md:107
 msgid "`normal`/`nowrap`/`pre`。`pre-wrap`/`pre-line`/`break-spaces`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:103
+#: src/supports/properties.md:108
 msgid "`vertical-align`"
 msgstr ""
 
-#: src/supports/properties.md:103
+#: src/supports/properties.md:108
 msgid ""
 "`baseline`/`sub`/`super`/`text-top`/`text-bottom`/`top`/`middle`/`bottom`/`<length>`/`<percentage>`。テーブルセル文脈では`top`/`middle`/`bottom`(と`baseline`)が意味を持つ"
 msgstr ""
 
-#: src/supports/properties.md:104
+#: src/supports/properties.md:109
 msgid "`quotes`"
 msgstr ""
 
-#: src/supports/properties.md:104
+#: src/supports/properties.md:109
 msgid ""
 "`none`または`\"開き\" "
 "\"閉じ\"`のペアの繰り返し。`content`の`open-quote`/`close-quote`と組で使う。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:106
+#: src/supports/properties.md:111
 msgid "背景"
 msgstr ""
 
-#: src/supports/properties.md:110
+#: src/supports/properties.md:115
 msgid "`background`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:110
+#: src/supports/properties.md:115
 msgid ""
 "`<color>`/`<image>`/`<repeat>`/`<attachment>`/`<position>[ / "
 "<size>]`を任意順で受け付ける。指定しなかったロングハンドは仕様通り初期値へリセットされる。`background-clip`/`-origin`(`padding-box`等のキーワード)を含むとパースエラーになり宣言ごと無視される点に注意"
 msgstr ""
 
-#: src/supports/properties.md:111
+#: src/supports/properties.md:116
 msgid "`background-color`"
 msgstr ""
 
-#: src/supports/properties.md:111
+#: src/supports/properties.md:116
 msgid "アルファ付きの色はExtGStateで透過描画"
 msgstr ""
 
-#: src/supports/properties.md:112
+#: src/supports/properties.md:117
 msgid "`background-image`"
 msgstr ""
 
-#: src/supports/properties.md:112
+#: src/supports/properties.md:117
 msgid ""
 "`none \\| "
 "url(...)`のみ。`linear-gradient()`等のグラデーション関数、カンマ区切りの複数背景は非対応。既定ではintrinsicサイズでタイル配置"
 msgstr ""
 
-#: src/supports/properties.md:113
+#: src/supports/properties.md:118
 msgid "`background-position`"
 msgstr ""
 
-#: src/supports/properties.md:113
+#: src/supports/properties.md:118
 msgid ""
 "キーワード(`left`/`center`/`right`/`top`/`bottom`)と長さ/パーセンテージの1〜2値。3〜4値構文(`right "
 "10px bottom 20px`)は非対応"
 msgstr ""
 
-#: src/supports/properties.md:114
+#: src/supports/properties.md:119
 msgid "`background-size`"
 msgstr ""
 
-#: src/supports/properties.md:114
+#: src/supports/properties.md:119
 msgid "`cover`/`contain`/`<length-percentage> \\| auto`の1〜2値"
 msgstr ""
 
-#: src/supports/properties.md:115
+#: src/supports/properties.md:120
 msgid "`background-repeat`"
 msgstr ""
 
-#: src/supports/properties.md:115
+#: src/supports/properties.md:120
 msgid "`repeat`/`repeat-x`/`repeat-y`/`no-repeat`。CSS3の`round`/`space`、2値構文は非対応"
 msgstr ""
 
-#: src/supports/properties.md:116
+#: src/supports/properties.md:121
 msgid "`background-attachment`"
 msgstr ""
 
-#: src/supports/properties.md:116
+#: src/supports/properties.md:121
 msgid "`scroll`/`fixed`(スクロールの概念が無いため`fixed`は`scroll`と同一視)"
 msgstr ""
 
-#: src/supports/properties.md:117
+#: src/supports/properties.md:122
 msgid "`background-clip` / `background-origin` / `background-blend-mode`"
 msgstr ""
 
-#: src/supports/properties.md:117
+#: src/supports/properties.md:122
 msgid "未実装。背景はborder-box基準で描画する"
 msgstr ""
 
-#: src/supports/properties.md:119
+#: src/supports/properties.md:124
 msgid "`border-radius`と`background-image`を併用した場合、角丸によるクリップは行わない(角丸は背景色の塗りにのみ効く)。"
 msgstr ""
 
-#: src/supports/properties.md:121
+#: src/supports/properties.md:126
 msgid "テーブル"
 msgstr ""
 
-#: src/supports/properties.md:125
+#: src/supports/properties.md:130
 msgid "`table-layout`"
 msgstr ""
 
-#: src/supports/properties.md:125
+#: src/supports/properties.md:130
 msgid "`auto`/`fixed`。`auto`ではセル内容の自然幅を測って列幅を決める(ネストしたテーブル・flexの自然幅測定のみ非対応で0扱い)"
 msgstr ""
 
-#: src/supports/properties.md:126
+#: src/supports/properties.md:131
 msgid "`border-collapse`"
 msgstr ""
 
-#: src/supports/properties.md:126
+#: src/supports/properties.md:131
 msgid ""
 "`separate`/`collapse`。`collapse`は見た目の枠線統合のみを行う(CSS2.1 "
 "§17.6.2の競合解決を「太い方が勝ち、同幅ならスタイル優先順」で簡略化)。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:127
+#: src/supports/properties.md:132
 msgid "`border-spacing`"
 msgstr ""
 
-#: src/supports/properties.md:127
+#: src/supports/properties.md:132
 msgid "`<length>{1,2}`。`border-collapse: collapse`時は0として扱う。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:128
+#: src/supports/properties.md:133
 msgid "`caption-side`"
 msgstr ""
 
-#: src/supports/properties.md:128
+#: src/supports/properties.md:133
 msgid "`top`/`bottom`。縦書き向けの`left`/`right`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:129
+#: src/supports/properties.md:134
 msgid "`empty-cells`"
 msgstr ""
 
-#: src/supports/properties.md:129
+#: src/supports/properties.md:134
 msgid "`show`/`hide`。`border-collapse: separate`でのみ意味を持つ。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:130
+#: src/supports/properties.md:135
 msgid "`vertical-align`(セル)"
 msgstr ""
 
-#: src/supports/properties.md:130
+#: src/supports/properties.md:135
 msgid "上記[フォント・テキスト](#フォントテキスト)を参照"
 msgstr ""
 
-#: src/supports/properties.md:132
+#: src/supports/properties.md:137
 msgid ""
 "`<colgroup>`/`<col>`の`width`属性・CSS`width`による列幅指定、`rowspan`/`colspan`、`<thead>`のページまたぎ繰り返しに対応。 "
 "`rowspan=\"0\"`は1として扱う。"
 msgstr ""
 
-#: src/supports/properties.md:135
+#: src/supports/properties.md:140
 msgid ""
 "セルの`min-width`/`max-width`は列幅アルゴリズムに反映される。 `table-layout: "
 "auto`では列の自然幅をクランプする形で効くため、表を紙幅に収める比例縮尺の後は`min-width`が保証されない。 `table-layout: "
 "fixed`では1行目のセルの指定幅をクランプし、`width: auto`かつ`min-width`のみの指定はその値を列幅として使う。"
 msgstr ""
 
-#: src/supports/properties.md:139
+#: src/supports/properties.md:144
 msgid "リスト"
 msgstr ""
 
-#: src/supports/properties.md:143
+#: src/supports/properties.md:148
 msgid "`list-style`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:143
+#: src/supports/properties.md:148
 msgid "`type`/`position`/`image`を任意順・任意省略で受け付ける"
 msgstr ""
 
-#: src/supports/properties.md:144
+#: src/supports/properties.md:149
 msgid "`list-style-type`"
 msgstr ""
 
-#: src/supports/properties.md:144
+#: src/supports/properties.md:149
 msgid ""
 "`disc`/`circle`/`square`/`decimal`/`decimal-leading-zero`/`lower-roman`/`upper-roman`/`lower-alpha`(`lower-latin`)/`upper-alpha`(`upper-latin`)/`none`。`cjk-*`/`hiragana`/`katakana`等は非対応。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:145
+#: src/supports/properties.md:150
 msgid "`list-style-position`"
 msgstr ""
 
-#: src/supports/properties.md:145
+#: src/supports/properties.md:150
 msgid "`outside`/`inside`。継承プロパティ"
 msgstr ""
 
-#: src/supports/properties.md:146
+#: src/supports/properties.md:151
 msgid "`list-style-image`"
 msgstr ""
 
-#: src/supports/properties.md:146
+#: src/supports/properties.md:151
 msgid "`none \\| url(...)`をパースするが描画には使わない(常に`list-style-type`のテキストマーカーへフォールバック)"
 msgstr ""
 
-#: src/supports/properties.md:148
+#: src/supports/properties.md:153
 msgid "生成コンテンツ・カウンタ"
 msgstr ""
 
-#: src/supports/properties.md:152
+#: src/supports/properties.md:157
 msgid "`content`"
 msgstr ""
 
-#: src/supports/properties.md:152
+#: src/supports/properties.md:157
 msgid ""
 "`::before`/`::after`/`::first-letter`および`@page`のmargin "
 "box用。文字列リテラル・`attr()`・`counter()`/`counters()`・`open-quote`/`close-quote`/`no-open-quote`/`no-close-quote`の連結に対応。`url()`による画像挿入は非対応。ブロック子を持つ要素の`::before`/`::after`は生成されない(簡略化)"
 msgstr ""
 
-#: src/supports/properties.md:153
+#: src/supports/properties.md:158
 msgid "`counter-reset`"
 msgstr ""
 
-#: src/supports/properties.md:153
+#: src/supports/properties.md:158
 msgid "`none`または`name [<integer>]`の繰り返し"
 msgstr ""
 
-#: src/supports/properties.md:154
+#: src/supports/properties.md:159
 msgid "`counter-increment`"
 msgstr ""
 
-#: src/supports/properties.md:154
+#: src/supports/properties.md:159
 msgid "`none`または`name [<integer>]`の繰り返し(値省略時は1)"
 msgstr ""
 
-#: src/supports/properties.md:155
+#: src/supports/properties.md:160
 msgid "`counter-set`"
 msgstr ""
 
-#: src/supports/properties.md:155 src/supports/properties.md:223
+#: src/supports/properties.md:160 src/supports/properties.md:228
 msgid "未実装"
 msgstr ""
 
-#: src/supports/properties.md:157
+#: src/supports/properties.md:162
 msgid ""
 "`counter(page)`/`counter(pages)`によるページ番号は`@page`のmargin "
 "box内で使える(`counter(pages)`はストリーミングモードでは総ページ数が確定しないためエラーになる)。"
 msgstr ""
 
-#: src/supports/properties.md:159
+#: src/supports/properties.md:164
 msgid "ページ分割(CSS Fragmentation)"
 msgstr ""
 
-#: src/supports/properties.md:163 src/supports/pagination.md:15
+#: src/supports/properties.md:168 src/supports/pagination.md:15
 msgid "`break-before` / `break-after`"
 msgstr ""
 
-#: src/supports/properties.md:163
+#: src/supports/properties.md:168
 msgid ""
 "`auto`/`avoid`(`avoid-page`/`avoid-column`も同義)/`always`(`page`も同義)。`left`/`right`/`recto`/`verso`(見開き制御)、多段組み関連の値は非対応"
 msgstr ""
 
-#: src/supports/properties.md:164 src/supports/pagination.md:16
+#: src/supports/properties.md:169 src/supports/pagination.md:16
 msgid "`break-inside`"
 msgstr ""
 
-#: src/supports/properties.md:164
+#: src/supports/properties.md:169
 msgid "`auto`/`avoid`(`avoid-page`/`avoid-column`も同義)"
 msgstr ""
 
-#: src/supports/properties.md:165
+#: src/supports/properties.md:170
 msgid "`page-break-before` / `page-break-after` / `page-break-inside`"
 msgstr ""
 
-#: src/supports/properties.md:165
+#: src/supports/properties.md:170
 msgid "上記`break-*`のエイリアス(wkhtmltopdf/wicked_pdf資産からの移行用)"
 msgstr ""
 
-#: src/supports/properties.md:166
+#: src/supports/properties.md:171
 msgid "`orphans` / `widows`"
 msgstr ""
 
-#: src/supports/properties.md:166
+#: src/supports/properties.md:171
 msgid "1以上の整数。初期値2"
 msgstr ""
 
-#: src/supports/properties.md:167
+#: src/supports/properties.md:172
 msgid "`page`(名前付きページ)"
 msgstr ""
 
-#: src/supports/properties.md:167
+#: src/supports/properties.md:172
 msgid "`@page intro`のような名前付きページ自体が非対応"
 msgstr ""
 
-#: src/supports/properties.md:169
+#: src/supports/properties.md:174
 msgid "HTML属性`data-page-break=\"before|after|avoid\"`によるシンタックスシュガーも利用できる。"
 msgstr ""
 
-#: src/supports/properties.md:171
+#: src/supports/properties.md:176
 msgid "Flexbox"
 msgstr ""
 
-#: src/supports/properties.md:173
+#: src/supports/properties.md:178
 msgid ""
 "`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)へ委譲する。 "
 "flexコンテナはページ分割上アトミック(`display: table`と同じく途中で分割されない)。"
 msgstr ""
 
-#: src/supports/properties.md:178
+#: src/supports/properties.md:183
 msgid "`flex-direction`"
 msgstr ""
 
-#: src/supports/properties.md:178
+#: src/supports/properties.md:183
 msgid "`row`/`row-reverse`/`column`/`column-reverse`"
 msgstr ""
 
-#: src/supports/properties.md:179
+#: src/supports/properties.md:184
 msgid "`flex-wrap`"
 msgstr ""
 
-#: src/supports/properties.md:179
+#: src/supports/properties.md:184
 msgid "`nowrap`/`wrap`/`wrap-reverse`"
 msgstr ""
 
-#: src/supports/properties.md:180
+#: src/supports/properties.md:185
 msgid "`justify-content`"
 msgstr ""
 
-#: src/supports/properties.md:180
+#: src/supports/properties.md:185
 msgid ""
 "`normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
 msgstr ""
 
-#: src/supports/properties.md:181
+#: src/supports/properties.md:186
 msgid "`align-items`"
 msgstr ""
 
-#: src/supports/properties.md:181
+#: src/supports/properties.md:186
 msgid "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 
-#: src/supports/properties.md:182
+#: src/supports/properties.md:187
 msgid "`align-content`"
 msgstr ""
 
-#: src/supports/properties.md:182
+#: src/supports/properties.md:187
 msgid ""
 "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`stretch`/`space-between`/`space-around`/`space-evenly`"
 msgstr ""
 
-#: src/supports/properties.md:183
+#: src/supports/properties.md:188
 msgid "`align-self`"
 msgstr ""
 
-#: src/supports/properties.md:183
+#: src/supports/properties.md:188
 msgid ""
 "`auto`/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 
-#: src/supports/properties.md:184
+#: src/supports/properties.md:189
 msgid "`flex-grow` / `flex-shrink`"
 msgstr ""
 
-#: src/supports/properties.md:184
+#: src/supports/properties.md:189
 msgid "非負の`<number>`(負値は無効な宣言として無視)"
 msgstr ""
 
-#: src/supports/properties.md:185
+#: src/supports/properties.md:190
 msgid "`flex-basis`"
 msgstr ""
 
-#: src/supports/properties.md:185
+#: src/supports/properties.md:190
 msgid "`auto`/`content`/`<length-percentage>`。`content`は`auto`と同一視"
 msgstr ""
 
-#: src/supports/properties.md:186
+#: src/supports/properties.md:191
 msgid "`flex`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:186
+#: src/supports/properties.md:191
 msgid ""
 "`none`および`<grow> [<shrink>] [<basis>]`。CSS仕様の既定値規則(`flex: "
 "1`のbasisは`0%`、`flex: <width>`のgrow/shrinkは1)を再現"
 msgstr ""
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:192
 msgid "`gap` / `row-gap` / `column-gap`"
 msgstr ""
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:192
 msgid "flexコンテナでのみ有効(多段組みの`column-gap`としては機能しない)"
 msgstr ""
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:193
 msgid "`order`"
 msgstr ""
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:193
 msgid "taffy 0.12系が未対応のため"
 msgstr ""
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:194
 msgid "`place-content` / `place-items` / `place-self`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:194
 msgid "未実装。個別のロングハンドを使う"
 msgstr ""
 
-#: src/supports/properties.md:190 src/supports/properties.md:219
+#: src/supports/properties.md:195 src/supports/properties.md:224
 msgid "`justify-items` / `justify-self`"
 msgstr ""
 
-#: src/supports/properties.md:190 src/migration/wicked-pdf.md:72
+#: src/supports/properties.md:195 src/migration/wicked-pdf.md:72
 #: src/migration/wicked-pdf.md:73 src/migration/wicked-pdf.md:74
 #: src/migration/wicked-pdf.md:75 src/migration/wicked-pdf.md:76
 #: src/migration/wicked-pdf.md:77
 msgid "—"
 msgstr ""
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:195
 msgid "flexアイテムには適用されない(下記)"
 msgstr ""
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:197
 msgid "`justify-items`/`justify-self`がflexで効かないのは仕様"
 msgstr ""
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:199
 msgid ""
 "CSS Box "
 "Alignmentでは`justify-items`/`justify-self`はGrid・ブロックレイアウト用のプロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は`justify-content`と`margin: "
@@ -4168,220 +4212,220 @@ msgid ""
 "レイアウトを委譲しているtaffyでも、これらを参照するのはGridのアルゴリズムだけで、flexboxのアルゴリズムは一切参照しない。"
 msgstr ""
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:203
 msgid ""
 "したがってこのエンジンでパースに対応しても見た目は変わらないため、意図的に実装していない。 flexで特定のアイテムだけを寄せたい場合は`margin: "
 "auto`を使う(こちらは対応済み):"
 msgstr ""
 
-#: src/supports/properties.md:202
+#: src/supports/properties.md:207
 msgid "/* justify-self: end 相当(主軸の終端へ) */"
 msgstr ""
 
-#: src/supports/properties.md:203
+#: src/supports/properties.md:208
 msgid "/* justify-self: center 相当 */"
 msgstr ""
 
-#: src/supports/properties.md:206
+#: src/supports/properties.md:211
 msgid "Grid"
 msgstr ""
 
-#: src/supports/properties.md:208
+#: src/supports/properties.md:213
 msgid ""
 "`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 "
 "Flexboxと違い、1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複数行にまたがるアイテムがある境界では分割しない)。"
 msgstr ""
 
-#: src/supports/properties.md:213
+#: src/supports/properties.md:218
 msgid "`grid-template-columns` / `grid-template-rows`"
 msgstr ""
 
-#: src/supports/properties.md:213
+#: src/supports/properties.md:218
 msgid ""
 "`none`/`<length>`/`<percentage>`/`fr`/`auto`/`min-content`/`max-content`/`minmax()`/`fit-content()`/`repeat(<整数>\\|auto-fill\\|auto-fit)`/`[name]`(ライン名)。トラックサイズに`calc()`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:214
+#: src/supports/properties.md:219
 msgid "`grid-template-areas`"
 msgstr ""
 
-#: src/supports/properties.md:214
+#: src/supports/properties.md:219
 msgid "文字列マトリクス。列数の不一致・非矩形のエリアは不正な値として宣言ごと無視する(仕様通り)。`.`は名前なしセル"
 msgstr ""
 
-#: src/supports/properties.md:215
+#: src/supports/properties.md:220
 msgid "`grid-auto-columns` / `grid-auto-rows`"
 msgstr ""
 
-#: src/supports/properties.md:215
+#: src/supports/properties.md:220
 msgid "`<track-size>+`"
 msgstr ""
 
-#: src/supports/properties.md:216
+#: src/supports/properties.md:221
 msgid "`grid-auto-flow`"
 msgstr ""
 
-#: src/supports/properties.md:216
+#: src/supports/properties.md:221
 msgid "`row`/`column`/`dense`(併記可)"
 msgstr ""
 
-#: src/supports/properties.md:217
+#: src/supports/properties.md:222
 msgid "`grid-row-start` / `-end` / `grid-column-start` / `-end`"
 msgstr ""
 
-#: src/supports/properties.md:217
+#: src/supports/properties.md:222
 msgid ""
 "`auto`/`<integer>`/`span <integer>`/`<custom-ident>`/`span <custom-ident>`"
 msgstr ""
 
-#: src/supports/properties.md:218
+#: src/supports/properties.md:223
 msgid "`grid-row` / `grid-column` / `grid-area`"
 msgstr ""
 
-#: src/supports/properties.md:218
+#: src/supports/properties.md:223
 msgid "`/`区切りのショートハンド。`grid-area: <name>`で名前付きエリアを指定できる"
 msgstr ""
 
-#: src/supports/properties.md:219
+#: src/supports/properties.md:224
 msgid ""
 "Gridでのみ意味を持つ(flexアイテムには適用されない、[上記](#justify-itemsjustify-selfがflexで効かないのは仕様))"
 msgstr ""
 
-#: src/supports/properties.md:220
+#: src/supports/properties.md:225
 msgid ""
 "`align-items` / `align-self` / `justify-content` / `align-content` / `gap`"
 msgstr ""
 
-#: src/supports/properties.md:220
+#: src/supports/properties.md:225
 msgid "Flexboxと共有(値の範囲は[Flexbox](#flexbox)節を参照)"
 msgstr ""
 
-#: src/supports/properties.md:221
+#: src/supports/properties.md:226
 msgid "`grid` / `grid-template`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:221
+#: src/supports/properties.md:226
 msgid "個別のロングハンドを使う。トラック定義とエリア定義を1つの構文へ詰め込む複雑な文法のため非対応"
 msgstr ""
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:227
 msgid "`display: inline-grid`"
 msgstr ""
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:227
 msgid "`inline-flex`と同じ理由で非対応"
 msgstr ""
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:228
 msgid "subgrid / masonry"
 msgstr ""
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:230
 msgid ""
 "`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)と一致しません。 "
 "列幅を厳密に決めたい場合は`fr`か長さで指定してください。"
 msgstr ""
 
-#: src/supports/properties.md:228
+#: src/supports/properties.md:233
 msgid "置換要素(画像)"
 msgstr ""
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:237
 msgid "`object-fit`"
 msgstr ""
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:237
 msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
 msgstr ""
 
-#: src/supports/properties.md:233
+#: src/supports/properties.md:238
 msgid "`object-position`"
 msgstr ""
 
-#: src/supports/properties.md:233
+#: src/supports/properties.md:238
 msgid "`background-position`と同じ値文法。初期値`50% 50%`"
 msgstr ""
 
-#: src/supports/properties.md:235
+#: src/supports/properties.md:240
 msgid ""
 "`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対応フォーマットはPNG/JPEG/WebP。 "
 "CSSで`width`/`height`の片方だけを指定した場合は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、)。"
 msgstr ""
 
-#: src/supports/properties.md:239
+#: src/supports/properties.md:244
 msgid "非対応プロパティ一覧"
 msgstr ""
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:246
 msgid "以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と決めたものだけではない。 カテゴリ表の`❌`行も参照。"
 msgstr ""
 
-#: src/supports/properties.md:245
+#: src/supports/properties.md:250
 msgid ""
 "ショートハンド: "
-"`font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分"
+"`font`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分"
 msgstr ""
 
-#: src/supports/properties.md:246
+#: src/supports/properties.md:251
 msgid ""
-"論理プロパティ: "
-"`inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて"
+"論理プロパティのうち寸法系: "
+"`inline-size`/`block-size`/`min-inline-size`/`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応済み)"
 msgstr ""
 
-#: src/supports/properties.md:247
+#: src/supports/properties.md:252
 msgid ""
 "書字方向: "
 "`direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`"
 msgstr ""
 
-#: src/supports/properties.md:248
+#: src/supports/properties.md:253
 msgid ""
 "テキスト詳細: "
 "`text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
 msgstr ""
 
-#: src/supports/properties.md:249
+#: src/supports/properties.md:254
 msgid ""
 "フォント詳細: "
 "`font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`"
 msgstr ""
 
-#: src/supports/properties.md:250
+#: src/supports/properties.md:255
 msgid ""
 "多段組み: "
 "`columns`/`column-count`/`column-width`/`column-rule`/`column-span`/`column-fill`"
 msgstr ""
 
-#: src/supports/properties.md:251
+#: src/supports/properties.md:256
 msgid ""
 "視覚効果: "
 "`filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-mode`/`clip`/`clip-path`/`mask`/`isolation`"
 msgstr ""
 
-#: src/supports/properties.md:252
+#: src/supports/properties.md:257
 msgid ""
 "3D/アニメーション: "
 "`perspective`/`transform-style`/`backface-visibility`/`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/`will-change`"
 msgstr ""
 
-#: src/supports/properties.md:253
+#: src/supports/properties.md:258
 msgid ""
 "枠線・背景の拡張: "
 "`border-image-*`/`background-clip`/`background-origin`/`outline-offset`"
 msgstr ""
 
-#: src/supports/properties.md:254
+#: src/supports/properties.md:259
 msgid ""
 "オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-behavior`"
 msgstr ""
 
-#: src/supports/properties.md:255
+#: src/supports/properties.md:260
 msgid ""
 "UI/対話: "
 "`cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-color`/`appearance`"
 msgstr ""
 
-#: src/supports/properties.md:256
+#: src/supports/properties.md:261
 msgid ""
 "その他: "
 "`all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/`speak`等の音声メディア系/`zoom`"
@@ -4457,450 +4501,460 @@ msgid "セレクタリスト(`,`)"
 msgstr ""
 
 #: src/supports/selectors.md:23
-msgid "名前空間(`ns\\|E`)"
+msgid "ネスト(`.a { .b { } }` / `& .b` / `&.b` / `> .b`)"
 msgstr ""
 
 #: src/supports/selectors.md:23
+msgid ""
+"CSS Nesting。`&`を省いたセレクタは`& .b`、先頭がコンビネータのものは`& > "
+".b`として扱う。`&`は`:is(親)`に置き換わるので詳細度は親のうち最も高いものになる。ネストしたルールの後ろに書いた宣言は、そのルールより後ろの順序でカスケードに参加する。ネストした`@media`等のat-ruleは非対応(ブロックごと無視)"
+msgstr ""
+
+#: src/supports/selectors.md:24
+msgid "名前空間(`ns\\|E`)"
+msgstr ""
+
+#: src/supports/selectors.md:24
 msgid "`@namespace`自体が非対応"
 msgstr ""
 
-#: src/supports/selectors.md:25 src/supports/selectors.md:27
+#: src/supports/selectors.md:26 src/supports/selectors.md:28
 msgid "擬似クラス"
 msgstr ""
 
-#: src/supports/selectors.md:29
+#: src/supports/selectors.md:30
 msgid "`:root`"
 msgstr ""
 
-#: src/supports/selectors.md:30
+#: src/supports/selectors.md:31
 msgid "`:first-child` / `:last-child` / `:only-child`"
 msgstr ""
 
-#: src/supports/selectors.md:31
+#: src/supports/selectors.md:32
 msgid "`:nth-child()` / `:nth-last-child()`"
 msgstr ""
 
-#: src/supports/selectors.md:31
+#: src/supports/selectors.md:32
 msgid "ストリーミングモードでは`:nth-last-child()`の結果が変わる(下記参照)"
 msgstr ""
 
-#: src/supports/selectors.md:32
+#: src/supports/selectors.md:33
 msgid ""
 "`:first-of-type` / `:last-of-type` / `:only-of-type` / `:nth-of-type()` / "
 "`:nth-last-of-type()`"
 msgstr ""
 
-#: src/supports/selectors.md:32
+#: src/supports/selectors.md:33
 msgid "ストリーミングモードでは`:first-of-type`/`:nth-of-type()`以外の結果が変わる(下記参照)"
 msgstr ""
 
-#: src/supports/selectors.md:33
+#: src/supports/selectors.md:34
 msgid "`:empty`"
 msgstr ""
 
-#: src/supports/selectors.md:34
+#: src/supports/selectors.md:35
 msgid "`:not()`"
 msgstr ""
 
-#: src/supports/selectors.md:35
+#: src/supports/selectors.md:36
 msgid "`:is()` / `:where()`"
 msgstr ""
 
-#: src/supports/selectors.md:35
+#: src/supports/selectors.md:36
 msgid ""
 "引数リストは寛容(未対応のセレクタが混ざっていてもその項だけを捨てる)。詳細度は`:is()`が引数のうち最も高いもの、`:where()`は常に0"
 msgstr ""
 
-#: src/supports/selectors.md:36
+#: src/supports/selectors.md:37
 msgid "`:has()`"
 msgstr ""
 
-#: src/supports/selectors.md:36
+#: src/supports/selectors.md:37
 msgid ""
 "子孫・`>`・`+`・`~`のいずれも書ける。詳細度は`:is()`と同じ規則。入れ子(`:has()`の中の`:has()`)と擬似要素は仕様どおり書けない。ストリーミングモードでは`:has(~ "
 "...)`が非マッチ(下記参照)"
 msgstr ""
 
-#: src/supports/selectors.md:37
+#: src/supports/selectors.md:38
 msgid ""
 "`:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / "
 "`:target` / `:enabled` / `:disabled` / `:checked` / `:visited`"
 msgstr ""
 
-#: src/supports/selectors.md:37
+#: src/supports/selectors.md:38
 msgid "パースは通るが常に非マッチ。対話状態を持たない静的なPDF出力では意味を持たないため"
 msgstr ""
 
-#: src/supports/selectors.md:38
+#: src/supports/selectors.md:39
 msgid "`:link` / `:any-link`"
 msgstr ""
 
-#: src/supports/selectors.md:38
+#: src/supports/selectors.md:39
 msgid "`href`を持つ`<a>`にマッチする"
 msgstr ""
 
-#: src/supports/selectors.md:40
+#: src/supports/selectors.md:41
 msgid ""
 "非対応の擬似要素(`::first-line`等)がセレクタに含まれるとルール全体が捨てられる。 "
 "一方`:hover`のようにパースが通るものは、ルールとしては生き残った上でマッチしない。 `:is()` / "
 "`:where()`の引数リストだけは例外で、未対応の項があってもその項が捨てられるだけでルールは生きる。"
 msgstr ""
 
-#: src/supports/selectors.md:44 src/supports/selectors.md:46
+#: src/supports/selectors.md:45 src/supports/selectors.md:47
 msgid "擬似要素"
 msgstr ""
 
-#: src/supports/selectors.md:48
+#: src/supports/selectors.md:49
 msgid "`::before` / `::after`"
 msgstr ""
 
-#: src/supports/selectors.md:48
+#: src/supports/selectors.md:49
 msgid ""
 "`content`による生成テキストのみ。ホスト要素の計算スタイルをそのまま流用して描画し、擬似要素専用のボックススタイル(margin/padding/display等)は持たない。ブロック子を持つ要素では生成されない"
 msgstr ""
 
-#: src/supports/selectors.md:49
+#: src/supports/selectors.md:50
 msgid "`::first-letter`"
 msgstr ""
 
-#: src/supports/selectors.md:49
+#: src/supports/selectors.md:50
 msgid ""
 "`font-family`/`font-size`/`font-weight`/`font-style`/`color`/`text-decoration-line`/`text-transform`のみ上書きできる(`float`・box "
 "model系は非対応)"
 msgstr ""
 
-#: src/supports/selectors.md:50
+#: src/supports/selectors.md:51
 msgid "`::first-line`"
 msgstr ""
 
-#: src/supports/selectors.md:50 src/supports/selectors.md:51
+#: src/supports/selectors.md:51 src/supports/selectors.md:52
 msgid "パースエラー"
 msgstr ""
 
-#: src/supports/selectors.md:51
+#: src/supports/selectors.md:52
 msgid "`::marker` / `::selection` / `::placeholder`"
 msgstr ""
 
-#: src/supports/selectors.md:53
+#: src/supports/selectors.md:54
 msgid "値・単位・関数"
 msgstr ""
 
-#: src/supports/selectors.md:55
+#: src/supports/selectors.md:56
 msgid "長さ"
 msgstr ""
 
-#: src/supports/selectors.md:57
+#: src/supports/selectors.md:58
 msgid "単位"
 msgstr ""
 
-#: src/supports/selectors.md:59
+#: src/supports/selectors.md:60
 msgid "`px` / `em` / `rem`"
 msgstr ""
 
-#: src/supports/selectors.md:60
+#: src/supports/selectors.md:61
 msgid "`mm` / `cm` / `in` / `pt` / `pc` / `Q`"
 msgstr ""
 
-#: src/supports/selectors.md:61
+#: src/supports/selectors.md:62
 msgid "`%`(パーセンテージを取るプロパティで)"
 msgstr ""
 
-#: src/supports/selectors.md:62
+#: src/supports/selectors.md:63
 msgid "単位なしの`0`"
 msgstr ""
 
-#: src/supports/selectors.md:63
+#: src/supports/selectors.md:64
 msgid "`ex` / `ch` / `vw` / `vh` / `vmin` / `vmax` / `lh`"
 msgstr ""
 
-#: src/supports/selectors.md:65
+#: src/supports/selectors.md:66
 msgid ""
 "絶対単位は1インチ = 96pxとして解釈する(`10mm`は37.795px)。 印刷向けに寸法を実寸で書けるので、`@page { size: "
 "210mm 297mm; margin: 15mm; }`のような指定がそのまま通る。"
 msgstr ""
 
-#: src/supports/selectors.md:68
+#: src/supports/selectors.md:69
 msgid ""
 "`@page`の`size`だけは例外的にページサイズのキーワード(`a4`/`letter`等)と`landscape`/`portrait`を受け付ける。"
 msgstr ""
 
-#: src/supports/selectors.md:70
+#: src/supports/selectors.md:71
 msgid "角度(`transform`専用)"
 msgstr ""
 
-#: src/supports/selectors.md:72
+#: src/supports/selectors.md:73
 msgid "`deg` / `rad` / `grad` / `turn`、および単位なしの`0`に対応 ✅。"
 msgstr ""
 
-#: src/supports/selectors.md:74 src/supports/selectors.md:76
+#: src/supports/selectors.md:75 src/supports/selectors.md:77
 msgid "関数"
 msgstr ""
 
-#: src/supports/selectors.md:78
+#: src/supports/selectors.md:79
 msgid "`calc()`"
 msgstr ""
 
-#: src/supports/selectors.md:78
+#: src/supports/selectors.md:79
 msgid ""
-"`+`/`-`/`*`/`/`と括弧のネスト。項に使えるのは長さ(絶対単位・`em`/`rem`)・`%`・数値のみ。長さ・パーセンテージを取るプロパティ全般で使える"
+"`+`/`-`/`*`/`/`と括弧・`calc()`のネスト。項に使えるのは長さ(絶対単位・`em`/`rem`)・`%`・数値のみ。長さ・パーセンテージを取るプロパティ全般で使える"
 msgstr ""
 
-#: src/supports/selectors.md:79
+#: src/supports/selectors.md:80
 msgid "`min()` / `max()` / `clamp()`"
 msgstr ""
 
-#: src/supports/selectors.md:80
+#: src/supports/selectors.md:81
 msgid "`var()`"
 msgstr ""
 
-#: src/supports/selectors.md:80
+#: src/supports/selectors.md:81
 msgid ""
 "カスタムプロパティ(`--foo`)をパース前のテキスト置換で解決する。フォールバック(`var(--x, "
 "10px)`)・カスタムプロパティ同士の参照に対応。カスケードや継承には従わず、文書全体で「最後に書かれた宣言が勝つ」単純な解決になる点が本来の仕様と異なる"
 msgstr ""
 
-#: src/supports/selectors.md:81
+#: src/supports/selectors.md:82
 msgid "`url()`"
 msgstr ""
 
-#: src/supports/selectors.md:81
+#: src/supports/selectors.md:82
 msgid ""
 "`background-image`/`list-style-image`/`@font-face`の`src`/`@import`。相対URLは`<base "
 "href>`または入力元を基準に解決する"
 msgstr ""
 
-#: src/supports/selectors.md:82
+#: src/supports/selectors.md:83
 msgid "`attr()`"
 msgstr ""
 
-#: src/supports/selectors.md:82
+#: src/supports/selectors.md:83
 msgid "`content`の中でのみ使える"
 msgstr ""
 
-#: src/supports/selectors.md:83
+#: src/supports/selectors.md:84
 msgid "`counter()` / `counters()`"
 msgstr ""
 
-#: src/supports/selectors.md:83
+#: src/supports/selectors.md:84
 msgid "`content`の中。第2引数のスタイルは`list-style-type`の値集合"
 msgstr ""
 
-#: src/supports/selectors.md:84
+#: src/supports/selectors.md:85
 msgid "`linear-gradient()`等のグラデーション"
 msgstr ""
 
-#: src/supports/selectors.md:85
+#: src/supports/selectors.md:86
 msgid "`env()` / `image-set()` / `element()`"
 msgstr ""
 
-#: src/supports/selectors.md:87
+#: src/supports/selectors.md:88
 msgid "色"
 msgstr ""
 
-#: src/supports/selectors.md:89
+#: src/supports/selectors.md:90
 msgid "記法"
 msgstr ""
 
-#: src/supports/selectors.md:91
+#: src/supports/selectors.md:92
 msgid "名前付き色(`red`等のCSS色キーワード)"
 msgstr ""
 
-#: src/supports/selectors.md:92
+#: src/supports/selectors.md:93
 msgid "`#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`"
 msgstr ""
 
-#: src/supports/selectors.md:93
+#: src/supports/selectors.md:94
 msgid "`rgb()` / `rgba()`(カンマ区切り・スペース区切りとも)"
 msgstr ""
 
-#: src/supports/selectors.md:94
+#: src/supports/selectors.md:95
 msgid "`hsl()` / `hsla()` / `hwb()`"
 msgstr ""
 
-#: src/supports/selectors.md:95
+#: src/supports/selectors.md:96
 msgid "`lab()` / `lch()` / `oklab()` / `oklch()`"
 msgstr ""
 
-#: src/supports/selectors.md:95
+#: src/supports/selectors.md:96
 msgid "✅ (sRGBへ変換して描画)"
 msgstr ""
 
-#: src/supports/selectors.md:96
+#: src/supports/selectors.md:97
 msgid "`currentcolor` / `transparent`"
 msgstr ""
 
-#: src/supports/selectors.md:97
+#: src/supports/selectors.md:98
 msgid "`color()`(`color(display-p3 ...)`等)"
 msgstr ""
 
-#: src/supports/selectors.md:98 src/supports/selectors.md:103
+#: src/supports/selectors.md:99 src/supports/selectors.md:104
 msgid "`color-mix()`"
 msgstr ""
 
-#: src/supports/selectors.md:98
+#: src/supports/selectors.md:99
 msgid "⚠️ (下記)"
 msgstr ""
 
-#: src/supports/selectors.md:99
+#: src/supports/selectors.md:100
 msgid "相対色構文(`rgb(from ...)`)"
 msgstr ""
 
-#: src/supports/selectors.md:101
+#: src/supports/selectors.md:102
 msgid "アルファ付きの色は塗り・背景ともPDFのExtGStateで透過描画する。"
 msgstr ""
 
-#: src/supports/selectors.md:105
+#: src/supports/selectors.md:106
 msgid ""
 "`color-mix(in <色空間> [<色相の回し方> hue]?, <色> <割合>?, <色> <割合>?)`に対応する。 "
 "割合の正規化(合計が100%を超えるときは比率だけが効き、満たないときは足りないぶんだけ結果が透明になる)と、アルファの事前乗算も仕様どおり行う。"
 msgstr ""
 
-#: src/supports/selectors.md:108
+#: src/supports/selectors.md:109
 msgid ""
 "色空間: `srgb` / `srgb-linear` / `lab` / `oklab` / `xyz`(`xyz-d65`) / `hsl` / "
 "`hwb` / `lch` / `oklch`"
 msgstr ""
 
-#: src/supports/selectors.md:109
+#: src/supports/selectors.md:110
 msgid "色相の回し方: `shorter`(既定) / `longer` / `increasing` / `decreasing`"
 msgstr ""
 
-#: src/supports/selectors.md:110
+#: src/supports/selectors.md:111
 msgid "入れ子にできる(深さ16まで)"
 msgstr ""
 
-#: src/supports/selectors.md:112
+#: src/supports/selectors.md:113
 msgid "以下は非対応で、書くとその宣言だけが無視される。"
 msgstr ""
 
-#: src/supports/selectors.md:114
+#: src/supports/selectors.md:115
 msgid ""
 "`display-p3` / `a98-rgb` / `prophoto-rgb` / "
 "`rec2020`。出力先がPDFのDeviceRGBなので、受け付けてもsRGBへ丸められるだけで指定した意味にならない"
 msgstr ""
 
-#: src/supports/selectors.md:115
+#: src/supports/selectors.md:116
 msgid ""
 "オペランドの`currentcolor`。`currentcolor`はカスケードの後(その要素の`color`が決まってから)解決するのに対し、混色はパース時に済ませるため、この時点では値が分からない"
 msgstr ""
 
-#: src/supports/selectors.md:116
+#: src/supports/selectors.md:117
 msgid "`xyz-d50`(白色点の変換が要るため)"
 msgstr ""
 
-#: src/supports/selectors.md:118 src/supports/selectors.md:120
+#: src/supports/selectors.md:119 src/supports/selectors.md:121
 msgid "at-rule"
 msgstr ""
 
-#: src/supports/selectors.md:122
+#: src/supports/selectors.md:123
 msgid "`@media`"
 msgstr ""
 
-#: src/supports/selectors.md:122
+#: src/supports/selectors.md:123
 msgid ""
 "メディアタイプのみを評価する。`screen`(および`not "
 "screen`以外の否定)はブロックごと無視し、`print`/`all`/タイプ省略は適用する。`(min-width: "
 "...)`のような特性クエリは評価せず読み飛ばす(=タイプさえ合致すれば中身が適用される)"
 msgstr ""
 
-#: src/supports/selectors.md:123
+#: src/supports/selectors.md:124
 msgid "`@page`"
 msgstr ""
 
-#: src/supports/selectors.md:123
+#: src/supports/selectors.md:124
 msgid ""
 "`size`(キーワード/`<length>{1,2}`/`landscape`/`portrait`)と`margin`系に対応。`:first`/`:left`/`:right`擬似クラス単体に対応し、名前付きページ(`@page "
 "intro`)・`:blank`・複合擬似クラス(`:first:left`)は非対応"
 msgstr ""
 
-#: src/supports/selectors.md:124
+#: src/supports/selectors.md:125
 msgid "`@page`内のmargin box"
-msgstr ""
-
-#: src/supports/selectors.md:124
-msgid ""
-"`@top-left-corner`/`@top-left`/`@top-center`/`@top-right`…の16種すべて。`content`のテキスト描画のみで、背景色・枠線等の装飾は非対応。`counter(page)`/`counter(pages)`でページ番号を出力できる(`counter(pages)`はストリーミングモードでは非対応)"
-msgstr ""
-
-#: src/supports/selectors.md:125 src/supports/fonts.md:44
-msgid "`@font-face`"
 msgstr ""
 
 #: src/supports/selectors.md:125
 msgid ""
+"`@top-left-corner`/`@top-left`/`@top-center`/`@top-right`…の16種すべて。`content`のテキスト描画のみで、背景色・枠線等の装飾は非対応。`counter(page)`/`counter(pages)`でページ番号を出力できる(`counter(pages)`はストリーミングモードでは非対応)"
+msgstr ""
+
+#: src/supports/selectors.md:126 src/supports/fonts.md:44
+msgid "`@font-face`"
+msgstr ""
+
+#: src/supports/selectors.md:126
+msgid ""
 "`font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタに対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-display`等その他のディスクリプタは無視。フォントファイルはTTF/OTFのみで、WOFF/WOFF2は非対応"
 msgstr ""
 
-#: src/supports/selectors.md:126
+#: src/supports/selectors.md:127
 msgid "`@import`"
 msgstr ""
 
-#: src/supports/selectors.md:126
+#: src/supports/selectors.md:127
 msgid ""
 "ネスト(深さ上限16、超過分はその1件だけ無視)・循環参照の検出に対応。`@import url(...) "
 "screen;`のようなメディアクエリ条件は評価せず常に取り込む"
 msgstr ""
 
-#: src/supports/selectors.md:127
+#: src/supports/selectors.md:128
 msgid "`@charset`"
 msgstr ""
 
-#: src/supports/selectors.md:127
+#: src/supports/selectors.md:128
 msgid "入力はUTF-8前提"
 msgstr ""
 
-#: src/supports/selectors.md:128
+#: src/supports/selectors.md:129
 msgid ""
 "`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
 "`@container` / `@property`"
 msgstr ""
 
-#: src/supports/selectors.md:128
+#: src/supports/selectors.md:129
 msgid "ブロックごと無視される"
 msgstr ""
 
-#: src/supports/selectors.md:130
+#: src/supports/selectors.md:131
 msgid "ストリーミングモード固有の制約"
 msgstr ""
 
-#: src/supports/selectors.md:132
+#: src/supports/selectors.md:133
 msgid "`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::Streaming`でのみ以下が適用される。"
 msgstr ""
 
-#: src/supports/selectors.md:135
+#: src/supports/selectors.md:136
 msgid ""
 "`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理します。 "
 "そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下の要素に限って結果が変わります(その要素の内側は部分木が揃っているので変わりません)。"
 msgstr ""
 
-#: src/supports/selectors.md:138
+#: src/supports/selectors.md:139
 msgid ""
 "`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:has(~ "
 "...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告が出ます"
 msgstr ""
 
-#: src/supports/selectors.md:140
+#: src/supports/selectors.md:141
 msgid "`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するのでバッチと同じ結果になります"
 msgstr ""
 
-#: src/supports/selectors.md:141
+#: src/supports/selectors.md:142
 msgid ""
 "`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:only-child`もバッチと同じ結果になります。 "
 "これらを使っている文書では、処理済みのトップレベル要素を子孫だけ解放し、要素そのものを兄弟として残すためです "
 "(残るのはトップレベル要素1個につき1ノードなので、解放できる量はほぼ変わりません)"
 msgstr ""
 
-#: src/supports/selectors.md:144
+#: src/supports/selectors.md:145
 msgid ""
 "`<body>`開始後の`<style>`タグはエラー: `EngineError::UnsupportedInStreamingMode`を返す。 "
 "黙って見た目が崩れるのを避けるため、`<style>`は`<head>`に集約する"
 msgstr ""
 
-#: src/supports/selectors.md:146
+#: src/supports/selectors.md:147
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr ""
 
-#: src/supports/selectors.md:147
+#: src/supports/selectors.md:148
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr ""
 
@@ -5152,7 +5206,7 @@ msgid "対応フォーマット"
 msgstr ""
 
 #: src/supports/images.md:5
-msgid "PNG / JPEG / WebP"
+msgid "PNG / JPEG / WebP / SVG"
 msgstr ""
 
 #: src/supports/images.md:7
@@ -5164,194 +5218,443 @@ msgid "ローカルの相対パス・絶対パス、`http(s)`のURL、`data:` UR
 msgstr ""
 
 #: src/supports/images.md:9
-msgid "SVGとGIFは非対応です。"
+msgid "GIFは非対応です。"
 msgstr ""
 
 #: src/supports/images.md:11
-msgid "`<img>`"
+msgid "SVG"
 msgstr ""
 
-#: src/supports/images.md:14
+#: src/supports/images.md:13
+msgid ""
+"SVG(`.svg`と、gzip圧縮された`.svgz`)はラスタライズせず、ベクタのままPDFへ "
+"埋め込みます。拡大しても解像度に依存せず、PDFのサイズもピクセル数ではなく "
+"図形の数で決まります。パース・正規化は[usvg](https://github.com/linebender/resvg)、PDFの描画命令への変換は "
+"[svg2pdf](どちらも[typst]由来)が行います。"
+msgstr ""
+
+#: src/supports/images.md:18
+msgid ""
+"**参照して使う形だけに対応します。** `<img src>`と`background-image: url()`の "
+"どちらでも使えますが、HTMLに直接書いたインラインの`<svg>`要素は描画しません (後述)。"
+msgstr ""
+
+#: src/supports/images.md:23 src/supports/images.md:116
+msgid "\"logo.svg\""
+msgstr ""
+
+#: src/supports/images.md:23 src/supports/images.md:148
 msgid "\"120\""
 msgstr ""
 
-#: src/supports/images.md:15
+#: src/supports/images.md:24
+msgid "\""
+msgstr ""
+
+#: src/supports/images.md:24
+msgid "pattern.svg"
+msgstr ""
+
+#: src/supports/images.md:27
+msgid "`data:` URIも使えます。SVGでは`;base64`を付けない書き方(パーセント エンコード)が一般的なので、どちらの形も受け付けます。"
+msgstr ""
+
+#: src/supports/images.md:31
+msgid "\"data:image/svg+xml,%3Csvg%20xmlns%3D...%3E\""
+msgstr ""
+
+#: src/supports/images.md:32
+msgid "\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0...\""
+msgstr ""
+
+#: src/supports/images.md:36
+msgid "/* CSSの url() でも同じ */"
+msgstr ""
+
+#: src/supports/images.md:40
+msgid ""
+"フォーマットの判定は**中身のバイト列**で行います。拡張子や`data:`が名乗る mime "
+"typeは見ないので、`.txt`に入ったSVGも描けますし、`image/png`と名乗った "
+"SVGも描けます(逆に、`.svg`という名前のPNGはPNGとして扱います)。"
+msgstr ""
+
+#: src/supports/images.md:44
+msgid ""
+"寸法の決め方・キャッシュ・エラー時の扱いはラスタ画像と同じです。SVGの "
+"`width`/`height`(無ければ`viewBox`)が内在サイズになります。ラスタ画像と "
+"違って内在サイズは小数になりうるので、そのまま(丸めずに)扱います。 `object-fit: "
+"contain`のようにアスペクト比で決まる指定が、`width=\"40.6\"`の ようなSVGでもずれません。"
+msgstr ""
+
+#: src/supports/images.md:50
+msgid "object-fit / object-position"
+msgstr ""
+
+#: src/supports/images.md:52
+msgid ""
+"ラスタ画像と同じように効きます。SVGはPDFへ単位正方形に正規化された形で "
+"入るため、`fill`/`contain`/`cover`/`none`/`scale-down`と`object-position`の "
+"計算はラスタ画像と完全に共通の実装が使われます。"
+msgstr ""
+
+#: src/supports/images.md:59
+msgid "/* 比を保って収める(余白ができる) */"
+msgstr ""
+
+#: src/supports/images.md:60
+msgid "/* 左寄せ */"
+msgstr ""
+
+#: src/supports/images.md:64
+msgid "`cover`のようにはみ出す指定でも、描画はcontent boxでクリップされます。"
+msgstr ""
+
+#: src/supports/images.md:66
+msgid "SVG内のテキストとフォント"
+msgstr ""
+
+#: src/supports/images.md:68
+msgid ""
+"**既定では、SVG内の`<text>`は描画されません。** パスにもならず、何も出ません "
+"(そのSVGの他の図形は描かれます)。`<text>`を含むSVGを見つけたら警告します。"
+msgstr ""
+
+#: src/supports/images.md:71
+msgid ""
+"`svg-text` featureを有効にすると、グリフのまま(選択・検索できるテキストと "
+"して)埋め込みます。使えるフォントは**文書が使うフォントそのもの**で、 解決の仕方はHTML側と揃えてあります。"
+msgstr ""
+
+#: src/supports/images.md:75
+msgid "SVGの`font-family`"
+msgstr ""
+
+#: src/supports/images.md:77
+msgid "フォント内部のfamily名(`DejaVu Sans`等)"
+msgstr ""
+
+#: src/supports/images.md:77 src/supports/images.md:78
+msgid "そのフォント"
+msgstr ""
+
+#: src/supports/images.md:78
+msgid "`@font-face`で宣言した名前"
+msgstr ""
+
+#: src/supports/images.md:79
+msgid "`serif` / `sans-serif` / `monospace`"
+msgstr ""
+
+#: src/supports/images.md:79
+msgid "`--serif-font` / `--gothic-font` / `--mono-font`(未指定なら既定フォント)"
+msgstr ""
+
+#: src/supports/images.md:80
+msgid "指定なし"
+msgstr ""
+
+#: src/supports/images.md:80
+msgid "文書の既定フォント(`--font`で最初に渡したもの)"
+msgstr ""
+
+#: src/supports/images.md:81
+msgid "文書が持っていない名前"
+msgstr ""
+
+#: src/supports/images.md:81
+msgid "文書の既定フォント"
+msgstr ""
+
+#: src/supports/images.md:84
+msgid "BrandFace"
+msgstr ""
+
+#: src/supports/images.md:84
+msgid "brand.ttf"
+msgstr ""
+
+#: src/supports/images.md:88
+msgid "<!-- `@font-face`で宣言した名前でも、フォント内部のfamily名でも引ける -->"
+msgstr ""
+
+#: src/supports/images.md:89
+msgid "\"BrandFace\""
+msgstr ""
+
+#: src/supports/images.md:92
+msgid ""
+"**SVGのためにシステムフォントを探し直すことはしません。** 文書が持って "
+"いないフォントがSVGにだけ現れることはなく、代わりに文書の既定フォントへ 落ちます"
+msgstr ""
+
+#: src/supports/images.md:95
+msgid "文書側とSVG側では、同じフォントファイルでもサブセットは別になります (必要なグリフが違うため)。埋め込みはフォント1つにつき1回です"
+msgstr ""
+
+#: src/supports/images.md:97
+msgid ""
+"`svg-text`が既定オフなのは、有効にすると[rustybuzz](https://github.com/harfbuzz/rustybuzz)・resvg等25クレートが "
+"依存に加わるためです(svg2pdfの`text` featureがそれらを要求します)。 SVGにテキストが無いなら足す必要はありません"
+msgstr ""
+
+#: src/supports/images.md:103
+msgid "インラインSVGは描画しません"
+msgstr ""
+
+#: src/supports/images.md:105
+msgid ""
+"HTMLに直接書いた`<svg>`要素は、サブツリーごと描画対象から外します (UAスタイルシートの`svg { display: none "
+"}`)。中のテキストが本文へ 流れ込むこともありません。文書内に1つでもあれば警告します。"
+msgstr ""
+
+#: src/supports/images.md:110
+msgid "<!-- 描画されない -->"
+msgstr ""
+
+#: src/supports/images.md:111
+msgid "\"http://www.w3.org/2000/svg\""
+msgstr ""
+
+#: src/supports/images.md:111 src/supports/images.md:112
+#: src/supports/images.md:116 src/supports/images.md:117
+msgid "\"40\""
+msgstr ""
+
+#: src/supports/images.md:111 src/supports/images.md:112
+#: src/supports/images.md:116 src/supports/images.md:117
+msgid "\"20\""
+msgstr ""
+
+#: src/supports/images.md:112
+msgid "\"red\""
+msgstr ""
+
+#: src/supports/images.md:114
+msgid "<!-- こう書けば描画される -->"
+msgstr ""
+
+#: src/supports/images.md:117
+msgid "\"data:image/svg+xml,%3Csvg%20...%3E\""
+msgstr ""
+
+#: src/supports/images.md:120
+msgid ""
+"対応させるにはHTMLのDOMからSVGのXMLを組み直してusvgへ渡す必要があり、 "
+"属性名の大小(`viewBox`等)・CSSの継承・`currentColor`をどう扱うかが "
+"外部ファイルの参照とは別の問題になります。今のところ「参照して使う」形に 絞っています。"
+msgstr ""
+
+#: src/supports/images.md:125
+msgid "その他の制限"
+msgstr ""
+
+#: src/supports/images.md:127
+msgid "SVGフィルタ(`<filter>`)は非対応です。ラスタライズを避けるため、 フィルタを解決するための機能を入れていません"
+msgstr ""
+
+#: src/supports/images.md:129
+msgid "SVG内に埋め込まれたラスタ画像(`<image>`)は描画されません"
+msgstr ""
+
+#: src/supports/images.md:130
+msgid "`--grayscale`はSVGには効きません(色が個々の描画命令の中にあるため)。 指定すると警告し、SVGだけ色のまま残ります"
+msgstr ""
+
+#: src/supports/images.md:132
+msgid ""
+"SVGの中の`<image href=\"...\">`のような外部参照は解決しません。参照ごとに "
+"警告を出して無視します。SVGの中からのファイル読み出しは`<img>`側の "
+"封じ込め(基準ディレクトリ・`--allow`・`--disable-local-file-access`)を "
+"迂回してしまうため、経路自体を塞いでいます。`data:` URIは対象外 (SVG自身の中で完結しているため許可されます)"
+msgstr ""
+
+#: src/supports/images.md:138
+msgid ""
+"`svg` featureを切る(`--no-default-features`)とusvgを引き込まなくなり、 "
+"SVGの参照はデコード失敗として扱われます。"
+msgstr ""
+
+#: src/supports/images.md:145
+msgid "`<img>`"
+msgstr ""
+
+#: src/supports/images.md:149
 msgid "\"https://example.com/chart.png\""
 msgstr ""
 
-#: src/supports/images.md:15
+#: src/supports/images.md:149
 msgid "\"売上推移\""
 msgstr ""
 
-#: src/supports/images.md:16
+#: src/supports/images.md:150
 msgid "\"data:image/png;base64,iVBORw0…\""
 msgstr ""
 
-#: src/supports/images.md:19
+#: src/supports/images.md:153
 msgid "`<img>`はインラインの置換要素として行に載ります。独立した行にしたい場合は`display: block`を指定してください"
 msgstr ""
 
-#: src/supports/images.md:20
+#: src/supports/images.md:154
 msgid ""
 "`width`/`height`属性とCSSの`width`/`height`に対応します。どちらも無指定なら画像の内在サイズを使い、片方だけ指定すればアスペクト比を保って他方を導出します"
 msgstr ""
 
-#: src/supports/images.md:21
+#: src/supports/images.md:155
 msgid ""
 "取得やデコードに失敗した画像は、その要素だけ空として扱い、文書全体の生成は止めません(`--load-media-error-handling "
 "abort`で中断させることもできます)"
 msgstr ""
 
-#: src/supports/images.md:22
+#: src/supports/images.md:156
 msgid "同じ画像を何度使っても、取得・デコード・PDFへの埋め込みは初回の1回だけです"
 msgstr ""
 
-#: src/supports/images.md:24
+#: src/supports/images.md:158
 msgid "`object-fit` / `object-position`"
 msgstr ""
 
-#: src/supports/images.md:26
+#: src/supports/images.md:160
 msgid "指定した枠に対して画像をどう収めるかを制御します。"
 msgstr ""
 
-#: src/supports/images.md:32
+#: src/supports/images.md:166
 msgid "/* fill | contain | cover | none | scale-down */"
 msgstr ""
 
-#: src/supports/images.md:37
+#: src/supports/images.md:171
 msgid "背景画像"
 msgstr ""
 
-#: src/supports/images.md:41
+#: src/supports/images.md:175
 msgid "\"stamp.png\""
 msgstr ""
 
-#: src/supports/images.md:48
+#: src/supports/images.md:182
 msgid ""
 "`background-image`に書けるのは`url()`だけです。 "
 "`linear-gradient()`などのグラデーション関数と、カンマ区切りの複数背景は非対応です。 既定では画像の内在サイズでタイル配置されます。"
 msgstr ""
 
-#: src/supports/images.md:52
+#: src/supports/images.md:186
 msgid "`border-radius`と背景画像を併用した場合、角丸によるクリップは行われません(角丸は背景色の塗りにのみ効きます)。"
 msgstr ""
 
-#: src/supports/images.md:54
+#: src/supports/images.md:188
 msgid "リモート画像の取得"
 msgstr ""
 
-#: src/supports/images.md:56
+#: src/supports/images.md:190
 msgid "既定では無効です。 `--allow-remote-assets`で明示的に有効化します。"
 msgstr ""
 
-#: src/supports/images.md:63
+#: src/supports/images.md:197
 msgid ""
 "有効にした場合も、グローバルに到達可能でない宛先へのリクエストは常にブロックされます。 "
 "判定は「グローバルなユニキャストだけを通す」方針で、次を拒否します。"
 msgstr ""
 
-#: src/supports/images.md:66
+#: src/supports/images.md:200
 msgid "種別"
 msgstr ""
 
-#: src/supports/images.md:66
+#: src/supports/images.md:200
 msgid "範囲"
 msgstr ""
 
-#: src/supports/images.md:68
+#: src/supports/images.md:202
 msgid "ループバック"
 msgstr ""
 
-#: src/supports/images.md:68
+#: src/supports/images.md:202
 msgid "`127.0.0.0/8`、`::1`"
 msgstr ""
 
-#: src/supports/images.md:69
+#: src/supports/images.md:203
 msgid "プライベート"
 msgstr ""
 
-#: src/supports/images.md:69
+#: src/supports/images.md:203
 msgid "`10/8`、`172.16/12`、`192.168/16`、`fc00::/7`"
 msgstr ""
 
-#: src/supports/images.md:70
+#: src/supports/images.md:204
 msgid "リンクローカル"
 msgstr ""
 
-#: src/supports/images.md:70
+#: src/supports/images.md:204
 msgid "`169.254/16`(クラウドのメタデータ`169.254.169.254`を含む)、`fe80::/10`"
 msgstr ""
 
-#: src/supports/images.md:71
+#: src/supports/images.md:205
 msgid "CGNAT"
 msgstr ""
 
-#: src/supports/images.md:71
+#: src/supports/images.md:205
 msgid "`100.64.0.0/10`(クラウドの内部ロードバランサ等)"
 msgstr ""
 
-#: src/supports/images.md:72
+#: src/supports/images.md:206
 msgid "その他の非グローバル"
 msgstr ""
 
-#: src/supports/images.md:72
+#: src/supports/images.md:206
 msgid "`0.0.0.0/8`、`192.0.0.0/24`、`198.18.0.0/15`、`240.0.0.0/4`、マルチキャスト、ドキュメント用"
 msgstr ""
 
-#: src/supports/images.md:73
+#: src/supports/images.md:207
 msgid "IPv6の特殊用途"
 msgstr ""
 
-#: src/supports/images.md:73
+#: src/supports/images.md:207
 msgid "Teredo `2001::/32`、`2001:db8::/32`、ORCHIDv2 `2001:20::/28`、`100::/64`"
 msgstr ""
 
-#: src/supports/images.md:75
+#: src/supports/images.md:209
 msgid ""
 "IPv4を埋め込むIPv6表記(IPv4-mapped `::ffff:a.b.c.d`、IPv4-compatible "
 "`::a.b.c.d`、NAT64 `64:ff9b::/96`、6to4 `2002::/16`)は、埋め込まれたIPv4側で判定します。 "
 "これらを素通しするとIPv4側のフィルタを迂回できてしまうためです。"
 msgstr ""
 
-#: src/supports/images.md:78
+#: src/supports/images.md:212
 msgid "判定は名前解決の結果に対して行うため、DNSリバインディングやリダイレクト経由の迂回も同じ仕組みで防いでいます。"
 msgstr ""
 
-#: src/supports/images.md:80
+#: src/supports/images.md:214
 msgid ""
 "ポート番号は制限しません。 内部サービスはプライベートIP上にあり、そこは上の判定で塞がっています。 "
 "公開IPに対する非標準ポート(CDNやAPIの`8080`など)は正当な用途があるため、塞ぐと実用を損なうわりに得るものがありません。"
 msgstr ""
 
-#: src/supports/images.md:84
+#: src/supports/images.md:218
 msgid "信頼できないHTMLを変換する場合は、`--allow`でローカル参照の範囲も併せて絞ってください。"
 msgstr ""
 
-#: src/supports/images.md:90
+#: src/supports/images.md:224
 msgid "JPEGはそのまま埋め込まれる"
 msgstr ""
 
-#: src/supports/images.md:92
+#: src/supports/images.md:226
 msgid ""
 "JPEGはデコードせず、サイズ情報だけを読んでPDFへそのまま(DCTDecodeとして)埋め込みます。 "
 "再エンコードしないので画質は落ちず、変換も速くなります。"
 msgstr ""
 
-#: src/supports/images.md:95
+#: src/supports/images.md:229
 msgid ""
 "その代わり、`--grayscale`を指定してもJPEGとCMYK画像はカラーのまま残ります(デコーダを持たないため)。 "
 "グレースケール化が必要な場合は、変換前の画像をグレースケールにしておいてください。"
 msgstr ""
 
-#: src/supports/images.md:98
+#: src/supports/images.md:232
 msgid "PNGとWebPはフルデコードし、アルファチャンネルがあれば透過画像として埋め込みます。"
 msgstr ""
 
-#: src/supports/images.md:100
+#: src/supports/images.md:234
 msgid "画像を一切読み込まない"
 msgstr ""
 
-#: src/supports/images.md:106
+#: src/supports/images.md:240
 msgid "`<img>`とCSSの`background-image`の両方を読み込まなくなります。"
 msgstr ""
 
@@ -6255,7 +6558,7 @@ msgid ""
 msgstr ""
 
 #: src/migration/wkhtmltopdf-options.md:82
-msgid "SVG描画が非対応。フォーム要素の見た目は内蔵の描画で再現する"
+msgid "SVG自体は描画できるが、フォーム要素の見た目の差し替えには対応しない(内蔵の描画で再現する)"
 msgstr ""
 
 #: src/migration/wkhtmltopdf-options.md:83
@@ -7172,64 +7475,82 @@ msgid "画像・フォントの形式"
 msgstr ""
 
 #: src/appendix/limitations.md:39
-msgid "画像はPNG / JPEG / WebPのみ。SVGとGIFは非対応です"
+msgid "画像はPNG / JPEG / WebP / SVGのみ。GIFは非対応です"
 msgstr ""
 
 #: src/appendix/limitations.md:40
-msgid "フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です"
+msgid ""
+"SVGは`<img>`と`background-image`からの参照のみ(ファイル・`data:` "
+"URIどちらも可)。HTMLに直接書いたインラインの`<svg>`要素は描画せず、見つけたら警告します"
 msgstr ""
 
 #: src/appendix/limitations.md:41
 msgid ""
-"カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は[フォント](../supports/fonts.md#絵文字)を参照してください"
+"SVG内の`<text>`は`svg-text` "
+"featureを有効にした場合だけ描画します(使えるフォントは文書と同じもので、SVGのためにシステムフォントを探し直すことはしません)。`<filter>`と`<image>`は非対応です([画像](../supports/images.md#svg)を参照)"
 msgstr ""
 
 #: src/appendix/limitations.md:42
-msgid "`--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります"
+msgid "フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です"
+msgstr ""
+
+#: src/appendix/limitations.md:43
+msgid ""
+"カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は[フォント](../supports/fonts.md#絵文字)を参照してください"
 msgstr ""
 
 #: src/appendix/limitations.md:44
-msgid "CSSの主な制限"
+msgid "`--grayscale`を指定しても、JPEGとCMYK画像・SVGはカラーのまま残ります"
 msgstr ""
 
 #: src/appendix/limitations.md:46
-msgid "機能単位では以下が非対応です。"
+msgid "CSSの主な制限"
 msgstr ""
 
 #: src/appendix/limitations.md:48
-msgid ""
-"縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`等)、`direction`による右横書き"
-msgstr ""
-
-#: src/appendix/limitations.md:49
-msgid "多段組み(`columns`/`column-count`)"
+msgid "機能単位では以下が非対応です。"
 msgstr ""
 
 #: src/appendix/limitations.md:50
-msgid "グラデーション(`linear-gradient()`等)と複数背景"
+msgid ""
+"縦書き(`writing-mode`/`text-orientation`)と`direction`による右横書き(`margin-inline`等の論理プロパティは`horizontal-tb`+LTRの固定写像としてのみ対応)"
 msgstr ""
 
 #: src/appendix/limitations.md:51
-msgid "相対色構文(`rgb(from ...)`)と`color()`(`color-mix()`は対応済み)"
+msgid "多段組み(`columns`/`column-count`)"
 msgstr ""
 
 #: src/appendix/limitations.md:52
-msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
+msgid "グラデーション(`linear-gradient()`等)と複数背景"
 msgstr ""
 
 #: src/appendix/limitations.md:53
-msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
+msgid "相対色構文(`rgb(from ...)`)と`color()`(`color-mix()`は対応済み)"
 msgstr ""
 
 #: src/appendix/limitations.md:54
-msgid "`::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)"
+msgid "アニメーション・トランジション・`filter`(静的な出力のため)"
+msgstr ""
+
+#: src/appendix/limitations.md:55
+msgid "`position: sticky`、`display: inline-flex`/`inline-grid`、subgrid"
 msgstr ""
 
 #: src/appendix/limitations.md:56
-msgid "空白文字の扱い"
+msgid "`::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)"
 msgstr ""
 
 #: src/appendix/limitations.md:58
+msgid ""
+"値の文法では、`calc()`と括弧のネストが32段までです。 それより深い値は無効として宣言ごと無視します。 "
+"再帰的にパースするため、深さの上限を設けないと信頼できないCSSでスタックを使い切らせることができてしまうためです。"
+msgstr ""
+
+#: src/appendix/limitations.md:62
+msgid "空白文字の扱い"
+msgstr ""
+
+#: src/appendix/limitations.md:64
 msgid ""
 "畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 `&nbsp;`(U+00A0)やthin "
 "space(U+2009)などは畳み込まれない普通の文字として、 フォント本来の字幅で描かれます。改行してよい位置はUAX #14の行分割クラスに従い、 "
@@ -7237,43 +7558,43 @@ msgid ""
 "(`word-break: break-all`を指定した場合も同様です)。"
 msgstr ""
 
-#: src/appendix/limitations.md:64
+#: src/appendix/limitations.md:70
 msgid ""
 "`<wbr>`(と、それと同じ意味を持つU+200B ZERO WIDTH SPACE)は「ここで改行してよい」という "
 "指定として扱います。幅は増えず、PDFのテキスト層にも文字は残りません (`<wbr>`を挟んでも抽出結果は繋がったままです)。"
 msgstr ""
 
-#: src/appendix/limitations.md:68
+#: src/appendix/limitations.md:74
 msgid "この範囲での既知の制限は以下です。"
 msgstr ""
 
-#: src/appendix/limitations.md:70
+#: src/appendix/limitations.md:76
 msgid "`text-align: justify`が行を伸ばす際、`&nbsp;`は伸縮の対象になりません(通常の空白のみ)"
 msgstr ""
 
-#: src/appendix/limitations.md:71
+#: src/appendix/limitations.md:77
 msgid "U+2028/U+2029は本来の強制改行ではなく、通常の空白と同じ扱いになります"
 msgstr ""
 
-#: src/appendix/limitations.md:72
+#: src/appendix/limitations.md:78
 msgid "行末に来た空白の「ぶら下がり」(hanging)は行いません"
 msgstr ""
 
-#: src/appendix/limitations.md:74
+#: src/appendix/limitations.md:80
 msgid "ストリーミングモード固有の制限"
 msgstr ""
 
-#: src/appendix/limitations.md:76
+#: src/appendix/limitations.md:82
 msgid ""
 "`--streaming`を使う場合は、総ページ数(`counter(pages)`・`[topage]`)や目次(`--toc`)などが使えなくなります。 "
 "詳細は[ストリーミングモード](../usage/cli/streaming.md)を参照してください。"
 msgstr ""
 
-#: src/appendix/limitations.md:79
+#: src/appendix/limitations.md:85
 msgid "今後について"
 msgstr ""
 
-#: src/appendix/limitations.md:81
+#: src/appendix/limitations.md:87
 msgid ""
 "JavaScriptエンジンの組み込みは、必要性が出てきた段階での検討事項として残してあります。 "
 "上記のうちPDFのアウトラインなど、設計上の非目標ではないものは将来対応する可能性があります。"
