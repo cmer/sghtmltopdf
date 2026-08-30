@@ -137,6 +137,10 @@
 `<colgroup>`/`<col>`の`width`属性・CSS`width`による列幅指定、`rowspan`/`colspan`、`<thead>`のページまたぎ繰り返しに対応。
 `rowspan="0"`は1として扱う。
 
+無名テーブルボックスの生成(CSS2.1 §17.2.1 規則2.1・2.2)に対応する。
+`display: table`の直下に置かれた`display: table-cell`は無名の行にまとめられ、行やセルにならない子は無名のセルでくるまれる。
+行を書かない`display: table` + `display: table-cell`の段組みがそのまま動く。
+
 セルの`min-width`/`max-width`は列幅アルゴリズムに反映される。
 `table-layout: auto`では列の自然幅をクランプする形で効くため、表を紙幅に収める比例縮尺の後は`min-width`が保証されない。
 `table-layout: fixed`では1行目のセルの指定幅をクランプし、`width: auto`かつ`min-width`のみの指定はその値を列幅として使う。

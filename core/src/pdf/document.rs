@@ -2363,7 +2363,8 @@ fn render_row_background(
     settings: &PageSettings,
     alpha_gs_names: &[String],
 ) {
-    let Some(style) = styles.get(&row.node) else {
+    // 無名行(`node: None`)は背景を指定しようがないので何も描かない。
+    let Some(style) = row.node.and_then(|node| styles.get(&node)) else {
         return;
     };
     if style.background_color.alpha <= 0.0 || row.cells.is_empty() {

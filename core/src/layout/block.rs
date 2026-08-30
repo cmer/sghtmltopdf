@@ -102,7 +102,9 @@ pub struct LaidOutTable {
 /// レイアウト済みのテーブル行1行分。
 #[derive(Debug, Clone)]
 pub struct LaidOutTableRow {
-    pub node: NodeId,
+    /// 元の`display: table-row`要素。無名行(CSSの無名ボックス生成規則で
+    /// 作られた行)は`None`。
+    pub node: Option<NodeId>,
     pub cells: Vec<LaidOutBox>,
     /// この行が属するセクション。`paginate`が`<thead>`の
     /// 行を各ページの先頭へ複製するために使う。

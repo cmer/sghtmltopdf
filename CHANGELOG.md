@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table did not have, given zero width, and dropped from the output with no error or warning —
   a logo beside a label that appears on the following row, a common invoice-table shape. The
   count now falls out of the placement walk itself, so the two can no longer disagree.
+- Generate the anonymous table boxes that CSS 2.1 §17.2.1 calls for (#34). Content inside a
+  `display: table` was laid out only when every cell sat inside an explicit `display: table-row`
+  box; a stray `table-cell`, or a plain block child, was dropped from the output with no text,
+  no ink and no warning. Consecutive cells without a row now get an anonymous row (rule 2.1),
+  and consecutive children of a table or a row that are not cells get an anonymous cell
+  (rule 2.2). Whitespace between proper table children, and `<colgroup>` / `<col>`, still
+  generate nothing. `display: table` with `display: table-cell` and no row in between is a
+  common pre-flexbox column idiom, so a document using it lost whole columns silently.
 
 ### Added
 
