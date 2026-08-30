@@ -730,7 +730,7 @@ fn layout_box_impl(
                 content_y,
                 Some(&*float_ctx),
                 // 無名ボックスには自身のスタイルが無い(`style`は初期値)。
-                b.node.map(|_| &style),
+                b.node.is_some().then_some(&style),
                 pos,
             );
             // 行内の`display: inline-block`ボックスは、行の位置が確定した

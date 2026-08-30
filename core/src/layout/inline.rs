@@ -193,8 +193,9 @@ enum InlineItem<'a> {
 /// 無関係な呼び出し)なら固定の`available_width`/`origin_x`のまま(既存動作)。
 ///
 /// `container_style`はこのIFCを確立するブロックコンテナの計算スタイル
-/// (無名ボックスや採寸パスなら`None`)。テキストが1つも無く`<img>`や
-/// `display: inline-block`の箱だけの行で`text-align`を決めるために使う。
+/// (無名ボックスや採寸パスなら`None`)。`text-align`はブロックコンテナに
+/// 適用されるプロパティなので、行内のインラインボックスの値ではなく
+/// ここから読む。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_inline_content(
     spans: &[InlineSpan],
@@ -225,13 +226,15 @@ pub(crate) fn layout_inline_content(
         .position(|span| span.atomic.is_none())
         .and_then(|i| span_styles.get(i));
     let white_space = representative.map(|s| s.white_space).unwrap_or_default();
-    // `text-align`だけは、箱しか無いIFCでもコンテナの値を使う。
-    // `<div style="text-align: right"><img></div>`のロゴを右に寄せるため
-    // (issue #19)。箱自身のスタイルは使えない: UAスタイルシートが
-    // `input`/`button`に`text-align`を直接指定しており、継承値と区別できない。
-    let text_align = representative
+    // `text-align`はブロックコンテナに適用されるプロパティなので、
+    // インラインの代表値ではなくコンテナの計算値を優先する。
+    // `<div style="text-align: right"><img></div>`のロゴが右に寄り(issue #19)、
+    // `<div style="text-align: right"><span style="text-align: left">WORD</span></div>`
+    // で先頭spanの値が勝ってしまう既存の不具合も直る。コンテナが無い
+    // (無名ボックスや採寸パス)場合だけ代表値にフォールバックする。
+    let text_align = container_style
         .map(|s| s.text_align)
-        .or_else(|| container_style.map(|s| s.text_align))
+        .or_else(|| representative.map(|s| s.text_align))
         .unwrap_or_default();
     // `word-break`/`overflow-wrap`も`white-space`と同じくIFCの代表値で扱う。
     let word_break = representative.map(|s| s.word_break).unwrap_or_default();
@@ -555,7 +558,10 @@ pub(crate) fn layout_inline_content(
                 chunk_queue.push_front((chunk, is_first_chunk_of_word, allow_break_fallback));
                 continue;
             } else if !starting_new_line {
-                if is_first_chunk_of_word {
+                // 実際に空白がある位置だけが伸縮対象。`aaa<input>bbb`のように
+                // 空白が無い単語の切れ目(`gap_width == 0`)を境界に数えると、
+                // 箱と単語の間にだけ隙間が空いてしまう。
+                if is_first_chunk_of_word && word_space_before {
                     word_boundaries.push(current_width);
                 }
                 current_width += gap_width;
@@ -2549,6 +2555,47 @@ mod tests {
         assert!(
             (gap_before - gap_after).abs() < 0.01,
             "expected equal gaps around the box, got before={gap_before} after={gap_after}"
+        );
+    }
+
+    #[test]
+    fn text_align_justify_does_not_open_a_gap_around_a_box_written_without_spaces() {
+        // `aaa<input>bbb`には空白が無いので単語境界でもない。伸縮の対象に
+        // 数えてしまうと、箱とその両隣の文字の間だけが開いて見える。
+        let (_, spans, styles) = spans_for(
+            r#"aaa<input style="width: 40px;">bbb ccc dddddddddddddddddddddd"#,
+            "p { text-align: justify; }",
+        );
+        let fonts = dejavu_only();
+        let lines = layout_inline_content(&spans, &styles, &fonts, 180.0, 0.0, 0.0, None);
+        assert!(lines.len() >= 2, "expected the long word to wrap");
+        let line = &lines[0];
+        assert_eq!(line.rect.width, 180.0, "the first line should be justified");
+        let atomic = &line.atomics[0];
+        let box_left = atomic.x_offset;
+        let box_right = atomic.x_offset + atomic.margin_box_width;
+
+        let before = line
+            .runs
+            .iter()
+            .filter(|r| r.x_offset < box_left)
+            .max_by(|a, b| a.x_offset.total_cmp(&b.x_offset))
+            .expect("a run before the box");
+        let after = line
+            .runs
+            .iter()
+            .filter(|r| r.x_offset >= box_right - 0.01)
+            .min_by(|a, b| a.x_offset.total_cmp(&b.x_offset))
+            .expect("a run after the box");
+        assert!(
+            (box_left - (before.x_offset + before.width)).abs() < 0.01,
+            "expected `aaa` to touch the box, got a gap of {}",
+            box_left - (before.x_offset + before.width)
+        );
+        assert!(
+            (after.x_offset - box_right).abs() < 0.01,
+            "expected `bbb` to touch the box, got a gap of {}",
+            after.x_offset - box_right
         );
     }
 

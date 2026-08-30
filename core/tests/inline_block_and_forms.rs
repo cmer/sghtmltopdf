@@ -618,3 +618,25 @@ fn a_lone_button_is_not_centered_by_its_own_ua_text_align() {
         button.content.layout.border_box().x
     );
 }
+
+/// `text-align`はブロックコンテナに適用されるプロパティで、インラインボックスは
+/// 継承するだけなので、行内の`<span>`に書かれた値がコンテナの値に勝ってはいけない。
+/// IFCの代表値を先頭のテキストspanから読んでいたため、先頭spanの`left`が勝って
+/// いた。
+#[test]
+fn the_containers_text_align_wins_over_a_text_align_on_an_inline_span() {
+    let html_src = r#"<div class="box"><span class="inner">WORD</span></div>"#;
+    let css = "body { margin: 0; } \
+               .box { text-align: right; width: 400px; } \
+               .inner { text-align: left; }";
+    let (_, laid) = layout(html_src, css);
+    let lines = all_lines(&laid);
+    assert_eq!(lines.len(), 1);
+    let line = &lines[0];
+    let word = &line.runs[0];
+    assert!(
+        (line.rect.x + word.x_offset + word.width - 400.0).abs() < 0.01,
+        "expected the word's right edge at 400, got {}",
+        line.rect.x + word.x_offset + word.width
+    );
+}
