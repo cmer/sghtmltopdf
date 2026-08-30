@@ -91,7 +91,13 @@ fn flatten_top_level_rule(
     page_rules: &mut Vec<PageRule>,
 ) {
     match rule {
-        TopLevelRule::Style(r) => rules.extend(r),
+        // 宣言が空のルールはカスケードにも擬似要素の解決にも寄与しないので、
+        // 索引と照合のコストだけが残る。ここで捨てる。
+        // ネストしたルールの親(`.a { &:hover { } }`の`.a`)は宣言を持たない
+        // ことが多く、残すとネスト1つにつきルールが2つに増える。
+        TopLevelRule::Style(r) => {
+            rules.extend(r.into_iter().filter(|rule| !rule.declarations.is_empty()))
+        }
         TopLevelRule::FontFace(r) => font_faces.push(r),
         TopLevelRule::Page(r) => page_rules.push(r),
         TopLevelRule::Media(inner) => {
@@ -149,8 +155,8 @@ impl<'i> QualifiedRuleParser<'i> for TopLevelRuleParser {
 /// ネストしたルールの後ろに並ぶ。先頭へ巻き上げると、`&`で親自身を上書き
 /// するルールとの勝敗がソース順と食い違うため、書かれた順を保つ。
 ///
-/// 先頭のルール(親そのもの)は宣言が空でも残す(従来どおり)。末尾の
-/// 宣言ルールは、対応する宣言があるときだけ作る。
+/// 先頭のルール(親そのもの)と末尾の宣言ルールは、宣言が無ければ空のまま
+/// 返る。宣言が空のルールは[`flatten_top_level_rule`]が捨てる。
 fn parse_style_rule_body(
     selectors: SelectorList<SgSelectorImpl>,
     input: &mut Parser<'_, '_>,
@@ -160,16 +166,23 @@ fn parse_style_rule_body(
         declarations: Vec::new(),
     }];
     // 宣言を受け入れる先。ネストしたルールを挟むたびに`None`へ戻し、
-    // 次の宣言が来た時点で親と同じセレクタのルールを新しく作る。
+    // 次の宣言が来た時点で`&`と同じセレクタのルールを新しく作る。
     let mut open: Option<usize> = Some(0);
+    // ネストしたルールより後ろに書いた宣言(仕様のCSSNestedDeclarations)は
+    // `&`と同じセレクタを持つ。親がセレクタリストのときは`:is(親)`へ
+    // まとまって詳細度が親そのものとは変わるので、解決結果を別に用意する。
+    let mut nested_selectors: Option<SelectorList<SgSelectorImpl>> = None;
 
     let mut body_parser = StyleRuleBodyParser { parent: &selectors };
     for item in RuleBodyParser::new(input, &mut body_parser).filter_map(Result::ok) {
         match item {
             StyleRuleBodyItem::Declarations(declarations) => {
                 let index = *open.get_or_insert_with(|| {
+                    let selectors = nested_selectors
+                        .get_or_insert_with(|| parent_selector_reference(&selectors))
+                        .clone();
                     rules.push(StyleRule {
-                        selectors: selectors.clone(),
+                        selectors,
                         declarations: Vec::new(),
                     });
                     rules.len() - 1
@@ -183,6 +196,24 @@ fn parse_style_rule_body(
         }
     }
     rules
+}
+
+/// `&`(親セレクタ)を`parent`で解決したセレクタリスト。
+///
+/// 親が1つだけなら`:is()`で包んでも詳細度は変わらないため、そのまま返す
+/// (出力されるセレクタを不必要に変えない)。
+fn parent_selector_reference(
+    parent: &SelectorList<SgSelectorImpl>,
+) -> SelectorList<SgSelectorImpl> {
+    if parent.slice().len() == 1 {
+        return parent.clone();
+    }
+    let mut input = ParserInput::new("&");
+    let mut parser = Parser::new(&mut input);
+    match SelectorList::parse(&SelectorParser, &mut parser, ParseRelative::ForNesting) {
+        Ok(list) => list.replace_parent_selector(parent),
+        Err(_) => parent.clone(),
+    }
 }
 
 /// [`StyleRuleBodyParser`]が返す、ルール本体の1項目。
@@ -767,48 +798,45 @@ mod tests {
     #[test]
     fn nested_rule_with_explicit_parent_selector_is_flattened() {
         let sheet = parse_stylesheet(".wrap { & .probe { color: rgb(1, 2, 3) } }");
-        assert_eq!(selector_texts(&sheet), [".wrap", ":is(.wrap) .probe"]);
-        assert!(sheet.rules[0].declarations.is_empty());
-        assert_eq!(sheet.rules[1].declarations.len(), 1);
+        // 宣言を持たない親(`.wrap`)はルールとして残らない。
+        assert_eq!(selector_texts(&sheet), [":is(.wrap) .probe"]);
+        assert_eq!(sheet.rules[0].declarations.len(), 1);
     }
 
     #[test]
     fn nested_rule_without_parent_selector_is_a_descendant_of_the_parent() {
         let sheet = parse_stylesheet(".wrap { .probe { color: rgb(1, 2, 3) } }");
-        assert_eq!(selector_texts(&sheet), [".wrap", ":is(.wrap) .probe"]);
+        assert_eq!(selector_texts(&sheet), [":is(.wrap) .probe"]);
     }
 
     #[test]
     fn nested_compound_parent_selector_is_flattened() {
         let sheet = parse_stylesheet(".wrap { &.probe { color: rgb(1, 2, 3) } }");
-        assert_eq!(selector_texts(&sheet), [".wrap", ":is(.wrap).probe"]);
+        assert_eq!(selector_texts(&sheet), [":is(.wrap).probe"]);
     }
 
     #[test]
     fn nested_rule_with_leading_combinator_is_flattened() {
         let sheet = parse_stylesheet(".list { > li { color: rgb(1, 2, 3) } }");
-        assert_eq!(selector_texts(&sheet), [".list", ":is(.list) > li"]);
+        assert_eq!(selector_texts(&sheet), [":is(.list) > li"]);
     }
 
     #[test]
     fn nested_type_selector_is_parsed_as_a_rule() {
         let sheet = parse_stylesheet(".wrap { p { color: rgb(1, 2, 3) } }");
-        assert_eq!(selector_texts(&sheet), [".wrap", ":is(.wrap) p"]);
+        assert_eq!(selector_texts(&sheet), [":is(.wrap) p"]);
     }
 
     #[test]
     fn nested_selector_list_parent_is_kept_as_a_list() {
         let sheet = parse_stylesheet(".a, .b { .c { color: rgb(1, 2, 3) } }");
-        assert_eq!(selector_texts(&sheet), [".a, .b", ":is(.a, .b) .c"]);
+        assert_eq!(selector_texts(&sheet), [":is(.a, .b) .c"]);
     }
 
     #[test]
     fn deeper_nesting_is_flattened_in_source_order() {
         let sheet = parse_stylesheet(".a { .b { .c { color: rgb(1, 2, 3) } } }");
-        assert_eq!(
-            selector_texts(&sheet),
-            [".a", ":is(.a) .b", ":is(:is(.a) .b) .c"]
-        );
+        assert_eq!(selector_texts(&sheet), [":is(:is(.a) .b) .c"]);
     }
 
     #[test]
@@ -835,13 +863,38 @@ mod tests {
     #[test]
     fn a_parent_with_only_nested_rules_has_no_trailing_rule() {
         let sheet = parse_stylesheet(".wrap { .probe { color: rgb(1, 2, 3) } }");
-        assert_eq!(sheet.rules.len(), 2, "空の末尾ルールを作らない");
+        assert_eq!(sheet.rules.len(), 1, "空の末尾ルールを作らない");
+    }
+
+    #[test]
+    fn declarations_after_a_nested_rule_use_the_resolved_parent_selector() {
+        // ネストしたルールより後ろの宣言は`&`と同じセレクタを持つ。
+        // 親がセレクタリストなら`:is(.p, #q)`にまとまり、詳細度は
+        // 最も強いセレクタ(ここでは`#q`の(1,0,0))で揃う。
+        let sheet = parse_stylesheet(".p, #q { .c { color: rgb(1, 2, 3) } margin-left: 5px }");
+        assert_eq!(selector_texts(&sheet), [":is(.p, #q) .c", ":is(.p, #q)"]);
+        let trailing = &sheet.rules[1].selectors;
+        assert_eq!(trailing.slice().len(), 1);
+        assert_eq!(
+            trailing.slice()[0].specificity(),
+            parse_stylesheet("#q { color: rgb(1, 2, 3) }").rules[0]
+                .selectors
+                .slice()[0]
+                .specificity()
+        );
+    }
+
+    #[test]
+    fn rules_without_declarations_are_dropped() {
+        // 宣言の無いルールはカスケードに寄与しないので索引にも入れない。
+        let sheet = parse_stylesheet(".a { } .b { color: rgb(1, 2, 3) } .c { }");
+        assert_eq!(selector_texts(&sheet), [".b"]);
     }
 
     #[test]
     fn nested_rules_inside_media_are_flattened() {
         let sheet = parse_stylesheet("@media print { .wrap { .probe { color: rgb(1, 2, 3) } } }");
-        assert_eq!(selector_texts(&sheet), [".wrap", ":is(.wrap) .probe"]);
+        assert_eq!(selector_texts(&sheet), [":is(.wrap) .probe"]);
     }
 
     #[test]
