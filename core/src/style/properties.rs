@@ -1249,10 +1249,16 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
 }
 
 fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
-    // 括弧(ネストしたcalc相当)。
+    // 括弧、またはネストした`calc()`(CSS Values 4ではどちらも同じ扱い)。
+    // Tailwind v4の`space-y-*`/`divide-*`は
+    // `calc(calc(var(--spacing) * N) * calc(1 - var(--tw-space-y-reverse)))`
+    // のようにネストした`calc()`を出力する(issue #17)。
     if input
         .try_parse(|input| input.expect_parenthesis_block())
         .is_ok()
+        || input
+            .try_parse(|input| input.expect_function_matching("calc"))
+            .is_ok()
     {
         return input.parse_nested_block(parse_calc_sum);
     }
