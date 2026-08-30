@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use sghtmltopdf_core::fonts::{Font, FontCollection};
 use sghtmltopdf_core::html::{self, Dom, NodeData, NodeId};
 use sghtmltopdf_core::layout::{
-    build_box_tree, layout_document, paginate_document, LaidOutBox, LaidOutContent, PageSettings,
+    build_box_tree, layout_document, paginate_document, LaidOutBox, LaidOutContent, Page,
+    PageSettings,
 };
 use sghtmltopdf_core::pdf::encode_pdf;
 use sghtmltopdf_core::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
@@ -255,4 +256,105 @@ fn list_style_shorthand_applies_type_position_and_falls_back_from_image() {
     };
     let run_texts: Vec<&str> = lines[0].runs.iter().map(|r| r.text.as_str()).collect();
     assert_eq!(run_texts, vec!["▪", "x"]);
+}
+
+/// ページ分割まで実行する共通ヘルパー。
+fn paginate(html_src: &str, css: &str) -> Vec<Page> {
+    let dom = html::parse(html_src.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = parse_stylesheet(css);
+    let styles = compute_styles(&dom, &ua, &author);
+    let fonts = test_fonts();
+    paginate_document(&dom, &styles, &fonts, &PageSettings::default())
+}
+
+/// `pages`に配置されたボックスを再帰的に辿り、outsideマーカーのテキストと
+/// そのページ内相対Y座標を、ページ番号(0始まり)つきで集める。
+fn collect_markers(pages: &[Page]) -> Vec<(usize, String, f32)> {
+    fn walk(b: &LaidOutBox, page_index: usize, out: &mut Vec<(usize, String, f32)>) {
+        if let Some(marker) = &b.marker {
+            let text: String = marker.runs.iter().map(|r| r.text.as_str()).collect();
+            out.push((page_index, text, marker.rect.y));
+        }
+        match &b.content {
+            LaidOutContent::Blocks(children) => {
+                for child in children {
+                    walk(child, page_index, out);
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    for atomic in &line.atomics {
+                        walk(&atomic.content, page_index, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        for b in &page.boxes {
+            walk(b, page_index, &mut out);
+        }
+    }
+    out
+}
+
+/// 1ページに収まらない長さの`li`を24個並べたリストを`css`つきでページ分割し、
+/// 「すべての`li`が順番どおりにマーカーを1つずつ保っている」「マーカーが
+/// 自分の載るページの中に収まっている」ことを確認する。
+fn assert_split_list_keeps_every_marker(css: &str) {
+    let words = "Word ".repeat(80);
+    let items: String = (0..24).map(|_| format!("<li>{words}</li>")).collect();
+    let pages = paginate(&format!("<ol>{items}</ol>"), css);
+    assert!(
+        pages.len() > 1,
+        "the fixture should span multiple pages, got {}",
+        pages.len()
+    );
+
+    let markers = collect_markers(&pages);
+    let texts: Vec<&str> = markers.iter().map(|(_, text, _)| text.as_str()).collect();
+    let expected: Vec<String> = (1..=24).map(|n| format!("{n}.")).collect();
+    assert_eq!(
+        texts,
+        expected.iter().map(String::as_str).collect::<Vec<_>>(),
+        "every list item should keep its marker exactly once, in order"
+    );
+
+    // 分割された`li`のマーカーは、その`li`が始まるページに載っていること
+    // (ページをまたいだ結果、座標が別ページのものへずれていないこと)。
+    let content_height = PageSettings::default().content_height();
+    for (page_index, text, y) in &markers {
+        assert!(
+            *y >= 0.0 && *y <= content_height,
+            "marker {text} on page {page_index} sits outside the page (y={y})"
+        );
+    }
+
+    // 少なくとも1つのマーカーは2ページ目以降に載っているはず(先頭ページに
+    // 全部載っているなら分割経路を通っていない)。
+    assert!(
+        markers.iter().any(|(page_index, _, _)| *page_index > 0),
+        "the fixture should place some markers on later pages"
+    );
+}
+
+#[test]
+fn outside_marker_survives_when_a_list_item_is_split_across_pages() {
+    // ページをまたいで分割される`li`は`place_split`経路を通る。装飾
+    // (背景・枠線)を持たない`li`でもマーカーが先頭フラグメントに残ることを
+    // 確認する。
+    assert_split_list_keeps_every_marker("body { margin: 0; } ol, li { margin: 0; }");
+}
+
+#[test]
+fn outside_marker_of_a_split_list_item_with_a_background_stays_on_its_own_page() {
+    // 装飾を持つ`li`は分割時に装飾フラグメントが作られる。マーカーの座標が
+    // レイアウト時の絶対Yのまま残っていると、別ページの位置へずれてしまう。
+    assert_split_list_keeps_every_marker(
+        "body { margin: 0; } ol, li { margin: 0; } li { background: #eee; }",
+    );
 }
