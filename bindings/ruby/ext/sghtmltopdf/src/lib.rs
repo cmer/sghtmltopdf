@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use magnus::rb_sys::AsRawValue;
 use magnus::{block::Proc, function, prelude::*, Error, RString, Ruby};
-use sghtmltopdf_core::cli::convert;
+use sghtmltopdf_core::cli::{self, convert};
 use sghtmltopdf_core::render_stack;
 use sghtmltopdf_core::sink::{FileSink, MemorySink};
 
