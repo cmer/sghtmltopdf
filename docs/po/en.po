@@ -2295,7 +2295,8 @@ msgid ""
 msgstr ""
 "Every other sibling selector — `+`, `~`, `:first-child`, `:nth-child()`, `:"
 "last-child` and so on — gives the same result as batch mode. See [Selectors]"
-"(../../supports/selectors.md#ストリーミングモード固有の制約) for the details."
+"(../../supports/selectors.md#restrictions-specific-to-streaming-mode) for "
+"the details."
 
 #: src/usage/cli/streaming.md:40
 msgid "使えるもの"
@@ -9420,7 +9421,7 @@ msgid ""
 "[フォント](../supports/fonts.md#絵文字)を参照してください"
 msgstr ""
 "Colour fonts (`CBDT`/`CBLC`, `COLR`/`CPAL`, `sbix`) are not supported. For "
-"emoji see [Fonts](../supports/fonts.md#絵文字)"
+"emoji see [Fonts](../supports/fonts.md#emoji)"
 
 #: src/appendix/limitations.md:44
 msgid "`--grayscale`を指定しても、JPEGとCMYK画像・SVGはカラーのまま残ります"
