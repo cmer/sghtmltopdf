@@ -2462,11 +2462,11 @@ mod tests {
     ///
     /// テストスレッドの既定スタックは2MiBで、デバッグビルドの1段あたり約11KiB
     /// では上限ぶんの再帰に足りない。CLI・サーバと同じく
-    /// [`crate::cli::with_render_stack`]で確保してから走らせる
+    /// [`crate::render_stack::with_render_stack`]で確保してから走らせる
     /// (上限とスタックが対で意味を持つことの確認でもある)。
     #[test]
     fn html_just_within_the_depth_limit_still_renders() {
-        let pdf = crate::cli::with_render_stack(|| {
+        let pdf = crate::render_stack::with_render_stack(|| {
             let options = EngineOptions {
                 fonts: vec![font_spec()],
                 ..EngineOptions::default()

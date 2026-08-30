@@ -217,10 +217,10 @@ pub fn parse_declaration<'i>(
         "margin-bottom" => Ok(vec![D::MarginBottom(parse_length_percentage_or_auto(input)?)]),
         "margin-left" => Ok(vec![D::MarginLeft(parse_length_percentage_or_auto(input)?)]),
         "padding" => parse_padding_shorthand(input),
-        "padding-top" => Ok(vec![D::PaddingTop(parse_length_percentage(input)?)]),
-        "padding-right" => Ok(vec![D::PaddingRight(parse_length_percentage(input)?)]),
-        "padding-bottom" => Ok(vec![D::PaddingBottom(parse_length_percentage(input)?)]),
-        "padding-left" => Ok(vec![D::PaddingLeft(parse_length_percentage(input)?)]),
+        "padding-top" => Ok(vec![D::PaddingTop(parse_non_negative_length_percentage(input)?)]),
+        "padding-right" => Ok(vec![D::PaddingRight(parse_non_negative_length_percentage(input)?)]),
+        "padding-bottom" => Ok(vec![D::PaddingBottom(parse_non_negative_length_percentage(input)?)]),
+        "padding-left" => Ok(vec![D::PaddingLeft(parse_non_negative_length_percentage(input)?)]),
         "border" => parse_border_shorthand(input),
         "border-width" => parse_border_width_shorthand(input),
         "border-color" => parse_border_color_shorthand(input),
@@ -393,15 +393,25 @@ pub fn parse_declaration<'i>(
         "margin-block" => {
             parse_start_end(input, parse_length_percentage_or_auto, D::MarginTop, D::MarginBottom)
         },
-        "padding-inline-start" => Ok(vec![D::PaddingLeft(parse_length_percentage(input)?)]),
-        "padding-inline-end" => Ok(vec![D::PaddingRight(parse_length_percentage(input)?)]),
-        "padding-block-start" => Ok(vec![D::PaddingTop(parse_length_percentage(input)?)]),
-        "padding-block-end" => Ok(vec![D::PaddingBottom(parse_length_percentage(input)?)]),
+        "padding-inline-start" => Ok(vec![D::PaddingLeft(parse_non_negative_length_percentage(input)?)]),
+        "padding-inline-end" => Ok(vec![D::PaddingRight(parse_non_negative_length_percentage(input)?)]),
+        "padding-block-start" => Ok(vec![D::PaddingTop(parse_non_negative_length_percentage(input)?)]),
+        "padding-block-end" => Ok(vec![D::PaddingBottom(parse_non_negative_length_percentage(input)?)]),
         "padding-inline" => {
-            parse_start_end(input, parse_length_percentage, D::PaddingLeft, D::PaddingRight)
+            parse_start_end(
+                input,
+                parse_non_negative_length_percentage,
+                D::PaddingLeft,
+                D::PaddingRight,
+            )
         },
         "padding-block" => {
-            parse_start_end(input, parse_length_percentage, D::PaddingTop, D::PaddingBottom)
+            parse_start_end(
+                input,
+                parse_non_negative_length_percentage,
+                D::PaddingTop,
+                D::PaddingBottom,
+            )
         },
         "inset" => parse_inset_shorthand(input),
         "inset-inline-start" => Ok(vec![D::Left(parse_length_percentage_or_auto(input)?)]),
@@ -466,6 +476,20 @@ pub fn parse_declaration<'i>(
         "border-block-color" => {
             parse_start_end(input, parse_color, D::BorderTopColor, D::BorderBottomColor)
         },
+        // 論理版の角丸。1つ目が block 方向、2つ目が inline 方向を指す
+        // (`border-start-end-radius`は上端の行方向終端=右上)。
+        "border-start-start-radius" => {
+            Ok(vec![D::BorderTopLeftRadius(parse_corner_radius(input)?)])
+        },
+        "border-start-end-radius" => {
+            Ok(vec![D::BorderTopRightRadius(parse_corner_radius(input)?)])
+        },
+        "border-end-start-radius" => {
+            Ok(vec![D::BorderBottomLeftRadius(parse_corner_radius(input)?)])
+        },
+        "border-end-end-radius" => {
+            Ok(vec![D::BorderBottomRightRadius(parse_corner_radius(input)?)])
+        },
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -487,7 +511,7 @@ fn parse_padding_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
     use PropertyDeclaration as D;
-    let (top, right, bottom, left) = parse_four_sides(input, parse_length_percentage)?;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_non_negative_length_percentage)?;
     Ok(vec![
         D::PaddingTop(top),
         D::PaddingRight(right),
@@ -525,26 +549,33 @@ fn parse_start_end<'i, T: Copy>(
     Ok(vec![start(first), end(second)])
 }
 
-/// `border-inline`/`border-block`用。片側(左/上)の辺別ショートハンド展開を
-/// もう片側(右/下)へ写す。
+/// [`mirror_border_side`]が写す先の辺。
 #[derive(Clone, Copy)]
 enum Side {
     Right,
     Bottom,
 }
 
+/// `border-inline`/`border-block`用。片側(左/上)の辺別ショートハンド展開を
+/// もう片側(右/下)へ写す。
+///
+/// 写せない宣言は捨てる。辺別ショートハンドが返すのは幅/スタイル/色だけ
+/// なので現状は起きないが、そのまま複製すると左(上)の宣言が2回出て
+/// しまうため、素通しはしない。
 fn mirror_border_side(decls: &[PropertyDeclaration], to: Side) -> Vec<PropertyDeclaration> {
     use PropertyDeclaration as D;
     decls
         .iter()
-        .map(|d| match (d, to) {
-            (D::BorderLeftWidth(w), Side::Right) => D::BorderRightWidth(*w),
-            (D::BorderLeftStyle(s), Side::Right) => D::BorderRightStyle(*s),
-            (D::BorderLeftColor(c), Side::Right) => D::BorderRightColor(*c),
-            (D::BorderTopWidth(w), Side::Bottom) => D::BorderBottomWidth(*w),
-            (D::BorderTopStyle(s), Side::Bottom) => D::BorderBottomStyle(*s),
-            (D::BorderTopColor(c), Side::Bottom) => D::BorderBottomColor(*c),
-            (other, _) => other.clone(),
+        .filter_map(|d| {
+            Some(match (d, to) {
+                (D::BorderLeftWidth(w), Side::Right) => D::BorderRightWidth(*w),
+                (D::BorderLeftStyle(s), Side::Right) => D::BorderRightStyle(*s),
+                (D::BorderLeftColor(c), Side::Right) => D::BorderRightColor(*c),
+                (D::BorderTopWidth(w), Side::Bottom) => D::BorderBottomWidth(*w),
+                (D::BorderTopStyle(s), Side::Bottom) => D::BorderBottomStyle(*s),
+                (D::BorderTopColor(c), Side::Bottom) => D::BorderBottomColor(*c),
+                _ => return None,
+            })
         })
         .collect()
 }
@@ -1239,6 +1270,20 @@ fn parse_text_decoration_line<'i>(
         }
     }
     Ok(line)
+}
+
+/// `padding`のように負の値を受け付けないプロパティ用。負の値はCSSでは
+/// 無効なので、宣言ごと捨てられるようパースエラーにする。
+/// `calc()`は解決するまで符号が決まらないため、ここでは通す
+/// (CSSの規定でも計算結果が負なら0へクランプする扱い)。
+fn parse_non_negative_length_percentage<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedLengthPercentage, ParseError<'i, ()>> {
+    let value = parse_length_percentage(input)?;
+    if value.is_negative() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(value)
 }
 
 fn parse_length_percentage<'i>(

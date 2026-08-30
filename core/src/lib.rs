@@ -8,5 +8,6 @@ pub mod img;
 pub mod layout;
 mod numbering;
 pub mod pdf;
+pub mod render_stack;
 pub mod sink;
 pub mod style;

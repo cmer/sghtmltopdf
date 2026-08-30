@@ -785,6 +785,36 @@ mod tests {
         assert!(parse_inline_style("").is_empty());
     }
 
+    #[test]
+    fn negative_padding_is_rejected() {
+        // CSSでは`padding`に負の値を書けない。宣言ごと捨てる。
+        for css in [
+            "p { padding-left: -5px }",
+            "p { padding: -5px }",
+            "p { padding: 5px -5px }",
+            "p { padding-inline-start: -5px }",
+            "p { padding-block: -1em }",
+            "p { padding-top: -10% }",
+        ] {
+            assert!(
+                parse_stylesheet(css).rules.is_empty(),
+                "negative padding should be dropped: {css}"
+            );
+        }
+        // 0と正の値、`calc()`(符号は解決するまで決まらない)は通す。
+        for css in [
+            "p { padding-left: 0 }",
+            "p { padding: 5px }",
+            "p { padding-left: calc(10px - 20px) }",
+        ] {
+            assert_eq!(
+                parse_stylesheet(css).rules.len(),
+                1,
+                "should be accepted: {css}"
+            );
+        }
+    }
+
     // ===== CSS Nesting (#25) =====
 
     fn selector_texts(sheet: &Stylesheet) -> Vec<String> {

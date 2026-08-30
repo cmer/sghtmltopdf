@@ -67,6 +67,24 @@ fn layout_div(css: &str) -> Layout {
     find_laid_out(&laid, divs[0]).unwrap().layout
 }
 
+/// `body { margin: 0 }`の下で`<div class="c">x</div>`の計算済みスタイルから
+/// 4隅の角丸半径(水平方向)を左上/右上/左下/右下の順で返す。
+fn corner_radii(css: &str) -> [f32; 4] {
+    let dom = html::parse(br#"<div class="c">x</div>"#);
+    let ua = user_agent_stylesheet();
+    let author = parse_stylesheet(&format!("body {{ margin: 0; }} {css}"));
+    let styles = compute_styles(&dom, &ua, &author);
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let style = &styles[&divs[0]];
+    [
+        style.border_top_left_radius.horizontal.0,
+        style.border_top_right_radius.horizontal.0,
+        style.border_bottom_left_radius.horizontal.0,
+        style.border_bottom_right_radius.horizontal.0,
+    ]
+}
+
 fn assert_near(actual: f32, expected: f32, what: &str) {
     assert!(
         (actual - expected).abs() < 0.5,
@@ -153,4 +171,25 @@ fn border_inline_width_shorthand_takes_two_values() {
     assert_near(l.border.right, 3.0, "border-right");
     assert_near(l.border.top, 5.0, "border-top");
     assert_near(l.border.bottom, 5.0, "border-bottom");
+}
+
+#[test]
+fn logical_corner_radii_map_to_the_physical_corners() {
+    // 1つ目がblock方向、2つ目がinline方向。
+    assert_eq!(
+        corner_radii(".c { border-start-start-radius: 1px }"),
+        [1.0, 0.0, 0.0, 0.0]
+    );
+    assert_eq!(
+        corner_radii(".c { border-start-end-radius: 2px }"),
+        [0.0, 2.0, 0.0, 0.0]
+    );
+    assert_eq!(
+        corner_radii(".c { border-end-start-radius: 3px }"),
+        [0.0, 0.0, 3.0, 0.0]
+    );
+    assert_eq!(
+        corner_radii(".c { border-end-end-radius: 4px }"),
+        [0.0, 0.0, 0.0, 4.0]
+    );
 }

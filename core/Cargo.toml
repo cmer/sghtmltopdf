@@ -45,7 +45,9 @@ cli = ["dep:clap"]
 server = ["cli", "dep:tiny_http"]
 # `<img src="*.svg">`と`background-image: url(*.svg)`をベクタのまま
 # (ラスタライズせずに)PDFへ埋め込む。svg2pdf経由でusvgを引き込むため、
-# 要らない場合は`--no-default-features`で切れるようfeatureにしている。
+# 要らない場合に切れるようfeatureにしている(ライブラリとして使うなら
+# `--no-default-features`、CLIやHTTPサーバは残してSVGだけ外すなら
+# `--no-default-features --features cli,server`)。
 svg = ["dep:svg2pdf"]
 # SVG内の`<text>`をグリフのまま埋め込む。使うフォントは文書と同じもの
 # (`pdf::svg::SvgFontDb`が`FontCollection`から組む)で、SVGのためにシステム
@@ -53,7 +55,7 @@ svg = ["dep:svg2pdf"]
 #
 # 既定で切っているのは依存が重いため。svg2pdfの`text`は`usvg/text`(シェイパの
 # rustybuzz、unicode系テーブル)と`resvg/text`を要求し、後者は`?`が付いていない
-# ので**optionalなresvg本体ごと**有効化してtiny-skiaまで引き込む。合わせて25
+# ので、optionalなresvg本体ごと有効化してtiny-skiaまで引き込む。合わせて25
 # クレート増える。fontdb 0.23(本体が使う0.24とは別インスタンス)も入る。
 # 切っている間、SVG内のテキストは描画されない(パス化もされない)。
 svg-text = ["svg", "svg2pdf?/text"]
