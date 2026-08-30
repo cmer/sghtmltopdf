@@ -36,22 +36,28 @@
 
 ## 画像・フォントの形式
 
-* 画像はPNG / JPEG / WebPのみ。SVGとGIFは非対応です
+* 画像はPNG / JPEG / WebP / SVGのみ。GIFは非対応です
+* SVGは`<img>`と`background-image`からの参照のみ(ファイル・`data:` URIどちらも可)。HTMLに直接書いたインラインの`<svg>`要素は描画せず、見つけたら警告します
+* SVG内の`<text>`は`svg-text` featureを有効にした場合だけ描画します(使えるフォントは文書と同じもので、SVGのためにシステムフォントを探し直すことはしません)。`<filter>`と`<image>`は非対応です([画像](../supports/images.md#svg)を参照)
 * フォントはTTF / OTFのみ。WOFF / WOFF2は非対応です
 * カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は[フォント](../supports/fonts.md#絵文字)を参照してください
-* `--grayscale`を指定しても、JPEGとCMYK画像はカラーのまま残ります
+* `--grayscale`を指定しても、JPEGとCMYK画像・SVGはカラーのまま残ります
 
 ## CSSの主な制限
 
 機能単位では以下が非対応です。
 
-* 縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`等)、`direction`による右横書き
+* 縦書き(`writing-mode`/`text-orientation`)と`direction`による右横書き(`margin-inline`等の論理プロパティは`horizontal-tb`+LTRの固定写像としてのみ対応)
 * 多段組み(`columns`/`column-count`)
 * グラデーション(`linear-gradient()`等)と複数背景
 * 相対色構文(`rgb(from ...)`)と`color()`(`color-mix()`は対応済み)
 * アニメーション・トランジション・`filter`(静的な出力のため)
 * `position: sticky`、`display: inline-flex`/`inline-grid`、subgrid
 * `::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)
+
+値の文法では、`calc()`と括弧のネストが32段までです。
+それより深い値は無効として宣言ごと無視します。
+再帰的にパースするため、深さの上限を設けないと信頼できないCSSでスタックを使い切らせることができてしまうためです。
 
 ## 空白文字の扱い
 

@@ -8,7 +8,7 @@
 //! 走らせると深さ200弱でスタックを溢れさせる。しかもGVLを解放した状態で
 //! ガードページに触れるため、プロセスが落ちるのではなくスレッドが固まる。
 //!
-//! そこでレンダリングは[`sghtmltopdf_core::cli::STACK_SIZE`]のスタックを
+//! そこでレンダリングは[`sghtmltopdf_core::render_stack::STACK_SIZE`]のスタックを
 //! 明示的に確保した専用スレッドで走らせ、確定したチャンクはチャネル越しに
 //! 元のスレッドへ渡す。Rubyへ触れるのは元のスレッドだけに限る。
 //!
@@ -292,7 +292,8 @@ pub fn pump_to_block<F>(
 where
     F: FnOnce(ChannelSink) -> Result<(), sghtmltopdf_core::cli::CliError> + Send + 'static,
 {
-    use sghtmltopdf_core::cli::{CliError, STACK_SIZE};
+    use sghtmltopdf_core::cli::CliError;
+    use sghtmltopdf_core::render_stack::STACK_SIZE;
 
     // どちらも容量0のrendezvous。レンダリング側は1チャンクごとに
     // ブロックの完了を待つ。

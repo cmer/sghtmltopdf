@@ -1,6 +1,6 @@
 [package]
 name = "sghtmltopdf-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "PDF rendering engine that is not depend on Chromium/WebKit/Gecko"
 license = "MIT"
@@ -20,13 +20,45 @@ required-features = ["cli"]
 name = "server"
 required-features = ["server"]
 
+# SVGのE2Eテストはコンパイル済みバイナリ(=`cli`)を起動する。
+[[test]]
+name = "svg"
+required-features = ["svg", "cli"]
+
+[[test]]
+name = "svg_paths"
+required-features = ["svg", "cli"]
+
+# SVG内の`<text>`の描画までを見るテストは`svg-text`が要る。featureが無い場合の
+# 挙動(テキストが描かれないこと)もこのファイルで確認するため、`svg`だけでも
+# 動く(中で`cfg`で分岐する)。
+[[test]]
+name = "svg_fonts"
+required-features = ["svg", "cli"]
+
 # CLI(clap)とHTTPサーバ(tiny_http)はfeatureで切り離す。
 # ライブラリとして使う側は`--no-default-features`でこれらを引き込まずに済む。
 # gemはclap(=`cli`)を使うが、HTTPサーバは要らないので `cli` と `server` を分ける。
 [features]
-default = ["cli", "server"]
+default = ["cli", "server", "svg"]
 cli = ["dep:clap"]
 server = ["cli", "dep:tiny_http"]
+# `<img src="*.svg">`と`background-image: url(*.svg)`をベクタのまま
+# (ラスタライズせずに)PDFへ埋め込む。svg2pdf経由でusvgを引き込むため、
+# 要らない場合に切れるようfeatureにしている(ライブラリとして使うなら
+# `--no-default-features`、CLIやHTTPサーバは残してSVGだけ外すなら
+# `--no-default-features --features cli,server`)。
+svg = ["dep:svg2pdf"]
+# SVG内の`<text>`をグリフのまま埋め込む。使うフォントは文書と同じもの
+# (`pdf::svg::SvgFontDb`が`FontCollection`から組む)で、SVGのためにシステム
+# フォントを探し直すことはしない。
+#
+# 既定で切っているのは依存が重いため。svg2pdfの`text`は`usvg/text`(シェイパの
+# rustybuzz、unicode系テーブル)と`resvg/text`を要求し、後者は`?`が付いていない
+# ので、optionalなresvg本体ごと有効化してtiny-skiaまで引き込む。合わせて25
+# クレート増える。fontdb 0.23(本体が使う0.24とは別インスタンス)も入る。
+# 切っている間、SVG内のテキストは描画されない(パス化もされない)。
+svg-text = ["svg", "svg2pdf?/text"]
 
 [dependencies]
 base64 = "0.22.1"
@@ -55,7 +87,13 @@ harfrust = "0.12"
 html5ever = "0.39.0"
 image = { version = "0.25.10", default-features = false, features = ["webp"] }
 palette = { version = "0.7.6", default-features = false, features = ["std"] }
-pdf-writer = "0.15.0"
+# svg2pdfが`pdf_writer::Chunk`を返す(`to_chunk`)ので、そのチャンクを
+# こちらの文書へ`extend`するにはpdf-writerのバージョンが一致していないと
+# 型が合わない。svg2pdf 0.13.0はpdf-writer ^0.12を要求するため0.12系に
+# 揃えている。0.13以降で入った`Buf`/`Limits`と0.15の`Settings`・
+# `finish_with_xref_stream`はこちらでは使っていないので、揃えるための
+# 変更はこの行だけで済む。svg2pdfがpdf-writerを上げたら一緒に上げること。
+pdf-writer = "0.12.1"
 png = "0.18.1"
 precomputed-hash = "0.1.1"
 selectors = "0.39.0"
@@ -69,6 +107,11 @@ skrifa = "0.44"
 # サブセット経路に落ちる。本体のskrifa 0.44(=read-fonts 0.41)と重複させる
 # 理由が無いので切る。可変フォントのインスタンス化に対応する際に戻す。
 subsetter = { version = "0.2.6", default-features = false }
+# 既定featureのうち`filters`はSVGフィルタを解決するためにtiny-skia+resvgを
+# 引き込み、結果をラスタライズしてしまう(ベクタのまま埋め込むという方針に
+# 反する)。`image`はSVG内に埋め込まれたラスタ画像用、`text`は`svg-text`
+# feature側で足すので、ここでは全部切って純粋なベクタ変換だけを使う。
+svg2pdf = { version = "0.13.0", default-features = false, optional = true }
 taffy = "0.12.2"
 tiny_http = { version = "0.12", optional = true }
 ureq = "3.3.0"

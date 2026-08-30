@@ -625,6 +625,13 @@ pub enum SpecifiedLength {
 }
 
 impl SpecifiedLength {
+    /// 負の長さか。
+    pub fn is_negative(self) -> bool {
+        match self {
+            Self::Px(v) | Self::Em(v) | Self::Rem(v) => v < 0.0,
+        }
+    }
+
     /// `font_size`(em基準、px)と`root_font_size`(rem基準、px)を使って
     /// 計算値の[`Length`]へ解決する。
     pub fn resolve(self, font_size: f32, root_font_size: f32) -> Length {
@@ -690,6 +697,15 @@ pub enum SpecifiedLengthPercentage {
 }
 
 impl SpecifiedLengthPercentage {
+    /// 書かれた値が負か。`calc()`は解決するまで符号が決まらないので`false`。
+    pub fn is_negative(self) -> bool {
+        match self {
+            Self::Length(length) => length.is_negative(),
+            Self::Percentage(p) => p < 0.0,
+            Self::Calc(_) => false,
+        }
+    }
+
     pub fn resolve(self, font_size: f32, root_font_size: f32) -> LengthPercentage {
         match self {
             Self::Length(length) => {

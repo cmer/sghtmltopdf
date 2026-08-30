@@ -1,6 +1,6 @@
 [package]
 name = "sghtmltopdf"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 publish = false
 description = "Ruby binding for sghtmltopdf (see bindings/ruby)"
@@ -15,6 +15,8 @@ magnus = { version = "0.8", features = ["rb-sys"] }
 # GVL解放(`rb_thread_call_without_gvl`)はmagnusに無いので直接呼ぶ。
 rb-sys = "0.9"
 # HTTPサーバ(tiny_http)は要らないので`server` featureは外す。
+# `svg`はCLIと同じ既定に揃える(gemからもSVGを描画できるようにする)。
 sghtmltopdf-core = { path = "../../../../core", default-features = false, features = [
     "cli",
+    "svg",
 ] }

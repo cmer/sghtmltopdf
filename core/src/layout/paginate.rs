@@ -857,7 +857,11 @@ fn place_split<T>(
     // (`<html>`/`<body>`や大半のラッパー`<div>`)がこの高速経路を通ることで、
     // ストリーミング時のflush頻度が大きく改善される。
     let needs_decoration = container.has_visible_decoration;
-    if needs_decoration {
+    // outsideのマーカー(`list-style-position: outside`)は先頭フラグメントに
+    // 載せて描画するため、装飾が無くてもフラグメント生成は必要になる。これを
+    // 省くと、ページをまたいで分割された`li`のマーカーが落ちてしまう。
+    let needs_fragments = needs_decoration || container.marker.is_some();
+    if needs_fragments {
         // このコンテナが最初に触れる絶対ページインデックスを記録する
         state.enter_split();
     }
@@ -868,7 +872,7 @@ fn place_split<T>(
     }
 
     let mut current_page = state.current_index();
-    let mut segments: Vec<Segment> = if needs_decoration {
+    let mut segments: Vec<Segment> = if needs_fragments {
         vec![Segment {
             page_index: current_page,
             start_index: state.get(current_page).boxes.len(),
@@ -886,7 +890,7 @@ fn place_split<T>(
                           segments: &mut Vec<Segment>| {
         new_page(state, cursor);
         *current_page = state.current_index();
-        if needs_decoration {
+        if needs_fragments {
             segments.push(Segment {
                 page_index: *current_page,
                 start_index: 0,
@@ -921,7 +925,7 @@ fn place_split<T>(
             if now_page != current_page {
                 // 新しいページへ進んだ。今回作られたページは、この`b`の内容以外が
                 // 割り込む余地がないため、先頭(index 0)から始まる。
-                if needs_decoration {
+                if needs_fragments {
                     for p in (current_page + 1)..=now_page {
                         segments.push(Segment {
                             page_index: p,
@@ -943,7 +947,7 @@ fn place_split<T>(
     // 呼び出し元(兄弟要素)のため、下マージン/枠線/パディング分もカーソルへ加算する。
     *cursor += bottom_extra;
 
-    if !needs_decoration {
+    if !needs_fragments {
         return;
     }
 
@@ -957,38 +961,49 @@ fn place_split<T>(
     let fragments: Vec<(usize, usize, LaidOutBox)> = valid
         .iter()
         .enumerate()
-        .map(|(i, seg)| {
+        .filter_map(|(i, seg)| {
             let is_first = i == 0;
             let is_last = i == valid.len() - 1;
+            // 装飾を持たないコンテナはマーカーを載せる先頭フラグメントだけが
+            // 必要で、後続フラグメントは何も描画しない空の箱にしかならない。
+            if !needs_decoration && !is_first {
+                return None;
+            }
             let end_index = state.get(seg.page_index).boxes.len();
             let (top, bottom) =
                 extent_of(&state.get(seg.page_index).boxes[seg.start_index..end_index]);
             let layout = fragment_layout(&container.layout, top, bottom, is_first, is_last);
+            // マーカーは`b`の先頭フラグメントにのみ残す(このボックスが
+            // 複数ページにまたがって分割される場合、後続フラグメントで
+            // 重複して描画されるのを避ける)。マーカーの座標はレイアウト時の
+            // 絶対座標のままなので、フラグメントのページ内相対座標へ移す
+            // (コンテナのcontent上端からの相対位置を保つ)。
+            let marker = if is_first {
+                container.marker.take().map(|mut marker| {
+                    marker.rect.y -= container.layout.content.y - layout.content.y;
+                    marker
+                })
+            } else {
+                None
+            };
             let decoration = LaidOutBox {
                 node: container.node,
                 layout,
                 // 装飾専用フラグメントはこれ以上分割対象にならないため、
                 // fragmentationヒントは意味を持たない(初期値のまま)。
                 fragmentation: FragmentationHints::default(),
-                // `b`自身が装飾を持つ場合のみここに来るため`true`。この
-                // ボックス自体は`Blocks(Vec::new())`で子を持たず、再度
-                // `place_split`に渡されることもない。
-                has_visible_decoration: true,
+                // このボックス自体は`Blocks(Vec::new())`で子を持たず、再度
+                // `place_split`に渡されることもない。マーカーのためだけに
+                // 作られたフラグメントは背景・枠線を描画しない。
+                has_visible_decoration: needs_decoration,
                 // 装飾フラグメント自体はfloatではない(`b`自身がfloatでも、この
                 // 断片は通常フローの一部として`place_split`の残りのループに
                 // 混在するため`false`にしておく必要がある)。
                 is_float: false,
                 content: LaidOutContent::Blocks(Vec::new()),
-                // マーカーは`b`の先頭フラグメントにのみ残す(このボックスが
-                // 複数ページにまたがって分割される場合、後続フラグメントで
-                // 重複して描画されるのを避ける)。
-                marker: if is_first {
-                    container.marker.take()
-                } else {
-                    None
-                },
+                marker,
             };
-            (seg.page_index, seg.start_index, decoration)
+            Some((seg.page_index, seg.start_index, decoration))
         })
         .collect();
 

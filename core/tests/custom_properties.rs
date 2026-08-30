@@ -223,7 +223,30 @@ fn extract_author_stylesheet_resolves_var_via_the_style_tag_helper() {
         ":root { --w: 33px; } .box { width: var(--w); }",
     );
     let sheet = extract_stylesheet(&dom);
-    assert_eq!(sheet.rules.len(), 2);
+    // カスタムプロパティの宣言はテキスト置換で解決済みなので、`:root`側は
+    // 宣言の無いルールとして捨てられ、`.box`の1つだけが残る。
+    assert_eq!(sheet.rules.len(), 1);
+}
+
+#[test]
+fn var_inside_nested_calc_resolves_the_tailwind_space_y_shape() {
+    // issue #17: Tailwind v4の`space-y-*`/`divide-*`は
+    // `calc(calc(var(--spacing) * N) * calc(1 - var(--tw-space-y-reverse)))`
+    // を出力する。15px * 6 * (1 - 0) = 90px。
+    let (dom, laid) = layout(
+        r#"<div class="box">content</div>"#,
+        ":root { --spacing: 15px; --reverse: 0; } \
+         body { margin: 0; } \
+         .box { margin-left: calc(calc(var(--spacing) * 6) * calc(1 - var(--reverse))); }",
+    );
+    let mut divs = Vec::new();
+    find_all_tags(&dom, dom.document(), "div", &mut divs);
+    let b = find_laid_out(&laid, divs[0]).unwrap();
+    assert!(
+        (b.layout.margin.left - 90.0).abs() < 0.5,
+        "margin-left should be 90 but was {}",
+        b.layout.margin.left
+    );
 }
 
 #[test]

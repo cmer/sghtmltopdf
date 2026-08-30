@@ -13,7 +13,7 @@
 //! `(Ref, 書き込み済みオフセット)`を自前で記録し、[`StreamingPdfWriter::finish`]
 //! でxref/trailerを組み立てる。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use pdf_writer::writers::Catalog;
@@ -27,7 +27,7 @@ use crate::style::{ComputedStyle, PageRule};
 
 use super::document::{
     alpha_gs_resource_name, collect_anchor_positions, collect_image_uses, collect_link_areas,
-    collect_margin_box_usage, collect_opacity_uses, collect_usage, render_box,
+    collect_margin_box_usage, collect_opacity_uses, collect_usage, file_identifier, render_box,
     render_header_footer_rules, render_margin_boxes, render_page_overlay, write_document_info,
     write_link_annotation, write_resources, LinkSettings, PageOverlay, RefAllocator, RenderTarget,
     ALPHA_STEPS,
@@ -60,6 +60,10 @@ pub struct StreamingPdfWriter<S: Sink> {
     /// 集計(サブセット化)が不要なため、`finish`まで待たずページごとに
     /// 「初出なら書き出す」形で埋めていく。
     image_ids: HashMap<usize, ImageIds>,
+    /// `ids_for_image`が振り直しに失敗したSVGのキー。同じSVGが何度使われても
+    /// 警告を1回で済ませるためのキャッシュ(ラスタ画像はデコード段階で失敗する
+    /// のでここには来ない)。
+    failed_svg_ids: HashSet<usize>,
     /// `@page`ルール(margin box描画用)。
     page_rules: Vec<PageRule>,
     /// `background-color`/`box-shadow`の半透明描画用ExtGState(0.05刻み・
@@ -148,6 +152,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
             page_ids: Vec::new(),
             settings,
             image_ids: HashMap::new(),
+            failed_svg_ids: HashSet::new(),
             page_rules,
             alpha_gs_ids: alpha_gs_ids.clone(),
             alpha_gs_names,
@@ -250,14 +255,27 @@ impl<S: Sink> StreamingPdfWriter<S> {
         }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
-            let (ids, is_new) = ids_for_image(&mut self.alloc, &mut self.image_ids, image);
-            if is_new {
-                for (id, chunk) in embed_image_streaming_chunks(image, &ids, self.output.grayscale)
-                {
-                    self.write_chunk(id, &chunk)?;
-                }
+            // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
+            let Some((ids, is_new)) = ids_for_image(
+                &mut self.alloc,
+                &mut self.image_ids,
+                &mut self.failed_svg_ids,
+                image,
+            ) else {
+                continue;
+            };
+            let root = ids.root;
+            // 書き出しは`self`を可変で借りるため、`self.image_ids`から借りた
+            // `ids`をここで手放してから`write_objects`へ進む。
+            let embedded = if is_new {
+                embed_image_streaming_chunks(image, ids, self.output.grayscale)
+            } else {
+                Vec::new()
+            };
+            for embed in &embedded {
+                self.write_objects(&embed.chunk, &embed.offsets)?;
             }
-            page_image_refs.push(ids.color);
+            page_image_refs.push(root);
         }
 
         // `opacity < 1`の要素を先に集めてRefを払い出す(バッチモード
@@ -501,7 +519,16 @@ impl<S: Sink> StreamingPdfWriter<S> {
     /// `chunk`(単一の間接オブジェクトを含む前提)のバイト列を`sink`へ書き出し、
     /// 開始オフセットをxref用に記録する。
     fn write_chunk(&mut self, id: Ref, chunk: &Chunk) -> Result<(), S::Error> {
-        self.offsets.push((id, self.output_len));
+        self.write_objects(chunk, &[(id, 0)])
+    }
+
+    /// 複数のオブジェクトが入ったチャンクを書き出す。`offsets`はチャンク内の
+    /// 各オブジェクトの開始位置(SVGのForm XObject群のように1チャンクに
+    /// 複数オブジェクトが入る場合に使う)。
+    fn write_objects(&mut self, chunk: &Chunk, offsets: &[(Ref, usize)]) -> Result<(), S::Error> {
+        for &(id, offset) in offsets {
+            self.offsets.push((id, self.output_len + offset));
+        }
         let bytes = chunk.as_bytes();
         self.output_len += bytes.len();
         self.sink.write(bytes)
@@ -525,9 +552,16 @@ impl<S: Sink> StreamingPdfWriter<S> {
         for (_, offset) in &self.offsets {
             buf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
         }
+        // `/ID`(ファイル識別子)はバッチ書き出しと同じ作り方をする。
+        // ここは`pdf_writer::Pdf`を通さず自前でtrailerを書くので、
+        // 16進文字列として直接書く(バイト列としては同じ値)。
+        let id: String = file_identifier(&self.output.metadata, self.page_ids.len())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         buf.extend_from_slice(
             format!(
-                "trailer\n<< /Size {size} /Root {} 0 R /Info {} 0 R >>\n",
+                "trailer\n<< /Size {size} /Root {} 0 R /Info {} 0 R /ID [<{id}> <{id}>] >>\n",
                 self.catalog_id.get(),
                 info_id.get()
             )
@@ -610,6 +644,18 @@ mod tests {
         assert!(
             count_occurrences(&bytes, b"/Type /CMap") > 0,
             "ToUnicode CMap should be embedded"
+        );
+        assert!(
+            count_occurrences(&bytes, b"/CMapName /Custom") > 0,
+            "CMap stream dictionary must carry /CMapName (ISO 32000-1 table 120)"
+        );
+        assert!(
+            count_occurrences(&bytes, b"/CIDSystemInfo") >= 2,
+            "CMap stream dictionary must carry /CIDSystemInfo (ISO 32000-1 table 120)"
+        );
+        assert!(
+            count_occurrences(&bytes, b"/Ordering (UCS)") > 0,
+            "ToUnicode CMap /CIDSystemInfo should be Adobe-UCS-0"
         );
     }
 

@@ -18,6 +18,12 @@ use sghtmltopdf_core::pdf::encode_pdf;
 use sghtmltopdf_core::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
 
 const FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
+/// アセント+ディセントが1.2emを超えるフォント(1.448em)。`line-height: normal`を
+/// 固定倍率で近似していると、このフォントでグリフが行ボックスからはみ出す。
+const TALL_METRICS_FONT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fonts/NotoSansCJK-Regular.ttc"
+);
 
 fn test_fonts() -> FontCollection {
     FontCollection::new(vec![
@@ -393,4 +399,119 @@ line   two</pre>
     assert_eq!(page_count, 1);
     assert!(bytes.starts_with(b"%PDF-"));
     assert!(count_occurrences(&decompressed_stream_bytes(&bytes), b" Tc\n") > 0);
+}
+
+/// `fonts`でレイアウトした結果から、`tag`の最初のボックスを返す。
+fn layout_with(html_src: &str, css: &str, fonts: &FontCollection) -> (Dom, LaidOutBox) {
+    let dom = html::parse(html_src.as_bytes());
+    let ua = user_agent_stylesheet();
+    let author = parse_stylesheet(css);
+    let styles = compute_styles(&dom, &ua, &author);
+    let tree = build_box_tree(&dom, &styles);
+    let laid = layout_document(
+        &tree,
+        &styles,
+        fonts,
+        PageSettings::default().content_width(),
+    );
+    (dom, laid)
+}
+
+/// `b`以下の全ての行を集める。
+fn collect_lines(b: &LaidOutBox, out: &mut Vec<sghtmltopdf_core::layout::LineBox>) {
+    match &b.content {
+        LaidOutContent::Inline(lines) => out.extend(lines.iter().cloned()),
+        LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+            for child in children {
+                collect_lines(child, out);
+            }
+        }
+        LaidOutContent::Table(table) => {
+            for cell in table.rows.iter().flat_map(|row| &row.cells) {
+                collect_lines(cell, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn line_height_normal_fits_the_glyphs_of_a_font_taller_than_1_2em() {
+    // `line-height: normal`をfont-size*1.2で近似していると、アセント+
+    // ディセントが1.2emを超えるフォントでグリフが行ボックスからはみ出し、
+    // 積み重ねたブロックの最後の行が親の下端(セルのborder-bottom等)と重なる。
+    // はみ出し量はfont-sizeに比例するため、font-sizeが増えていく並びで
+    // 顕著になる。
+    let fonts = FontCollection::new(vec![
+        Font::load(TALL_METRICS_FONT_PATH).expect("should load the CJK test font")
+    ]);
+    let html_src = r#"<table><tr><td>
+        <div class="small">Label</div>
+        <div class="large">Value</div>
+    </td></tr></table>"#;
+    let css = "body { margin: 0; } td { padding: 0; } \
+               .small { font-size: 9px; } .large { font-size: 11px; }";
+
+    let (_, laid) = layout_with(html_src, css, &fonts);
+    let mut lines = Vec::new();
+    collect_lines(&laid, &mut lines);
+    assert_eq!(lines.len(), 2, "expected one line per div");
+
+    for line in &lines {
+        let descent = line
+            .runs
+            .iter()
+            .map(|run| run.descent)
+            .fold(0.0f32, f32::max);
+        let glyph_bottom = line.baseline + descent;
+        assert!(
+            glyph_bottom <= line.rect.height + 0.01,
+            "glyphs must fit inside their line box: bottom={glyph_bottom} height={}",
+            line.rect.height
+        );
+        let ascent = line
+            .runs
+            .iter()
+            .map(|run| run.ascent)
+            .fold(0.0f32, f32::max);
+        assert!(
+            line.baseline >= ascent - 0.01,
+            "the baseline must leave room for the ascent: baseline={} ascent={ascent}",
+            line.baseline
+        );
+    }
+}
+
+#[test]
+fn line_height_normal_follows_the_fonts_own_metrics() {
+    // `normal`はフォントごとに異なる。メトリクスの大きいフォントのほうが
+    // 同じfont-sizeでも行が高くなる。
+    let html_src = r#"<p>x</p>"#;
+    let css = "body { margin: 0; } p { margin: 0; font-size: 10px; }";
+
+    let dejavu = FontCollection::new(vec![Font::load(FONT_PATH).unwrap()]);
+    let tall = FontCollection::new(vec![Font::load(TALL_METRICS_FONT_PATH).unwrap()]);
+
+    let mut heights = Vec::new();
+    for fonts in [&dejavu, &tall] {
+        let (dom, laid) = layout_with(html_src, css, fonts);
+        let p = find_tag(&dom, dom.document(), "p").expect("p not found");
+        let p_box = find_laid_out(&laid, p).expect("p box not found");
+        let LaidOutContent::Inline(lines) = &p_box.content else {
+            panic!("expected inline content");
+        };
+        let font = fonts.get(0).unwrap();
+        assert!(
+            (lines[0].rect.height - font.normal_line_height(10.0)).abs() < 0.01,
+            "the line height should be the font's own normal line height: {} vs {}",
+            lines[0].rect.height,
+            font.normal_line_height(10.0)
+        );
+        heights.push(lines[0].rect.height);
+    }
+
+    assert!(
+        heights[1] > heights[0],
+        "the font with taller metrics should produce a taller line: {heights:?}"
+    );
 }

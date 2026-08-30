@@ -11,10 +11,12 @@ def elapsed_seconds
   Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 end
 
-# PDFの`/CreationDate`だけは実行時刻が入る(固定長なので他のオフセットには
-# 影響しない)。バイト列を比べるときはここを固定してから比較する。
+# PDFの`/CreationDate`とtrailerの`/ID`には実行時刻が入る(どちらも固定長
+# なので他のオフセットには影響しない)。バイト列を比べるときはここを固定して
+# から比較する。
 def normalize(pdf)
   pdf.gsub(/D:\d{14}Z/, "D:19700101000000Z")
+     .gsub(/\/ID \[<\h{32}> <\h{32}>\]/, "/ID [<#{'0' * 32}> <#{'0' * 32}>]")
 end
 
 RSpec.configure do |config|
