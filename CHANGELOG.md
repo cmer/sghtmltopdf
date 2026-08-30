@@ -43,6 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   program but not lifted into the dictionary. Strict PDF tooling (e.g. HexaPDF,
   veraPDF) rejects the file without them, which blocks PDF/A-3 validation and
   therefore Factur-X / ZUGFeRD hybrid e-invoice embedding.
+- Keep the outside marker on a list item that is split across pages (#31). An item that did
+  not fit in what was left of a page kept its marker gutter but lost the marker itself, so an
+  ordered list that paginated silently skipped numbers (7., 14. and 21. in the reported
+  document); the numbers were missing from the text layer too, not merely clipped. Pagination
+  moves the marker onto the item's first fragment, but fragments were only produced for a
+  container that actually paints a background or border. A plain `li` paints neither, so the
+  marker was taken off the container with nowhere to put it back. On a decorated item the
+  marker survived but carried its pre-pagination coordinates, which placed it at a position
+  belonging to another page; that is corrected as well.
+- Count a table's columns with the occupancy of `rowspan` taken into account (#32). The column
+  count was the largest per-row sum of `colspan`, while cell placement skips the columns still
+  held by a `rowspan` from an earlier row. When the first row held nothing but a `rowspan="2"`
+  cell, both rows summed to one column, so the second row's cell was placed in a column the
+  table did not have, given zero width, and dropped from the output with no error or warning —
+  a logo beside a label that appears on the following row, a common invoice-table shape. The
+  count now falls out of the placement walk itself, so the two can no longer disagree.
 
 ### Added
 
@@ -87,6 +103,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An inline `<svg>` in the HTML now warns once per document instead of silently rendering
   nothing. It is still not drawn — only `<img>` and `background-image` references are — but
   saying "SVG is supported" and then dropping inline SVG without a word was misleading.
+- `line-height: normal` is now the font's own recommended line spacing (ascent + descent +
+  line gap), as CSS defines it, rather than a fixed 1.2em (#33). The fixed ratio only worked
+  for fonts whose content area fits inside it: DejaVu Sans needs 1.164em and Liberation Sans
+  1.150em, but Noto Sans CJK needs 1.448em, and CJK fonts around 1.4em are common. Where the
+  ratio was too small the half-leading went negative and the glyphs spilled out of their line
+  box, so the last line of a block overlapped whatever came next — a table cell's
+  `border-bottom` drawn through the text, for instance. The overflow scales with `font-size`,
+  which is why it appeared when a larger font followed a smaller one and stayed invisible in
+  the other order.
+
+  Line spacing therefore changes in any document that leaves `line-height` unset. Latin text
+  tightens slightly (1.2em to 1.164em with DejaVu Sans); Japanese text loosens by roughly a
+  fifth (1.2em to 1.448em with Noto Sans CJK), so some documents will gain pages. A document
+  that sets `line-height` explicitly, as a number or a length, is unaffected and its output is
+  unchanged byte for byte. An explicit value smaller than the font's content area still
+  overflows its line box, exactly as it does in a browser; that is the specified behaviour and
+  is deliberately left alone.
 
 ### Known limitations
 

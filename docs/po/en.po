@@ -4595,8 +4595,13 @@ msgid "`line-height`"
 msgstr "`line-height`"
 
 #: src/supports/properties.md:94
-msgid "`normal`/`<number>`/`<length>`/`<percentage>`"
-msgstr "`normal`, `<number>`, `<length>`, and `<percentage>`"
+msgid ""
+"`normal`/`<number>`/`<length>`/`<percentage>`。`normal`はフォント自身の推奨行"
+"送り(アセント+ディセント+行間)から求めるため、フォントによって値が変わる"
+msgstr ""
+"`normal`, `<number>`, `<length>`, and `<percentage>`. `normal` is derived "
+"from the font's own recommended line spacing (ascent + descent + line gap), "
+"so its value depends on the font"
 
 #: src/supports/properties.md:95
 msgid "`text-align`"

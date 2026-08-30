@@ -91,7 +91,7 @@
 | `font-style` | ⚠️ | `normal`/`italic`/`oblique`(`oblique`は`italic`と同一視、傾斜角の指定は不可)。イタリック字形が無い場合はテキスト行列のせん断による疑似イタリック |
 | `font`(ショートハンド) | ❌ | 個別のロングハンドを使う |
 | `color` | ✅ | 継承プロパティ。指定できる色の記法は[セレクタ・値・at-rule](selectors.md#色)を参照 |
-| `line-height` | ✅ | `normal`/`<number>`/`<length>`/`<percentage>` |
+| `line-height` | ✅ | `normal`/`<number>`/`<length>`/`<percentage>`。`normal`はフォント自身の推奨行送り(アセント+ディセント+行間)から求めるため、フォントによって値が変わる |
 | `text-align` | ⚠️ | `left`/`right`/`center`/`justify`。`justify`は最終行以外の単語間で余白を配分する。`start`/`end`は非対応(`direction`自体が非対応のため) |
 | `text-indent` | ⚠️ | `<length>`/`<percentage>`。`hanging`/`each-line`は非対応 |
 | `text-transform` | ⚠️ | `none`/`uppercase`/`lowercase`/`capitalize`(語頭のみ変換)。`full-width`/`full-size-kana`は非対応 |
