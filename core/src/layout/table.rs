@@ -1297,7 +1297,7 @@ mod tests {
 
     fn grid_cell(colspan: usize, rowspan: usize) -> TableCell {
         TableCell {
-            node: NodeId(0),
+            node: Some(NodeId(0)),
             colspan,
             rowspan,
             content: LayoutBox::anonymous(BoxContent::Inline(Vec::new())),
@@ -1306,7 +1306,7 @@ mod tests {
 
     fn grid_row(cells: Vec<TableCell>) -> TableRow {
         TableRow {
-            node: NodeId(0),
+            node: Some(NodeId(0)),
             cells,
             section: super::super::box_tree::TableSection::Body,
         }
