@@ -786,6 +786,29 @@ mod tests {
     }
 
     #[test]
+    fn deeply_nested_calc_is_rejected_instead_of_overflowing_the_stack() {
+        // 再帰下降パーサなので、深さがそのままスタックの消費になる。
+        // 上限(32段)までは通し、それより深い値は宣言ごと捨てる。
+        let nested = |n: usize| {
+            format!(
+                "p {{ padding-left: {}1px{} }}",
+                "calc(".repeat(n),
+                ")".repeat(n)
+            )
+        };
+        assert_eq!(parse_stylesheet(&nested(32)).rules.len(), 1, "32段は通す");
+        assert!(parse_stylesheet(&nested(33)).rules.is_empty(), "33段は捨てる");
+
+        // 括弧も`calc()`と同じ深さに数える。
+        let parens = format!(
+            "p {{ padding-left: calc({}1px{}) }}",
+            "(".repeat(40),
+            ")".repeat(40)
+        );
+        assert!(parse_stylesheet(&parens).rules.is_empty());
+    }
+
+    #[test]
     fn negative_padding_is_rejected() {
         // CSSでは`padding`に負の値を書けない。宣言ごと捨てる。
         for css in [

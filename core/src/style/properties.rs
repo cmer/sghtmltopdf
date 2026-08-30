@@ -1356,9 +1356,18 @@ impl CalcValue {
 
 /// `calc(...)`を[`SpecifiedCalc`]へパースする。裸の数値が残る式(長さとして
 /// 無効)はエラーにする。`min`/`max`/`clamp`は非対応。
+/// `calc()`と括弧のネストを受け付ける深さの上限。
+///
+/// このパーサは再帰下降なので、深さがそのままスタックの消費になる
+/// (信頼できないCSSを食わせるとスタックオーバーフローで落とせる)。
+/// `calc(calc(...) * calc(...))`のような実際のCSSは数段で収まるので、
+/// 大きく余裕を取ったこの値を超えたら無効値として宣言ごと捨てる。
+/// DOMの深さに対する[`crate::html::MAX_ELEMENT_DEPTH`]と同じ考え方。
+const MAX_CALC_DEPTH: u32 = 32;
+
 fn parse_calc<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedCalc, ParseError<'i, ()>> {
     input.expect_function_matching("calc")?;
-    let value = input.parse_nested_block(parse_calc_sum)?;
+    let value = input.parse_nested_block(|input| parse_calc_sum(input, 1))?;
     if value.number != 0.0 {
         // `calc(2)`のように裸の数値が残る = 長さ文脈では無効。
         return Err(input.new_custom_error(()));
@@ -1371,8 +1380,11 @@ fn parse_calc<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedCalc, ParseErro
     })
 }
 
-fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
-    let mut acc = parse_calc_product(input)?;
+fn parse_calc_sum<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<CalcValue, ParseError<'i, ()>> {
+    let mut acc = parse_calc_product(input, depth)?;
     loop {
         // `+`/`-`の前後には空白が必須(CSS仕様)。cssparserは`+5`のような
         // 符号付き数値を1トークンにするため、Delimでない場合はループを抜ける。
@@ -1386,7 +1398,7 @@ fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseErro
         });
         match sign {
             Ok(sign) => {
-                let rhs = parse_calc_product(input)?;
+                let rhs = parse_calc_product(input, depth)?;
                 acc = acc.add(rhs.scale(sign));
             }
             Err(_) => return Ok(acc),
@@ -1394,8 +1406,11 @@ fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseErro
     }
 }
 
-fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
-    let mut acc = parse_calc_value(input)?;
+fn parse_calc_product<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<CalcValue, ParseError<'i, ()>> {
+    let mut acc = parse_calc_value(input, depth)?;
     loop {
         enum Op {
             Mul,
@@ -1411,7 +1426,7 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
         });
         match op {
             Ok(Op::Mul) => {
-                let rhs = parse_calc_value(input)?;
+                let rhs = parse_calc_value(input, depth)?;
                 // 次元×次元は不可(少なくとも一方が純粋な数値、CSS仕様)。
                 if acc.is_pure_number() {
                     acc = rhs.scale(acc.number);
@@ -1422,7 +1437,7 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
                 }
             }
             Ok(Op::Div) => {
-                let rhs = parse_calc_value(input)?;
+                let rhs = parse_calc_value(input, depth)?;
                 if !rhs.is_pure_number() || rhs.number == 0.0 {
                     return Err(input.new_custom_error(()));
                 }
@@ -1433,7 +1448,10 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
     }
 }
 
-fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
+fn parse_calc_value<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<CalcValue, ParseError<'i, ()>> {
     // 括弧、またはネストした`calc()`(CSS Values 4ではどちらも同じ扱い)。
     // Tailwind v4の`space-y-*`/`divide-*`は
     // `calc(calc(var(--spacing) * N) * calc(1 - var(--tw-space-y-reverse)))`
@@ -1445,7 +1463,10 @@ fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseEr
             .try_parse(|input| input.expect_function_matching("calc"))
             .is_ok()
     {
-        return input.parse_nested_block(parse_calc_sum);
+        if depth >= MAX_CALC_DEPTH {
+            return Err(input.new_custom_error(()));
+        }
+        return input.parse_nested_block(|input| parse_calc_sum(input, depth + 1));
     }
     let token = input.next()?.clone();
     match token {
