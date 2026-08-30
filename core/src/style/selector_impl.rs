@@ -52,6 +52,16 @@ impl<'i> parser::Parser<'i> for SelectorParser {
         true
     }
 
+    /// ネストしたルールの`&`(親セレクタ)を有効にする(CSS Nesting)。
+    ///
+    /// `&`は[`super::stylesheet`]がネストしたルールのセレクタをパースした
+    /// 直後に親のセレクタリストへ置き換えるため、マッチングまで残らない。
+    /// トップレベルのルールに書かれた`&`だけは置き換える親が無く、仕様
+    /// どおり`:scope`(=ルート要素)として扱われる。
+    fn parse_parent_selector(&self) -> bool {
+        true
+    }
+
     /// `:hover`等の非構造的擬似クラスはパース自体には対応する(常に非マッチとして
     /// 扱うのは[`super::element_ref::ElementRef::match_non_ts_pseudo_class`]の役割)。
     ///

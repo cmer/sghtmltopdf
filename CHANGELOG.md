@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Parse nested style rules (CSS Nesting) instead of silently dropping them (#25).
+  `.wrap { & .probe { } }`, `.wrap { .probe { } }`, `.wrap { &.probe { } }` and
+  `.list { > li { } }` now reach the cascade with the meaning the spec gives them; `&`
+  takes the parent's specificity, and declarations written after a nested rule keep
+  their source position instead of being hoisted above it. Nested at-rules such as
+  `@media` inside a style rule are still ignored.
 - Accept `calc()` as a term inside another `calc()` (#17). CSS Values 4 treats a nested
   `calc()` the same as a parenthesised group, but the parser only handled the parentheses,
   so `calc(calc(45px * 2) * calc(1 - 0))` was rejected as invalid and the declaration was
