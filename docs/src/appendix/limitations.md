@@ -55,6 +55,10 @@
 * `position: sticky`、`display: inline-flex`/`inline-grid`、subgrid
 * `::first-line`、`::marker`(`:is()`/`:where()`/`:has()`は対応済み)
 
+値の文法では、`calc()`と括弧のネストが32段までです。
+それより深い値は無効として宣言ごと無視します。
+再帰的にパースするため、深さの上限を設けないと信頼できないCSSでスタックを使い切らせることができてしまうためです。
+
 ## 空白文字の扱い
 
 畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。
