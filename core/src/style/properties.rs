@@ -379,6 +379,93 @@ pub fn parse_declaration<'i>(
         "grid-area" => parse_grid_area_shorthand(input),
         "justify-items" => Ok(vec![D::JustifyItems(parse_align_items(input)?)]),
         "justify-self" => Ok(vec![D::JustifySelf(parse_align_self(input)?)]),
+        // 論理プロパティ。対応する書字方向が`horizontal-tb`+LTRだけなので、
+        // 物理プロパティへの固定の写像として展開する(`inline-start`=左、
+        // `inline-end`=右、`block-start`=上、`block-end`=下)。`writing-mode`/
+        // `direction`は非対応のため、この写像が変わることはない。
+        "margin-inline-start" => Ok(vec![D::MarginLeft(parse_length_percentage_or_auto(input)?)]),
+        "margin-inline-end" => Ok(vec![D::MarginRight(parse_length_percentage_or_auto(input)?)]),
+        "margin-block-start" => Ok(vec![D::MarginTop(parse_length_percentage_or_auto(input)?)]),
+        "margin-block-end" => Ok(vec![D::MarginBottom(parse_length_percentage_or_auto(input)?)]),
+        "margin-inline" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::MarginLeft, D::MarginRight)
+        },
+        "margin-block" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::MarginTop, D::MarginBottom)
+        },
+        "padding-inline-start" => Ok(vec![D::PaddingLeft(parse_length_percentage(input)?)]),
+        "padding-inline-end" => Ok(vec![D::PaddingRight(parse_length_percentage(input)?)]),
+        "padding-block-start" => Ok(vec![D::PaddingTop(parse_length_percentage(input)?)]),
+        "padding-block-end" => Ok(vec![D::PaddingBottom(parse_length_percentage(input)?)]),
+        "padding-inline" => {
+            parse_start_end(input, parse_length_percentage, D::PaddingLeft, D::PaddingRight)
+        },
+        "padding-block" => {
+            parse_start_end(input, parse_length_percentage, D::PaddingTop, D::PaddingBottom)
+        },
+        "inset" => parse_inset_shorthand(input),
+        "inset-inline-start" => Ok(vec![D::Left(parse_length_percentage_or_auto(input)?)]),
+        "inset-inline-end" => Ok(vec![D::Right(parse_length_percentage_or_auto(input)?)]),
+        "inset-block-start" => Ok(vec![D::Top(parse_length_percentage_or_auto(input)?)]),
+        "inset-block-end" => Ok(vec![D::Bottom(parse_length_percentage_or_auto(input)?)]),
+        "inset-inline" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::Left, D::Right)
+        },
+        "inset-block" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::Top, D::Bottom)
+        },
+        "border-inline-start" => parse_border_left_shorthand(input),
+        "border-inline-end" => parse_border_right_shorthand(input),
+        "border-block-start" => parse_border_top_shorthand(input),
+        "border-block-end" => parse_border_bottom_shorthand(input),
+        "border-inline" => {
+            let mut decls = parse_border_left_shorthand(input)?;
+            decls.extend(mirror_border_side(&decls, Side::Right));
+            Ok(decls)
+        },
+        "border-block" => {
+            let mut decls = parse_border_top_shorthand(input)?;
+            decls.extend(mirror_border_side(&decls, Side::Bottom));
+            Ok(decls)
+        },
+        "border-inline-start-width" => Ok(vec![D::BorderLeftWidth(parse_length(input)?)]),
+        "border-inline-end-width" => Ok(vec![D::BorderRightWidth(parse_length(input)?)]),
+        "border-block-start-width" => Ok(vec![D::BorderTopWidth(parse_length(input)?)]),
+        "border-block-end-width" => Ok(vec![D::BorderBottomWidth(parse_length(input)?)]),
+        "border-inline-width" => {
+            parse_start_end(input, parse_length, D::BorderLeftWidth, D::BorderRightWidth)
+        },
+        "border-block-width" => {
+            parse_start_end(input, parse_length, D::BorderTopWidth, D::BorderBottomWidth)
+        },
+        "border-inline-start-style" => {
+            Ok(vec![D::BorderLeftStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-inline-end-style" => {
+            Ok(vec![D::BorderRightStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-block-start-style" => {
+            Ok(vec![D::BorderTopStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-block-end-style" => {
+            Ok(vec![D::BorderBottomStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-inline-style" => {
+            parse_start_end(input, parse_border_style_keyword, D::BorderLeftStyle, D::BorderRightStyle)
+        },
+        "border-block-style" => {
+            parse_start_end(input, parse_border_style_keyword, D::BorderTopStyle, D::BorderBottomStyle)
+        },
+        "border-inline-start-color" => Ok(vec![D::BorderLeftColor(parse_color(input)?)]),
+        "border-inline-end-color" => Ok(vec![D::BorderRightColor(parse_color(input)?)]),
+        "border-block-start-color" => Ok(vec![D::BorderTopColor(parse_color(input)?)]),
+        "border-block-end-color" => Ok(vec![D::BorderBottomColor(parse_color(input)?)]),
+        "border-inline-color" => {
+            parse_start_end(input, parse_color, D::BorderLeftColor, D::BorderRightColor)
+        },
+        "border-block-color" => {
+            parse_start_end(input, parse_color, D::BorderTopColor, D::BorderBottomColor)
+        },
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -407,6 +494,59 @@ fn parse_padding_shorthand<'i>(
         D::PaddingBottom(bottom),
         D::PaddingLeft(left),
     ])
+}
+
+/// `inset`ショートハンド。`margin`と同じ1〜4値(上/右/下/左)の展開規則。
+fn parse_inset_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_length_percentage_or_auto)?;
+    Ok(vec![
+        D::Top(top),
+        D::Right(right),
+        D::Bottom(bottom),
+        D::Left(left),
+    ])
+}
+
+/// `margin-inline`/`padding-block`/`inset-inline`/`border-block-width`等の
+/// 2辺ショートハンド。1値なら両辺、2値なら`start end`の順(CSS Logical
+/// Properties仕様通り)。`start`/`end`に対応する物理ロングハンドの
+/// コンストラクタを受け取って展開する。
+fn parse_start_end<'i, T: Copy>(
+    input: &mut Parser<'i, '_>,
+    mut parse_one: impl FnMut(&mut Parser<'i, '_>) -> Result<T, ParseError<'i, ()>>,
+    start: fn(T) -> PropertyDeclaration,
+    end: fn(T) -> PropertyDeclaration,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    let first = parse_one(input)?;
+    let second = input.try_parse(&mut parse_one).unwrap_or(first);
+    Ok(vec![start(first), end(second)])
+}
+
+/// `border-inline`/`border-block`用。片側(左/上)の辺別ショートハンド展開を
+/// もう片側(右/下)へ写す。
+#[derive(Clone, Copy)]
+enum Side {
+    Right,
+    Bottom,
+}
+
+fn mirror_border_side(decls: &[PropertyDeclaration], to: Side) -> Vec<PropertyDeclaration> {
+    use PropertyDeclaration as D;
+    decls
+        .iter()
+        .map(|d| match (d, to) {
+            (D::BorderLeftWidth(w), Side::Right) => D::BorderRightWidth(*w),
+            (D::BorderLeftStyle(s), Side::Right) => D::BorderRightStyle(*s),
+            (D::BorderLeftColor(c), Side::Right) => D::BorderRightColor(*c),
+            (D::BorderTopWidth(w), Side::Bottom) => D::BorderBottomWidth(*w),
+            (D::BorderTopStyle(s), Side::Bottom) => D::BorderBottomStyle(*s),
+            (D::BorderTopColor(c), Side::Bottom) => D::BorderBottomColor(*c),
+            (other, _) => other.clone(),
+        })
+        .collect()
 }
 
 /// CSSの1〜4値ショートハンド展開規則(上/右/下/左)。

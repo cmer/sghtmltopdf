@@ -45,7 +45,7 @@
 
 機能単位では以下が非対応です。
 
-* 縦書き(`writing-mode`/`text-orientation`)と論理プロパティ(`margin-inline`等)、`direction`による右横書き
+* 縦書き(`writing-mode`/`text-orientation`)と`direction`による右横書き(`margin-inline`等の論理プロパティは`horizontal-tb`+LTRの固定写像としてのみ対応)
 * 多段組み(`columns`/`column-count`)
 * グラデーション(`linear-gradient()`等)と複数背景
 * 相対色構文(`rgb(from ...)`)と`color()`(`color-mix()`は対応済み)
