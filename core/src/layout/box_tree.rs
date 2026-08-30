@@ -178,7 +178,9 @@ pub enum TableSection {
 /// `display: table-row`要素(`<tr>`)1行分。
 #[derive(Debug, Clone)]
 pub struct TableRow {
-    pub node: NodeId,
+    /// 元の`display: table-row`要素。CSSの無名ボックス生成規則で作られた行は
+    /// 対応するDOMノードを持たないため`None`。
+    pub node: Option<NodeId>,
     pub cells: Vec<TableCell>,
     /// この行が属するセクション。ページ分割層が`<thead>`の行を各ページの
     /// 先頭に複製するために使う。
@@ -188,7 +190,8 @@ pub struct TableRow {
 /// `display: table-cell`要素(`<td>`/`<th>`)1セル分。
 #[derive(Debug, Clone)]
 pub struct TableCell {
-    pub node: NodeId,
+    /// 元の`display: table-cell`要素。無名セルは`None`。
+    pub node: Option<NodeId>,
     /// `colspan`属性の値(未指定または不正な値は1)。
     pub colspan: usize,
     /// `rowspan`属性の値(未指定または不正な値は1)。`rowspan="0"`(HTML5の
@@ -1008,6 +1011,51 @@ fn collect_table_rows(
     });
 }
 
+/// テーブル(またはその中の`<thead>`等の入れ物)の子が、テーブル構造の中で
+/// 何として扱われるか。
+enum TableChild {
+    Row,
+    Caption,
+    /// `<thead>`/`<tbody>`/`<tfoot>`。専用の`display`値を持たない透明な入れ物
+    /// なので、中の行をそのセクションとして集める。
+    Section(TableSection),
+    /// 行にもセクションにもならない子。無名の行・セルでくるむ対象
+    /// (CSS2.1 17.2.1 規則2.1)。
+    Content,
+    /// ボックスを生成しない(`display: none`・列指定・コメント等)。
+    Ignored,
+}
+
+fn table_child_kind(
+    dom: &Dom,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    node: NodeId,
+) -> TableChild {
+    if !matches!(dom.node(node).data, NodeData::Element { .. }) {
+        // テキストノードは内容として扱う(空白のみのものは、その並びが
+        // 空白しか無ければ`flush_anonymous_row`が捨てる)。コメント等は無視。
+        return match dom.node(node).data {
+            NodeData::Text { .. } => TableChild::Content,
+            _ => TableChild::Ignored,
+        };
+    }
+
+    match styles.get(&node).map(|s| s.display) {
+        Some(Display::TableRow) => TableChild::Row,
+        Some(Display::TableCaption) => TableChild::Caption,
+        Some(Display::None) | None => TableChild::Ignored,
+        _ => match element_local_name(dom, node).as_deref() {
+            Some("thead") => TableChild::Section(TableSection::Head),
+            Some("tfoot") => TableChild::Section(TableSection::Foot),
+            Some("tbody") => TableChild::Section(TableSection::Body),
+            // 列を表すボックスは描画されず、無名ボックスも生成しない
+            // (幅のヒントは`collect_column_widths`が別途読む)。
+            Some("colgroup") | Some("col") => TableChild::Ignored,
+            _ => TableChild::Content,
+        },
+    }
+}
+
 /// [`collect_table_rows`]の本体。`section`は「今いる入れ物」が示すセクション。
 fn collect_table_rows_in_section(
     dom: &Dom,
@@ -1017,30 +1065,145 @@ fn collect_table_rows_in_section(
     out: &mut Vec<TableRow>,
     out_caption: &mut Option<NodeId>,
 ) {
+    // 行にならない子が連続する区間。区切りに達したところで無名の行にまとめる。
+    let mut pending: Vec<NodeId> = Vec::new();
+
     for child in dom.children(node) {
-        match styles.get(&child).map(|s| s.display) {
-            Some(Display::TableRow) => {
+        match table_child_kind(dom, styles, child) {
+            TableChild::Row => {
+                flush_anonymous_row(dom, styles, &mut pending, section, out);
                 out.push(build_table_row(dom, styles, child, section));
             }
-            Some(Display::TableCaption) => {
+            TableChild::Caption => {
+                flush_anonymous_row(dom, styles, &mut pending, section, out);
                 if out_caption.is_none() {
                     *out_caption = Some(child);
                 }
             }
-            Some(Display::Table) | Some(Display::None) | None => {}
-            _ => {
-                // `<thead>`/`<tfoot>`に入ったらそこから下の行のセクションが
-                // 決まる。入れ子の`<tbody>`等は現れない前提。
-                let child_section = match element_local_name(dom, child).as_deref() {
-                    Some("thead") => TableSection::Head,
-                    Some("tfoot") => TableSection::Foot,
-                    Some("tbody") => TableSection::Body,
-                    _ => section,
-                };
+            TableChild::Section(child_section) => {
+                flush_anonymous_row(dom, styles, &mut pending, section, out);
                 collect_table_rows_in_section(dom, styles, child, child_section, out, out_caption);
             }
+            TableChild::Content => pending.push(child),
+            TableChild::Ignored => {}
         }
     }
+
+    flush_anonymous_row(dom, styles, &mut pending, section, out);
+}
+
+/// 溜まっている「行にならない子」を1つの無名`table-row`にまとめて`out`へ積む
+/// (CSS2.1 17.2.1 規則2.1)。空白のみの並びは行を作らずに捨てる(規則1の
+/// 「無意味なボックスを取り除く」に相当)。
+fn flush_anonymous_row(
+    dom: &Dom,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    pending: &mut Vec<NodeId>,
+    section: TableSection,
+    out: &mut Vec<TableRow>,
+) {
+    if pending.is_empty() {
+        return;
+    }
+    let children = std::mem::take(pending);
+    if children
+        .iter()
+        .all(|&child| is_ignorable_whitespace(dom, child))
+    {
+        return;
+    }
+    let cells = build_row_cells(dom, styles, &children);
+    if cells.is_empty() {
+        return;
+    }
+    out.push(TableRow {
+        node: None,
+        cells,
+        section,
+    });
+}
+
+/// 空白のみのテキストノードか。テーブル構造の隙間(行やセルの間)にある
+/// 空白は、ボックスを生成しない。
+fn is_ignorable_whitespace(dom: &Dom, node: NodeId) -> bool {
+    match &dom.node(node).data {
+        NodeData::Text { contents } => white_space::is_collapsible_only(contents),
+        _ => false,
+    }
+}
+
+/// 行の子(`children`)からセル列を作る。`display: table-cell`はそのまま
+/// セルになり、そうでない子は連続するかたまりごとに無名のセルでくるむ
+/// (CSS2.1 17.2.1 規則2.2)。
+fn build_row_cells(
+    dom: &Dom,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    children: &[NodeId],
+) -> Vec<TableCell> {
+    let mut cells = Vec::new();
+    let mut pending: Vec<NodeId> = Vec::new();
+
+    for &child in children {
+        let display = styles.get(&child).map(|s| s.display);
+        if display == Some(Display::TableCell) {
+            flush_anonymous_cell(dom, styles, &mut pending, &mut cells);
+            cells.push(TableCell {
+                node: Some(child),
+                colspan: read_colspan(dom, child),
+                rowspan: read_rowspan(dom, child),
+                content: build_box_for_element(dom, styles, child)
+                    .unwrap_or_else(|| LayoutBox::for_node(child, BoxContent::Inline(Vec::new()))),
+            });
+            continue;
+        }
+        if display == Some(Display::None) || !generates_a_box(dom, child) {
+            continue;
+        }
+        pending.push(child);
+    }
+    flush_anonymous_cell(dom, styles, &mut pending, &mut cells);
+
+    cells
+}
+
+/// 要素以外(コメント等)や列の指定はボックスを生成しない。
+fn generates_a_box(dom: &Dom, node: NodeId) -> bool {
+    match &dom.node(node).data {
+        NodeData::Text { .. } => true,
+        NodeData::Element { .. } => !matches!(
+            element_local_name(dom, node).as_deref(),
+            Some("colgroup") | Some("col")
+        ),
+        _ => false,
+    }
+}
+
+/// 溜まっている「セルにならない子」を1つの無名`table-cell`にまとめる。
+/// 空白のみの並びはセルを作らずに捨てる。
+fn flush_anonymous_cell(
+    dom: &Dom,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    pending: &mut Vec<NodeId>,
+    cells: &mut Vec<TableCell>,
+) {
+    if pending.is_empty() {
+        return;
+    }
+    let children = std::mem::take(pending);
+    if children
+        .iter()
+        .all(|&child| is_ignorable_whitespace(dom, child))
+    {
+        return;
+    }
+    cells.push(TableCell {
+        node: None,
+        colspan: 1,
+        rowspan: 1,
+        content: LayoutBox::anonymous(BoxContent::Blocks(build_children_boxes(
+            dom, styles, &children, 1,
+        ))),
+    });
 }
 
 fn build_table_row(
@@ -1049,20 +1212,10 @@ fn build_table_row(
     row_node: NodeId,
     section: TableSection,
 ) -> TableRow {
-    let cells = dom
-        .children(row_node)
-        .filter(|&child| styles.get(&child).map(|s| s.display) == Some(Display::TableCell))
-        .map(|cell_node| TableCell {
-            node: cell_node,
-            colspan: read_colspan(dom, cell_node),
-            rowspan: read_rowspan(dom, cell_node),
-            content: build_box_for_element(dom, styles, cell_node)
-                .unwrap_or_else(|| LayoutBox::for_node(cell_node, BoxContent::Inline(Vec::new()))),
-        })
-        .collect();
+    let children: Vec<NodeId> = dom.children(row_node).collect();
     TableRow {
-        node: row_node,
-        cells,
+        node: Some(row_node),
+        cells: build_row_cells(dom, styles, &children),
         section,
     }
 }
@@ -1593,6 +1746,94 @@ mod tests {
             !text.contains("LEAK"),
             "hidden descendants must not contribute text, got {text:?}"
         );
+    }
+
+    #[test]
+    fn stray_table_cells_get_an_anonymous_row() {
+        // CSS2.1 17.2.1 規則2.1: `table`直下の連続する`table-cell`は1つの
+        // 無名`table-row`にまとまる。
+        let dom = html::parse(
+            br#"<div style="display: table">
+                <div style="display: table-cell">alpha</div>
+                <div style="display: table-cell">beta</div>
+            </div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "div").expect("table not found");
+        let table_box = find_box(&tree, table_node).expect("table box not found");
+        let BoxContent::Table(table) = &table_box.content else {
+            panic!("expected a table box");
+        };
+
+        assert_eq!(table.rows.len(), 1, "one anonymous row for both cells");
+        assert_eq!(table.rows[0].node, None, "the row has no DOM node");
+        assert_eq!(table.rows[0].cells.len(), 2);
+        assert!(
+            table.rows[0].cells.iter().all(|cell| cell.node.is_some()),
+            "the cells themselves are real elements"
+        );
+    }
+
+    #[test]
+    fn non_cell_children_get_an_anonymous_cell() {
+        // CSS2.1 17.2.1 規則2.2: セルでない子は、連続するかたまりごとに
+        // 1つの無名`table-cell`でくるまれる。
+        let dom = html::parse(
+            br#"<div style="display: table">
+                <div style="display: table-row">
+                    <div>alpha</div>
+                    <div>beta</div>
+                    <div style="display: table-cell">gamma</div>
+                </div>
+            </div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "div").expect("table not found");
+        let table_box = find_box(&tree, table_node).expect("table box not found");
+        let BoxContent::Table(table) = &table_box.content else {
+            panic!("expected a table box");
+        };
+
+        assert_eq!(table.rows.len(), 1);
+        let cells = &table.rows[0].cells;
+        assert_eq!(cells.len(), 2, "one anonymous cell + the explicit one");
+        assert_eq!(
+            cells[0].node, None,
+            "alpha and beta share an anonymous cell"
+        );
+        assert!(cells[1].node.is_some());
+        let BoxContent::Blocks(blocks) = &cells[0].content.content else {
+            panic!("expected block content in the anonymous cell");
+        };
+        assert_eq!(blocks.len(), 2, "both blocks live in that one cell");
+    }
+
+    #[test]
+    fn whitespace_between_table_children_creates_no_anonymous_row() {
+        let dom = html::parse(
+            br#"<table>
+                <tr><td>alpha</td></tr>
+                <tr><td>beta</td></tr>
+            </table>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let styles = compute_styles(&dom, &ua, &Stylesheet::default());
+        let tree = build_box_tree(&dom, &styles);
+
+        let table_node = find(&dom, dom.document(), "table").expect("table not found");
+        let table_box = find_box(&tree, table_node).expect("table box not found");
+        let BoxContent::Table(table) = &table_box.content else {
+            panic!("expected a table box");
+        };
+
+        assert_eq!(table.rows.len(), 2, "only the two explicit rows");
+        assert!(table.rows.iter().all(|row| row.node.is_some()));
     }
 
     #[test]

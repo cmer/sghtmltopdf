@@ -102,7 +102,9 @@ pub struct LaidOutTable {
 /// レイアウト済みのテーブル行1行分。
 #[derive(Debug, Clone)]
 pub struct LaidOutTableRow {
-    pub node: NodeId,
+    /// 元の`display: table-row`要素。無名行(CSSの無名ボックス生成規則で
+    /// 作られた行)は`None`。
+    pub node: Option<NodeId>,
     pub cells: Vec<LaidOutBox>,
     /// この行が属するセクション。`paginate`が`<thead>`の
     /// 行を各ページの先頭へ複製するために使う。
@@ -1274,7 +1276,7 @@ pub(super) fn apply_replaced_element_auto_size(
     let intrinsic_size = image
         .image
         .as_ref()
-        .map(|prepared| (prepared.width as f32, prepared.height as f32));
+        .map(|prepared| (prepared.width, prepared.height));
 
     let (width, height) = match attr_size {
         (Some(w), Some(h)) => (w, h),
@@ -1302,7 +1304,7 @@ pub(super) fn apply_replaced_element_auto_size(
 /// 高さが0の場合は`None`。
 fn intrinsic_ratio(image: &ImageBoxContent) -> Option<f32> {
     let prepared = image.image.as_ref()?;
-    (prepared.height > 0).then(|| prepared.width as f32 / prepared.height as f32)
+    (prepared.height > 0.0).then(|| prepared.width / prepared.height)
 }
 
 /// `known`(既知の1辺の長さ)から、`ratio_basis`(`(既知でない辺の内在長,
@@ -2441,17 +2443,19 @@ mod tests {
         assert_eq!(anonymous.fragmentation, FragmentationHints::default());
     }
 
-    fn image_prepared(width: u32, height: u32) -> Rc<PreparedImage> {
+    fn image_prepared(width: f32, height: f32) -> Rc<PreparedImage> {
         Rc::new(PreparedImage {
             width,
             height,
-            color: ImagePlane {
-                data: Vec::new(),
-                filter: pdf_writer::Filter::FlateDecode,
-                color_space: PlaneColorSpace::Rgb,
-                bits_per_component: 8,
+            content: crate::pdf::PreparedContent::Raster {
+                color: ImagePlane {
+                    data: Vec::new(),
+                    filter: pdf_writer::Filter::FlateDecode,
+                    color_space: PlaneColorSpace::Rgb,
+                    bits_per_component: 8,
+                },
+                alpha: None,
             },
-            alpha: None,
         })
     }
 
@@ -2462,7 +2466,7 @@ mod tests {
     #[test]
     fn image_with_no_attrs_uses_intrinsic_size_when_decoded() {
         let tree = image_box(ImageBoxContent {
-            image: Some(image_prepared(200, 100)),
+            image: Some(image_prepared(200.0, 100.0)),
             attr_width: None,
             attr_height: None,
         });
@@ -2476,7 +2480,7 @@ mod tests {
     fn image_width_attr_only_derives_height_via_aspect_ratio() {
         // 内在サイズは200x100(2:1)。width=50pxのみ指定 → height=25px。
         let tree = image_box(ImageBoxContent {
-            image: Some(image_prepared(200, 100)),
+            image: Some(image_prepared(200.0, 100.0)),
             attr_width: Some(50),
             attr_height: None,
         });
@@ -2489,7 +2493,7 @@ mod tests {
     #[test]
     fn image_height_attr_only_derives_width_via_aspect_ratio() {
         let tree = image_box(ImageBoxContent {
-            image: Some(image_prepared(200, 100)),
+            image: Some(image_prepared(200.0, 100.0)),
             attr_width: None,
             attr_height: Some(40),
         });
@@ -2502,7 +2506,7 @@ mod tests {
     #[test]
     fn image_with_both_attrs_ignores_the_intrinsic_aspect_ratio() {
         let tree = image_box(ImageBoxContent {
-            image: Some(image_prepared(200, 100)),
+            image: Some(image_prepared(200.0, 100.0)),
             attr_width: Some(10),
             attr_height: Some(10),
         });
@@ -2546,7 +2550,7 @@ mod tests {
         // 通常のブロック要素はwidth:autoでcontaining blockいっぱいに広がるが、
         // 置換要素はそうならない(内在サイズをそのまま使う)ことの確認。
         let tree = image_box(ImageBoxContent {
-            image: Some(image_prepared(50, 50)),
+            image: Some(image_prepared(50.0, 50.0)),
             attr_width: None,
             attr_height: None,
         });

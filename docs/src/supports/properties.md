@@ -38,6 +38,8 @@
 | `margin-top` / `-right` / `-bottom` / `-left` | ✅ | 隣接兄弟間・親子間のマージン相殺に対応 |
 | `padding` | ✅ | 1〜4値ショートハンド |
 | `padding-top` / `-right` / `-bottom` / `-left` | ✅ | パーセンテージはcontaining block幅基準(仕様通り) |
+| `margin-inline` / `margin-block` / `margin-inline-start`等 | ⚠️ | 論理プロパティ。対応する書字方向が`horizontal-tb`+LTRのみなので、`inline-start`=左、`inline-end`=右、`block-start`=上、`block-end`=下へ固定で写像する(`writing-mode`/`direction`は非対応)。2辺ショートハンドは1〜2値(`start end`の順)。`auto`も通るので`margin-inline: auto`で中央寄せできる |
+| `padding-inline` / `padding-block` / `padding-inline-start`等 | ⚠️ | 論理プロパティ。写像規則は`margin-inline`と同じ |
 
 ## 枠線・角丸・アウトライン・影
 
@@ -45,12 +47,14 @@
 | - | - | - |
 | `border` | ✅ | `<width> \|\| <style> \|\| <color>`を任意順・任意省略で受け付け、4辺へ適用 |
 | `border-top` / `-right` / `-bottom` / `-left` | ✅ | 辺別ショートハンド(値文法は`border`と同じ) |
+| `border-inline` / `border-block` / `border-inline-start`等(`-width`/`-style`/`-color`のロングハンドを含む) | ⚠️ | 論理プロパティ。写像規則は[`margin-inline`](#ボックスモデル)と同じ |
 | `border-width` / `border-style` / `border-color` | ✅ | 1〜4値ショートハンド |
 | `border-*-width` | ⚠️ | `<length>`のみ。`thin`/`medium`/`thick`キーワードは非対応 |
 | `border-*-style` | ⚠️ | `none`/`hidden`/`solid`/`dashed`/`dotted`/`double`/`groove`/`ridge`/`inset`/`outset`。`hidden`は`none`と同一視(テーブルの枠線競合解決でも区別しない)。`groove`/`ridge`/`inset`/`outset`は`border-color`から2階調の陰影を算出して描画 |
 | `border-*-color` | ✅ | 初期値は`currentcolor` |
 | `border-radius` | ⚠️ | 1〜4値+`/`区切りの楕円構文に対応。パーセンテージ指定は非対応(`<length>`のみ)。4辺の太さ・スタイル・色が揃っていない場合は角丸を諦めて直線4辺へフォールバックする。`groove`/`ridge`/`inset`/`outset`との併用も同様にフォールバック |
 | `border-top-left-radius`ほか3隅 | ⚠️ | `<length>{1,2}`(水平/垂直半径)。制約は`border-radius`と同じ |
+| `border-start-start-radius`ほか3隅 | ⚠️ | 論理プロパティ。1つ目がblock方向、2つ目がinline方向を指す(`border-start-end-radius`=右上)。写像規則は[`margin-inline`](#ボックスモデル)と同じ |
 | `outline` | ✅ | `<width> \|\| <style> \|\| <color>`。border-boxの外側に描画し、レイアウトには影響しない |
 | `outline-width` / `outline-style` / `outline-color` | ⚠️ | `outline-style`は`border-style`と同じ値集合。UA依存の`auto`は非対応 |
 | `outline-offset` | ❌ | 常に0固定 |
@@ -64,7 +68,8 @@
 | `clear` | ✅ | `none`/`left`/`right`/`both` |
 | `position` | ⚠️ | `static`/`relative`/`absolute`/`fixed`。`sticky`は非対応。`absolute`/`fixed`には後述の制約あり |
 | `top` / `right` / `bottom` / `left` | ⚠️ | `absolute`/`fixed`では`bottom`単独指定による下端揃えが非対応(高さの循環参照を避けるため`top`基準に解決する)。`relative`では背景・枠線と中身(テキスト・画像・子ボックス)をまとめてずらすオフセットとして機能する。`relative`の`top`/`bottom`のパーセンテージは0扱い |
-| `inset`(ショートハンド) | ❌ | 個別の`top`/`right`/`bottom`/`left`を使う |
+| `inset`(ショートハンド) | ✅ | 1〜4値ショートハンド(展開規則は`margin`と同じ) |
+| `inset-inline` / `inset-block` / `inset-inline-start`等 | ⚠️ | 論理プロパティ。写像規則は[`margin-inline`](#ボックスモデル)と同じ |
 | `transform` | ⚠️ | `translate`/`translateX`/`translateY`/`scale`/`scaleX`/`scaleY`/`rotate`/`skew`/`skewX`/`skewY`/`matrix`。3D系(`translate3d`/`rotate3d`/`perspective()`等)は非対応。PDFのCTM変換で実装するため、変換後の内容はページ分割の判定に影響しない |
 | `transform-origin` | ⚠️ | `background-position`と同じ値文法(キーワード/長さ/パーセンテージの1〜2値)。初期値`50% 50%`。3値目(Z軸)は非対応 |
 
@@ -86,7 +91,7 @@
 | `font-style` | ⚠️ | `normal`/`italic`/`oblique`(`oblique`は`italic`と同一視、傾斜角の指定は不可)。イタリック字形が無い場合はテキスト行列のせん断による疑似イタリック |
 | `font`(ショートハンド) | ❌ | 個別のロングハンドを使う |
 | `color` | ✅ | 継承プロパティ。指定できる色の記法は[セレクタ・値・at-rule](selectors.md#色)を参照 |
-| `line-height` | ✅ | `normal`/`<number>`/`<length>`/`<percentage>` |
+| `line-height` | ✅ | `normal`/`<number>`/`<length>`/`<percentage>`。`normal`はフォント自身の推奨行送り(アセント+ディセント+行間)から求めるため、フォントによって値が変わる |
 | `text-align` | ⚠️ | `left`/`right`/`center`/`justify`。`justify`は最終行以外の単語間で余白を配分する。`start`/`end`は非対応(`direction`自体が非対応のため) |
 | `text-indent` | ⚠️ | `<length>`/`<percentage>`。`hanging`/`each-line`は非対応 |
 | `text-transform` | ⚠️ | `none`/`uppercase`/`lowercase`/`capitalize`(語頭のみ変換)。`full-width`/`full-size-kana`は非対応 |
@@ -131,6 +136,10 @@
 
 `<colgroup>`/`<col>`の`width`属性・CSS`width`による列幅指定、`rowspan`/`colspan`、`<thead>`のページまたぎ繰り返しに対応。
 `rowspan="0"`は1として扱う。
+
+無名テーブルボックスの生成(CSS2.1 §17.2.1 規則2.1・2.2)に対応する。
+`display: table`の直下に置かれた`display: table-cell`は無名の行にまとめられ、行やセルにならない子は無名のセルでくるまれる。
+行を書かない`display: table` + `display: table-cell`の段組みがそのまま動く。
 
 セルの`min-width`/`max-width`は列幅アルゴリズムに反映される。
 `table-layout: auto`では列の自然幅をクランプする形で効くため、表を紙幅に収める比例縮尺の後は`min-width`が保証されない。
@@ -242,8 +251,8 @@ CSSで`width`/`height`の片方だけを指定した場合は内在アスペク�
 実装が無いだけで、意図的に永久除外と決めたものだけではない。
 カテゴリ表の`❌`行も参照。
 
-* ショートハンド: `font`/`inset`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分
-* 論理プロパティ: `inline-size`/`block-size`/`margin-inline`/`padding-block`/`border-inline`等すべて
+* ショートハンド: `font`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分
+* 論理プロパティのうち寸法系: `inline-size`/`block-size`/`min-inline-size`/`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応済み)
 * 書字方向: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`
 * テキスト詳細: `text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`
 * フォント詳細: `font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`

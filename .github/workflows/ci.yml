@@ -23,6 +23,13 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --workspace
+      # `svg-text`は既定オフ(rustybuzz・resvg等25クレートを引き込むため)。
+      # 既定featureのテストだけではSVG内の`<text>`まわりが1つも走らないので、
+      # このfeatureを足した組み合わせも回す(tests/svg_fonts.rsの大半はここ)。
+      - name: cargo clippy (svg-text)
+        run: cargo clippy -p sghtmltopdf-core --features svg-text --all-targets -- -D warnings
+      - name: cargo test (svg-text)
+        run: cargo test -p sghtmltopdf-core --features svg-text
 
   # 依存クレートのアドバイザリ照合(RustSec)
   audit:

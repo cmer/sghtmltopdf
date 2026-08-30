@@ -217,10 +217,10 @@ pub fn parse_declaration<'i>(
         "margin-bottom" => Ok(vec![D::MarginBottom(parse_length_percentage_or_auto(input)?)]),
         "margin-left" => Ok(vec![D::MarginLeft(parse_length_percentage_or_auto(input)?)]),
         "padding" => parse_padding_shorthand(input),
-        "padding-top" => Ok(vec![D::PaddingTop(parse_length_percentage(input)?)]),
-        "padding-right" => Ok(vec![D::PaddingRight(parse_length_percentage(input)?)]),
-        "padding-bottom" => Ok(vec![D::PaddingBottom(parse_length_percentage(input)?)]),
-        "padding-left" => Ok(vec![D::PaddingLeft(parse_length_percentage(input)?)]),
+        "padding-top" => Ok(vec![D::PaddingTop(parse_non_negative_length_percentage(input)?)]),
+        "padding-right" => Ok(vec![D::PaddingRight(parse_non_negative_length_percentage(input)?)]),
+        "padding-bottom" => Ok(vec![D::PaddingBottom(parse_non_negative_length_percentage(input)?)]),
+        "padding-left" => Ok(vec![D::PaddingLeft(parse_non_negative_length_percentage(input)?)]),
         "border" => parse_border_shorthand(input),
         "border-width" => parse_border_width_shorthand(input),
         "border-color" => parse_border_color_shorthand(input),
@@ -379,6 +379,117 @@ pub fn parse_declaration<'i>(
         "grid-area" => parse_grid_area_shorthand(input),
         "justify-items" => Ok(vec![D::JustifyItems(parse_align_items(input)?)]),
         "justify-self" => Ok(vec![D::JustifySelf(parse_align_self(input)?)]),
+        // 論理プロパティ。対応する書字方向が`horizontal-tb`+LTRだけなので、
+        // 物理プロパティへの固定の写像として展開する(`inline-start`=左、
+        // `inline-end`=右、`block-start`=上、`block-end`=下)。`writing-mode`/
+        // `direction`は非対応のため、この写像が変わることはない。
+        "margin-inline-start" => Ok(vec![D::MarginLeft(parse_length_percentage_or_auto(input)?)]),
+        "margin-inline-end" => Ok(vec![D::MarginRight(parse_length_percentage_or_auto(input)?)]),
+        "margin-block-start" => Ok(vec![D::MarginTop(parse_length_percentage_or_auto(input)?)]),
+        "margin-block-end" => Ok(vec![D::MarginBottom(parse_length_percentage_or_auto(input)?)]),
+        "margin-inline" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::MarginLeft, D::MarginRight)
+        },
+        "margin-block" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::MarginTop, D::MarginBottom)
+        },
+        "padding-inline-start" => Ok(vec![D::PaddingLeft(parse_non_negative_length_percentage(input)?)]),
+        "padding-inline-end" => Ok(vec![D::PaddingRight(parse_non_negative_length_percentage(input)?)]),
+        "padding-block-start" => Ok(vec![D::PaddingTop(parse_non_negative_length_percentage(input)?)]),
+        "padding-block-end" => Ok(vec![D::PaddingBottom(parse_non_negative_length_percentage(input)?)]),
+        "padding-inline" => {
+            parse_start_end(
+                input,
+                parse_non_negative_length_percentage,
+                D::PaddingLeft,
+                D::PaddingRight,
+            )
+        },
+        "padding-block" => {
+            parse_start_end(
+                input,
+                parse_non_negative_length_percentage,
+                D::PaddingTop,
+                D::PaddingBottom,
+            )
+        },
+        "inset" => parse_inset_shorthand(input),
+        "inset-inline-start" => Ok(vec![D::Left(parse_length_percentage_or_auto(input)?)]),
+        "inset-inline-end" => Ok(vec![D::Right(parse_length_percentage_or_auto(input)?)]),
+        "inset-block-start" => Ok(vec![D::Top(parse_length_percentage_or_auto(input)?)]),
+        "inset-block-end" => Ok(vec![D::Bottom(parse_length_percentage_or_auto(input)?)]),
+        "inset-inline" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::Left, D::Right)
+        },
+        "inset-block" => {
+            parse_start_end(input, parse_length_percentage_or_auto, D::Top, D::Bottom)
+        },
+        "border-inline-start" => parse_border_left_shorthand(input),
+        "border-inline-end" => parse_border_right_shorthand(input),
+        "border-block-start" => parse_border_top_shorthand(input),
+        "border-block-end" => parse_border_bottom_shorthand(input),
+        "border-inline" => {
+            let mut decls = parse_border_left_shorthand(input)?;
+            decls.extend(mirror_border_side(&decls, Side::Right));
+            Ok(decls)
+        },
+        "border-block" => {
+            let mut decls = parse_border_top_shorthand(input)?;
+            decls.extend(mirror_border_side(&decls, Side::Bottom));
+            Ok(decls)
+        },
+        "border-inline-start-width" => Ok(vec![D::BorderLeftWidth(parse_length(input)?)]),
+        "border-inline-end-width" => Ok(vec![D::BorderRightWidth(parse_length(input)?)]),
+        "border-block-start-width" => Ok(vec![D::BorderTopWidth(parse_length(input)?)]),
+        "border-block-end-width" => Ok(vec![D::BorderBottomWidth(parse_length(input)?)]),
+        "border-inline-width" => {
+            parse_start_end(input, parse_length, D::BorderLeftWidth, D::BorderRightWidth)
+        },
+        "border-block-width" => {
+            parse_start_end(input, parse_length, D::BorderTopWidth, D::BorderBottomWidth)
+        },
+        "border-inline-start-style" => {
+            Ok(vec![D::BorderLeftStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-inline-end-style" => {
+            Ok(vec![D::BorderRightStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-block-start-style" => {
+            Ok(vec![D::BorderTopStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-block-end-style" => {
+            Ok(vec![D::BorderBottomStyle(parse_border_style_keyword(input)?)])
+        },
+        "border-inline-style" => {
+            parse_start_end(input, parse_border_style_keyword, D::BorderLeftStyle, D::BorderRightStyle)
+        },
+        "border-block-style" => {
+            parse_start_end(input, parse_border_style_keyword, D::BorderTopStyle, D::BorderBottomStyle)
+        },
+        "border-inline-start-color" => Ok(vec![D::BorderLeftColor(parse_color(input)?)]),
+        "border-inline-end-color" => Ok(vec![D::BorderRightColor(parse_color(input)?)]),
+        "border-block-start-color" => Ok(vec![D::BorderTopColor(parse_color(input)?)]),
+        "border-block-end-color" => Ok(vec![D::BorderBottomColor(parse_color(input)?)]),
+        "border-inline-color" => {
+            parse_start_end(input, parse_color, D::BorderLeftColor, D::BorderRightColor)
+        },
+        "border-block-color" => {
+            parse_start_end(input, parse_color, D::BorderTopColor, D::BorderBottomColor)
+        },
+        // 論理版の角丸。1つ目が block 方向、2つ目が inline 方向を指す
+        // (`border-start-end-radius`は上端の行方向終端=右上)。
+        "border-start-start-radius" => {
+            Ok(vec![D::BorderTopLeftRadius(parse_corner_radius(input)?)])
+        },
+        "border-start-end-radius" => {
+            Ok(vec![D::BorderTopRightRadius(parse_corner_radius(input)?)])
+        },
+        "border-end-start-radius" => {
+            Ok(vec![D::BorderBottomLeftRadius(parse_corner_radius(input)?)])
+        },
+        "border-end-end-radius" => {
+            Ok(vec![D::BorderBottomRightRadius(parse_corner_radius(input)?)])
+        },
         _ => Err(input.new_custom_error(())),
     }
 }
@@ -400,13 +511,73 @@ fn parse_padding_shorthand<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
     use PropertyDeclaration as D;
-    let (top, right, bottom, left) = parse_four_sides(input, parse_length_percentage)?;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_non_negative_length_percentage)?;
     Ok(vec![
         D::PaddingTop(top),
         D::PaddingRight(right),
         D::PaddingBottom(bottom),
         D::PaddingLeft(left),
     ])
+}
+
+/// `inset`ショートハンド。`margin`と同じ1〜4値(上/右/下/左)の展開規則。
+fn parse_inset_shorthand<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    use PropertyDeclaration as D;
+    let (top, right, bottom, left) = parse_four_sides(input, parse_length_percentage_or_auto)?;
+    Ok(vec![
+        D::Top(top),
+        D::Right(right),
+        D::Bottom(bottom),
+        D::Left(left),
+    ])
+}
+
+/// `margin-inline`/`padding-block`/`inset-inline`/`border-block-width`等の
+/// 2辺ショートハンド。1値なら両辺、2値なら`start end`の順(CSS Logical
+/// Properties仕様通り)。`start`/`end`に対応する物理ロングハンドの
+/// コンストラクタを受け取って展開する。
+fn parse_start_end<'i, T: Copy>(
+    input: &mut Parser<'i, '_>,
+    mut parse_one: impl FnMut(&mut Parser<'i, '_>) -> Result<T, ParseError<'i, ()>>,
+    start: fn(T) -> PropertyDeclaration,
+    end: fn(T) -> PropertyDeclaration,
+) -> Result<Vec<PropertyDeclaration>, ParseError<'i, ()>> {
+    let first = parse_one(input)?;
+    let second = input.try_parse(&mut parse_one).unwrap_or(first);
+    Ok(vec![start(first), end(second)])
+}
+
+/// [`mirror_border_side`]が写す先の辺。
+#[derive(Clone, Copy)]
+enum Side {
+    Right,
+    Bottom,
+}
+
+/// `border-inline`/`border-block`用。片側(左/上)の辺別ショートハンド展開を
+/// もう片側(右/下)へ写す。
+///
+/// 写せない宣言は捨てる。辺別ショートハンドが返すのは幅/スタイル/色だけ
+/// なので現状は起きないが、そのまま複製すると左(上)の宣言が2回出て
+/// しまうため、素通しはしない。
+fn mirror_border_side(decls: &[PropertyDeclaration], to: Side) -> Vec<PropertyDeclaration> {
+    use PropertyDeclaration as D;
+    decls
+        .iter()
+        .filter_map(|d| {
+            Some(match (d, to) {
+                (D::BorderLeftWidth(w), Side::Right) => D::BorderRightWidth(*w),
+                (D::BorderLeftStyle(s), Side::Right) => D::BorderRightStyle(*s),
+                (D::BorderLeftColor(c), Side::Right) => D::BorderRightColor(*c),
+                (D::BorderTopWidth(w), Side::Bottom) => D::BorderBottomWidth(*w),
+                (D::BorderTopStyle(s), Side::Bottom) => D::BorderBottomStyle(*s),
+                (D::BorderTopColor(c), Side::Bottom) => D::BorderBottomColor(*c),
+                _ => return None,
+            })
+        })
+        .collect()
 }
 
 /// CSSの1〜4値ショートハンド展開規則(上/右/下/左)。
@@ -1101,6 +1272,20 @@ fn parse_text_decoration_line<'i>(
     Ok(line)
 }
 
+/// `padding`のように負の値を受け付けないプロパティ用。負の値はCSSでは
+/// 無効なので、宣言ごと捨てられるようパースエラーにする。
+/// `calc()`は解決するまで符号が決まらないため、ここでは通す
+/// (CSSの規定でも計算結果が負なら0へクランプする扱い)。
+fn parse_non_negative_length_percentage<'i>(
+    input: &mut Parser<'i, '_>,
+) -> Result<SpecifiedLengthPercentage, ParseError<'i, ()>> {
+    let value = parse_length_percentage(input)?;
+    if value.is_negative() {
+        return Err(input.new_custom_error(()));
+    }
+    Ok(value)
+}
+
 fn parse_length_percentage<'i>(
     input: &mut Parser<'i, '_>,
 ) -> Result<SpecifiedLengthPercentage, ParseError<'i, ()>> {
@@ -1171,9 +1356,18 @@ impl CalcValue {
 
 /// `calc(...)`を[`SpecifiedCalc`]へパースする。裸の数値が残る式(長さとして
 /// 無効)はエラーにする。`min`/`max`/`clamp`は非対応。
+/// `calc()`と括弧のネストを受け付ける深さの上限。
+///
+/// このパーサは再帰下降なので、深さがそのままスタックの消費になる
+/// (信頼できないCSSを食わせるとスタックオーバーフローで落とせる)。
+/// `calc(calc(...) * calc(...))`のような実際のCSSは数段で収まるので、
+/// 大きく余裕を取ったこの値を超えたら無効値として宣言ごと捨てる。
+/// DOMの深さに対する[`crate::html::MAX_ELEMENT_DEPTH`]と同じ考え方。
+const MAX_CALC_DEPTH: u32 = 32;
+
 fn parse_calc<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedCalc, ParseError<'i, ()>> {
     input.expect_function_matching("calc")?;
-    let value = input.parse_nested_block(parse_calc_sum)?;
+    let value = input.parse_nested_block(|input| parse_calc_sum(input, 1))?;
     if value.number != 0.0 {
         // `calc(2)`のように裸の数値が残る = 長さ文脈では無効。
         return Err(input.new_custom_error(()));
@@ -1186,8 +1380,11 @@ fn parse_calc<'i>(input: &mut Parser<'i, '_>) -> Result<SpecifiedCalc, ParseErro
     })
 }
 
-fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
-    let mut acc = parse_calc_product(input)?;
+fn parse_calc_sum<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<CalcValue, ParseError<'i, ()>> {
+    let mut acc = parse_calc_product(input, depth)?;
     loop {
         // `+`/`-`の前後には空白が必須(CSS仕様)。cssparserは`+5`のような
         // 符号付き数値を1トークンにするため、Delimでない場合はループを抜ける。
@@ -1201,7 +1398,7 @@ fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseErro
         });
         match sign {
             Ok(sign) => {
-                let rhs = parse_calc_product(input)?;
+                let rhs = parse_calc_product(input, depth)?;
                 acc = acc.add(rhs.scale(sign));
             }
             Err(_) => return Ok(acc),
@@ -1209,8 +1406,11 @@ fn parse_calc_sum<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseErro
     }
 }
 
-fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
-    let mut acc = parse_calc_value(input)?;
+fn parse_calc_product<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<CalcValue, ParseError<'i, ()>> {
+    let mut acc = parse_calc_value(input, depth)?;
     loop {
         enum Op {
             Mul,
@@ -1226,7 +1426,7 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
         });
         match op {
             Ok(Op::Mul) => {
-                let rhs = parse_calc_value(input)?;
+                let rhs = parse_calc_value(input, depth)?;
                 // 次元×次元は不可(少なくとも一方が純粋な数値、CSS仕様)。
                 if acc.is_pure_number() {
                     acc = rhs.scale(acc.number);
@@ -1237,7 +1437,7 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
                 }
             }
             Ok(Op::Div) => {
-                let rhs = parse_calc_value(input)?;
+                let rhs = parse_calc_value(input, depth)?;
                 if !rhs.is_pure_number() || rhs.number == 0.0 {
                     return Err(input.new_custom_error(()));
                 }
@@ -1248,13 +1448,25 @@ fn parse_calc_product<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, Parse
     }
 }
 
-fn parse_calc_value<'i>(input: &mut Parser<'i, '_>) -> Result<CalcValue, ParseError<'i, ()>> {
-    // 括弧(ネストしたcalc相当)。
+fn parse_calc_value<'i>(
+    input: &mut Parser<'i, '_>,
+    depth: u32,
+) -> Result<CalcValue, ParseError<'i, ()>> {
+    // 括弧、またはネストした`calc()`(CSS Values 4ではどちらも同じ扱い)。
+    // Tailwind v4の`space-y-*`/`divide-*`は
+    // `calc(calc(var(--spacing) * N) * calc(1 - var(--tw-space-y-reverse)))`
+    // のようにネストした`calc()`を出力する(issue #17)。
     if input
         .try_parse(|input| input.expect_parenthesis_block())
         .is_ok()
+        || input
+            .try_parse(|input| input.expect_function_matching("calc"))
+            .is_ok()
     {
-        return input.parse_nested_block(parse_calc_sum);
+        if depth >= MAX_CALC_DEPTH {
+            return Err(input.new_custom_error(()));
+        }
+        return input.parse_nested_block(|input| parse_calc_sum(input, depth + 1));
     }
     let token = input.next()?.clone();
     match token {

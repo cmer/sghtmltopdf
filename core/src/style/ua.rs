@@ -71,7 +71,11 @@ head, script, style, title, meta, link, base, noscript, template {
 /* 描画できない埋め込みコンテンツ。要素名だけで判定し、
    名前空間は見ない。`layout::box_tree::child_kind`が`display: none`の要素で
    再帰を止めるため、ルート1つを消せばサブツリー全体(`<svg><text>`等)が
-   消える。`picture`はその中の`<img>`を描画したいので対象外。 */
+   消える。`picture`はその中の`<img>`を描画したいので対象外。
+   SVGは`<img src="*.svg">`と`background-image: url(*.svg)`からは描画できる
+   (`pdf::svg`)が、HTMLに直接書いたインラインの`<svg>`はここで消える。
+   インラインSVGはHTMLのDOMとSVGのDOMを繋ぐ必要があり、外部参照とは別の
+   仕事になるため。 */
 svg, math, canvas, video, audio, iframe, embed, object, param, track, source,
 area, map {
   display: none;

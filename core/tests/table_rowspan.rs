@@ -149,3 +149,52 @@ fn table_without_rowspan_behaves_as_before_end_to_end() {
         "cells without rowspan should still sit side by side with no gap"
     );
 }
+
+#[test]
+fn a_row_whose_only_cell_has_a_rowspan_still_opens_a_column_for_the_next_row() {
+    // 1行目がrowspan=2のセル1つだけの場合、テーブルの列数は「行ごとのcolspan
+    // 合計の最大値」では1にしかならず、2行目のセルは行き場を失って消えていた。
+    let html_src = r#"<table style="width: 400px;">
+        <tr><td rowspan="2" style="width: 150px;">Logo</td></tr>
+        <tr><td>Second row text</td></tr>
+    </table>"#;
+    let css = "body { margin: 0; }";
+
+    let (dom, laid) = layout(html_src, css);
+    let mut tds = Vec::new();
+    find_all_tags(&dom, dom.document(), "td", &mut tds);
+    assert_eq!(tds.len(), 2);
+
+    let logo = find_laid_out(&laid, tds[0]).expect("rowspan cell not found");
+    let second = find_laid_out(&laid, tds[1]).expect("second row cell not found");
+
+    // 2行目のセルはrowspanが占有するcol0を避けてcol1へ回るため、"Logo"の
+    // 右隣に、幅を持った状態で置かれるはず。
+    let logo_box = logo.layout.border_box();
+    let logo_right = logo_box.x + logo_box.width;
+    assert!(
+        second.layout.border_box().x >= logo_right,
+        "the second row's cell should sit in the column next to the rowspan cell \
+         (x={}, rowspan cell right edge={logo_right})",
+        second.layout.border_box().x
+    );
+    assert!(
+        second.layout.content.width > 0.0,
+        "the second row's cell should get a share of the table width, got {}",
+        second.layout.content.width
+    );
+    // テキストが行として実際にレイアウトされていること(幅0の列に潰れると
+    // 行そのものが失われる)。
+    let LaidOutContent::Inline(lines) = &second.content else {
+        panic!("expected inline content in the second row's cell");
+    };
+    let text: String = lines
+        .iter()
+        .flat_map(|line| line.runs.iter())
+        .map(|run| run.text.as_str())
+        .collect();
+    assert!(
+        text.contains("Second"),
+        "the second row's text should survive layout, got {text:?}"
+    );
+}
