@@ -76,6 +76,28 @@ fn decompressed_stream_bytes(pdf_bytes: &[u8]) -> Vec<u8> {
     out
 }
 
+/// `/CreationDate`と、それをハッシュに含む`/ID`は書き出した瞬間の壁時計から
+/// 作るので、2本のPDFを別々に書き出すと秒をまたいだ回だけバイト比較が落ちる
+/// (CIで実際に落ちた: `D:20260827160357Z`対`D:20260827160358Z`の1バイト差)。
+/// どちらも固定長なので、比較前に潰してもxrefのオフセットはずれない。
+fn without_wall_clock_metadata(bytes: &[u8]) -> Vec<u8> {
+    fn blank_value(bytes: &mut [u8], marker: &[u8], end: u8) {
+        let Some(start) = bytes.windows(marker.len()).position(|w| w == marker) else {
+            return;
+        };
+        let value = start + marker.len();
+        let Some(len) = bytes[value..].iter().position(|&b| b == end) else {
+            return;
+        };
+        bytes[value..value + len].fill(b'0');
+    }
+
+    let mut out = bytes.to_vec();
+    blank_value(&mut out, b"/CreationDate (", b')');
+    blank_value(&mut out, b"/ID [", b']');
+    out
+}
+
 fn build_pdf(html_src: &str, css: &str) -> Vec<u8> {
     let dom = html::parse(html_src.as_bytes());
     let ua = user_agent_stylesheet();
@@ -122,7 +144,10 @@ fn box_shadow_none_draws_nothing_extra_end_to_end() {
         r#"<div class="box">x</div>"#,
         "body { margin: 0; } .box { width: 100px; height: 60px; }",
     );
-    assert_eq!(with_none, without_declaration);
+    assert_eq!(
+        without_wall_clock_metadata(&with_none),
+        without_wall_clock_metadata(&without_declaration)
+    );
 }
 
 #[test]
@@ -137,7 +162,10 @@ fn box_shadow_inset_is_parsed_but_not_rendered_end_to_end() {
         r#"<div class="box">x</div>"#,
         "body { margin: 0; } .box { width: 100px; height: 60px; }",
     );
-    assert_eq!(with_inset, without_declaration);
+    assert_eq!(
+        without_wall_clock_metadata(&with_inset),
+        without_wall_clock_metadata(&without_declaration)
+    );
 }
 
 #[test]
