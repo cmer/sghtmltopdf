@@ -612,6 +612,30 @@ fn the_info_dictionary_always_carries_a_producer() {
 }
 
 #[test]
+fn the_trailer_carries_a_file_identifier() {
+    // PDF/Aはファイル識別子(`/ID`)を要求する。バッチ・ストリーミングの
+    // どちらの書き出しでも、同じ作り方で16バイトを2つ書く。
+    for (args, name) in [
+        (&[][..], "file-id-batch"),
+        (&["--streaming"][..], "file-id-streaming"),
+    ] {
+        let bytes = run_cli_with(PLAIN_HTML, args, name);
+        let text = String::from_utf8_lossy(&bytes);
+        let trailer = text
+            .rfind("trailer")
+            .map(|i| &text[i..])
+            .expect("the PDF should have a trailer");
+        let id = trailer
+            .split_once("/ID [<")
+            .and_then(|(_, rest)| rest.split_once('>'))
+            .map(|(id, _)| id)
+            .unwrap_or_else(|| panic!("{name}: the trailer should carry /ID: {trailer}"));
+        assert_eq!(id.len(), 32, "{name}: /ID should be 16 bytes in hex");
+        assert!(id.chars().all(|c| c.is_ascii_hexdigit()), "{name}: {id}");
+    }
+}
+
+#[test]
 fn the_title_option_wins_over_the_html_title() {
     let html = "<html><head><title>from html</title></head><body><p>x</p></body></html>";
 
