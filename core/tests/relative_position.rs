@@ -5,10 +5,13 @@
 //! (`@page { margin: 0.5in }`、`* { margin: 0; padding: 0 }`)をページ分割まで
 //! 通し、装飾の矩形(border box)と中身の座標が一致することを確かめる。
 
+use std::path::PathBuf;
+
 use sghtmltopdf_core::fonts::{Font, FontCollection};
 use sghtmltopdf_core::html::{self, Dom, NodeData, NodeId};
+use sghtmltopdf_core::img::{DocumentImageCache, ImageFetcher};
 use sghtmltopdf_core::layout::{paginate_document, LaidOutBox, LaidOutContent, PageSettings};
-use sghtmltopdf_core::style::{compute_styles, parse_stylesheet, user_agent_stylesheet};
+use sghtmltopdf_core::style::{compute_styles, extract_author_stylesheet, user_agent_stylesheet};
 
 const FONT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fonts/DejaVuSans.ttf");
 
@@ -50,7 +53,10 @@ fn with_probe<T>(css: &str, body: &str, tag: &str, f: impl FnOnce(&LaidOutBox) -
          </style></head><body>{body}</body></html>"
     );
     let dom = html::parse(html_src.as_bytes());
-    let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(""));
+    let fetcher = ImageFetcher::new(PathBuf::from("."), false);
+    let cache = DocumentImageCache::new();
+    let author = extract_author_stylesheet(&dom, &fetcher, &cache);
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &author);
     let fonts = test_fonts();
     let pages = paginate_document(&dom, &styles, &fonts, &PageSettings::default());
     let node = find(&dom, dom.document(), tag).expect("probe element not found");
