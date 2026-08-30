@@ -19,9 +19,13 @@ pub enum ImgSrc {
     /// `http`/`https`の絶対URL。実際のフェッチは
     /// フェッチャがセキュリティポリシーに従って行う。
     RemoteUrl(String),
-    /// `data:`URI(base64エンコードされたペイロードのみ対応。
-    /// パーセントエンコードされた非base64ペイロードは画像用途では
-    /// 実質使われないため未対応)。
+    /// `data:`URI。`;base64`が付いていればbase64として、付いていなければ
+    /// パーセントエンコードとしてデコードする(RFC 2397)。
+    ///
+    /// 非base64のペイロードはラスタ画像ではまず使われないが、SVGでは
+    /// `data:image/svg+xml,%3Csvg...%3E`が最も一般的な書き方なので、
+    /// どちらも受ける。デコードした結果が画像として読めるかは
+    /// `pdf::img::decode_image`が中身のバイト列を見て判断する。
     DataUri { mime_type: String, bytes: Vec<u8> },
 }
 
@@ -129,16 +133,63 @@ fn parse_data_uri(rest: &str) -> Option<ImgSrc> {
         }
         // charset等それ以外のパラメータは画像埋め込みには関係ないため無視する。
     }
-    if !is_base64 {
-        return None;
-    }
-
-    // base64ペイロード中に改行等の空白が挟まれるケースを許容するため、
-    // デコード前に取り除く。パディングの有無(`=`)もどちらも受け付ける。
-    let cleaned: Vec<u8> = data.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
-    let bytes = lenient_base64().decode(cleaned).ok()?;
+    let bytes = if is_base64 {
+        // base64ペイロード中に改行等の空白が挟まれるケースを許容するため、
+        // デコード前に取り除く。パディングの有無(`=`)もどちらも受け付ける。
+        let cleaned: Vec<u8> = data.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+        lenient_base64().decode(cleaned).ok()?
+    } else {
+        percent_decode(data)
+    };
 
     Some(ImgSrc::DataUri { mime_type, bytes })
+}
+
+/// パーセントエンコード(`%XX`)を解く。`%XX`の形でないものはそのまま通す。
+///
+/// タブ・改行だけは取り除く(URL標準がURLの解析前にこの2つを落とすため。
+/// HTMLの属性やCSSの`url()`の中で折り返して書かれた`data:`URIを、余計な
+/// 制御文字を混ぜずに受けられるようにする)。**空白は残す**。
+/// エンコードされていないSVG(`data:image/svg+xml,<svg ...>`)では
+/// タグの区切りとして意味を持つため。
+fn percent_decode(data: &str) -> Vec<u8> {
+    let bytes = data.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\t' | b'\r' | b'\n' => i += 1,
+            // バイト単位で16進2桁を読む。`data`はUTF-8なので`%`の後ろが
+            // マルチバイト文字の途中でも、バイトで見ている限り安全
+            // (16進として読めなければリテラルの`%`として通す)。
+            b'%' if i + 3 <= bytes.len() => {
+                match (hex_value(bytes[i + 1]), hex_value(bytes[i + 2])) {
+                    (Some(hi), Some(lo)) => {
+                        out.push(hi << 4 | lo);
+                        i += 3;
+                    }
+                    _ => {
+                        out.push(b'%');
+                        i += 1;
+                    }
+                }
+            }
+            byte => {
+                out.push(byte);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// パディングあり/なしのどちらも受け付ける標準base64デコーダ。
@@ -302,10 +353,90 @@ mod tests {
         );
     }
 
+    /// SVGは`data:image/svg+xml,%3Csvg...%3E`(base64でない)が一般的な
+    /// 書き方なので、パーセントエンコードのペイロードも受ける。
     #[test]
-    fn rejects_a_non_base64_data_uri() {
-        // パーセントエンコードされたプレーンテキストのdata:URIは非対応。
-        assert_eq!(classify_img_src("data:text/plain,Hello%20World"), None);
+    fn decodes_a_percent_encoded_data_uri() {
+        assert_eq!(
+            classify_img_src("data:text/plain,Hello%20World"),
+            Some(ImgSrc::DataUri {
+                mime_type: "text/plain".to_string(),
+                bytes: b"Hello World".to_vec(),
+            })
+        );
+    }
+
+    #[test]
+    fn decodes_a_percent_encoded_svg_data_uri() {
+        let src =
+            "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E";
+        assert_eq!(
+            classify_img_src(src),
+            Some(ImgSrc::DataUri {
+                mime_type: "image/svg+xml".to_string(),
+                bytes: br#"<svg xmlns="http://www.w3.org/2000/svg"/>"#.to_vec(),
+            })
+        );
+    }
+
+    /// エンコードされていないペイロードもそのまま通す(`;utf8,`のような
+    /// 慣習的なパラメータ付きも含む)。空白は意味を持つので落とさない。
+    #[test]
+    fn passes_through_an_unencoded_data_uri_payload() {
+        assert_eq!(
+            classify_img_src("data:image/svg+xml;utf8,<svg id='a b'/>"),
+            Some(ImgSrc::DataUri {
+                mime_type: "image/svg+xml".to_string(),
+                bytes: b"<svg id='a b'/>".to_vec(),
+            })
+        );
+    }
+
+    /// 折り返して書かれたdata:URIのタブ・改行は落とす(URL標準と同じ)。
+    #[test]
+    fn strips_tabs_and_newlines_but_not_spaces_from_a_percent_encoded_payload() {
+        assert_eq!(
+            classify_img_src("data:image/svg+xml,%3Csvg\n\t id='a b'%2F%3E"),
+            Some(ImgSrc::DataUri {
+                mime_type: "image/svg+xml".to_string(),
+                bytes: b"<svg id='a b'/>".to_vec(),
+            })
+        );
+    }
+
+    /// `%`が16進2桁の形になっていなければリテラルの`%`として通す
+    /// (壊れたエンコードでSVG全体を捨てない)。
+    #[test]
+    fn a_stray_percent_is_kept_verbatim() {
+        assert_eq!(
+            classify_img_src("data:text/plain,100% and %zz and %4"),
+            Some(ImgSrc::DataUri {
+                mime_type: "text/plain".to_string(),
+                bytes: b"100% and %zz and %4".to_vec(),
+            })
+        );
+    }
+
+    /// パーセントエンコードは非ASCIIバイトも復元できる(UTF-8の途中で
+    /// 切らずにバイト単位で読んでいることの確認)。
+    #[test]
+    fn decodes_percent_escapes_of_non_ascii_bytes() {
+        // "あ" = E3 81 82
+        assert_eq!(
+            classify_img_src("data:text/plain,%E3%81%82"),
+            Some(ImgSrc::DataUri {
+                mime_type: "text/plain".to_string(),
+                bytes: "あ".as_bytes().to_vec(),
+            })
+        );
+        // エンコードされていない非ASCIIもそのまま通る。
+        assert_eq!(
+            classify_img_src("data:text/plain,あ%20い"),
+            Some(ImgSrc::DataUri {
+                mime_type: "text/plain".to_string(),
+                bytes: "あ い".as_bytes().to_vec(),
+            })
+        );
     }
 
     #[test]

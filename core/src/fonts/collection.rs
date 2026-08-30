@@ -90,6 +90,18 @@ impl FontCollection {
         self.fonts.get(index)
     }
 
+    /// `index`のフォントがCSS上で宣言しているfamily名(`@font-face`の
+    /// `font-family`、またはfamily名から解決したシステムフォント)。
+    ///
+    /// `None`は「CSS側の申告が無い」(`--font`で明示指定されたフォント等)で、
+    /// その場合の照合はフォント自身の`name`テーブル([`Font::family_name`])で
+    /// 行う。[`Self::matches_family`]と同じ区別を外から使えるようにしたもので、
+    /// SVG用のフォントデータベース(`pdf::svg`)を組むときに、CSSで名乗って
+    /// いる名前でも引けるようにするために要る。
+    pub fn declared_family(&self, index: usize) -> Option<&str> {
+        self.declared_families.get(index)?.as_deref()
+    }
+
     pub fn len(&self) -> usize {
         self.fonts.len()
     }

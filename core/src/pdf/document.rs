@@ -40,7 +40,7 @@
 //!   ブレンド処理は非対応)
 //! - `border-style`の`groove`/`ridge`/`inset`/`outset`(2階調の疑似立体陰影)は非対応
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use pdf_writer::types::{ActionType, AnnotationType, LineCapStyle, TextRenderingMode};
@@ -230,6 +230,8 @@ pub fn encode_pdf_with_options(
     // フォントと違ってページ間で使い回すための事前サブセット化情報が
     // 不要なため、ページごとに「初出なら書き出す」形で済ませる。
     let mut image_ids: HashMap<usize, ImageIds> = HashMap::new();
+    // 振り直しに失敗したSVGを1文書内で1回しか警告しないための記録。
+    let mut failed_svg_ids: HashSet<usize> = HashSet::new();
     let mut page_ids = Vec::with_capacity(pages.len());
     // 名前付き宛先(`/Dests`)は全ページを書き終えてから解決する。
     let mut destinations: Vec<(String, Ref, f32, f32)> = Vec::new();
@@ -245,11 +247,16 @@ pub fn encode_pdf_with_options(
         }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
-            let (ids, is_new) = ids_for_image(&mut alloc, &mut image_ids, image);
+            // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
+            let Some((ids, is_new)) =
+                ids_for_image(&mut alloc, &mut image_ids, &mut failed_svg_ids, image)
+            else {
+                continue;
+            };
             if is_new {
-                embed_image(&mut pdf, image, &ids, output.grayscale);
+                embed_image(&mut pdf, image, ids, output.grayscale);
             }
-            page_image_refs.push(ids.color);
+            page_image_refs.push(ids.root);
         }
 
         // `opacity < 1`の要素を先に集めてRefを払い出す(画像・フォントと同じ
@@ -584,6 +591,23 @@ impl RefAllocator {
     pub(super) fn next(&mut self) -> Ref {
         self.0 += 1;
         Ref::new(self.0)
+    }
+
+    /// 次に払い出される`Ref`を、消費せずに覗く。
+    ///
+    /// 「払い出してみて、駄目だったら払い出さなかったことにする」ために使う
+    /// (SVGの`Ref`振り直しは失敗しうるが、失敗しても番号を消費してしまうと
+    /// 書き出されないオブジェクト番号が生まれ、`StreamingPdfWriter`の
+    /// 「1から連番で全部書かれている」前提のxrefが壊れる)。
+    #[cfg(feature = "svg")]
+    pub(super) fn peek(&self) -> Ref {
+        Ref::new(self.0 + 1)
+    }
+
+    /// [`peek`](Self::peek)から始まる`count`個をまとめて消費する。
+    #[cfg(feature = "svg")]
+    pub(super) fn commit(&mut self, count: usize) {
+        self.0 += i32::try_from(count).expect("Refの払い出し数がi32に収まらない");
     }
 }
 
@@ -1328,7 +1352,7 @@ fn render_box_with_style_inner(
             image_ids
                 .get(&(Rc::as_ptr(image) as usize))
                 .map(|ids| BackgroundImagePaint {
-                    resource: ids.color,
+                    resource: ids.root,
                     intrinsic_width: image.width,
                     intrinsic_height: image.height,
                 })
@@ -1442,14 +1466,14 @@ fn render_box_with_style_inner(
         }
         LaidOutContent::Image(image) => {
             if let Some(image) = image {
-                if let Some(&ids) = image_ids.get(&(Rc::as_ptr(image) as usize)) {
+                if let Some(ids) = image_ids.get(&(Rc::as_ptr(image) as usize)) {
                     render_replaced_image(
                         content,
                         b.layout.content,
                         style,
                         settings,
                         image,
-                        ids.color,
+                        ids.root,
                     );
                 }
             }
@@ -2042,11 +2066,7 @@ fn render_replaced_image(
     image: &PreparedImage,
     resource_ref: Ref,
 ) {
-    let rect = object_fit_rect(
-        content_box,
-        style,
-        (image.width as f32, image.height as f32),
-    );
+    let rect = object_fit_rect(content_box, style, (image.width, image.height));
 
     let x = settings.margin.left + content_box.x;
     let y = to_pdf_y(settings, content_box.y + content_box.height);
@@ -2116,8 +2136,9 @@ fn object_fit_rect(content_box: Rect, style: &ComputedStyle, intrinsic: (f32, f3
 #[derive(Debug, Clone, Copy)]
 struct BackgroundImagePaint {
     resource: Ref,
-    intrinsic_width: u32,
-    intrinsic_height: u32,
+    /// 内在サイズ(px)。SVGでは小数になりうる([`PreparedImage`]参照)。
+    intrinsic_width: f32,
+    intrinsic_height: f32,
 }
 
 /// `background-size`/`-position`/`-repeat`から、実際に描画すべき画像タイルの
@@ -2261,7 +2282,7 @@ fn render_background_image(
     let rects = background_tile_rects(
         border_box,
         style,
-        (paint.intrinsic_width as f32, paint.intrinsic_height as f32),
+        (paint.intrinsic_width, paint.intrinsic_height),
     );
     if rects.is_empty() {
         return;
@@ -4259,17 +4280,19 @@ mod tests {
         assert_eq!(rects.len(), 200);
     }
 
-    fn fake_prepared_image(width: u32, height: u32) -> Rc<PreparedImage> {
+    fn fake_prepared_image(width: f32, height: f32) -> Rc<PreparedImage> {
         Rc::new(PreparedImage {
             width,
             height,
-            color: super::super::img::ImagePlane {
-                data: Vec::new(),
-                filter: pdf_writer::Filter::FlateDecode,
-                color_space: super::super::img::PlaneColorSpace::Rgb,
-                bits_per_component: 8,
+            content: super::super::img::PreparedContent::Raster {
+                color: super::super::img::ImagePlane {
+                    data: Vec::new(),
+                    filter: pdf_writer::Filter::FlateDecode,
+                    color_space: super::super::img::PlaneColorSpace::Rgb,
+                    bits_per_component: 8,
+                },
+                alpha: None,
             },
-            alpha: None,
         })
     }
 
@@ -4291,7 +4314,7 @@ mod tests {
         let styles = compute_styles(&dom, &ua, &author);
         let div = find_tag(&dom, dom.document(), "div").expect("div not found");
         let mut background_images = HashMap::new();
-        background_images.insert(div, fake_prepared_image(40, 30));
+        background_images.insert(div, fake_prepared_image(40.0, 30.0));
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &background_images, &fonts, &settings);
@@ -4323,7 +4346,7 @@ mod tests {
         let mut background_images = HashMap::new();
         // intrinsic 40x30なので、100x60のborder-boxを覆うには3列(0,40,80)x
         // 2行(0,30)=6タイル必要。
-        background_images.insert(div, fake_prepared_image(40, 30));
+        background_images.insert(div, fake_prepared_image(40.0, 30.0));
 
         let pages = paginate_document(&dom, &styles, &fonts, &settings);
         let bytes = encode_pdf(&pages, &styles, &background_images, &fonts, &settings);
