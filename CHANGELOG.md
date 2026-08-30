@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measured max-content width so that text which fit was wrapped onto a second line. Which
   way the fraction rounded depended on the exact string, so the same row wrapped for one
   value and not for another (`1 USD = 0.9143 EUR` wrapped, `1 USD 0.9143 EUR` did not).
+- Write the required `/CMapName` and `/CIDSystemInfo` entries into the `/ToUnicode`
+  CMap stream dictionary. ISO 32000-1 table 120 lists both as required for a CMap
+  stream dictionary; the values were already declared inside the embedded CMap
+  program but not lifted into the dictionary. Strict PDF tooling (e.g. HexaPDF,
+  veraPDF) rejects the file without them, which blocks PDF/A-3 validation and
+  therefore Factur-X / ZUGFeRD hybrid e-invoice embedding.
 
 ### Added
 
