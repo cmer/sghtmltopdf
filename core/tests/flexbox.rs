@@ -543,7 +543,7 @@ fn flex_item_widths_keep_their_fractional_part() {
     );
 }
 
-// ===== 1ページに収まらないflexコンテナのページ分割(#18) =====
+// ===== Paginating a flex container that does not fit on one page (#18) =====
 
 fn paginate_pages(html_src: &str, css: &str) -> Vec<sghtmltopdf_core::layout::Page> {
     let dom = html::parse(html_src.as_bytes());
@@ -552,7 +552,7 @@ fn paginate_pages(html_src: &str, css: &str) -> Vec<sghtmltopdf_core::layout::Pa
     paginate_document(&dom, &styles, &fonts, &PageSettings::default())
 }
 
-/// ページ上の全テキスト行を(テキスト, ページ内y, 高さ)で文書順に返す。
+/// Every text line on the page as (text, in-page y, height), in document order.
 fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32, f32)> {
     fn walk(b: &LaidOutBox, out: &mut Vec<(String, f32, f32)>) {
         match &b.content {
@@ -584,7 +584,7 @@ fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32
     out
 }
 
-/// 全ページのテキスト行を集め、どの行もページ内に収まっていることを確認する。
+/// Collects the text lines of every page and checks each one lands inside its page.
 fn all_lines_within_pages(pages: &[sghtmltopdf_core::layout::Page]) -> Vec<Vec<String>> {
     let page_height = PageSettings::default().content_height();
     pages
@@ -615,7 +615,7 @@ fn a_flex_column_taller_than_a_page_is_split_between_its_items() {
 
     assert!(
         pages.len() > 1,
-        "150段落は1ページに収まらない: {} page(s)",
+        "150 paragraphs do not fit on one page: {} page(s)",
         pages.len()
     );
     let per_page = all_lines_within_pages(&pages);
@@ -632,8 +632,9 @@ fn a_flex_column_taller_than_a_page_is_split_between_its_items() {
 
 #[test]
 fn a_flex_item_taller_than_a_page_is_split_inside_like_a_block() {
-    // 列flexのアイテム自体が1ページより高い(契約書の本文など)。アイテムの
-    // 境界で切るだけでは足りず、ブロックと同様にアイテムの内部でも分割する。
+    // An item of a column flex is itself taller than a page (the body of a
+    // contract, say). Breaking at item boundaries is not enough; the item has to
+    // be split inside as well, like a block.
     let paragraphs: String = (0..120).map(|i| format!("<p>Clause {i}</p>")).collect();
     let pages = paginate_pages(
         &format!(
@@ -660,8 +661,8 @@ fn a_flex_item_taller_than_a_page_is_split_inside_like_a_block() {
 
 #[test]
 fn a_wrapped_row_flex_taller_than_a_page_is_split_between_its_lines() {
-    // 行方向で折り返すflexは、flex line(横に並ぶアイテム群)を単位に分割する。
-    // 同じ行のアイテムは同じページの同じyに並んだままになる。
+    // A row flex that wraps is split in units of flex lines (the groups of items
+    // side by side). Items on the same line stay on the same page at the same y.
     let items: String = (0..80).map(|i| format!("<div>i{i}</div>")).collect();
     let pages = paginate_pages(
         &format!(r#"<div class="f">{items}</div>"#),
@@ -672,7 +673,7 @@ fn a_wrapped_row_flex_taller_than_a_page_is_split_between_its_lines() {
 
     assert!(
         pages.len() > 1,
-        "40行×40px は1ページに収まらない: {} page(s)",
+        "40 rows of 40px do not fit on one page: {} page(s)",
         pages.len()
     );
     let page_height = PageSettings::default().content_height();
@@ -703,7 +704,7 @@ fn a_wrapped_row_flex_taller_than_a_page_is_split_between_its_lines() {
 fn a_flex_column_taller_than_a_page_renders_as_many_pages_as_block_end_to_end() {
     let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
     let html = format!(r#"<div class="box">{paragraphs}</div>"#);
-    // 枠線を付けて、分割されたコンテナの装飾フラグメント生成も通す。
+    // A border, so the decoration fragments of the split container are exercised too.
     let flex = build_pdf(
         &html,
         "* { margin: 0; padding: 0 } \

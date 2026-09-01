@@ -503,12 +503,13 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
                 collect_completed_subtree_roots_in_box(child, roots);
             }
         }
-        // flexコンテナは収まればアトミック(`display: table`と同じ扱い)。
-        // 1ページより高いものは`place_split`で分割され、その場合アイテムは
-        // ページへ直接置かれる(`Flex`のまま断片になることはない)ので、ここで
-        // `Flex`を見たら常に丸ごと完了している。グリッドは行単位で分割するが、
-        // 断片ごとの完了判定は`place_grid`が`FragmentPosition`で表現するため、
-        // ここではテーブルと同じく再帰しない。
+        // A flex container is atomic when it fits (treated the same way as
+        // `display: table`). One taller than a page is split by `place_split`,
+        // and its items are then placed directly on the page (a fragment is never
+        // still a `Flex`), so seeing a `Flex` here always means the whole thing is
+        // complete. A grid is split by row, but `place_grid` expresses the
+        // completion of each fragment through `FragmentPosition`, so, as with a
+        // table, there is no recursion here.
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -613,10 +614,12 @@ fn place_box(
             );
             return;
         }
-        // flexコンテナは原則アトミック(残りに収まらなければ丸ごと次ページへ
-        // 送る)。ただし1ページより高いコンテナは送っても収まらず、はみ出した
-        // 部分が描画されずに消えてしまう(#18)。その場合に限り、垂直方向に
-        // 重ならないアイテム群(帯)を単位に、ブロックと同じ経路で分割する。
+        // A flex container is atomic as a rule: if it does not fit in what is
+        // left of the page it is moved to the next page whole. A container taller
+        // than a page, though, does not fit there either, and the overflow is
+        // never painted and simply disappears (#18). In that case only, it is
+        // split through the same path as a block, in units of bands: groups of
+        // items that do not overlap vertically.
         LaidOutContent::Flex(children) if !children.is_empty() && height > page_height => {
             let mut bands = group_flex_items_into_bands(std::mem::take(children));
             place_split(
@@ -625,9 +628,10 @@ fn place_box(
                 page_height,
                 state,
                 cursor,
-                // 帯に強制改ページの概念は持ち込まない。コンテナが収まる場合は
-                // アトミックでアイテムの`break-*`を見ていないので、分割時だけ
-                // 効くと挙動が読みにくくなる。
+                // Forced breaks are deliberately not given a meaning for bands.
+                // A container that fits is atomic and never looks at the `break-*`
+                // of its items, so honouring them only when it is split would make
+                // the behaviour hard to predict.
                 |_i, _band: &FlexBand| (false, false),
                 |_band: &FlexBand| false,
                 |band: &FlexBand| band.top,
@@ -670,9 +674,9 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        // flexコンテナは収まればアトミックで、1ページより高い場合の分割でも
-        // アイテムの`break-*`は見ない。グリッドの行分割は`place_grid`が
-        // 担う。どちらもここでは再帰しない。
+        // A flex container is atomic when it fits, and even when it is split for
+        // being taller than a page the `break-*` of its items is not consulted.
+        // Splitting a grid by row is `place_grid`'s job. Neither recurses here.
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -1197,8 +1201,8 @@ fn place_grid(
     *cursor += bottom_extra;
 }
 
-/// 行帯とその中のアイテムをまとめてY方向へ平行移動する。`delta`は
-/// `shift_box_y`と同じく「引く量」(絶対y座標→ページ内y座標の差)。
+/// Translates a row band, and the items inside it, along Y. As in `shift_box_y`,
+/// `delta` is the amount to subtract (absolute y minus in-page y).
 fn shift_grid_row_y(row: &LaidOutGridRow, delta: f32) -> LaidOutGridRow {
     LaidOutGridRow {
         items: row
@@ -1258,26 +1262,30 @@ fn flush_grid_fragment(
     state.last_mut().boxes.push(fragment);
 }
 
-/// 1ページより高いflexコンテナを分割する単位。垂直方向に重なるアイテム同士を
-/// まとめた帯で、列flexなら各アイテム、行flexなら各flex lineが1帯になる。
-/// `top`/`bottom`はマージンボックスの絶対y座標。
+/// The unit a flex container taller than a page is split into: a band grouping
+/// items that overlap vertically. In a column flex each item is a band; in a row
+/// flex each flex line is. `top`/`bottom` are absolute y coordinates of the
+/// margin box.
 struct FlexBand {
     items: Vec<LaidOutBox>,
     top: f32,
     bottom: f32,
 }
 
-/// 帯の境界判定に使う許容誤差(px)。taffyが返す座標は浮動小数のため、
-/// ちょうど接しているだけのアイテムを「重なっている」と誤判定しないようにする。
+/// Tolerance (px) used when deciding where a band ends. The coordinates taffy
+/// returns are floating point, so this keeps items that merely touch from being
+/// mistaken for overlapping ones.
 const FLEX_BAND_EPSILON: f32 = 0.01;
 
-/// flexアイテムを垂直方向の重なりで帯へまとめる。
+/// Groups flex items into bands by vertical overlap.
 ///
-/// `flex-direction: column`なら各アイテムが1帯、`flex-wrap: wrap`の行flexなら
-/// 各flex lineが1帯、折り返さない行flexは全体が1帯(=これまで通りアトミック)
-/// になる。`order`等で視覚順が文書順と違っても、幾何で判定するので問題ない。
+/// With `flex-direction: column` each item is a band; with a wrapping row flex
+/// each flex line is; a row flex that does not wrap is a single band, that is,
+/// atomic as before. The decision is geometric, so a visual order that differs
+/// from document order (through `order`, say) makes no difference.
 fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
-    // 上端順に並べる(安定ソートなので同じ上端同士は文書順を保つ)。
+    // Order by top edge (a stable sort, so items sharing a top edge keep their
+    // document order).
     items.sort_by(|a, b| margin_box_top(a).total_cmp(&margin_box_top(b)));
     let mut bands: Vec<FlexBand> = Vec::new();
     for item in items {
@@ -1298,13 +1306,14 @@ fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
     bands
 }
 
-/// [`place_split`]から呼ばれ、flexの帯を1つページへ置く。
+/// Places one flex band on a page. Called from [`place_split`].
 ///
-/// アイテムが1つだけの帯(列flexの各アイテム)は通常のボックスとして
-/// [`place_box`]へ渡す。これにより1ページより高いアイテムはブロックと同様に
-/// 内部で分割される。横に複数のアイテムが並ぶ帯は、アイテムの相対位置を保つ
-/// ため1つのリーフとして扱う(残りに収まらなければ次ページの先頭へ送る。帯
-/// 自体が1ページより高い場合は、これまで通りはみ出す)。
+/// A band holding a single item (each item of a column flex) goes to
+/// [`place_box`] as an ordinary box, so an item taller than a page is split
+/// inside it like a block. A band with several items side by side is treated as
+/// one leaf, to keep the items in the same position relative to each other: if
+/// it does not fit in what is left it is moved to the top of the next page, and
+/// if the band itself is taller than a page it overflows, as before.
 fn place_flex_band(
     band: &mut FlexBand,
     page_height: f32,

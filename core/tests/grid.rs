@@ -478,7 +478,7 @@ fn auto_tracks_absorb_the_free_space_unless_justify_content_says_otherwise() {
     );
 }
 
-/// ページ上の全テキスト行を(テキスト, ページ内y, 高さ)で文書順に返す。
+/// Every text line on the page as (text, in-page y, height), in document order.
 fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32, f32)> {
     fn walk(b: &LaidOutBox, out: &mut Vec<(String, f32, f32)>) {
         match &b.content {
@@ -512,9 +512,10 @@ fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32
 
 #[test]
 fn grid_items_on_later_pages_are_placed_within_the_page() {
-    // #18: 2ページ目以降の行帯では、帯の座標はページ内座標へ直されている
-    // のにアイテムが逆方向へずらされ、ページの遥か下(=描画されない位置)に
-    // 置かれていた。ページ数は正しいのに2ページ目以降が白紙になる。
+    // #18: in the row bands of the second and later pages, the band's own
+    // coordinates were corrected to in-page ones but the items inside were
+    // shifted the opposite way, landing far below the page, where nothing is
+    // painted. The page count was right, but every page after the first was blank.
     let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
     let html = format!(r#"<div class="g">{paragraphs}</div>"#);
     let css = "* { margin: 0; padding: 0 } .g { display: grid; }";
@@ -525,7 +526,7 @@ fn grid_items_on_later_pages_are_placed_within_the_page() {
     let page_height = settings.content_height();
     let pages = paginate_document(&dom, &styles, &fonts, &settings);
 
-    assert!(pages.len() > 1, "150段落は1ページに収まらない");
+    assert!(pages.len() > 1, "150 paragraphs do not fit on one page");
     let mut seen = Vec::new();
     for (page_index, page) in pages.iter().enumerate() {
         let lines = text_lines_on_page(page);
