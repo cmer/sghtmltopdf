@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-30T18:38:36+09:00\n"
+"POT-Creation-Date: 2026-08-30T09:25:00-05:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -3968,6 +3968,7 @@ msgstr "`display`"
 #: src/supports/selectors.md:81 src/supports/selectors.md:83
 #: src/supports/selectors.md:123 src/supports/selectors.md:124
 #: src/supports/selectors.md:125 src/supports/selectors.md:126
+#: src/supports/selectors.md:129
 msgid "⚠️"
 msgstr "⚠️"
 
@@ -4365,7 +4366,7 @@ msgstr "`outline-offset`"
 #: src/supports/selectors.md:80 src/supports/selectors.md:85
 #: src/supports/selectors.md:86 src/supports/selectors.md:98
 #: src/supports/selectors.md:100 src/supports/selectors.md:128
-#: src/supports/selectors.md:129
+#: src/supports/selectors.md:130
 msgid "❌"
 msgstr "❌"
 
@@ -6226,22 +6227,39 @@ msgid "入力はUTF-8前提"
 msgstr "The input is assumed to be UTF-8"
 
 #: src/supports/selectors.md:129
-msgid ""
-"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
-"`@container` / `@property`"
-msgstr ""
-"`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@layer`, "
-"`@container`, `@property`"
+msgid "`@layer`"
+msgstr "`@layer`"
 
 #: src/supports/selectors.md:129
+msgid ""
+"ブロックの中のルールを書かれた順にトップレベルへ展開する(`@layer a { .x {} }`"
+"は`.x {}`と同じ)。レイヤーの優先順位は実装せず、通常のカスケード(詳細度・後勝"
+"ち)で決まる。`@layer a, b;`の順序宣言は無視する。Tailwind v4のように出力全体"
+"を`@layer`で包むCSSをそのまま渡せる"
+msgstr ""
+"Rules inside the block are hoisted to the top level in source order (`@layer "
+"a { .x {} }` is the same as `.x {}`). Layer precedence is not implemented; "
+"the usual cascade (specificity, last wins) decides. The `@layer a, b;` "
+"ordering statement is ignored. A stylesheet that wraps its whole output in "
+"`@layer`, as Tailwind v4 does, can be passed as is"
+
+#: src/supports/selectors.md:130
+msgid ""
+"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@container` "
+"/ `@property`"
+msgstr ""
+"`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@container`, "
+"`@property`"
+
+#: src/supports/selectors.md:130
 msgid "ブロックごと無視される"
 msgstr "The whole block is ignored"
 
-#: src/supports/selectors.md:131
+#: src/supports/selectors.md:132
 msgid "ストリーミングモード固有の制約"
 msgstr "Restrictions specific to streaming mode"
 
-#: src/supports/selectors.md:133
+#: src/supports/selectors.md:134
 msgid ""
 "`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::"
 "Streaming`でのみ以下が適用される。"
@@ -6249,7 +6267,7 @@ msgstr ""
 "In `Mode::Batch` the whole DOM is available, so none of this applies. The "
 "following holds only in `Mode::Streaming`."
 
-#: src/supports/selectors.md:136
+#: src/supports/selectors.md:137
 msgid ""
 "`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理しま"
 "す。 そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下"
@@ -6262,7 +6280,7 @@ msgstr ""
 "for those top-level elements — inside one of them the subtree is complete, "
 "so nothing changes."
 
-#: src/supports/selectors.md:139
+#: src/supports/selectors.md:140
 msgid ""
 "`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:"
 "has(~ ...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告が"
@@ -6272,7 +6290,7 @@ msgstr ""
 "and `:has(~ ...)` match too much or miss altogether. Using any of them "
 "prints a warning"
 
-#: src/supports/selectors.md:141
+#: src/supports/selectors.md:142
 msgid ""
 "`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するの"
 "でバッチと同じ結果になります"
@@ -6281,7 +6299,7 @@ msgstr ""
 "next sibling, on the other hand, line up with what settling already "
 "guarantees, so they give the same result as batch mode"
 
-#: src/supports/selectors.md:142
+#: src/supports/selectors.md:143
 msgid ""
 "`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:"
 "only-child`もバッチと同じ結果になります。 これらを使っている文書では、処理済"
@@ -6295,7 +6313,7 @@ msgstr ""
 "descendants released, so the element itself stays visible as a sibling (what "
 "remains is one node per top-level element, so almost as much is still freed)"
 
-#: src/supports/selectors.md:145
+#: src/supports/selectors.md:146
 msgid ""
 "`<body>`開始後の`<style>`タグはエラー: `EngineError::"
 "UnsupportedInStreamingMode`を返す。 黙って見た目が崩れるのを避けるため、"
@@ -6305,11 +6323,11 @@ msgstr ""
 "UnsupportedInStreamingMode`. Keep all `<style>` in `<head>`, so that the "
 "layout does not quietly fall apart"
 
-#: src/supports/selectors.md:147
+#: src/supports/selectors.md:148
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr "`position: absolute` and `fixed` are ignored"
 
-#: src/supports/selectors.md:148
+#: src/supports/selectors.md:149
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr "`counter(pages)`, the total page count, is unavailable"
 

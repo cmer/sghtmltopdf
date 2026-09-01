@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Hoist the rules inside `@layer` blocks to the top level, in source order, instead of
+  dropping the whole block (#20). Tailwind v4 wraps its entire output in cascade layers,
+  so a stock v4 bundle rendered a completely unstyled document. Layer precedence is not
+  implemented: a print stylesheet is normally a single bundle with nothing to arbitrate
+  against, so plain source order gives the same result, and where it differs the usual
+  specificity contest decides. The bare `@layer a, b;` ordering statement is still ignored.
+
 ### Fixed
 
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
