@@ -50,18 +50,18 @@ impl Stylesheet {
     }
 }
 
-/// トップレベルルールの中間表現。通常のスタイルルール・`@font-face`・
-/// `@media`・`@layer`・`@page`は`StyleSheetParser`の型システム上、同じ
-/// `Prelude`/`Rule`型を共有する必要があるため、この列挙型で束ねる
-/// ([`parse_stylesheet`]で仕分ける)。
+/// Intermediate representation of a top-level rule. A plain style rule,
+/// `@font-face`, `@media`, `@layer` and `@page` all have to share the same
+/// `Prelude`/`Rule` types under `StyleSheetParser`, so this enum bundles them
+/// together ([`parse_stylesheet`] sorts them out again).
 enum TopLevelRule {
     /// スタイルルール1つと、その中にネストしていたルールをカスケード順に
     /// 平坦化したもの([`parse_style_rule_body`])。
     Style(Vec<StyleRule>),
     FontFace(FontFaceRule),
-    /// ルールをまとめるat-rule(`@media`/`@layer`)の中身。書かれた順に
-    /// トップレベルへ展開する。マッチしなかった`@media`と、ブロックを持たない
-    /// `@layer a, b;`は空のVec。
+    /// The contents of a rule-grouping at-rule (`@media`/`@layer`), hoisted to
+    /// the top level in source order. A `@media` that did not match, and the
+    /// block-less `@layer a, b;`, give an empty Vec.
     Nested(Vec<TopLevelRule>),
     Page(PageRule),
 }
@@ -295,15 +295,16 @@ impl<'i> RuleBodyItemParser<'i, StyleRuleBodyItem, ()> for StyleRuleBodyParser<'
     }
 }
 
-/// `@font-face`/`@media`/`@layer`/`@page`を認識する。
+/// Recognises `@font-face`, `@media`, `@layer` and `@page`.
 enum TopLevelAtRulePrelude {
     FontFace,
     /// `applies`は[`media_query_list_matches`]による判定結果。
     Media {
         applies: bool,
     },
-    /// `@layer`。レイヤーの優先順位は実装せず、ブロックの中身を書かれた順に
-    /// トップレベルへ展開するだけなので、レイヤー名は保持しない(#20)。
+    /// `@layer`. Layer precedence is not implemented: the contents of the block
+    /// are simply hoisted to the top level in source order, so the layer name is
+    /// not kept (#20).
     Layer,
     Page(super::page_rule::PageSelector),
 }
@@ -336,9 +337,9 @@ impl<'i> AtRuleParser<'i> for TopLevelRuleParser {
         Err(input.new_custom_error(()))
     }
 
-    /// ブロックを持たない形(`@layer theme, base;`)。レイヤーの順序を宣言する
-    /// だけでルールを含まないので、空のグループとして受理する。他のat-ruleに
-    /// この形はない。
+    /// The block-less form (`@layer theme, base;`). It only declares layer
+    /// order and holds no rules, so it is accepted as an empty group. No other
+    /// at-rule has this form.
     fn rule_without_block(
         &mut self,
         prelude: Self::Prelude,
@@ -374,8 +375,8 @@ impl<'i> AtRuleParser<'i> for TopLevelRuleParser {
     }
 }
 
-/// `@media`/`@layer`のブロックの中身を、トップレベルと同じ文法でパースする。
-/// 中でさらに`@media`/`@layer`が入れ子になっていてもよい。
+/// Parses the contents of a `@media`/`@layer` block with the same grammar as
+/// the top level. Further `@media`/`@layer` may be nested inside.
 fn parse_nested_rules<'i, 't>(input: &mut Parser<'i, 't>) -> Vec<TopLevelRule> {
     let mut rule_parser = TopLevelRuleParser;
     StyleSheetParser::new(input, &mut rule_parser)
@@ -383,10 +384,11 @@ fn parse_nested_rules<'i, 't>(input: &mut Parser<'i, 't>) -> Vec<TopLevelRule> {
         .collect()
 }
 
-/// `@layer`のprelude(`<layer-name>#`または空)を読み飛ばす。レイヤー名は
-/// `a`や`a.b`(`.`区切りの入れ子)で、ブロック形は高々1つ、文形はカンマ区切りで
-/// 複数書ける。ここでは文法だけ確かめて名前は捨てる。名前が要らないとはいえ
-/// 何でも受理すると、壊れた`@layer`の中身までトップレベルに漏れてしまう。
+/// Skips a `@layer` prelude (`<layer-name>#`, or empty). A layer name is `a`
+/// or `a.b` (nesting written with `.`); the block form takes at most one name,
+/// the statement form a comma-separated list. Only the grammar is checked here
+/// and the names are thrown away. The names are not needed, but accepting
+/// anything would leak the contents of a malformed `@layer` to the top level.
 fn skip_layer_name_list<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(), ParseError<'i, ()>> {
     if input.is_exhausted() {
         return Ok(());
@@ -1024,8 +1026,9 @@ mod tests {
 mod layer_tests {
     use super::*;
 
-    /// #20: Tailwind v4は出力全体を`@layer`ブロックで包む。ブロックごと捨てると
-    /// 文書が丸ごと無装飾になるので、中のルールをトップレベルへ展開する。
+    /// #20: Tailwind v4 wraps its entire output in a `@layer` block. Dropping
+    /// the whole block leaves the document completely unstyled, so the rules
+    /// inside it are hoisted to the top level.
     #[test]
     fn layer_block_rules_are_flattened() {
         let sheet = parse_stylesheet("@layer utilities { div { color: rgb(1, 2, 3); } }");
@@ -1038,7 +1041,7 @@ mod layer_tests {
         assert_eq!(sheet.rules.len(), 1);
     }
 
-    /// `@layer a.b { }`(入れ子を`.`で書く形)と`@layer a { @layer b { } }`。
+    /// `@layer a.b { }` (nesting written with `.`) and `@layer a { @layer b { } }`.
     #[test]
     fn nested_layer_blocks_are_flattened() {
         for css in [
@@ -1050,8 +1053,8 @@ mod layer_tests {
         }
     }
 
-    /// `@layer theme, base, components, utilities;`(順序宣言だけの文)は
-    /// 従来どおり無視し、後続のルールを壊さない。
+    /// `@layer theme, base, components, utilities;` (a statement that only
+    /// declares order) is still ignored, and leaves the following rules intact.
     #[test]
     fn layer_statement_is_ignored_and_keeps_subsequent_rules() {
         for css in [
@@ -1092,8 +1095,8 @@ mod layer_tests {
         assert_eq!(sheet.page_rules.len(), 1);
     }
 
-    /// 展開は書かれた順を保つ(レイヤーの優先順位は実装しないので、通常の
-    /// カスケード=後勝ちに委ねる)。
+    /// Hoisting preserves source order (layer precedence is not implemented, so
+    /// the usual cascade, where the last one wins, decides).
     #[test]
     fn layer_rules_keep_source_order() {
         let sheet = parse_stylesheet(
@@ -1112,7 +1115,7 @@ mod layer_tests {
         assert!(colors[2].contains("red: 3,"), "{colors:?}");
     }
 
-    /// `@layer`以外の非対応at-ruleは引き続きブロックごと無視される。
+    /// Unsupported at-rules other than `@layer` are still ignored block and all.
     #[test]
     fn other_unsupported_at_rule_blocks_are_still_dropped() {
         for css in [
@@ -1125,7 +1128,8 @@ mod layer_tests {
         }
     }
 
-    /// 壊れたpreludeの`@layer`はブロックごと捨て、後続のルールは生かす。
+    /// A `@layer` with a malformed prelude is dropped block and all, and the
+    /// following rules are kept.
     #[test]
     fn layer_with_invalid_prelude_is_dropped_and_subsequent_rules_kept() {
         let sheet = parse_stylesheet(

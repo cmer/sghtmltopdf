@@ -1,11 +1,11 @@
-//! `@layer`(カスケードレイヤー)のE2Eテスト(#20)。
+//! End-to-end tests for `@layer` (cascade layers) (#20).
 //!
-//! Tailwind v4は出力全体を`@layer`ブロックで包むため、ブロックを捨てると
-//! 文書が丸ごと無装飾になる。レイヤーの優先順位は実装せず、中のルールを
-//! 書かれた順にトップレベルへ展開する。
+//! Tailwind v4 wraps its entire output in a `@layer` block, so dropping the
+//! block leaves the document completely unstyled. Layer precedence is not
+//! implemented; the rules inside are hoisted to the top level in source order.
 //!
-//! `custom_properties.rs`と同じ方針: `<style>`からの抽出→カスケード→レイアウト
-//! という実際の経路を通して回帰を検知する。
+//! Same approach as `custom_properties.rs`: catch regressions through the real
+//! path, extraction from `<style>` -> cascade -> layout.
 
 use std::path::PathBuf;
 
@@ -71,9 +71,9 @@ fn layout(html_body: &str, css: &str) -> (Dom, LaidOutBox) {
     (dom, laid)
 }
 
-/// issue #20の再現手順そのもの。`.probe { margin-left: 90px }`を素のまま、
-/// `@layer utilities { }`で包んで、`@layer base, utilities;`の後に置いて、
-/// の3通りで`X`の左端が同じ位置に来ること。
+/// The reproduction from issue #20 itself. `.probe { margin-left: 90px }` in
+/// three forms, plain, wrapped in `@layer utilities { }`, and placed after
+/// `@layer base, utilities;`, must put the left edge of `X` in the same place.
 fn probe_x(css: &str) -> f32 {
     let (dom, laid) = layout(
         r#"<div class="probe">X</div>"#,
@@ -103,9 +103,9 @@ fn layer_statement_does_not_poison_subsequent_rules() {
     );
 }
 
-/// Tailwind v4の出力の形(順序宣言+複数のレイヤーブロック+`:root`の
-/// カスタムプロパティ+ネストした`@media`)を縮めたもの。`var()`の
-/// テキスト置換が`@layer`の中でも効くことを含めて確認する。
+/// A shrunken version of the shape Tailwind v4 emits: an order statement, several
+/// layer blocks, custom properties on `:root`, and a nested `@media`. Also checks
+/// that the text substitution of `var()` still works inside a `@layer`.
 #[test]
 fn tailwind_v4_shaped_bundle_is_applied() {
     let css = r#"
@@ -127,7 +127,8 @@ fn tailwind_v4_shaped_bundle_is_applied() {
     let mut divs = Vec::new();
     find_all_tags(&dom, dom.document(), "div", &mut divs);
     let div = find_laid_out(&laid, divs[0]).unwrap();
-    // 0.25rem = 4px; ml-8 = 32px; print:w-20 = 80px(後勝ちでw-40の160pxを上書き)
+    // 0.25rem = 4px; ml-8 = 32px; print:w-20 = 80px (last one wins, overriding
+    // the 160px of w-40)
     assert_eq!(div.layout.content.x, 32.0);
     assert_eq!(div.layout.content.width, 80.0);
 }

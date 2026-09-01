@@ -76,10 +76,12 @@ fn decompressed_stream_bytes(pdf_bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `/CreationDate`と、それをハッシュに含む`/ID`は書き出した瞬間の壁時計から
-/// 作るので、2本のPDFを別々に書き出すと秒をまたいだ回だけバイト比較が落ちる
-/// (CIで実際に落ちた: `D:20260827160357Z`対`D:20260827160358Z`の1バイト差)。
-/// どちらも固定長なので、比較前に潰してもxrefのオフセットはずれない。
+/// `/CreationDate`, and the `/ID` that hashes it, are built from the wall clock
+/// at the moment of writing, so a byte comparison of two separately written PDFs
+/// fails on exactly those runs that cross a second boundary (it did fail in CI:
+/// `D:20260827160357Z` against `D:20260827160358Z`, a one-byte difference). Both
+/// are fixed length, so blanking them before the comparison leaves the xref
+/// offsets intact.
 fn without_wall_clock_metadata(bytes: &[u8]) -> Vec<u8> {
     fn blank_value(bytes: &mut [u8], marker: &[u8], end: u8) {
         let Some(start) = bytes.windows(marker.len()).position(|w| w == marker) else {
