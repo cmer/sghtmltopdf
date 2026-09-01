@@ -223,14 +223,16 @@ pub(crate) fn layout_inline_content(
     lines
 }
 
-/// `position: relative`なインライン要素(`<span>`等)の子孫のランを、
-/// 行組みが終わった後で視覚的にずらす(#29)。行の高さ・折り返し・後続の
-/// ランの位置には影響しない(CSS仕様通り、relativeはフローに影響しない)。
-/// 縦方向は`baseline_shift`(正=上)に載せるので、描画層はそのままでよい。
+/// Shifts the runs descending from a `position: relative` inline element
+/// (a `<span>`, say) visually, after line layout is done (#29). Line height,
+/// line breaking and the position of the following runs are untouched (as in the
+/// CSS spec, `relative` does not affect the flow). The vertical part rides on
+/// `baseline_shift` (positive means up), so the painting layer needs no change.
 ///
-/// ランの`style_index`は`flatten_spans`が`spans`と同じ順で振るため、
-/// `spans[style_index]`がそのランの元スパン(ハイフンや省略記号として後から
-/// 生成されたランも、元のスパンのインデックスを引き継ぐ)。
+/// `flatten_spans` numbers the `style_index` of a run in the same order as
+/// `spans`, so `spans[style_index]` is the span the run came from (a run
+/// generated later, as a hyphen or an ellipsis, keeps the index of its original
+/// span).
 fn apply_relative_span_offsets(lines: &mut [LineBox], spans: &[InlineSpan], available_width: f32) {
     if spans.iter().all(|span| span.relative_insets.is_empty()) {
         return;
@@ -255,7 +257,7 @@ fn apply_relative_span_offsets(lines: &mut [LineBox], spans: &[InlineSpan], avai
     }
 }
 
-/// [`layout_inline_content`]の本体(relativeのオフセット適用前)。
+/// The body of [`layout_inline_content`], before the relative offsets are applied.
 #[allow(clippy::too_many_arguments)]
 fn layout_inline_content_in_flow(
     spans: &[InlineSpan],

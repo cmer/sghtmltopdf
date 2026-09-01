@@ -231,17 +231,18 @@ pub struct InlineSpan {
     /// インライン背景として塗ってしまう。ここでスパン構築時に「IFC内で
     /// 直近のインライン要素が指定した背景」だけを取り出して持たせる。
     pub background_color: RgbaColor,
-    /// このテキストを囲む`position: relative`なインライン要素の
-    /// `top`/`right`/`bottom`/`left`(外側から順)。行組みの後、この分だけ
-    /// ランを視覚的にずらす(`layout::inline`)。入れ子は加算する。
-    /// `background_color`と同じ理由で、テキストノードの計算スタイル
-    /// (ブロック側の`position`まで継承している)からは取り出せない。
+    /// The `top`/`right`/`bottom`/`left` of the `position: relative` inline
+    /// elements enclosing this text, outermost first. After line layout the runs
+    /// are shifted visually by this much (`layout::inline`); nested ones add up.
+    /// For the same reason as `background_color`, this cannot be read back from
+    /// the computed style of the text node, which has inherited even the
+    /// `position` of the block.
     pub relative_insets: Vec<RelativeInset>,
 }
 
-/// `position: relative`の要素が指定した`top`/`right`/`bottom`/`left`。
-/// オフセットへの解決はcontaining block幅が要るため使う側で行う
-/// (`layout::block::resolve_relative_offset`)。
+/// The `top`/`right`/`bottom`/`left` specified on a `position: relative`
+/// element. Resolving them to an offset needs the containing block width, so the
+/// caller does it (`layout::block::resolve_relative_offset`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RelativeInset {
     pub top: LengthPercentageOrAuto,
@@ -251,7 +252,7 @@ pub struct RelativeInset {
 }
 
 impl RelativeInset {
-    /// `style`が`position: relative`ならその4辺を返す。
+    /// Returns the four sides if `style` is `position: relative`.
     pub fn of(style: &ComputedStyle) -> Option<Self> {
         (style.position == Position::Relative).then_some(Self {
             top: style.top,
@@ -322,7 +323,8 @@ struct InlineContext {
     link: Option<Rc<str>>,
     /// 直近のインライン要素が指定した背景色。
     background_color: RgbaColor,
-    /// 囲んでいる`position: relative`なインライン要素の指定(外側から順)。
+    /// What the enclosing `position: relative` inline elements specify,
+    /// outermost first.
     relative_insets: Vec<RelativeInset>,
 }
 
@@ -1389,8 +1391,8 @@ fn collect_spans_in_context(
             if let Some(href) = link_href(dom, node) {
                 context.link = Some(href);
             }
-            // `position: relative`のインライン要素は、その子孫のランを
-            // まとめてずらす(#29)。
+            // A `position: relative` inline element shifts the runs of all its
+            // descendants together (#29).
             if let Some(inset) = styles.get(&node).and_then(|s| RelativeInset::of(s)) {
                 context.relative_insets.push(inset);
             }

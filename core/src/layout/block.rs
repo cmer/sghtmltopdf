@@ -624,20 +624,22 @@ fn layout_box_impl(
     let content_x = x + margin.left + border.left + padding.left;
     let mut content_y = y + margin.top + border.top + padding.top;
 
-    // `position: relative`の視覚的オフセット。中身は先にオフセット無しの
-    // 座標でレイアウトし、最後にボックス全体(装飾・行・子ボックス・マーカー)
-    // を`shift_box_*_in_place`で平行移動する(#29: 装飾だけずらすと中身が
-    // 取り残される)。後続兄弟の`cursor_y`計算は`margin_box_height`
-    // (座標に依存しない)を使うため、ずらしても後続要素のフローには影響しない。
+    // The visual offset of `position: relative`. The contents are laid out first
+    // at unoffset coordinates, and the whole box (decoration, lines, child boxes
+    // and marker) is translated at the end with `shift_box_*_in_place` (#29:
+    // moving only the decoration leaves the contents behind). The `cursor_y` of
+    // the following siblings is computed from `margin_box_height`, which does not
+    // depend on the coordinates, so the shift does not affect the flow.
     let (offset_x, offset_y) = match RelativeInset::of(&style) {
         Some(inset) => resolve_relative_offset(&inset, content_width),
         None => (0.0, 0.0),
     };
 
-    // positioned要素(relative/absolute/fixed)は、子孫の`absolute`の
-    // containing blockを自分のpadding boxにする。高さは循環を避けるため
-    // 使わない(bottom配置は非対応)。relativeのオフセットはpadding boxの
-    // 位置にも効く(CSS2.1 §9.4.3)ので、ここで先に加えておく。
+    // A positioned element (relative/absolute/fixed) becomes the containing
+    // block of an `absolute` descendant through its own padding box. The height
+    // is not used, to avoid a circular dependency (placing against the bottom is
+    // not supported). A relative offset moves the padding box too (CSS 2.1
+    // §9.4.3), so it is folded in here.
     let saved_cb = pos.abs_cb;
     if style.position != Position::Static {
         if let Some(node) = b.node {
@@ -876,7 +878,8 @@ fn layout_box_impl(
         shift_box_x_in_place(&mut laid, offset_x);
     }
     if offset_y != 0.0 {
-        // `shift_box_y_in_place`のdeltaは「引く量」なので、下げるには`-dy`。
+        // The delta of `shift_box_y_in_place` is the amount to subtract, so
+        // moving down means `-dy`.
         shift_box_y_in_place(&mut laid, -offset_y);
     }
     laid
@@ -972,10 +975,11 @@ fn layout_float_child(
     child_laid
 }
 
-/// `position: relative`のtop/right/bottom/leftから視覚的オフセット`(dx, dy)`を
-/// 解決する。優先順位はCSS仕様通り`top` > `bottom`、`left` > `right`。
-/// `top`/`bottom`のパーセンテージはcontaining blockの高さ基準だが、高さは
-/// 確定していない(循環を避ける)ため0として扱う(既知の簡略化)。
+/// Resolves the visual offset `(dx, dy)` from the top/right/bottom/left of a
+/// `position: relative` element. As in the CSS spec, `top` wins over `bottom`
+/// and `left` over `right`. A percentage `top`/`bottom` is relative to the
+/// height of the containing block, but that height is not settled yet (to avoid
+/// a circular dependency), so it is treated as 0: a known simplification.
 pub(super) fn resolve_relative_offset(inset: &RelativeInset, containing_width: f32) -> (f32, f32) {
     let resolve =
         |primary: LengthPercentageOrAuto, secondary: LengthPercentageOrAuto, basis: f32| {
@@ -2610,8 +2614,9 @@ mod tests {
         dom.children(id).find_map(|child| find(dom, child, tag))
     }
 
-    /// `position: relative`のオフセットは、装飾(背景・枠線)だけでなく中身
-    /// (行・子ブロック・マーカー)も一緒に動かす(waka/sghtmltopdf#29)。
+    /// A `position: relative` offset moves the contents (lines, child blocks,
+    /// marker) as well as the decoration (background, border)
+    /// (waka/sghtmltopdf#29).
     #[test]
     fn position_relative_moves_inline_content_and_block_children_with_the_box() {
         let dom = html::parse(
@@ -2635,15 +2640,16 @@ mod tests {
             (div_box.layout.content.x, div_box.layout.content.y),
             (7.0, 5.0)
         );
-        // 子ブロックも親と一緒に動く。
+        // A child block moves with its parent.
         assert_eq!((p_box.layout.content.x, p_box.layout.content.y), (7.0, 5.0));
-        // その行ボックスも同じ位置にある。
+        // And its line box is in the same place.
         let LaidOutContent::Inline(lines) = &p_box.content else {
             panic!("p should hold inline content");
         };
         assert_eq!((lines[0].rect.x, lines[0].rect.y), (7.0, 5.0));
 
-        // リストマーカーも中身と一緒に動く(content boxの左側に留まる)。
+        // The list marker moves with the contents too, staying to the left of
+        // the content box.
         let li = find(&dom, dom.document(), "li").expect("li not found");
         let li_box = find_laid_out(&laid, li).expect("li not laid out");
         let marker = li_box.marker.as_ref().expect("li should have a marker");
@@ -2655,8 +2661,8 @@ mod tests {
         assert_eq!(marker.rect.y, lines[0].rect.y);
     }
 
-    /// 相対配置された祖先を持つ絶対配置要素は、オフセット後のpadding boxを
-    /// containing blockにする。
+    /// An absolutely positioned element with a relatively positioned ancestor
+    /// takes the offset padding box as its containing block.
     #[test]
     fn position_relative_offset_shifts_the_containing_block_of_absolute_children() {
         let dom = html::parse(br#"<div class="rel"><div class="abs">x</div></div>"#);
@@ -2675,8 +2681,8 @@ mod tests {
         assert_eq!((abs.layout.content.x, abs.layout.content.y), (7.0, 5.0));
     }
 
-    /// インライン要素(`<span>`)の`position: relative`は、そのランだけを
-    /// ずらす(waka/sghtmltopdf#29の`<span>`のケース)。
+    /// `position: relative` on an inline element (`<span>`) shifts only its own
+    /// runs (the `<span>` case of waka/sghtmltopdf#29).
     #[test]
     fn position_relative_on_an_inline_element_shifts_only_its_runs() {
         let html_src = br#"<div>A <span class="s">TEXT</span> B</div>"#;
@@ -2710,7 +2716,7 @@ mod tests {
                     before.1 + 120.0,
                     "span run should move right by 120px"
                 );
-                // `baseline_shift`は正=上なので、`top: 3px`は-3。
+                // A positive `baseline_shift` means up, so `top: 3px` is -3.
                 assert_eq!(after.2, before.2 - 3.0, "span run should move down by 3px");
             } else {
                 assert_eq!(

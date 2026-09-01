@@ -1,9 +1,10 @@
-//! `position: relative`のE2Eテスト(waka/sghtmltopdf#29)。
+//! End-to-end tests for `position: relative` (waka/sghtmltopdf#29).
 //!
-//! オフセットは背景・枠線だけでなく、テキスト・画像・`<span>`・子ブロックも
-//! 一緒に動かさなければならない。issueの再現手順と同じ文書
-//! (`@page { margin: 0.5in }`、`* { margin: 0; padding: 0 }`)をページ分割まで
-//! 通し、装飾の矩形(border box)と中身の座標が一致することを確かめる。
+//! The offset has to move the text, images, `<span>`s and child blocks as well as
+//! the background and border. These run the same document as the reproduction in
+//! the issue (`@page { margin: 0.5in }`, `* { margin: 0; padding: 0 }`) all the
+//! way through pagination, and check that the decoration rectangle (border box)
+//! and the coordinates of the contents agree.
 
 use std::path::PathBuf;
 
@@ -44,8 +45,8 @@ fn find_laid_out(b: &LaidOutBox, target: NodeId) -> Option<&LaidOutBox> {
     None
 }
 
-/// issueの`probe`と同じ文書を1ページ目までレイアウトし、`tag`の最初の要素の
-/// レイアウト結果を`f`に渡す。
+/// Lays out the same document as the `probe` in the issue up to the first page,
+/// and hands the layout of the first `tag` element to `f`.
 fn with_probe<T>(css: &str, body: &str, tag: &str, f: impl FnOnce(&LaidOutBox) -> T) -> T {
     let html_src = format!(
         "<!DOCTYPE html><html><head><style>\
@@ -163,7 +164,8 @@ fn a_relative_span_moves_its_own_text_only() {
                 .find(|r| r.text == "TEXT")
                 .expect("run TEXT");
             assert_eq!(a.x_offset, 0.0);
-            // 通常なら"A "の直後(=a.width+空白)に来るはずのランが120px右へ。
+            // The run would normally sit right after "A " (a.width plus the
+            // space); it moves 120px to the right.
             assert!(
                 text.x_offset > a.width + OFFSET && text.x_offset < a.width + OFFSET + 10.0,
                 "TEXT run should sit 120px right of its normal position, got {}",
