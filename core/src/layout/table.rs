@@ -730,6 +730,8 @@ fn compute_natural_content_width(
                 0.0,
                 0.0,
                 None,
+                // 採寸パスでは幅が無制限で`text-align`の余りが出ないため不要。
+                None,
                 &mut pos,
             );
             lines.iter().map(|l| l.rect.width).fold(0.0f32, f32::max)
