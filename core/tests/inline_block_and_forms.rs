@@ -492,3 +492,151 @@ fn an_inline_image_is_embedded_in_the_pdf() {
         "the inline JPEG must be embedded as an image XObject"
     );
 }
+
+// ===== `text-align`とインラインの`<img>` (issue #19) =====
+
+/// `text-align: right`は同じ行のテキストを右端に寄せるが、`<img>`は左端に
+/// 残っていた(issue #19)。置換要素もテキストと同じ行に載っている以上、
+/// 同じように寄せられなければならない。
+#[test]
+fn text_align_right_moves_an_inline_image_to_the_right_edge() {
+    let html_src = format!(r#"<div class="box"><img src="{}"></div>"#, jpeg_data_uri());
+    let css = "body { margin: 0; } \
+               .box { text-align: right; width: 400px; } \
+               img { width: 40px; height: 40px; }";
+    let (_, laid) = layout_with_images(&html_src, css);
+    let lines = all_lines(&laid);
+    assert_eq!(lines.len(), 1);
+    let img = &lines[0].atomics[0];
+    // コンテナ幅400px、画像幅40pxなので左端は360pxに来る(issue #19の期待値)。
+    assert!(
+        (img.content.layout.border_box().x - 360.0).abs() < 0.01,
+        "expected the image at x=360, got x={}",
+        img.content.layout.border_box().x
+    );
+}
+
+#[test]
+fn text_align_center_moves_an_inline_image_to_the_middle() {
+    let html_src = format!(r#"<div class="box"><img src="{}"></div>"#, jpeg_data_uri());
+    let css = "body { margin: 0; } \
+               .box { text-align: center; width: 400px; } \
+               img { width: 40px; height: 40px; }";
+    let (_, laid) = layout_with_images(&html_src, css);
+    let img = &all_lines(&laid)[0].atomics[0];
+    // (400 - 40) / 2 = 180
+    assert!(
+        (img.content.layout.border_box().x - 180.0).abs() < 0.01,
+        "expected the image at x=180, got x={}",
+        img.content.layout.border_box().x
+    );
+}
+
+/// issue #19の「もう1つの観察」: テキストと画像が同じ行にあると、テキストだけが
+/// 右に寄って画像が左に取り残され、両者が離れてしまっていた。
+#[test]
+fn text_align_right_keeps_text_and_an_inline_image_together_at_the_right_edge() {
+    let html_src = format!(
+        r#"<div class="box">WORD<img src="{}"></div>"#,
+        jpeg_data_uri()
+    );
+    let css = "body { margin: 0; } \
+               .box { text-align: right; width: 400px; } \
+               img { width: 40px; height: 40px; }";
+    let (_, laid) = layout_with_images(&html_src, css);
+    let lines = all_lines(&laid);
+    assert_eq!(lines.len(), 1);
+    let line = &lines[0];
+    let word = &line.runs[0];
+    let img = &line.atomics[0];
+    let img_box = img.content.layout.border_box();
+    // 画像の右端がコンテナの右端に接し、テキストはその直前に続く。
+    assert!(
+        (img_box.x + img_box.width - 400.0).abs() < 0.01,
+        "expected the image's right edge at 400, got {}",
+        img_box.x + img_box.width
+    );
+    assert!(
+        (line.rect.x + word.x_offset + word.width - img_box.x).abs() < 0.01,
+        "expected the text to end where the image starts (text end {}, image x {})",
+        line.rect.x + word.x_offset + word.width,
+        img_box.x
+    );
+}
+
+#[test]
+fn text_align_right_moves_an_inline_image_wrapped_in_a_span() {
+    let html_src = format!(
+        r#"<div class="box"><span><img src="{}"></span></div>"#,
+        jpeg_data_uri()
+    );
+    let css = "body { margin: 0; } \
+               .box { text-align: right; width: 400px; } \
+               img { width: 40px; height: 40px; }";
+    let (_, laid) = layout_with_images(&html_src, css);
+    let img = &all_lines(&laid)[0].atomics[0];
+    assert!(
+        (img.content.layout.border_box().x - 360.0).abs() < 0.01,
+        "expected the image at x=360, got x={}",
+        img.content.layout.border_box().x
+    );
+}
+
+/// UAスタイルシートは`input`自身に`text-align: left`を付けるが、それは箱の
+/// 中身の揃え方であって、箱をどこに置くかはコンテナの`text-align`が決める。
+#[test]
+fn text_align_right_moves_a_lone_input_despite_its_own_ua_text_align() {
+    let html_src = r#"<p class="box"><input></p>"#;
+    let css = "body { margin: 0; } .box { text-align: right; width: 400px; } \
+               input { width: 40px; }";
+    let (_, laid) = layout(html_src, css);
+    let input = &all_lines(&laid)[0].atomics[0];
+    let b = input.content.layout.border_box();
+    assert!(
+        (b.x + b.width - 400.0).abs() < 0.01,
+        "expected the input's right edge at 400, got {}",
+        b.x + b.width
+    );
+    assert!(
+        b.x > 300.0,
+        "the input must have moved right, got x={}",
+        b.x
+    );
+}
+
+/// 逆に、UAスタイルシートが`button`に付ける`text-align: center`が箱自身の
+/// 配置に漏れてはいけない(コンテナは`left`のまま)。
+#[test]
+fn a_lone_button_is_not_centered_by_its_own_ua_text_align() {
+    let html_src = r#"<p class="box"><button>ok</button></p>"#;
+    let css = "body { margin: 0; } .box { width: 400px; }";
+    let (_, laid) = layout(html_src, css);
+    let button = &all_lines(&laid)[0].atomics[0];
+    assert!(
+        button.content.layout.border_box().x.abs() < 0.01,
+        "expected the button at x=0, got x={}",
+        button.content.layout.border_box().x
+    );
+}
+
+/// `text-align`はブロックコンテナに適用されるプロパティで、インラインボックスは
+/// 継承するだけなので、行内の`<span>`に書かれた値がコンテナの値に勝ってはいけない。
+/// IFCの代表値を先頭のテキストspanから読んでいたため、先頭spanの`left`が勝って
+/// いた。
+#[test]
+fn the_containers_text_align_wins_over_a_text_align_on_an_inline_span() {
+    let html_src = r#"<div class="box"><span class="inner">WORD</span></div>"#;
+    let css = "body { margin: 0; } \
+               .box { text-align: right; width: 400px; } \
+               .inner { text-align: left; }";
+    let (_, laid) = layout(html_src, css);
+    let lines = all_lines(&laid);
+    assert_eq!(lines.len(), 1);
+    let line = &lines[0];
+    let word = &line.runs[0];
+    assert!(
+        (line.rect.x + word.x_offset + word.width - 400.0).abs() < 0.01,
+        "expected the word's right edge at 400, got {}",
+        line.rect.x + word.x_offset + word.width
+    );
+}
