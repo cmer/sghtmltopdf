@@ -1270,6 +1270,12 @@ struct FlexBand {
     items: Vec<LaidOutBox>,
     top: f32,
     bottom: f32,
+    /// Vertical distance from the bottom of the previous band (0.0 for the
+    /// first one). `gap`/`row-gap`, and any space `justify-content` left
+    /// between the bands, belong to no item's margin box, so `place_split`,
+    /// which packs each item at the cursor, would drop it. [`place_flex_band`]
+    /// adds it back, the way [`place_grid`] keeps the gaps between its rows.
+    gap_before: f32,
 }
 
 /// Tolerance (px) used when deciding where a band ends. The coordinates taffy
@@ -1296,11 +1302,21 @@ fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
                 band.items.push(item);
                 band.bottom = band.bottom.max(bottom);
             }
-            _ => bands.push(FlexBand {
-                items: vec![item],
-                top,
-                bottom,
-            }),
+            _ => {
+                // The space taffy left between this band and the previous one
+                // (`gap`, or `justify-content`); negative overlap cannot happen
+                // here, since an item that overlapped would have joined the band.
+                let gap_before = bands
+                    .last()
+                    .map(|previous| (top - previous.bottom).max(0.0))
+                    .unwrap_or(0.0);
+                bands.push(FlexBand {
+                    items: vec![item],
+                    top,
+                    bottom,
+                    gap_before,
+                })
+            }
         }
     }
     bands
@@ -1320,6 +1336,13 @@ fn place_flex_band(
     state: &mut PaginationState<'_>,
     cursor: &mut f32,
 ) {
+    // Reopen the space that separates this band from the previous one, so a
+    // split container keeps the spacing an unsplit one has. At the very top of a
+    // page there is no previous band to separate from, so the gap is dropped
+    // (`place_grid` drops the row gap at a page boundary the same way).
+    if *cursor > 0.0 {
+        *cursor += band.gap_before;
+    }
     if let [item] = band.items.as_mut_slice() {
         place_box(item, page_height, state, cursor);
         return;

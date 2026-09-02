@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moved to the next page whole; one that cannot fit anywhere is now split between bands
   of items that do not overlap vertically (each item of a column flex, each line of a
   wrapped row flex), and a band holding a single item is split inside like a block, so a
-  long document body laid out with `flex-direction: column` flows across pages.
+  long document body laid out with `flex-direction: column` flows across pages. The space
+  `gap` (or `justify-content`) leaves between the bands is carried across the split, so a
+  container that grows past one page keeps the spacing it had.
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
   A line box keeps its text runs and its atomic inline boxes (`<img>`, `display: inline-block`,
   form controls) in separate lists, and the alignment step only shifted the runs, so a
