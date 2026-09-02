@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-09-01T21:18:40-05:00\n"
+"POT-Creation-Date: 2026-09-01T21:24:32-05:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -3190,6 +3190,7 @@ msgstr ""
 #: src/supports/selectors.md:81 src/supports/selectors.md:83
 #: src/supports/selectors.md:123 src/supports/selectors.md:124
 #: src/supports/selectors.md:125 src/supports/selectors.md:126
+#: src/supports/selectors.md:129
 msgid "⚠️"
 msgstr ""
 
@@ -3492,7 +3493,7 @@ msgstr ""
 #: src/supports/selectors.md:80 src/supports/selectors.md:85
 #: src/supports/selectors.md:86 src/supports/selectors.md:98
 #: src/supports/selectors.md:100 src/supports/selectors.md:128
-#: src/supports/selectors.md:129
+#: src/supports/selectors.md:130
 msgid "❌"
 msgstr ""
 
@@ -4912,57 +4913,68 @@ msgid "入力はUTF-8前提"
 msgstr ""
 
 #: src/supports/selectors.md:129
-msgid ""
-"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
-"`@container` / `@property`"
+msgid "`@layer`"
 msgstr ""
 
 #: src/supports/selectors.md:129
+msgid ""
+"ブロックの中のルールを書かれた順にトップレベルへ展開する(`@layer a { .x {} }`は`.x "
+"{}`と同じ)。レイヤーの優先順位は実装せず、通常のカスケード(詳細度・後勝ち)で決まる。`@layer a, "
+"b;`の順序宣言は無視する。Tailwind v4のように出力全体を`@layer`で包むCSSをそのまま渡せる"
+msgstr ""
+
+#: src/supports/selectors.md:130
+msgid ""
+"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@container` "
+"/ `@property`"
+msgstr ""
+
+#: src/supports/selectors.md:130
 msgid "ブロックごと無視される"
 msgstr ""
 
-#: src/supports/selectors.md:131
+#: src/supports/selectors.md:132
 msgid "ストリーミングモード固有の制約"
 msgstr ""
 
-#: src/supports/selectors.md:133
+#: src/supports/selectors.md:134
 msgid "`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::Streaming`でのみ以下が適用される。"
 msgstr ""
 
-#: src/supports/selectors.md:136
+#: src/supports/selectors.md:137
 msgid ""
 "`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理します。 "
 "そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下の要素に限って結果が変わります(その要素の内側は部分木が揃っているので変わりません)。"
 msgstr ""
 
-#: src/supports/selectors.md:139
+#: src/supports/selectors.md:140
 msgid ""
 "`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:has(~ "
 "...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告が出ます"
 msgstr ""
 
-#: src/supports/selectors.md:141
+#: src/supports/selectors.md:142
 msgid "`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するのでバッチと同じ結果になります"
 msgstr ""
 
-#: src/supports/selectors.md:142
+#: src/supports/selectors.md:143
 msgid ""
 "`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:only-child`もバッチと同じ結果になります。 "
 "これらを使っている文書では、処理済みのトップレベル要素を子孫だけ解放し、要素そのものを兄弟として残すためです "
 "(残るのはトップレベル要素1個につき1ノードなので、解放できる量はほぼ変わりません)"
 msgstr ""
 
-#: src/supports/selectors.md:145
+#: src/supports/selectors.md:146
 msgid ""
 "`<body>`開始後の`<style>`タグはエラー: `EngineError::UnsupportedInStreamingMode`を返す。 "
 "黙って見た目が崩れるのを避けるため、`<style>`は`<head>`に集約する"
 msgstr ""
 
-#: src/supports/selectors.md:147
+#: src/supports/selectors.md:148
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr ""
 
-#: src/supports/selectors.md:148
+#: src/supports/selectors.md:149
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr ""
 
