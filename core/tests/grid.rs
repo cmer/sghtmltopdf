@@ -477,3 +477,71 @@ fn auto_tracks_absorb_the_free_space_unless_justify_content_says_otherwise() {
         "flex-startなら内容幅のまま左に寄る: {packed:?}"
     );
 }
+
+/// Every text line on the page as (text, in-page y, height), in document order.
+fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32, f32)> {
+    fn walk(b: &LaidOutBox, out: &mut Vec<(String, f32, f32)>) {
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                for child in children {
+                    walk(child, out);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for item in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(item, out);
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    let text: String = line.runs.iter().map(|run| run.text.as_str()).collect();
+                    if !text.trim().is_empty() {
+                        out.push((text, line.rect.y, line.rect.height));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for b in &page.boxes {
+        walk(b, &mut out);
+    }
+    out
+}
+
+#[test]
+fn grid_items_on_later_pages_are_placed_within_the_page() {
+    // #18: in the row bands of the second and later pages, the band's own
+    // coordinates were corrected to in-page ones but the items inside were
+    // shifted the opposite way, landing far below the page, where nothing is
+    // painted. The page count was right, but every page after the first was blank.
+    let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
+    let html = format!(r#"<div class="g">{paragraphs}</div>"#);
+    let css = "* { margin: 0; padding: 0 } .g { display: grid; }";
+    let dom = html::parse(html.as_bytes());
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(css));
+    let fonts = test_fonts();
+    let settings = PageSettings::default();
+    let page_height = settings.content_height();
+    let pages = paginate_document(&dom, &styles, &fonts, &settings);
+
+    assert!(pages.len() > 1, "150 paragraphs do not fit on one page");
+    let mut seen = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        let lines = text_lines_on_page(page);
+        assert!(!lines.is_empty(), "page {page_index} must not be blank");
+        for (text, y, height) in lines {
+            assert!(
+                y >= -0.01 && y + height <= page_height + 0.01,
+                "{text:?} on page {page_index} is outside the page: y={y} height={height} page_height={page_height}"
+            );
+            seen.push(text);
+        }
+    }
+    let expected: Vec<String> = (0..150).map(|i| format!("Line {i}")).collect();
+    assert_eq!(
+        seen, expected,
+        "every paragraph appears exactly once, in order"
+    );
+}

@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-30T18:38:36+09:00\n"
+"POT-Creation-Date: 2026-09-04T00:08:46+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -3066,8 +3066,8 @@ msgstr "Precompiled gems are distributed, so no Rust toolchain is needed."
 #: src/supports/properties.md:65 src/supports/properties.md:86
 #: src/supports/properties.md:113 src/supports/properties.md:128
 #: src/supports/properties.md:150 src/supports/properties.md:159
-#: src/supports/properties.md:170 src/supports/properties.md:185
-#: src/supports/properties.md:220 src/supports/properties.md:239
+#: src/supports/properties.md:170 src/supports/properties.md:186
+#: src/supports/properties.md:221 src/supports/properties.md:240
 #: src/supports/selectors.md:15 src/supports/selectors.md:28
 #: src/supports/selectors.md:47 src/supports/selectors.md:58
 #: src/supports/selectors.md:77 src/supports/selectors.md:90
@@ -3909,8 +3909,8 @@ msgstr "Display and visibility"
 #: src/supports/properties.md:86 src/supports/properties.md:113
 #: src/supports/properties.md:128 src/supports/properties.md:150
 #: src/supports/properties.md:159 src/supports/properties.md:170
-#: src/supports/properties.md:185 src/supports/properties.md:220
-#: src/supports/properties.md:239 src/supports/pagination.md:13
+#: src/supports/properties.md:186 src/supports/properties.md:221
+#: src/supports/properties.md:240 src/supports/pagination.md:13
 msgid "プロパティ"
 msgstr "Property"
 
@@ -3919,8 +3919,8 @@ msgstr "Property"
 #: src/supports/properties.md:86 src/supports/properties.md:113
 #: src/supports/properties.md:128 src/supports/properties.md:150
 #: src/supports/properties.md:159 src/supports/properties.md:170
-#: src/supports/properties.md:185 src/supports/properties.md:220
-#: src/supports/properties.md:239 src/supports/selectors.md:15
+#: src/supports/properties.md:186 src/supports/properties.md:221
+#: src/supports/properties.md:240 src/supports/selectors.md:15
 #: src/supports/selectors.md:28 src/supports/selectors.md:47
 #: src/supports/selectors.md:77 src/supports/selectors.md:121
 #: src/migration/wkhtmltopdf-options.md:29
@@ -3961,13 +3961,14 @@ msgstr "`display`"
 #: src/supports/properties.md:131 src/supports/properties.md:133
 #: src/supports/properties.md:153 src/supports/properties.md:155
 #: src/supports/properties.md:161 src/supports/properties.md:172
-#: src/supports/properties.md:173 src/supports/properties.md:189
-#: src/supports/properties.md:194 src/supports/properties.md:196
+#: src/supports/properties.md:173 src/supports/properties.md:190
+#: src/supports/properties.md:195 src/supports/properties.md:197
 #: src/supports/selectors.md:38 src/supports/selectors.md:49
 #: src/supports/selectors.md:50 src/supports/selectors.md:79
 #: src/supports/selectors.md:81 src/supports/selectors.md:83
 #: src/supports/selectors.md:123 src/supports/selectors.md:124
 #: src/supports/selectors.md:125 src/supports/selectors.md:126
+#: src/supports/selectors.md:129
 msgid "⚠️"
 msgstr "⚠️"
 
@@ -4130,15 +4131,15 @@ msgstr "`margin`"
 #: src/supports/properties.md:135 src/supports/properties.md:152
 #: src/supports/properties.md:154 src/supports/properties.md:162
 #: src/supports/properties.md:163 src/supports/properties.md:174
-#: src/supports/properties.md:175 src/supports/properties.md:187
-#: src/supports/properties.md:188 src/supports/properties.md:190
-#: src/supports/properties.md:191 src/supports/properties.md:192
-#: src/supports/properties.md:193 src/supports/properties.md:195
-#: src/supports/properties.md:222 src/supports/properties.md:223
-#: src/supports/properties.md:224 src/supports/properties.md:225
-#: src/supports/properties.md:226 src/supports/properties.md:227
-#: src/supports/properties.md:228 src/supports/properties.md:229
-#: src/supports/properties.md:241 src/supports/properties.md:242
+#: src/supports/properties.md:175 src/supports/properties.md:188
+#: src/supports/properties.md:189 src/supports/properties.md:191
+#: src/supports/properties.md:192 src/supports/properties.md:193
+#: src/supports/properties.md:194 src/supports/properties.md:196
+#: src/supports/properties.md:223 src/supports/properties.md:224
+#: src/supports/properties.md:225 src/supports/properties.md:226
+#: src/supports/properties.md:227 src/supports/properties.md:228
+#: src/supports/properties.md:229 src/supports/properties.md:230
+#: src/supports/properties.md:242 src/supports/properties.md:243
 #: src/supports/selectors.md:17 src/supports/selectors.md:18
 #: src/supports/selectors.md:19 src/supports/selectors.md:20
 #: src/supports/selectors.md:21 src/supports/selectors.md:22
@@ -4357,15 +4358,15 @@ msgstr "`outline-offset`"
 
 #: src/supports/properties.md:60 src/supports/properties.md:92
 #: src/supports/properties.md:122 src/supports/properties.md:164
-#: src/supports/properties.md:176 src/supports/properties.md:197
-#: src/supports/properties.md:198 src/supports/properties.md:230
-#: src/supports/properties.md:231 src/supports/properties.md:232
+#: src/supports/properties.md:176 src/supports/properties.md:198
+#: src/supports/properties.md:199 src/supports/properties.md:231
+#: src/supports/properties.md:232 src/supports/properties.md:233
 #: src/supports/selectors.md:24 src/supports/selectors.md:51
 #: src/supports/selectors.md:52 src/supports/selectors.md:64
 #: src/supports/selectors.md:80 src/supports/selectors.md:85
 #: src/supports/selectors.md:86 src/supports/selectors.md:98
 #: src/supports/selectors.md:100 src/supports/selectors.md:128
-#: src/supports/selectors.md:129
+#: src/supports/selectors.md:130
 msgid "❌"
 msgstr "❌"
 
@@ -5094,7 +5095,7 @@ msgstr "`none`, or repeated `name [<integer>]`, the value being 1 when omitted"
 msgid "`counter-set`"
 msgstr "`counter-set`"
 
-#: src/supports/properties.md:164 src/supports/properties.md:232
+#: src/supports/properties.md:164 src/supports/properties.md:233
 msgid "未実装"
 msgstr "Not implemented"
 
@@ -5174,34 +5175,38 @@ msgstr "Flexbox"
 #: src/supports/properties.md:182
 msgid ""
 "`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)へ委"
-"譲する。 flexコンテナはページ分割上アトミック(`display: table`と同じく途中で"
-"分割されない)。"
+"譲する。 1ページに収まるflexコンテナはページ分割上アトミック(途中で分割せず、"
+"収まらなければ次ページへ送る)。 1ページに収まらない高さのコンテナは、縦に重な"
+"らないアイテム群を単位に分割する(詳細は[ページ分割](./pagination.md)を参照)。"
 msgstr ""
 "Laying out `display: flex` is delegated to [taffy](https://github.com/"
-"DioxusLabs/taffy). A flex container is atomic as far as page breaking goes: "
-"like `display: table`, it is never split part way through."
+"DioxusLabs/taffy). A flex container that fits on a page is atomic as far as "
+"page breaking goes: it is never split part way through, and it moves to the "
+"next page when it does not fit. A container taller than one page is split in "
+"units of items that do not overlap vertically (see [Page breaking](./"
+"pagination.md) for the details)."
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:188
 msgid "`flex-direction`"
 msgstr "`flex-direction`"
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:188
 msgid "`row`/`row-reverse`/`column`/`column-reverse`"
 msgstr "`row`, `row-reverse`, `column`, and `column-reverse`"
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:189
 msgid "`flex-wrap`"
 msgstr "`flex-wrap`"
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:189
 msgid "`nowrap`/`wrap`/`wrap-reverse`"
 msgstr "`nowrap`, `wrap`, and `wrap-reverse`"
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:190
 msgid "`justify-content`"
 msgstr "`justify-content`"
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:190
 msgid ""
 "`normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-"
 "between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワー"
@@ -5211,21 +5216,21 @@ msgstr ""
 "`center`, `space-between`, `space-around`, and `space-evenly`. The `safe` "
 "and `unsafe` overflow keywords are not supported"
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:191
 msgid "`align-items`"
 msgstr "`align-items`"
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:191
 msgid "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 "`flex-start` (`start`), `flex-end` (`end`), `center`, `baseline`, and "
 "`stretch`"
 
-#: src/supports/properties.md:191
+#: src/supports/properties.md:192
 msgid "`align-content`"
 msgstr "`align-content`"
 
-#: src/supports/properties.md:191
+#: src/supports/properties.md:192
 msgid ""
 "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`stretch`/`space-between`/"
 "`space-around`/`space-evenly`"
@@ -5233,41 +5238,41 @@ msgstr ""
 "`flex-start` (`start`), `flex-end` (`end`), `center`, `stretch`, `space-"
 "between`, `space-around`, and `space-evenly`"
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:193
 msgid "`align-self`"
 msgstr "`align-self`"
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:193
 msgid ""
 "`auto`/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 "`auto`, `flex-start` (`start`), `flex-end` (`end`), `center`, `baseline`, "
 "and `stretch`"
 
-#: src/supports/properties.md:193
+#: src/supports/properties.md:194
 msgid "`flex-grow` / `flex-shrink`"
 msgstr "`flex-grow`, `flex-shrink`"
 
-#: src/supports/properties.md:193
+#: src/supports/properties.md:194
 msgid "非負の`<number>`(負値は無効な宣言として無視)"
 msgstr ""
 "A non-negative `<number>`; a negative value makes the declaration invalid "
 "and it is ignored"
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:195
 msgid "`flex-basis`"
 msgstr "`flex-basis`"
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:195
 msgid "`auto`/`content`/`<length-percentage>`。`content`は`auto`と同一視"
 msgstr ""
 "`auto`, `content`, and `<length-percentage>`. `content` is treated as `auto`"
 
-#: src/supports/properties.md:195
+#: src/supports/properties.md:196
 msgid "`flex`(ショートハンド)"
 msgstr "`flex`, the shorthand"
 
-#: src/supports/properties.md:195
+#: src/supports/properties.md:196
 msgid ""
 "`none`および`<grow> [<shrink>] [<basis>]`。CSS仕様の既定値規則(`flex: 1`の"
 "basisは`0%`、`flex: <width>`のgrow/shrinkは1)を再現"
@@ -5276,53 +5281,53 @@ msgstr ""
 "rules are reproduced: the basis of `flex: 1` is `0%`, and the grow and "
 "shrink of `flex: <width>` are 1"
 
-#: src/supports/properties.md:196
+#: src/supports/properties.md:197
 msgid "`gap` / `row-gap` / `column-gap`"
 msgstr "`gap`, `row-gap`, `column-gap`"
 
-#: src/supports/properties.md:196
+#: src/supports/properties.md:197
 msgid "flexコンテナでのみ有効(多段組みの`column-gap`としては機能しない)"
 msgstr ""
 "In effect on flex containers only; it does not act as the multi-column "
 "`column-gap`"
 
-#: src/supports/properties.md:197
+#: src/supports/properties.md:198
 msgid "`order`"
 msgstr "`order`"
 
-#: src/supports/properties.md:197
+#: src/supports/properties.md:198
 msgid "taffy 0.12系が未対応のため"
 msgstr "The taffy 0.12 series does not support it"
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:199
 msgid "`place-content` / `place-items` / `place-self`(ショートハンド)"
 msgstr "`place-content`, `place-items`, `place-self`, the shorthands"
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:199
 msgid "未実装。個別のロングハンドを使う"
 msgstr "Not implemented. Use the individual longhands"
 
-#: src/supports/properties.md:199 src/supports/properties.md:228
+#: src/supports/properties.md:200 src/supports/properties.md:229
 msgid "`justify-items` / `justify-self`"
 msgstr "`justify-items`, `justify-self`"
 
-#: src/supports/properties.md:199 src/migration/wicked-pdf.md:72
+#: src/supports/properties.md:200 src/migration/wicked-pdf.md:72
 #: src/migration/wicked-pdf.md:73 src/migration/wicked-pdf.md:74
 #: src/migration/wicked-pdf.md:75 src/migration/wicked-pdf.md:76
 #: src/migration/wicked-pdf.md:77
 msgid "—"
 msgstr "—"
 
-#: src/supports/properties.md:199
+#: src/supports/properties.md:200
 msgid "flexアイテムには適用されない(下記)"
 msgstr "They do not apply to flex items; see below"
 
-#: src/supports/properties.md:201
+#: src/supports/properties.md:202
 msgid "`justify-items`/`justify-self`がflexで効かないのは仕様"
 msgstr ""
 "`justify-items` and `justify-self` having no effect in flex is by design"
 
-#: src/supports/properties.md:203
+#: src/supports/properties.md:204
 msgid ""
 "CSS Box Alignmentでは`justify-items`/`justify-self`はGrid・ブロックレイアウト"
 "用のプロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は"
@@ -5337,7 +5342,7 @@ msgstr ""
 "which layout is delegated, only the Grid algorithm looks at them; the "
 "flexbox algorithm never does."
 
-#: src/supports/properties.md:207
+#: src/supports/properties.md:208
 msgid ""
 "したがってこのエンジンでパースに対応しても見た目は変わらないため、意図的に実"
 "装していない。 flexで特定のアイテムだけを寄せたい場合は`margin: auto`を使う"
@@ -5347,36 +5352,36 @@ msgstr ""
 "deliberately left unimplemented. To push a particular flex item to one side, "
 "use `margin: auto`, which is supported:"
 
-#: src/supports/properties.md:211
+#: src/supports/properties.md:212
 msgid "/* justify-self: end 相当(主軸の終端へ) */"
 msgstr ""
 "/* the equivalent of justify-self: end, pushing to the end of the main axis "
 "*/"
 
-#: src/supports/properties.md:212
+#: src/supports/properties.md:213
 msgid "/* justify-self: center 相当 */"
 msgstr "/* the equivalent of justify-self: center */"
 
-#: src/supports/properties.md:215
+#: src/supports/properties.md:216
 msgid "Grid"
 msgstr "Grid"
 
-#: src/supports/properties.md:217
+#: src/supports/properties.md:218
 msgid ""
-"`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 Flexboxと違い、"
-"1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複"
-"数行にまたがるアイテムがある境界では分割しない)。"
+"`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 1ページに収まら"
+"ないグリッドは行単位でページ分割される(テーブルと同じ方針。複数行にまたがるア"
+"イテムがある境界では分割しない)。"
 msgstr ""
-"Laying out `display: grid` is delegated to taffy, as flexbox is. Unlike "
-"flexbox, a grid that does not fit on one page is broken between rows, the "
-"same approach as tables; no break is taken at a boundary crossed by an item "
-"that spans several rows."
+"Laying out `display: grid` is delegated to taffy, as flexbox is. A grid that "
+"does not fit on one page is broken between rows, the same approach as "
+"tables; no break is taken at a boundary crossed by an item that spans "
+"several rows."
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:223
 msgid "`grid-template-columns` / `grid-template-rows`"
 msgstr "`grid-template-columns`, `grid-template-rows`"
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:223
 msgid ""
 "`none`/`<length>`/`<percentage>`/`fr`/`auto`/`min-content`/`max-content`/"
 "`minmax()`/`fit-content()`/`repeat(<整数>\\|auto-fill\\|auto-fit)`/"
@@ -5386,11 +5391,11 @@ msgstr ""
 "content`, `minmax()`, `fit-content()`, `repeat(<integer>\\|auto-fill\\|auto-"
 "fit)`, and `[name]` for line names. `calc()` is not supported in a track size"
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:224
 msgid "`grid-template-areas`"
 msgstr "`grid-template-areas`"
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:224
 msgid ""
 "文字列マトリクス。列数の不一致・非矩形のエリアは不正な値として宣言ごと無視す"
 "る(仕様通り)。`.`は名前なしセル"
@@ -5399,43 +5404,43 @@ msgstr ""
 "makes the value invalid and the whole declaration is ignored, as the "
 "specification says. A `.` is an unnamed cell"
 
-#: src/supports/properties.md:224
+#: src/supports/properties.md:225
 msgid "`grid-auto-columns` / `grid-auto-rows`"
 msgstr "`grid-auto-columns`, `grid-auto-rows`"
 
-#: src/supports/properties.md:224
+#: src/supports/properties.md:225
 msgid "`<track-size>+`"
 msgstr "`<track-size>+`"
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:226
 msgid "`grid-auto-flow`"
 msgstr "`grid-auto-flow`"
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:226
 msgid "`row`/`column`/`dense`(併記可)"
 msgstr "`row`, `column`, and `dense`, which may be combined"
 
-#: src/supports/properties.md:226
+#: src/supports/properties.md:227
 msgid "`grid-row-start` / `-end` / `grid-column-start` / `-end`"
 msgstr "`grid-row-start`, `-end`, `grid-column-start`, `-end`"
 
-#: src/supports/properties.md:226
+#: src/supports/properties.md:227
 msgid ""
 "`auto`/`<integer>`/`span <integer>`/`<custom-ident>`/`span <custom-ident>`"
 msgstr ""
 "`auto`, `<integer>`, `span <integer>`, `<custom-ident>`, and `span <custom-"
 "ident>`"
 
-#: src/supports/properties.md:227
+#: src/supports/properties.md:228
 msgid "`grid-row` / `grid-column` / `grid-area`"
 msgstr "`grid-row`, `grid-column`, `grid-area`"
 
-#: src/supports/properties.md:227
+#: src/supports/properties.md:228
 msgid ""
 "`/`区切りのショートハンド。`grid-area: <name>`で名前付きエリアを指定できる"
 msgstr "The shorthands, separated by `/`. `grid-area: <name>` names an area"
 
-#: src/supports/properties.md:228
+#: src/supports/properties.md:229
 msgid ""
 "Gridでのみ意味を持つ(flexアイテムには適用されない、[上記](#justify-"
 "itemsjustify-selfがflexで効かないのは仕様))"
@@ -5443,20 +5448,20 @@ msgstr ""
 "Meaningful in Grid only; they do not apply to flex items, as [noted above]"
 "(#justify-items-and-justify-self-having-no-effect-in-flex-is-by-design)"
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:230
 msgid ""
 "`align-items` / `align-self` / `justify-content` / `align-content` / `gap`"
 msgstr "`align-items`, `align-self`, `justify-content`, `align-content`, `gap`"
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:230
 msgid "Flexboxと共有(値の範囲は[Flexbox](#flexbox)節を参照)"
 msgstr "Ranges"
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:231
 msgid "`grid` / `grid-template`(ショートハンド)"
 msgstr "`grid`, `grid-template`, the shorthands"
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:231
 msgid ""
 "個別のロングハンドを使う。トラック定義とエリア定義を1つの構文へ詰め込む複雑な"
 "文法のため非対応"
@@ -5464,19 +5469,19 @@ msgstr ""
 "Use the individual longhands. These pack track and area definitions into one "
 "syntax, and that grammar is too involved to support"
 
-#: src/supports/properties.md:231
+#: src/supports/properties.md:232
 msgid "`display: inline-grid`"
 msgstr "`display: inline-grid`"
 
-#: src/supports/properties.md:231
+#: src/supports/properties.md:232
 msgid "`inline-flex`と同じ理由で非対応"
 msgstr "Not supported, for the same reason as `inline-flex`"
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:233
 msgid "subgrid / masonry"
 msgstr "subgrid, masonry"
 
-#: src/supports/properties.md:234
+#: src/supports/properties.md:235
 msgid ""
 "`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は"
 "`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)"
@@ -5487,29 +5492,29 @@ msgstr ""
 "proportion CSS prescribes (an equal share to each `auto` track). Use `fr` or "
 "a length if the column widths need to be exact."
 
-#: src/supports/properties.md:237
+#: src/supports/properties.md:238
 msgid "置換要素(画像)"
 msgstr "Replaced elements: images"
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:242
 msgid "`object-fit`"
 msgstr "`object-fit`"
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:242
 msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
 msgstr ""
 "`fill`, `contain`, `cover`, `none`, and `scale-down`. Meaningful on `<img>` "
 "only"
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:243
 msgid "`object-position`"
 msgstr "`object-position`"
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:243
 msgid "`background-position`と同じ値文法。初期値`50% 50%`"
 msgstr "The same syntax as `background-position`. `50% 50%` by default"
 
-#: src/supports/properties.md:244
+#: src/supports/properties.md:245
 msgid ""
 "`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対"
 "応フォーマットはPNG/JPEG/WebP。 CSSで`width`/`height`の片方だけを指定した場合"
@@ -5520,11 +5525,11 @@ msgstr ""
 "When CSS gives only one of `width` and `height`, the other is derived from "
 "the intrinsic aspect ratio (see [`aspect-ratio`](#box-model))."
 
-#: src/supports/properties.md:248
+#: src/supports/properties.md:249
 msgid "非対応プロパティ一覧"
 msgstr "List of unsupported properties"
 
-#: src/supports/properties.md:250
+#: src/supports/properties.md:251
 msgid ""
 "以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と"
 "決めたものだけではない。 カテゴリ表の`❌`行も参照。"
@@ -5533,7 +5538,7 @@ msgstr ""
 "are simply unimplemented, not all deliberately ruled out forever. See the "
 "`❌` rows in the tables above as well."
 
-#: src/supports/properties.md:254
+#: src/supports/properties.md:255
 msgid ""
 "ショートハンド: `font`/`place-content`/`place-items`/`place-self`/`text-"
 "decoration`の色・線種部分"
@@ -5541,7 +5546,7 @@ msgstr ""
 "Shorthands: `font`, `place-content`, `place-items`, `place-self`, and the "
 "colour and line-style parts of `text-decoration`"
 
-#: src/supports/properties.md:255
+#: src/supports/properties.md:256
 msgid ""
 "論理プロパティのうち寸法系: `inline-size`/`block-size`/`min-inline-size`/"
 "`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応"
@@ -5551,7 +5556,7 @@ msgstr ""
 "size`, `max-block-size` and so on (the `margin`, `padding`, `inset` and "
 "`border` logical properties are supported)"
 
-#: src/supports/properties.md:256
+#: src/supports/properties.md:257
 msgid ""
 "書字方向: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-"
 "combine-upright`"
@@ -5559,7 +5564,7 @@ msgstr ""
 "Writing direction: `direction`, `unicode-bidi`, `writing-mode`, `text-"
 "orientation`, `text-combine-upright`"
 
-#: src/supports/properties.md:257
+#: src/supports/properties.md:258
 msgid ""
 "テキスト詳細: `text-decoration-color`/`-style`/`-thickness`/`text-underline-"
 "offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
@@ -5568,7 +5573,7 @@ msgstr ""
 "underline-offset`, `text-emphasis-skip`, `tab-size`, `ruby-*`, `text-"
 "justify`, `line-break`"
 
-#: src/supports/properties.md:258
+#: src/supports/properties.md:259
 msgid ""
 "フォント詳細: `font-variant`/`font-stretch`/`font-feature-settings`/`font-"
 "variation-settings`/`font-kerning`/`font-display`"
@@ -5576,7 +5581,7 @@ msgstr ""
 "Font details: `font-variant`, `font-stretch`, `font-feature-settings`, `font-"
 "variation-settings`, `font-kerning`, `font-display`"
 
-#: src/supports/properties.md:259
+#: src/supports/properties.md:260
 msgid ""
 "多段組み: `columns`/`column-count`/`column-width`/`column-rule`/`column-"
 "span`/`column-fill`"
@@ -5584,7 +5589,7 @@ msgstr ""
 "Multi-column: `columns`, `column-count`, `column-width`, `column-rule`, "
 "`column-span`, `column-fill`"
 
-#: src/supports/properties.md:260
+#: src/supports/properties.md:261
 msgid ""
 "視覚効果: `filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-"
 "mode`/`clip`/`clip-path`/`mask`/`isolation`"
@@ -5592,7 +5597,7 @@ msgstr ""
 "Visual effects: `filter`, `backdrop-filter`, `mix-blend-mode`, `background-"
 "blend-mode`, `clip`, `clip-path`, `mask`, `isolation`"
 
-#: src/supports/properties.md:261
+#: src/supports/properties.md:262
 msgid ""
 "3D/アニメーション: `perspective`/`transform-style`/`backface-visibility`/"
 "`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/"
@@ -5602,7 +5607,7 @@ msgstr ""
 "the individual `translate`, `rotate`, and `scale` properties, `transition-"
 "*`, `animation-*`, `will-change`"
 
-#: src/supports/properties.md:262
+#: src/supports/properties.md:263
 msgid ""
 "枠線・背景の拡張: `border-image-*`/`background-clip`/`background-origin`/"
 "`outline-offset`"
@@ -5610,7 +5615,7 @@ msgstr ""
 "Border and background extensions: `border-image-*`, `background-clip`, "
 "`background-origin`, `outline-offset`"
 
-#: src/supports/properties.md:263
+#: src/supports/properties.md:264
 msgid ""
 "オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-"
 "behavior`"
@@ -5618,7 +5623,7 @@ msgstr ""
 "Overflow: `overflow-x`, `overflow-y`, `resize`, `scroll-*`, `overscroll-"
 "behavior`"
 
-#: src/supports/properties.md:264
+#: src/supports/properties.md:265
 msgid ""
 "UI/対話: `cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-"
 "color`/`appearance`"
@@ -5626,7 +5631,7 @@ msgstr ""
 "UI and interaction: `cursor`, `pointer-events`, `user-select`, `caret-"
 "color`, `accent-color`, `appearance`"
 
-#: src/supports/properties.md:265
+#: src/supports/properties.md:266
 msgid ""
 "その他: `all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/"
 "`speak`等の音声メディア系/`zoom`"
@@ -6230,22 +6235,39 @@ msgid "入力はUTF-8前提"
 msgstr "The input is assumed to be UTF-8"
 
 #: src/supports/selectors.md:129
-msgid ""
-"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
-"`@container` / `@property`"
-msgstr ""
-"`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@layer`, "
-"`@container`, `@property`"
+msgid "`@layer`"
+msgstr "`@layer`"
 
 #: src/supports/selectors.md:129
+msgid ""
+"ブロックの中のルールを書かれた順にトップレベルへ展開する(`@layer a { .x {} }`"
+"は`.x {}`と同じ)。レイヤーの優先順位は実装せず、通常のカスケード(詳細度・後勝"
+"ち)で決まる。`@layer a, b;`の順序宣言は無視する。Tailwind v4のように出力全体"
+"を`@layer`で包むCSSをそのまま渡せる"
+msgstr ""
+"Rules inside the block are hoisted to the top level in source order (`@layer "
+"a { .x {} }` is the same as `.x {}`). Layer precedence is not implemented; "
+"the usual cascade (specificity, last wins) decides. The `@layer a, b;` "
+"ordering statement is ignored. A stylesheet that wraps its whole output in "
+"`@layer`, as Tailwind v4 does, can be passed as is"
+
+#: src/supports/selectors.md:130
+msgid ""
+"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / "
+"`@container` / `@property`"
+msgstr ""
+"`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@container`, "
+"`@property`"
+
+#: src/supports/selectors.md:130
 msgid "ブロックごと無視される"
 msgstr "The whole block is ignored"
 
-#: src/supports/selectors.md:131
+#: src/supports/selectors.md:132
 msgid "ストリーミングモード固有の制約"
 msgstr "Restrictions specific to streaming mode"
 
-#: src/supports/selectors.md:133
+#: src/supports/selectors.md:134
 msgid ""
 "`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::"
 "Streaming`でのみ以下が適用される。"
@@ -6253,7 +6275,7 @@ msgstr ""
 "In `Mode::Batch` the whole DOM is available, so none of this applies. The "
 "following holds only in `Mode::Streaming`."
 
-#: src/supports/selectors.md:136
+#: src/supports/selectors.md:137
 msgid ""
 "`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理しま"
 "す。 そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下"
@@ -6266,7 +6288,7 @@ msgstr ""
 "for those top-level elements — inside one of them the subtree is complete, "
 "so nothing changes."
 
-#: src/supports/selectors.md:139
+#: src/supports/selectors.md:140
 msgid ""
 "`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:"
 "has(~ ...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告が"
@@ -6276,7 +6298,7 @@ msgstr ""
 "and `:has(~ ...)` match too much or miss altogether. Using any of them "
 "prints a warning"
 
-#: src/supports/selectors.md:141
+#: src/supports/selectors.md:142
 msgid ""
 "`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するの"
 "でバッチと同じ結果になります"
@@ -6285,7 +6307,7 @@ msgstr ""
 "next sibling, on the other hand, line up with what settling already "
 "guarantees, so they give the same result as batch mode"
 
-#: src/supports/selectors.md:142
+#: src/supports/selectors.md:143
 msgid ""
 "`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:"
 "only-child`もバッチと同じ結果になります。 これらを使っている文書では、処理済"
@@ -6299,7 +6321,7 @@ msgstr ""
 "descendants released, so the element itself stays visible as a sibling (what "
 "remains is one node per top-level element, so almost as much is still freed)"
 
-#: src/supports/selectors.md:145
+#: src/supports/selectors.md:146
 msgid ""
 "`<body>`開始後の`<style>`タグはエラー: `EngineError::"
 "UnsupportedInStreamingMode`を返す。 黙って見た目が崩れるのを避けるため、"
@@ -6309,11 +6331,11 @@ msgstr ""
 "UnsupportedInStreamingMode`. Keep all `<style>` in `<head>`, so that the "
 "layout does not quietly fall apart"
 
-#: src/supports/selectors.md:147
+#: src/supports/selectors.md:148
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr "`position: absolute` and `fixed` are ignored"
 
-#: src/supports/selectors.md:148
+#: src/supports/selectors.md:149
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr "`counter(pages)`, the total page count, is unavailable"
 
@@ -7540,10 +7562,16 @@ msgid "`display: flex`"
 msgstr "`display: flex`"
 
 #: src/supports/pagination.md:94
-msgid "アトミック。途中で分割せず、収まらなければ次ページへ送る"
+msgid ""
+"収まればアトミック(途中で分割せず、次ページへ送る)。1ページに収まらない高さの"
+"コンテナは、縦に重ならないアイテム群(列flexなら各アイテム、折り返す行flexなら"
+"各flex line)を単位に分割し、アイテムが1つだけの帯はブロックと同様に内部でも分"
+"割する"
 msgstr ""
-"Atomic. It is never split; if it does not fit, the whole thing moves to the "
-"next page"
+"Atomic when it fits (never split; moved to the next page whole). A container "
+"taller than one page is split in units of bands, groups of items that do not "
+"overlap vertically (each item of a column flex, each flex line of a wrapping "
+"row flex); a band holding a single item is split inside as well, like a block"
 
 #: src/supports/pagination.md:95
 msgid "`display: grid`"
@@ -7572,30 +7600,41 @@ msgstr ""
 "one piece. Use Grid or a table where you want it split."
 
 #: src/supports/pagination.md:101
+msgid ""
+"1ページに収まらないflexコンテナ(列flexで組んだ文書本文など)は、はみ出した部分"
+"を失わずに後続ページへ流れます。 折り返さない行flexで1ページより高いflex line"
+"は分割できず、はみ出します(クリップされません)。"
+msgstr ""
+"A flex container that does not fit on one page (a document body laid out as "
+"a column flex, say) flows onto the following pages without losing the "
+"overflow. A flex line taller than one page in a row flex that does not wrap "
+"cannot be split and overflows (it is not clipped)."
+
+#: src/supports/pagination.md:104
 msgid "よく使う書き方"
 msgstr "Common patterns"
 
-#: src/supports/pagination.md:103
+#: src/supports/pagination.md:106
 msgid "見出しが単独でページ末尾に残らないようにする:"
 msgstr "Keep a heading from being stranded at the bottom of a page:"
 
-#: src/supports/pagination.md:107
+#: src/supports/pagination.md:110
 msgid "/* 見出しの直後で改ページしない */"
 msgstr "/* do not break right after a heading */"
 
-#: src/supports/pagination.md:112
+#: src/supports/pagination.md:115
 msgid "明細の1件が2ページに割れないようにする:"
 msgstr "Keep a single line item from splitting across two pages:"
 
-#: src/supports/pagination.md:118
+#: src/supports/pagination.md:121
 msgid "章ごとに必ず改ページする:"
 msgstr "Always start a new page for each chapter:"
 
-#: src/supports/pagination.md:124
+#: src/supports/pagination.md:127
 msgid "Note"
 msgstr "Note"
 
-#: src/supports/pagination.md:126
+#: src/supports/pagination.md:129
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では`:last-child`などの後方"
 "参照セレクタが常に非マッチになります。 上の例の`+`(隣接兄弟)は使えます。"
@@ -9587,6 +9626,20 @@ msgstr ""
 "Embedding a JavaScript engine remains something to consider if the need "
 "arises. Items above that are not deliberate non-goals, such as PDF outlines, "
 "may well be supported later."
+
+#~ msgid ""
+#~ "`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)"
+#~ "へ委譲する。 flexコンテナはページ分割上アトミック(`display: table`と同じく"
+#~ "途中で分割されない)。"
+#~ msgstr ""
+#~ "Laying out `display: flex` is delegated to [taffy](https://github.com/"
+#~ "DioxusLabs/taffy). A flex container is atomic as far as page breaking "
+#~ "goes: like `display: table`, it is never split part way through."
+
+#~ msgid "アトミック。途中で分割せず、収まらなければ次ページへ送る"
+#~ msgstr ""
+#~ "Atomic. It is never split; if it does not fit, the whole thing moves to "
+#~ "the next page"
 
 #~ msgid "個別の`top`/`right`/`bottom`/`left`を使う"
 #~ msgstr "Use `top`, `right`, `bottom`, and `left` individually"

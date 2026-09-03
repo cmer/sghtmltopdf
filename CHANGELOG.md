@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Hoist the rules inside `@layer` blocks to the top level, in source order, instead of
+  dropping the whole block (#20). Tailwind v4 wraps its entire output in cascade layers,
+  so a stock v4 bundle rendered a completely unstyled document. Layer precedence is not
+  implemented: a print stylesheet is normally a single bundle with nothing to arbitrate
+  against, so plain source order gives the same result, and where it differs the usual
+  specificity contest decides. The bare `@layer a, b;` ordering statement is still ignored.
+
 ### Fixed
 
 - `position: relative` now moves the content of the element together with its background
@@ -15,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at the unoffset position. A `position: relative` inline element (`<span>`) now shifts
   its own text too, and an absolutely positioned descendant of a relative element uses the
   offset padding box as its containing block.
+- Paint the rows of a `display: grid` container on the pages it was split across (#18).
+  The pagination allocated the right number of pages and moved each row band into page
+  coordinates, but shifted the items inside the band the opposite way, so every page after
+  the first came out blank and the paragraphs on them were missing from the PDF.
+- Split a `display: flex` container that is taller than a page instead of silently losing
+  everything past the first page (#18). A flex container that fits on a page is still
+  moved to the next page whole; one that cannot fit anywhere is now split between bands
+  of items that do not overlap vertically (each item of a column flex, each line of a
+  wrapped row flex), and a band holding a single item is split inside like a block, so a
+  long document body laid out with `flex-direction: column` flows across pages. The space
+  `gap` (or `justify-content`) leaves between the bands is carried across the split, so a
+  container that grows past one page keeps the spacing it had.
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
   A line box keeps its text runs and its atomic inline boxes (`<img>`, `display: inline-block`,
   form controls) in separate lists, and the alignment step only shifted the runs, so a
