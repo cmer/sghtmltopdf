@@ -1286,9 +1286,12 @@ const FLEX_BAND_EPSILON: f32 = 0.01;
 /// Groups flex items into bands by vertical overlap.
 ///
 /// With `flex-direction: column` each item is a band; with a wrapping row flex
-/// each flex line is; a row flex that does not wrap is a single band, that is,
-/// atomic as before. The decision is geometric, so a visual order that differs
-/// from document order (through `order`, say) makes no difference.
+/// each flex line is; a row flex that does not wrap is usually a single band,
+/// that is, atomic as before. The decision is purely geometric, so items of one
+/// row that do not overlap vertically (`align-self` placing a short item at the
+/// far end of a tall line, say) do end up in bands of their own, and a visual
+/// order that differs from document order (through `order`, say) makes no
+/// difference.
 fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
     // Order by top edge (a stable sort, so items sharing a top edge keep their
     // document order).

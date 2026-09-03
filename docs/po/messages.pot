@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-09-01T21:24:32-05:00\n"
+"POT-Creation-Date: 2026-09-04T00:08:46+09:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -2453,8 +2453,8 @@ msgstr ""
 #: src/supports/properties.md:65 src/supports/properties.md:86
 #: src/supports/properties.md:113 src/supports/properties.md:128
 #: src/supports/properties.md:150 src/supports/properties.md:159
-#: src/supports/properties.md:170 src/supports/properties.md:185
-#: src/supports/properties.md:220 src/supports/properties.md:239
+#: src/supports/properties.md:170 src/supports/properties.md:186
+#: src/supports/properties.md:221 src/supports/properties.md:240
 #: src/supports/selectors.md:15 src/supports/selectors.md:28
 #: src/supports/selectors.md:47 src/supports/selectors.md:58
 #: src/supports/selectors.md:77 src/supports/selectors.md:90
@@ -3131,8 +3131,8 @@ msgstr ""
 #: src/supports/properties.md:86 src/supports/properties.md:113
 #: src/supports/properties.md:128 src/supports/properties.md:150
 #: src/supports/properties.md:159 src/supports/properties.md:170
-#: src/supports/properties.md:185 src/supports/properties.md:220
-#: src/supports/properties.md:239 src/supports/pagination.md:13
+#: src/supports/properties.md:186 src/supports/properties.md:221
+#: src/supports/properties.md:240 src/supports/pagination.md:13
 msgid "プロパティ"
 msgstr ""
 
@@ -3141,8 +3141,8 @@ msgstr ""
 #: src/supports/properties.md:86 src/supports/properties.md:113
 #: src/supports/properties.md:128 src/supports/properties.md:150
 #: src/supports/properties.md:159 src/supports/properties.md:170
-#: src/supports/properties.md:185 src/supports/properties.md:220
-#: src/supports/properties.md:239 src/supports/selectors.md:15
+#: src/supports/properties.md:186 src/supports/properties.md:221
+#: src/supports/properties.md:240 src/supports/selectors.md:15
 #: src/supports/selectors.md:28 src/supports/selectors.md:47
 #: src/supports/selectors.md:77 src/supports/selectors.md:121
 #: src/migration/wkhtmltopdf-options.md:29
@@ -3183,8 +3183,8 @@ msgstr ""
 #: src/supports/properties.md:131 src/supports/properties.md:133
 #: src/supports/properties.md:153 src/supports/properties.md:155
 #: src/supports/properties.md:161 src/supports/properties.md:172
-#: src/supports/properties.md:173 src/supports/properties.md:189
-#: src/supports/properties.md:194 src/supports/properties.md:196
+#: src/supports/properties.md:173 src/supports/properties.md:190
+#: src/supports/properties.md:195 src/supports/properties.md:197
 #: src/supports/selectors.md:38 src/supports/selectors.md:49
 #: src/supports/selectors.md:50 src/supports/selectors.md:79
 #: src/supports/selectors.md:81 src/supports/selectors.md:83
@@ -3306,15 +3306,15 @@ msgstr ""
 #: src/supports/properties.md:135 src/supports/properties.md:152
 #: src/supports/properties.md:154 src/supports/properties.md:162
 #: src/supports/properties.md:163 src/supports/properties.md:174
-#: src/supports/properties.md:175 src/supports/properties.md:187
-#: src/supports/properties.md:188 src/supports/properties.md:190
-#: src/supports/properties.md:191 src/supports/properties.md:192
-#: src/supports/properties.md:193 src/supports/properties.md:195
-#: src/supports/properties.md:222 src/supports/properties.md:223
-#: src/supports/properties.md:224 src/supports/properties.md:225
-#: src/supports/properties.md:226 src/supports/properties.md:227
-#: src/supports/properties.md:228 src/supports/properties.md:229
-#: src/supports/properties.md:241 src/supports/properties.md:242
+#: src/supports/properties.md:175 src/supports/properties.md:188
+#: src/supports/properties.md:189 src/supports/properties.md:191
+#: src/supports/properties.md:192 src/supports/properties.md:193
+#: src/supports/properties.md:194 src/supports/properties.md:196
+#: src/supports/properties.md:223 src/supports/properties.md:224
+#: src/supports/properties.md:225 src/supports/properties.md:226
+#: src/supports/properties.md:227 src/supports/properties.md:228
+#: src/supports/properties.md:229 src/supports/properties.md:230
+#: src/supports/properties.md:242 src/supports/properties.md:243
 #: src/supports/selectors.md:17 src/supports/selectors.md:18
 #: src/supports/selectors.md:19 src/supports/selectors.md:20
 #: src/supports/selectors.md:21 src/supports/selectors.md:22
@@ -3485,9 +3485,9 @@ msgstr ""
 
 #: src/supports/properties.md:60 src/supports/properties.md:92
 #: src/supports/properties.md:122 src/supports/properties.md:164
-#: src/supports/properties.md:176 src/supports/properties.md:197
-#: src/supports/properties.md:198 src/supports/properties.md:230
-#: src/supports/properties.md:231 src/supports/properties.md:232
+#: src/supports/properties.md:176 src/supports/properties.md:198
+#: src/supports/properties.md:199 src/supports/properties.md:231
+#: src/supports/properties.md:232 src/supports/properties.md:233
 #: src/supports/selectors.md:24 src/supports/selectors.md:51
 #: src/supports/selectors.md:52 src/supports/selectors.md:64
 #: src/supports/selectors.md:80 src/supports/selectors.md:85
@@ -4024,7 +4024,7 @@ msgstr ""
 msgid "`counter-set`"
 msgstr ""
 
-#: src/supports/properties.md:164 src/supports/properties.md:232
+#: src/supports/properties.md:164 src/supports/properties.md:233
 msgid "未実装"
 msgstr ""
 
@@ -4090,130 +4090,131 @@ msgstr ""
 #: src/supports/properties.md:182
 msgid ""
 "`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)へ委譲する。 "
-"flexコンテナはページ分割上アトミック(`display: table`と同じく途中で分割されない)。"
+"1ページに収まるflexコンテナはページ分割上アトミック(途中で分割せず、収まらなければ次ページへ送る)。 "
+"1ページに収まらない高さのコンテナは、縦に重ならないアイテム群を単位に分割する(詳細は[ページ分割](./pagination.md)を参照)。"
 msgstr ""
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:188
 msgid "`flex-direction`"
 msgstr ""
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:188
 msgid "`row`/`row-reverse`/`column`/`column-reverse`"
 msgstr ""
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:189
 msgid "`flex-wrap`"
 msgstr ""
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:189
 msgid "`nowrap`/`wrap`/`wrap-reverse`"
 msgstr ""
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:190
 msgid "`justify-content`"
 msgstr ""
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:190
 msgid ""
 "`normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワードは非対応"
 msgstr ""
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:191
 msgid "`align-items`"
 msgstr ""
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:191
 msgid "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 
-#: src/supports/properties.md:191
+#: src/supports/properties.md:192
 msgid "`align-content`"
 msgstr ""
 
-#: src/supports/properties.md:191
+#: src/supports/properties.md:192
 msgid ""
 "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`stretch`/`space-between`/`space-around`/`space-evenly`"
 msgstr ""
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:193
 msgid "`align-self`"
 msgstr ""
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:193
 msgid ""
 "`auto`/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 
-#: src/supports/properties.md:193
+#: src/supports/properties.md:194
 msgid "`flex-grow` / `flex-shrink`"
 msgstr ""
 
-#: src/supports/properties.md:193
+#: src/supports/properties.md:194
 msgid "非負の`<number>`(負値は無効な宣言として無視)"
 msgstr ""
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:195
 msgid "`flex-basis`"
 msgstr ""
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:195
 msgid "`auto`/`content`/`<length-percentage>`。`content`は`auto`と同一視"
 msgstr ""
 
-#: src/supports/properties.md:195
+#: src/supports/properties.md:196
 msgid "`flex`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:195
+#: src/supports/properties.md:196
 msgid ""
 "`none`および`<grow> [<shrink>] [<basis>]`。CSS仕様の既定値規則(`flex: "
 "1`のbasisは`0%`、`flex: <width>`のgrow/shrinkは1)を再現"
 msgstr ""
 
-#: src/supports/properties.md:196
+#: src/supports/properties.md:197
 msgid "`gap` / `row-gap` / `column-gap`"
 msgstr ""
 
-#: src/supports/properties.md:196
+#: src/supports/properties.md:197
 msgid "flexコンテナでのみ有効(多段組みの`column-gap`としては機能しない)"
 msgstr ""
 
-#: src/supports/properties.md:197
+#: src/supports/properties.md:198
 msgid "`order`"
 msgstr ""
 
-#: src/supports/properties.md:197
+#: src/supports/properties.md:198
 msgid "taffy 0.12系が未対応のため"
 msgstr ""
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:199
 msgid "`place-content` / `place-items` / `place-self`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:199
 msgid "未実装。個別のロングハンドを使う"
 msgstr ""
 
-#: src/supports/properties.md:199 src/supports/properties.md:228
+#: src/supports/properties.md:200 src/supports/properties.md:229
 msgid "`justify-items` / `justify-self`"
 msgstr ""
 
-#: src/supports/properties.md:199 src/migration/wicked-pdf.md:72
+#: src/supports/properties.md:200 src/migration/wicked-pdf.md:72
 #: src/migration/wicked-pdf.md:73 src/migration/wicked-pdf.md:74
 #: src/migration/wicked-pdf.md:75 src/migration/wicked-pdf.md:76
 #: src/migration/wicked-pdf.md:77
 msgid "—"
 msgstr ""
 
-#: src/supports/properties.md:199
+#: src/supports/properties.md:200
 msgid "flexアイテムには適用されない(下記)"
 msgstr ""
 
-#: src/supports/properties.md:201
+#: src/supports/properties.md:202
 msgid "`justify-items`/`justify-self`がflexで効かないのは仕様"
 msgstr ""
 
-#: src/supports/properties.md:203
+#: src/supports/properties.md:204
 msgid ""
 "CSS Box "
 "Alignmentでは`justify-items`/`justify-self`はGrid・ブロックレイアウト用のプロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は`justify-content`と`margin: "
@@ -4221,220 +4222,220 @@ msgid ""
 "レイアウトを委譲しているtaffyでも、これらを参照するのはGridのアルゴリズムだけで、flexboxのアルゴリズムは一切参照しない。"
 msgstr ""
 
-#: src/supports/properties.md:207
+#: src/supports/properties.md:208
 msgid ""
 "したがってこのエンジンでパースに対応しても見た目は変わらないため、意図的に実装していない。 flexで特定のアイテムだけを寄せたい場合は`margin: "
 "auto`を使う(こちらは対応済み):"
 msgstr ""
 
-#: src/supports/properties.md:211
+#: src/supports/properties.md:212
 msgid "/* justify-self: end 相当(主軸の終端へ) */"
 msgstr ""
 
-#: src/supports/properties.md:212
+#: src/supports/properties.md:213
 msgid "/* justify-self: center 相当 */"
 msgstr ""
 
-#: src/supports/properties.md:215
+#: src/supports/properties.md:216
 msgid "Grid"
 msgstr ""
 
-#: src/supports/properties.md:217
+#: src/supports/properties.md:218
 msgid ""
 "`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 "
-"Flexboxと違い、1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複数行にまたがるアイテムがある境界では分割しない)。"
+"1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複数行にまたがるアイテムがある境界では分割しない)。"
 msgstr ""
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:223
 msgid "`grid-template-columns` / `grid-template-rows`"
 msgstr ""
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:223
 msgid ""
 "`none`/`<length>`/`<percentage>`/`fr`/`auto`/`min-content`/`max-content`/`minmax()`/`fit-content()`/`repeat(<整数>\\|auto-fill\\|auto-fit)`/`[name]`(ライン名)。トラックサイズに`calc()`は非対応"
 msgstr ""
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:224
 msgid "`grid-template-areas`"
 msgstr ""
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:224
 msgid "文字列マトリクス。列数の不一致・非矩形のエリアは不正な値として宣言ごと無視する(仕様通り)。`.`は名前なしセル"
 msgstr ""
 
-#: src/supports/properties.md:224
+#: src/supports/properties.md:225
 msgid "`grid-auto-columns` / `grid-auto-rows`"
 msgstr ""
 
-#: src/supports/properties.md:224
+#: src/supports/properties.md:225
 msgid "`<track-size>+`"
 msgstr ""
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:226
 msgid "`grid-auto-flow`"
 msgstr ""
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:226
 msgid "`row`/`column`/`dense`(併記可)"
 msgstr ""
 
-#: src/supports/properties.md:226
+#: src/supports/properties.md:227
 msgid "`grid-row-start` / `-end` / `grid-column-start` / `-end`"
 msgstr ""
 
-#: src/supports/properties.md:226
+#: src/supports/properties.md:227
 msgid ""
 "`auto`/`<integer>`/`span <integer>`/`<custom-ident>`/`span <custom-ident>`"
 msgstr ""
 
-#: src/supports/properties.md:227
+#: src/supports/properties.md:228
 msgid "`grid-row` / `grid-column` / `grid-area`"
 msgstr ""
 
-#: src/supports/properties.md:227
+#: src/supports/properties.md:228
 msgid "`/`区切りのショートハンド。`grid-area: <name>`で名前付きエリアを指定できる"
 msgstr ""
 
-#: src/supports/properties.md:228
+#: src/supports/properties.md:229
 msgid ""
 "Gridでのみ意味を持つ(flexアイテムには適用されない、[上記](#justify-itemsjustify-selfがflexで効かないのは仕様))"
 msgstr ""
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:230
 msgid ""
 "`align-items` / `align-self` / `justify-content` / `align-content` / `gap`"
 msgstr ""
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:230
 msgid "Flexboxと共有(値の範囲は[Flexbox](#flexbox)節を参照)"
 msgstr ""
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:231
 msgid "`grid` / `grid-template`(ショートハンド)"
 msgstr ""
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:231
 msgid "個別のロングハンドを使う。トラック定義とエリア定義を1つの構文へ詰め込む複雑な文法のため非対応"
 msgstr ""
 
-#: src/supports/properties.md:231
+#: src/supports/properties.md:232
 msgid "`display: inline-grid`"
 msgstr ""
 
-#: src/supports/properties.md:231
+#: src/supports/properties.md:232
 msgid "`inline-flex`と同じ理由で非対応"
 msgstr ""
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:233
 msgid "subgrid / masonry"
 msgstr ""
 
-#: src/supports/properties.md:234
+#: src/supports/properties.md:235
 msgid ""
 "`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)と一致しません。 "
 "列幅を厳密に決めたい場合は`fr`か長さで指定してください。"
 msgstr ""
 
-#: src/supports/properties.md:237
+#: src/supports/properties.md:238
 msgid "置換要素(画像)"
 msgstr ""
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:242
 msgid "`object-fit`"
 msgstr ""
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:242
 msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
 msgstr ""
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:243
 msgid "`object-position`"
 msgstr ""
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:243
 msgid "`background-position`と同じ値文法。初期値`50% 50%`"
 msgstr ""
 
-#: src/supports/properties.md:244
+#: src/supports/properties.md:245
 msgid ""
 "`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対応フォーマットはPNG/JPEG/WebP。 "
 "CSSで`width`/`height`の片方だけを指定した場合は内在アスペクト比でもう一方を導出する([`aspect-ratio`](#ボックスモデル)、)。"
 msgstr ""
 
-#: src/supports/properties.md:248
+#: src/supports/properties.md:249
 msgid "非対応プロパティ一覧"
 msgstr ""
 
-#: src/supports/properties.md:250
+#: src/supports/properties.md:251
 msgid "以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と決めたものだけではない。 カテゴリ表の`❌`行も参照。"
 msgstr ""
 
-#: src/supports/properties.md:254
+#: src/supports/properties.md:255
 msgid ""
 "ショートハンド: "
 "`font`/`place-content`/`place-items`/`place-self`/`text-decoration`の色・線種部分"
 msgstr ""
 
-#: src/supports/properties.md:255
+#: src/supports/properties.md:256
 msgid ""
 "論理プロパティのうち寸法系: "
 "`inline-size`/`block-size`/`min-inline-size`/`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応済み)"
 msgstr ""
 
-#: src/supports/properties.md:256
+#: src/supports/properties.md:257
 msgid ""
 "書字方向: "
 "`direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-combine-upright`"
 msgstr ""
 
-#: src/supports/properties.md:257
+#: src/supports/properties.md:258
 msgid ""
 "テキスト詳細: "
 "`text-decoration-color`/`-style`/`-thickness`/`text-underline-offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
 msgstr ""
 
-#: src/supports/properties.md:258
+#: src/supports/properties.md:259
 msgid ""
 "フォント詳細: "
 "`font-variant`/`font-stretch`/`font-feature-settings`/`font-variation-settings`/`font-kerning`/`font-display`"
 msgstr ""
 
-#: src/supports/properties.md:259
+#: src/supports/properties.md:260
 msgid ""
 "多段組み: "
 "`columns`/`column-count`/`column-width`/`column-rule`/`column-span`/`column-fill`"
 msgstr ""
 
-#: src/supports/properties.md:260
+#: src/supports/properties.md:261
 msgid ""
 "視覚効果: "
 "`filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-mode`/`clip`/`clip-path`/`mask`/`isolation`"
 msgstr ""
 
-#: src/supports/properties.md:261
+#: src/supports/properties.md:262
 msgid ""
 "3D/アニメーション: "
 "`perspective`/`transform-style`/`backface-visibility`/`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/`will-change`"
 msgstr ""
 
-#: src/supports/properties.md:262
+#: src/supports/properties.md:263
 msgid ""
 "枠線・背景の拡張: "
 "`border-image-*`/`background-clip`/`background-origin`/`outline-offset`"
 msgstr ""
 
-#: src/supports/properties.md:263
+#: src/supports/properties.md:264
 msgid ""
 "オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-behavior`"
 msgstr ""
 
-#: src/supports/properties.md:264
+#: src/supports/properties.md:265
 msgid ""
 "UI/対話: "
 "`cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-color`/`appearance`"
 msgstr ""
 
-#: src/supports/properties.md:265
+#: src/supports/properties.md:266
 msgid ""
 "その他: "
 "`all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/`speak`等の音声メディア系/`zoom`"
