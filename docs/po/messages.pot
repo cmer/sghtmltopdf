@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-30T09:25:00-05:00\n"
+"POT-Creation-Date: 2026-09-01T21:24:32-05:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -5878,7 +5878,9 @@ msgid "`display: flex`"
 msgstr ""
 
 #: src/supports/pagination.md:94
-msgid "アトミック。途中で分割せず、収まらなければ次ページへ送る"
+msgid ""
+"収まればアトミック(途中で分割せず、次ページへ送る)。1ページに収まらない高さのコンテナは、縦に重ならないアイテム群(列flexなら各アイテム、折り返す行flexなら各flex "
+"line)を単位に分割し、アイテムが1つだけの帯はブロックと同様に内部でも分割する"
 msgstr ""
 
 #: src/supports/pagination.md:95
@@ -5902,30 +5904,36 @@ msgid "大きなカードを並べる用途では、flexコンテナが丸ごと
 msgstr ""
 
 #: src/supports/pagination.md:101
+msgid ""
+"1ページに収まらないflexコンテナ(列flexで組んだ文書本文など)は、はみ出した部分を失わずに後続ページへ流れます。 "
+"折り返さない行flexで1ページより高いflex lineは分割できず、はみ出します(クリップされません)。"
+msgstr ""
+
+#: src/supports/pagination.md:104
 msgid "よく使う書き方"
 msgstr ""
 
-#: src/supports/pagination.md:103
+#: src/supports/pagination.md:106
 msgid "見出しが単独でページ末尾に残らないようにする:"
 msgstr ""
 
-#: src/supports/pagination.md:107
+#: src/supports/pagination.md:110
 msgid "/* 見出しの直後で改ページしない */"
 msgstr ""
 
-#: src/supports/pagination.md:112
+#: src/supports/pagination.md:115
 msgid "明細の1件が2ページに割れないようにする:"
 msgstr ""
 
-#: src/supports/pagination.md:118
+#: src/supports/pagination.md:121
 msgid "章ごとに必ず改ページする:"
 msgstr ""
 
-#: src/supports/pagination.md:124
+#: src/supports/pagination.md:127
 msgid "Note"
 msgstr ""
 
-#: src/supports/pagination.md:126
+#: src/supports/pagination.md:129
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では`:last-child`などの後方参照セレクタが常に非マッチになります。 "
 "上の例の`+`(隣接兄弟)は使えます。"

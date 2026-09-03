@@ -503,10 +503,13 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
                 collect_completed_subtree_roots_in_box(child, roots);
             }
         }
-        // flexコンテナはページ分割に対してアトミック(`display: table`と同じ
-        // 扱い)。グリッドは行単位で分割するが、断片ごとの完了判定は
-        // `place_grid`が`FragmentPosition`で表現するため、
-        // ここではテーブルと同じく再帰しない。
+        // A flex container is atomic when it fits (treated the same way as
+        // `display: table`). One taller than a page is split by `place_split`,
+        // and its items are then placed directly on the page (a fragment is never
+        // still a `Flex`), so seeing a `Flex` here always means the whole thing is
+        // complete. A grid is split by row, but `place_grid` expresses the
+        // completion of each fragment through `FragmentPosition`, so, as with a
+        // table, there is no recursion here.
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -611,6 +614,33 @@ fn place_box(
             );
             return;
         }
+        // A flex container is atomic as a rule: if it does not fit in what is
+        // left of the page it is moved to the next page whole. A container taller
+        // than a page, though, does not fit there either, and the overflow is
+        // never painted and simply disappears (#18). In that case only, it is
+        // split through the same path as a block, in units of bands: groups of
+        // items that do not overlap vertically.
+        LaidOutContent::Flex(children) if !children.is_empty() && height > page_height => {
+            let mut bands = group_flex_items_into_bands(std::mem::take(children));
+            place_split(
+                &mut container,
+                &mut bands,
+                page_height,
+                state,
+                cursor,
+                // Forced breaks are deliberately not given a meaning for bands.
+                // A container that fits is atomic and never looks at the `break-*`
+                // of its items, so honouring them only when it is split would make
+                // the behaviour hard to predict.
+                |_i, _band: &FlexBand| (false, false),
+                |_band: &FlexBand| false,
+                |band: &FlexBand| band.top,
+                |band, ph, ps, c| {
+                    place_flex_band(band, ph, ps, c);
+                },
+            );
+            return;
+        }
         _ => {}
     }
 
@@ -644,8 +674,9 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        // flexコンテナはアトミック。グリッドの行分割は`place_grid`が
-        // 担うため、ここでは再帰しない。
+        // A flex container is atomic when it fits, and even when it is split for
+        // being taller than a page the `break-*` of its items is not consulted.
+        // Splitting a grid by row is `place_grid`'s job. Neither recurses here.
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -1170,13 +1201,14 @@ fn place_grid(
     *cursor += bottom_extra;
 }
 
-/// 行帯とその中のアイテムをまとめてY方向へ平行移動する。
+/// Translates a row band, and the items inside it, along Y. As in `shift_box_y`,
+/// `delta` is the amount to subtract (absolute y minus in-page y).
 fn shift_grid_row_y(row: &LaidOutGridRow, delta: f32) -> LaidOutGridRow {
     LaidOutGridRow {
         items: row
             .items
             .iter()
-            .map(|item| shift_box_y(item, -delta))
+            .map(|item| shift_box_y(item, delta))
             .collect(),
         top: row.top - delta,
         bottom: row.bottom - delta,
@@ -1228,6 +1260,103 @@ fn flush_grid_fragment(
         }),
     };
     state.last_mut().boxes.push(fragment);
+}
+
+/// The unit a flex container taller than a page is split into: a band grouping
+/// items that overlap vertically. In a column flex each item is a band; in a row
+/// flex each flex line is. `top`/`bottom` are absolute y coordinates of the
+/// margin box.
+struct FlexBand {
+    items: Vec<LaidOutBox>,
+    top: f32,
+    bottom: f32,
+    /// Vertical distance from the bottom of the previous band (0.0 for the
+    /// first one). `gap`/`row-gap`, and any space `justify-content` left
+    /// between the bands, belong to no item's margin box, so `place_split`,
+    /// which packs each item at the cursor, would drop it. [`place_flex_band`]
+    /// adds it back, the way [`place_grid`] keeps the gaps between its rows.
+    gap_before: f32,
+}
+
+/// Tolerance (px) used when deciding where a band ends. The coordinates taffy
+/// returns are floating point, so this keeps items that merely touch from being
+/// mistaken for overlapping ones.
+const FLEX_BAND_EPSILON: f32 = 0.01;
+
+/// Groups flex items into bands by vertical overlap.
+///
+/// With `flex-direction: column` each item is a band; with a wrapping row flex
+/// each flex line is; a row flex that does not wrap is a single band, that is,
+/// atomic as before. The decision is geometric, so a visual order that differs
+/// from document order (through `order`, say) makes no difference.
+fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
+    // Order by top edge (a stable sort, so items sharing a top edge keep their
+    // document order).
+    items.sort_by(|a, b| margin_box_top(a).total_cmp(&margin_box_top(b)));
+    let mut bands: Vec<FlexBand> = Vec::new();
+    for item in items {
+        let top = margin_box_top(&item);
+        let bottom = top + item.layout.margin_box_height();
+        match bands.last_mut() {
+            Some(band) if top < band.bottom - FLEX_BAND_EPSILON => {
+                band.items.push(item);
+                band.bottom = band.bottom.max(bottom);
+            }
+            _ => {
+                // The space taffy left between this band and the previous one
+                // (`gap`, or `justify-content`); negative overlap cannot happen
+                // here, since an item that overlapped would have joined the band.
+                let gap_before = bands
+                    .last()
+                    .map(|previous| (top - previous.bottom).max(0.0))
+                    .unwrap_or(0.0);
+                bands.push(FlexBand {
+                    items: vec![item],
+                    top,
+                    bottom,
+                    gap_before,
+                })
+            }
+        }
+    }
+    bands
+}
+
+/// Places one flex band on a page. Called from [`place_split`].
+///
+/// A band holding a single item (each item of a column flex) goes to
+/// [`place_box`] as an ordinary box, so an item taller than a page is split
+/// inside it like a block. A band with several items side by side is treated as
+/// one leaf, to keep the items in the same position relative to each other: if
+/// it does not fit in what is left it is moved to the top of the next page, and
+/// if the band itself is taller than a page it overflows, as before.
+fn place_flex_band(
+    band: &mut FlexBand,
+    page_height: f32,
+    state: &mut PaginationState<'_>,
+    cursor: &mut f32,
+) {
+    // Reopen the space that separates this band from the previous one, so a
+    // split container keeps the spacing an unsplit one has. At the very top of a
+    // page there is no previous band to separate from, so the gap is dropped
+    // (`place_grid` drops the row gap at a page boundary the same way).
+    if *cursor > 0.0 {
+        *cursor += band.gap_before;
+    }
+    if let [item] = band.items.as_mut_slice() {
+        place_box(item, page_height, state, cursor);
+        return;
+    }
+    let height = band.bottom - band.top;
+    if *cursor > 0.0 && *cursor + height > page_height {
+        new_page(state, cursor);
+    }
+    let base = *cursor;
+    for item in band.items.iter_mut() {
+        let mut local_cursor = base + (margin_box_top(item) - band.top);
+        place_leaf(item, state, &mut local_cursor);
+    }
+    *cursor = base + height;
 }
 
 fn place_table(

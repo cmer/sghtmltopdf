@@ -542,3 +542,265 @@ fn flex_item_widths_keep_their_fractional_part() {
         v.layout.content
     );
 }
+
+// ===== Paginating a flex container that does not fit on one page (#18) =====
+
+fn paginate_pages(html_src: &str, css: &str) -> Vec<sghtmltopdf_core::layout::Page> {
+    let dom = html::parse(html_src.as_bytes());
+    let styles = compute_styles(&dom, &user_agent_stylesheet(), &parse_stylesheet(css));
+    let fonts = test_fonts();
+    paginate_document(&dom, &styles, &fonts, &PageSettings::default())
+}
+
+/// Every text line on the page as (text, in-page y, height), in document order.
+fn text_lines_on_page(page: &sghtmltopdf_core::layout::Page) -> Vec<(String, f32, f32)> {
+    fn walk(b: &LaidOutBox, out: &mut Vec<(String, f32, f32)>) {
+        match &b.content {
+            LaidOutContent::Blocks(children) | LaidOutContent::Flex(children) => {
+                for child in children {
+                    walk(child, out);
+                }
+            }
+            LaidOutContent::Grid(grid) => {
+                for item in grid.rows.iter().flat_map(|row| &row.items) {
+                    walk(item, out);
+                }
+            }
+            LaidOutContent::Inline(lines) => {
+                for line in lines {
+                    let text: String = line.runs.iter().map(|run| run.text.as_str()).collect();
+                    if !text.trim().is_empty() {
+                        out.push((text, line.rect.y, line.rect.height));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for b in &page.boxes {
+        walk(b, &mut out);
+    }
+    out
+}
+
+/// Collects the text lines of every page and checks each one lands inside its page.
+fn all_lines_within_pages(pages: &[sghtmltopdf_core::layout::Page]) -> Vec<Vec<String>> {
+    let page_height = PageSettings::default().content_height();
+    pages
+        .iter()
+        .enumerate()
+        .map(|(page_index, page)| {
+            text_lines_on_page(page)
+                .into_iter()
+                .map(|(text, y, height)| {
+                    assert!(
+                        y >= -0.01 && y + height <= page_height + 0.01,
+                        "{text:?} on page {page_index} is outside the page: y={y} height={height}"
+                    );
+                    text
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_flex_column_taller_than_a_page_is_split_between_its_items() {
+    let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
+    let pages = paginate_pages(
+        &format!(r#"<div class="f">{paragraphs}</div>"#),
+        "* { margin: 0; padding: 0 } .f { display: flex; flex-direction: column }",
+    );
+
+    assert!(
+        pages.len() > 1,
+        "150 paragraphs do not fit on one page: {} page(s)",
+        pages.len()
+    );
+    let per_page = all_lines_within_pages(&pages);
+    for (i, page) in per_page.iter().enumerate() {
+        assert!(!page.is_empty(), "page {i} must not be blank");
+    }
+    let seen: Vec<String> = per_page.into_iter().flatten().collect();
+    let expected: Vec<String> = (0..150).map(|i| format!("Line {i}")).collect();
+    assert_eq!(
+        seen, expected,
+        "every paragraph appears exactly once, in order"
+    );
+}
+
+#[test]
+fn a_flex_item_taller_than_a_page_is_split_inside_like_a_block() {
+    // An item of a column flex is itself taller than a page (the body of a
+    // contract, say). Breaking at item boundaries is not enough; the item has to
+    // be split inside as well, like a block.
+    let paragraphs: String = (0..120).map(|i| format!("<p>Clause {i}</p>")).collect();
+    let pages = paginate_pages(
+        &format!(
+            r#"<div class="f"><div class="head">Header</div><div class="body">{paragraphs}</div><div class="foot">Footer</div></div>"#
+        ),
+        "* { margin: 0; padding: 0 } .f { display: flex; flex-direction: column }",
+    );
+
+    assert!(pages.len() > 1, "{} page(s)", pages.len());
+    let per_page = all_lines_within_pages(&pages);
+    assert_eq!(per_page[0][0], "Header");
+    let last = per_page.last().unwrap();
+    assert_eq!(
+        last.last().unwrap(),
+        "Footer",
+        "footer follows the last clause"
+    );
+    let mut expected = vec!["Header".to_string()];
+    expected.extend((0..120).map(|i| format!("Clause {i}")));
+    expected.push("Footer".to_string());
+    let seen: Vec<String> = per_page.into_iter().flatten().collect();
+    assert_eq!(seen, expected);
+}
+
+#[test]
+fn a_wrapped_row_flex_taller_than_a_page_is_split_between_its_lines() {
+    // A row flex that wraps is split in units of flex lines (the groups of items
+    // side by side). Items on the same line stay on the same page at the same y.
+    let items: String = (0..80).map(|i| format!("<div>i{i}</div>")).collect();
+    let pages = paginate_pages(
+        &format!(r#"<div class="f">{items}</div>"#),
+        "* { margin: 0; padding: 0 } \
+         .f { display: flex; flex-wrap: wrap } \
+         .f > div { width: 50%; height: 40px }",
+    );
+
+    assert!(
+        pages.len() > 1,
+        "40 rows of 40px do not fit on one page: {} page(s)",
+        pages.len()
+    );
+    let page_height = PageSettings::default().content_height();
+    let mut seen = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        let lines = text_lines_on_page(page);
+        assert!(
+            lines.len().is_multiple_of(2),
+            "page {page_index} splits a flex line: {lines:?}"
+        );
+        for pair in lines.chunks(2) {
+            let (ref a, ay, ah) = pair[0];
+            let (ref b, by, _) = pair[1];
+            assert_eq!(ay, by, "{a} and {b} share a flex line but not a y");
+            assert!(
+                ay >= -0.01 && ay + ah <= page_height + 0.01,
+                "{a} is outside page {page_index}"
+            );
+            seen.push(a.clone());
+            seen.push(b.clone());
+        }
+    }
+    let expected: Vec<String> = (0..80).map(|i| format!("i{i}")).collect();
+    assert_eq!(seen, expected);
+}
+
+#[test]
+fn a_flex_column_taller_than_a_page_renders_as_many_pages_as_block_end_to_end() {
+    let paragraphs: String = (0..150).map(|i| format!("<p>Line {i}</p>")).collect();
+    let html = format!(r#"<div class="box">{paragraphs}</div>"#);
+    // A border, so the decoration fragments of the split container are exercised too.
+    let flex = build_pdf(
+        &html,
+        "* { margin: 0; padding: 0 } \
+         .box { display: flex; flex-direction: column; border: 1px solid #000 }",
+    );
+    let block = build_pdf(
+        &html,
+        "* { margin: 0; padding: 0 } .box { display: block; border: 1px solid #000 }",
+    );
+
+    let flex_pages = count_occurrences(&flex, b"/MediaBox");
+    let block_pages = count_occurrences(&block, b"/MediaBox");
+    assert!(block_pages > 1);
+    assert_eq!(
+        flex_pages, block_pages,
+        "the flex column must not lose pages"
+    );
+}
+
+#[test]
+fn splitting_a_flex_column_keeps_the_gap_between_its_items() {
+    // Regression: the space `gap` leaves between items belongs to no item's
+    // margin box, so packing each item at the pagination cursor closed it up and
+    // the part of the container that already rendered correctly changed
+    // appearance as soon as the container grew past one page.
+    let items: String = (0..40).map(|i| format!("<div>i{i}</div>")).collect();
+    let pages = paginate_pages(
+        &format!(r#"<div class="f">{items}</div>"#),
+        "* { margin: 0; padding: 0 } \
+         .f { display: flex; flex-direction: column; gap: 50px } \
+         .f > div { height: 40px }",
+    );
+
+    assert!(
+        pages.len() > 1,
+        "40 items of 40px with a 50px gap do not fit on one page: {} page(s)",
+        pages.len()
+    );
+    let per_page: Vec<Vec<(String, f32, f32)>> = pages.iter().map(text_lines_on_page).collect();
+    let first_y = per_page[0][0].1;
+    for (page_index, lines) in per_page.iter().enumerate() {
+        assert_eq!(
+            lines[0].1, first_y,
+            "page {page_index} must start at the top of the page, with no leading gap: {:?}",
+            lines[0]
+        );
+        for pair in lines.windows(2) {
+            let (ref above, above_y, _) = pair[0];
+            let (ref below, below_y, _) = pair[1];
+            assert!(
+                (below_y - above_y - 90.0).abs() < 0.01,
+                "{above} and {below} on page {page_index} are {} apart, expected 40px of item \
+                 plus a 50px gap",
+                below_y - above_y
+            );
+        }
+    }
+
+    let seen: Vec<String> = per_page
+        .into_iter()
+        .flatten()
+        .map(|(text, _, _)| text)
+        .collect();
+    let expected: Vec<String> = (0..40).map(|i| format!("i{i}")).collect();
+    assert_eq!(seen, expected);
+}
+
+#[test]
+fn splitting_a_wrapped_row_flex_keeps_the_gap_between_its_lines() {
+    // The same as above for the other kind of band: a flex line holding several
+    // items side by side, which is placed as one unit rather than through
+    // `place_box`.
+    let items: String = (0..80).map(|i| format!("<div>i{i}</div>")).collect();
+    let pages = paginate_pages(
+        &format!(r#"<div class="f">{items}</div>"#),
+        "* { margin: 0; padding: 0 } \
+         .f { display: flex; flex-wrap: wrap; gap: 50px } \
+         .f > div { width: 40%; height: 40px }",
+    );
+
+    assert!(pages.len() > 1, "{} page(s)", pages.len());
+    for (page_index, page) in pages.iter().enumerate() {
+        let lines = text_lines_on_page(page);
+        assert!(
+            lines.len().is_multiple_of(2),
+            "page {page_index} splits a flex line: {lines:?}"
+        );
+        for pair in lines.chunks(2).collect::<Vec<_>>().windows(2) {
+            let above = pair[0][0].1;
+            let below = pair[1][0].1;
+            assert!(
+                (below - above - 90.0).abs() < 0.01,
+                "two flex lines on page {page_index} are {} apart, expected 40px of line plus a \
+                 50px gap",
+                below - above
+            );
+        }
+    }
+}
