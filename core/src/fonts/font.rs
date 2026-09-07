@@ -219,7 +219,9 @@ pub(super) fn face_can_render(font: &FontRef<'_>) -> bool {
 /// path, an `@font-face` family. Fonts dropped by the automatic search are not
 /// reported here; they surface through the "no font can draw this" warning
 /// instead.
-pub fn warn_font_without_outlines(source: &str) {
+///
+/// The message itself is Japanese, like every other message this crate prints.
+pub fn warn_font_cannot_render(source: &str) {
     eprintln!(
         "警告: {source} は輪郭もカラーグリフも持たないため使用しません。\n  \
          対応しているのは輪郭(glyf/CFF)、埋め込みビットマップ(CBDT/CBLC・sbix)、\n  \
