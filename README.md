@@ -69,7 +69,7 @@ pdf = Sghtmltopdf.render("<h1>Invoice</h1>", page_size: "A4")
 ```
 
 Local references (`<img src>`, external CSS, `@font-face`) stay inside the base directory (`--base-url`, defaulting to the input HTML's own directory); a `../` that would escape it is an error, so untrusted HTML cannot read arbitrary files.
-Pass `--allow <DIR>` to widen the boundary, or `--disable-local-file-access` to close it entirely (the HTTP server does the latter by default, and never lets a request loosen it).
+Pass `--allow-path <DIR>` to widen the boundary, or `--disable-local-file-access` to close it entirely (the HTTP server does the latter by default, and never lets a request loosen it).
 
 The CLI flags are the ones you already know: most of them keep the same name and meaning as [wkhtmltopdf](https://wkhtmltopdf.org/usage/wkhtmltopdf.txt) (`--page-size`, `--margin-top`, `--orientation`, `--header-html`, `--toc`, …).
 Flags that will not be implemented exit 1 with the reason and an alternative instead of being silently ignored — see the [option table](https://waka.github.io/sghtmltopdf/migration/wkhtmltopdf-options.html) for the full list, and [migrating from wkhtmltopdf](https://waka.github.io/sghtmltopdf/migration/wkhtmltopdf.html) for the cases where the same name behaves differently (CSS `@page` wins over the CLI, the default margin is 1in, cover and TOC are options rather than positional arguments).
@@ -111,13 +111,16 @@ end
 View-rendering keys (`template`, `layout`, `locals`, …) go to `render_to_string`, response keys (`filename`, `disposition`, `status`) go to `send_data`, `show_as_html: true` returns the HTML instead of a PDF, and everything else is passed to the converter.
 The converter keys are flat CLI flag names, so wicked_pdf's nested `margin: {top: 10}` becomes `margin_top: "10mm"` (with the unit spelled out); [migrating from wicked_pdf](https://waka.github.io/sghtmltopdf/migration/wicked-pdf.html) maps every key one by one.
 
-PDF rendering does not go through the HTTP server, so `/assets/…` URLs are resolved as local files: the Railtie defaults `base_url` to `Rails.root/public` and restricts local reads to `Rails.root` via `allow`.
-That is enough for a precompiled production app; in development, these helpers inline the asset instead:
+PDF rendering does not go through the HTTP server, so `/assets/…` URLs are resolved as local files: the Railtie defaults `base_url` to `Rails.root/public` and restricts local reads to `public/` and the asset pipeline load paths via `allow_path`.
+That is enough for a precompiled production app; in development the digested `/assets/…` path names no file on disk, so these helpers look the asset up in the pipeline instead — the CSS expanded into a `<style>`, the image referenced by the path the engine can read:
 
 ```erb
 <%= sghtmltopdf_stylesheet_link_tag "pdf" %>
 <%= sghtmltopdf_image_tag "logo.png" %>
 ```
+
+`sghtmltopdf_stylesheet_link_tag` does not copy the CSS verbatim: it points every `url()` at a file the engine can read and splices in every `@import`.
+The asset pipeline rewrites `url()` through `asset_path` while precompiling, which turns a `@font-face` source into a digested `/assets/…` path, or into an absolute URL once `asset_host` is set — neither can be fetched while rendering, and a `@font-face` that fails to load falls back to the engine default rather than to the next `font-family`.
 
 To send pages as soon as their layout is final, pass a block and use `ActionController::Live` this also makes `Rack::Timeout` and `Thread#kill` effective at chunk boundaries:
 

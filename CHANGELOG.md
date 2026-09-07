@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.4.0 - 2026-09-05
 
 ### Added
 
@@ -34,8 +34,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   COLRv1 font carries `glyf`, so it still renders as its monochrome base outlines. Palette
   selection through `font-palette` is not supported; palette 0 is always used.
 
+### Changed
+
+- `--allow` is now spelled `--allow-path`, with `--allow` kept as an alias, so nothing
+  has to change. On its own `--allow` says nothing about what it allows, and it sat next
+  to `--allow-remote-assets`, which allows something else entirely. The Ruby key follows:
+  `allow_path:`, with `allow:` normalized to it — the two are folded into one key rather
+  than passed through as two, since repeating the flag means "add another directory", so
+  a default under one spelling and a call-site value under the other would have been
+  merged instead of replaced.
+
+- The Rails defaults now let the engine read under `public/` and the asset pipeline load
+  paths (`config.assets.paths`) rather than the whole of `Rails.root`. `config/`, `db/` and
+  `storage/` are no longer reachable through an `<img src>` or a `url()` in a template,
+  while the assets a gem or an engine provides — which live outside `Rails.root` and so
+  were never covered — now are. An app that references a file elsewhere, say
+  `Rails.root.join("tmp/chart.png")`, has to name that directory itself with
+  `Sghtmltopdf.configure { |c| c.allow_path += ["…"] }`. The defaults are computed in
+  `after_initialize` because the pipeline fills `config.assets.paths` in an initializer of
+  its own, which runs after the one this gem adds.
+
 ### Fixed
 
+- Read a `src` (or `url()`, or `href`) written as a filesystem path instead of joining it
+  onto the base directory and looking for something that cannot be there. A reference
+  starting with `/` is still resolved relative to the site root first, which is what the
+  Rails asset pipeline emits and what every document that works today relies on; only when
+  no file is there is the same string read again as an absolute path. Whether it may be
+  read is decided by the existing rules, so one inside the base directory is read as it is
+  and one outside it needs `--allow-path`. `<img src="/var/www/app/public/logo.png">` used to
+  look for `<base directory>/var/www/app/public/logo.png` and could not be made to work by
+  any flag; when neither reading finds a file, the error now names both paths.
+- `sghtmltopdf_image_tag` no longer hands a filesystem path to `image_tag` (#44). Rails
+  turned that path into a URL — with `default_url_options[:host]` set, an `http://` one the
+  engine refused to fetch, and without it an absolute path that was resolved against
+  `base_url` and missed — so the helper documented for local images could not load one. It
+  now looks the file up in the asset pipeline and references it by path: relative to
+  `base_url` when it sits under it, and the absolute filesystem path otherwise, which the
+  engine reads as a filesystem path once it fails to resolve under `base_url`. A file that
+  `allow_path` does not cover, or a run delegated to a server that may not share this
+  filesystem, is embedded as a `data:` URI instead, so a path the engine cannot read
+  cannot silently vanish from the PDF; `inline: true` embeds unconditionally. The `size:`
+  shorthand is expanded into `width`/`height`, as `image_tag` does. `sghtmltopdf_asset_path`
+  also stops mapping a source that is already a URL onto a same-named file under `public/`,
+  and no longer gives up on a `public/`-only file in a Propshaft app, where `asset_path`
+  raises `MissingAssetError` rather than returning a path.
+- `sghtmltopdf_stylesheet_link_tag` now points the `url()`s of the CSS it inlines at files
+  the engine can read, instead of copying the file verbatim (#45). The asset pipeline
+  rewrites every `url()` through `asset_path` while precompiling, so a `@font-face` source
+  became a digested `/assets/…` path, or an absolute `https://…` URL once `asset_host` was
+  set; rendering never goes through the HTTP server, so neither could be fetched and the
+  family fell back to the engine default rather than to the next `font-family` — silently,
+  since a `@font-face` that cannot be loaded only warns. Each reference is now mapped back
+  onto its file — the path part of an absolute URL, a site-root-relative path under
+  `public/` or the pipeline load path, a relative one against the stylesheet's own
+  directory as CSS says it means — and written the way `sghtmltopdf_image_tag` writes an
+  image: relative to `base_url`, the absolute path when it sits elsewhere the engine may
+  read, a `data:` URI when it may not. A reference that names no file of the application,
+  such as a font served by a CDN, is left alone. `@import` is spliced in rather than left
+  for the engine, which resolves every `url()` against the document's base whatever
+  stylesheet it came from, so the same problem would reappear one level down.
+- `position: relative` now moves the content of the element together with its background
+  and border (#29). The offset was applied to the box's own rectangle after its lines and
+  child boxes had been placed, so text, images, nested blocks and list markers were left
+  at the unoffset position. A `position: relative` inline element (`<span>`) now shifts
+  its own text too, and an absolutely positioned descendant of a relative element uses the
+  offset padding box as its containing block.
+- Keep the spacing that margin collapsing produced when a document is split across pages.
+  The pagination rebuilt each page by stacking margin boxes at a running cursor, which
+  reopened every margin the layout had collapsed: adjacent siblings were pushed apart by
+  the smaller of the two margins (paragraphs 50.6px apart instead of 34.7px with the
+  default stylesheet), and a `margin-top` hoisted out of a first child was added once per
+  ancestor, so the top of the first page was pushed down by a multiple of it (85.8px
+  instead of 21.4px for `<h1>` under `<html><body>`). Boxes are now placed at the offsets
+  the layout gave them, so a document that spans several pages has the same geometry as
+  the same content on a single page, and pages hold as much as they should.
+- Start a `display: grid` or `display: table` on the next page when its first row does not
+  fit in what is left of the current one. The row-splitting rule only broke once a fragment
+  already held a row, so the first row was laid down at the bottom of the page whatever the
+  space left and was cut off by the page edge, where blocks and flex containers move on.
+- Place the row bands of a `display: grid` container the same way as everything else when
+  its subtree is moved vertically. `shift_box_y_in_place` and `shift_content_vertical`
+  added the delta to `LaidOutGridRow`'s `top`/`bottom` while subtracting it from every
+  other coordinate, so a paginated grid under collapsing margins started its second page
+  above the top of the page and lost the rows there.
 - Paint the rows of a `display: grid` container on the pages it was split across (#18).
   The pagination allocated the right number of pages and moved each row band into page
   coordinates, but shifted the items inside the band the opposite way, so every page after
