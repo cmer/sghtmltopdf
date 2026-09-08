@@ -223,6 +223,7 @@ pub fn encode_pdf_with_options(
         pdf.extend(&chunk);
     }
     let text_fonts = TextFonts {
+        any_color: usages.iter().any(|u| u.color_font_count() > 0),
         remaps: Some(&remaps),
         plan: &plan,
         usages: &usages,
@@ -624,6 +625,8 @@ pub(super) fn write_resources(
 /// to subset glyph IDs) and the routing of each glyph to either the ordinary
 /// Type0 font or a Type 3 colour font.
 pub(super) struct TextFonts<'a> {
+    /// Whether any glyph in the document is drawn in colour at all.
+    pub any_color: bool,
     /// Maps original glyph IDs to subset glyph IDs (CIDs). `Some` only in
     /// batch mode (`encode_pdf`); streaming passes `None` and always uses the
     /// original glyph ID as the CID.
@@ -3132,12 +3135,74 @@ struct RunSegment<'a> {
 /// With `include_color` false, colour glyphs are dropped too. That is for
 /// `text-shadow`, where redrawing the full-colour artwork at an offset would
 /// not be a shadow.
+///
+/// `codes` is filled with one entry per glyph in the run: the CID for a glyph
+/// bound for a Type0 font, the one-byte code for one bound for a Type 3 font,
+/// and a placeholder for a dropped glyph (which no segment covers, so it is
+/// never read). Resolving a glyph is a hash lookup, so the writer reads the
+/// answer back from here rather than asking a second time.
 fn run_segments<'a>(
     run: &TextRun,
     text_fonts: &'a TextFonts<'a>,
     include_color: bool,
+    codes: &mut Vec<u16>,
 ) -> Vec<RunSegment<'a>> {
     let mut segments: Vec<RunSegment<'a>> = Vec::new();
+    codes.clear();
+    codes.resize(run.glyphs.len(), 0);
+    // Nothing in this document is drawn in colour, so every glyph in the run
+    // goes to the same Type0 font. Resolving that font is then a per-run
+    // decision rather than a per-glyph one, and the loop below is left with
+    // just the subset lookup. Without this, routing every glyph through
+    // `target` costs about 40% of the encoding phase on a text-heavy
+    // document.
+    if !text_fonts.any_color {
+        let Some(simple) = text_fonts.plan.simple(run.font_index) else {
+            // No Type0 font for this face, so nothing in the run is drawable.
+            return segments;
+        };
+        let Some(remaps) = text_fonts.remaps else {
+            // Streaming keeps the original glyph IDs as CIDs, so no glyph can
+            // fall outside a subset and the run is one segment.
+            let Some(first) = run.glyphs.first() else {
+                return segments;
+            };
+            for (code, glyph) in codes.iter_mut().zip(&run.glyphs) {
+                *code = glyph.glyph_id;
+            }
+            segments.push(RunSegment {
+                x: 0.0,
+                first: GlyphTarget::Simple {
+                    name: &simple.name,
+                    cid: first.glyph_id,
+                },
+                range: 0..run.glyphs.len(),
+            });
+            return segments;
+        };
+        let remap = remaps.get(run.font_index);
+        let mut x = 0.0;
+        for (index, glyph) in run.glyphs.iter().enumerate() {
+            // A glyph missing from the subset was judged undrawable; it joins
+            // no segment and only the pen advances past it.
+            if let Some(&cid) = remap.and_then(|m| m.get(&glyph.glyph_id)) {
+                codes[index] = cid;
+                match segments.last_mut() {
+                    Some(last) if last.range.end == index => last.range.end = index + 1,
+                    _ => segments.push(RunSegment {
+                        x,
+                        first: GlyphTarget::Simple {
+                            name: &simple.name,
+                            cid,
+                        },
+                        range: index..index + 1,
+                    }),
+                }
+            }
+            x += glyph.x_advance + run.letter_spacing;
+        }
+        return segments;
+    }
     let mut x = 0.0;
     for (index, glyph) in run.glyphs.iter().enumerate() {
         let target = match text_fonts.target(run.font_index, glyph.glyph_id) {
@@ -3145,6 +3210,11 @@ fn run_segments<'a>(
             target => target,
         };
         if target != GlyphTarget::Dropped {
+            codes[index] = match target {
+                GlyphTarget::Simple { cid, .. } => cid,
+                GlyphTarget::Color { code, .. } => code as u16,
+                GlyphTarget::Dropped => 0,
+            };
             match segments.last_mut() {
                 Some(last)
                     if last.range.end == index
@@ -3193,18 +3263,28 @@ fn show_segment_glyphs(
     content: &mut RenderTarget<'_>,
     run: &TextRun,
     font: &Font,
-    text_fonts: &TextFonts<'_>,
+    codes: &[u16],
     segment: &RunSegment<'_>,
 ) {
     let glyphs = &run.glyphs[segment.range.clone()];
-    let code_of = |glyph_id: u16| text_fonts.target(run.font_index, glyph_id).code_bytes();
+    let codes = &codes[segment.range.clone()];
+    // Every glyph in a segment goes to the same font, and code width follows
+    // from that: two bytes for a Type0 CID, one for a Type 3 character code.
+    let color_segment = matches!(segment.first, GlyphTarget::Color { .. });
+    let push_code = |out: &mut Vec<u8>, code: u16| {
+        if color_segment {
+            out.push(code as u8);
+        } else {
+            out.extend_from_slice(&code.to_be_bytes());
+        }
+    };
 
     let units_per_em = font.units_per_em() as f32;
     // フォントサイズ0のランは補正のしようがない(1/1000単位への換算ができない)。
     if run.font_size <= 0.0 || units_per_em <= 0.0 {
         let mut glyph_bytes = Vec::with_capacity(glyphs.len() * 2);
-        for glyph in glyphs {
-            glyph_bytes.extend_from_slice(&code_of(glyph.glyph_id));
+        for &code in codes {
+            push_code(&mut glyph_bytes, code);
         }
         content.show(pdf_writer::Str(&glyph_bytes));
         return;
@@ -3215,8 +3295,8 @@ fn show_segment_glyphs(
     // 補正の要らないグリフはまとめて1つの文字列として出す(補正が1つも無ければ
     // 要素1つのTJ配列になり、`Tj`と同じ大きさに収まる)。
     let mut pending = Vec::with_capacity(glyphs.len() * 2);
-    for glyph in glyphs {
-        pending.extend_from_slice(&code_of(glyph.glyph_id));
+    for (glyph, &code) in glyphs.iter().zip(codes) {
+        push_code(&mut pending, code);
         let pdf_advance = font.glyph_hor_advance(glyph.glyph_id).unwrap_or(0) as f32
             * run.font_size
             / units_per_em;
@@ -3296,6 +3376,10 @@ fn render_line(
 
     content.begin_text();
 
+    // Resolved glyph codes for the run being written. Held across runs so the
+    // whole line reuses one buffer.
+    let mut glyph_codes: Vec<u16> = Vec::new();
+
     // ランどうしの間に、実際のグリフ幅の合計を超える隙間があれば単語境界
     // (=空白1文字分)とみなす。単語内でスタイル/フォントが切り替わる場合の
     // ラン境界は隙間0で連続しているため、ここでは誤って空白扱いにならない。
@@ -3359,7 +3443,7 @@ fn render_line(
         // Colour glyphs and the rest use different PDF fonts even inside one
         // run, so emit a fresh `Tf` and `Tm` per segment. The `Tm` is written
         // absolute, as the run origin plus the segment's offset within it.
-        for segment in run_segments(run, text_fonts, true) {
+        for segment in run_segments(run, text_fonts, true, &mut glyph_codes) {
             let Some(resource_name) = segment.first.resource_name() else {
                 continue;
             };
@@ -3372,7 +3456,7 @@ fn render_line(
                 x + segment.x,
                 baseline_y + run.baseline_shift,
             ]);
-            show_segment_glyphs(content, run, font, text_fonts, &segment);
+            show_segment_glyphs(content, run, font, &glyph_codes, &segment);
         }
     }
 
@@ -3635,6 +3719,8 @@ fn render_text_shadows(
     alpha_gs_names: &[String],
     baseline_y: f32,
 ) {
+    // Reused across runs, like in `render_line`.
+    let mut glyph_codes: Vec<u16> = Vec::new();
     for run in &line.runs {
         let Some(shadows) = run.text_shadow.as_deref() else {
             continue;
@@ -3648,7 +3734,7 @@ fn render_text_shadows(
         };
         // Colour glyphs cast no shadow: all that would happen is the artwork
         // itself being redrawn at the shadow's offset.
-        let segments = run_segments(run, text_fonts, false);
+        let segments = run_segments(run, text_fonts, false, &mut glyph_codes);
         if segments.is_empty() {
             continue;
         }
@@ -3688,7 +3774,7 @@ fn render_text_shadows(
                         x + segment.x + shadow.offset_x + dx,
                         run_baseline_y - shadow.offset_y - dy,
                     ]);
-                    show_segment_glyphs(content, run, font, text_fonts, segment);
+                    show_segment_glyphs(content, run, font, &glyph_codes, segment);
                 }
                 content.end_text();
                 content.restore_state();

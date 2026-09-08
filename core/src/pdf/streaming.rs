@@ -300,6 +300,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
         let mut target = RenderTarget::new(&mut content, self.output.grayscale);
         // `remaps: None` — CIDs stay the original glyph IDs in streaming mode.
         let text_fonts = TextFonts {
+            any_color: self.usages.iter().any(|u| u.color_font_count() > 0),
             remaps: None,
             plan: &self.font_plan,
             usages: &self.usages,
