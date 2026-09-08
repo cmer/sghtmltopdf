@@ -11,7 +11,7 @@ use cssparser::UnicodeRange;
 use crate::img::ImageFetcher;
 use crate::style::{FontFaceRule, FontFaceSource, FontStyle, FontWeight};
 
-use super::font::{warn_font_without_outlines, Font};
+use super::font::{warn_font_cannot_render, Font};
 use super::system::SystemFonts;
 
 /// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style・unicode-range。
@@ -57,9 +57,10 @@ fn load_one(
             FontFaceSource::Local(name) => system.load_by_full_name(name),
         };
         if let Some(font) = font {
-            // 読み込めても輪郭が無ければ何も描けないので採らず、次のsrcへ進む。
-            if !font.has_outlines() {
-                warn_font_without_outlines(&format!("@font-face \"{}\"のsrc", rule.family));
+            // Loaded, but with nothing to draw with (no outlines, no colour
+            // glyphs), so decline it and move on to the next src.
+            if !font.can_render() {
+                warn_font_cannot_render(&format!("@font-face \"{}\"のsrc", rule.family));
                 continue;
             }
             return Some(LoadedFontFace {

@@ -23,8 +23,8 @@ use std::rc::Rc;
 
 use crate::fonts::{
     ensure_cjk_fallback_font, load_font_faces, load_fonts_for_uncovered_chars,
-    load_missing_system_fonts, warn_font_without_outlines, warn_uncovered_chars, Font,
-    FontCollection, SystemFonts,
+    load_missing_system_fonts, warn_font_cannot_render, warn_uncovered_chars, Font, FontCollection,
+    SystemFonts,
 };
 use crate::html::{
     collect_anchor_targets, find_base_href, find_document_title, Dom, NodeData, NodeId,
@@ -613,8 +613,8 @@ fn load_explicit_fonts<E>(specs: &[FontSpec]) -> Result<Vec<Font>, EngineError<E
             .map_err(|e| EngineError::Font(format!("フォントの読み込みに失敗しました: {e}")))?;
         // 明示指定でも、輪郭を持たないフォントは採らない。埋め込んでも
         // 何も描かれないうえ、サブセット化が効かずPDFだけが膨らむため。
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         loaded.push(font);
@@ -896,8 +896,8 @@ fn register_generic_fonts<E>(
                 family.css_name()
             ))
         })?;
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         fonts.push_font_face(family.css_name().to_string(), None, None, Vec::new(), font);
