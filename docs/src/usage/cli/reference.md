@@ -66,6 +66,7 @@ cat invoice.html | sghtmltopdf - -o - > invoice.pdf
 | `--gothic-font <PATH>` (+`--gothic-font-index`) | `font-family: sans-serif`の実体 |
 | `--serif-font <PATH>` (+`--serif-font-index`) | `font-family: serif`の実体 |
 | `--mono-font <PATH>` (+`--mono-font-index`) | `font-family: monospace`の実体 |
+| `--disable-system-fonts` | システムフォントを探さない(渡したフォントだけで組む) |
 
 フォントの解決順は「`--font` → `@font-face` → `font-family`名でのシステム探索」。
 それでも1つも見つからない場合だけ、システムの`sans-serif`候補が既定フォントになります。
@@ -73,6 +74,11 @@ cat invoice.html | sghtmltopdf - -o - > invoice.pdf
 > `--font`を指定しないと出力が実行環境のフォントに依存します。
 > サーバ運用やCIで出力を安定させたい場合は`--font`(または`@font-face`)を明示してください。
 > 詳しくは[フォント](../../supports/fonts.md)を参照。
+
+`--font`等を明示しても、そこに無いフェース(例えば`font-family: serif`の
+イタリック)はシステムから補われるため、出力は実行環境のフォント次第で変わります。
+`--disable-system-fonts`はこの探索ごと止めるので、同じHTMLからはどのマシンでも
+同じPDFが出ます(補えなかった文字は警告のうえ描かれません)。
 
 ## PDFの出力形式・メタデータ
 
@@ -178,10 +184,10 @@ sghtmltopdf report.html --cover cover.html --toc --footer-center "[page]"
 | オプション | CLIの既定 | サーバの既定 |
 |---|---|---|
 | `--enable-local-file-access` / `--disable-local-file-access` | 許可 | 禁止 |
-| `--allow <PATH>` | 制限なし | 制限なし |
+| `--allow-path <PATH>` | 制限なし | 制限なし |
 | `--allow-remote-assets` | 禁止 | 禁止 |
 
-`--allow`を1つ以上指定すると、ローカル参照はそのディレクトリ配下だけに限定されます。
+`--allow-path`を1つ以上指定すると、ローカル参照はそのディレクトリ配下だけに限定されます。
 `<img src>`・外部CSS・`@font-face`のすべてに効きます。
 
 判定は実パス(シンボリックリンクを辿った後のパス)で行います。
@@ -196,19 +202,31 @@ sghtmltopdf report.html --cover cover.html --toc --footer-center "[page]"
 
 `assets/../images/logo.png`のように基準ディレクトリの中で完結する`../`は従来どおり使えます。
 
-外のファイルを意図的に参照する場合は`--allow`で範囲を明示してください。
-`--allow`を指定した場合は、基準ディレクトリではなく許可したディレクトリが境界になります。
+外のファイルを意図的に参照する場合は`--allow-path`で範囲を明示してください。
+`--allow-path`を指定した場合は、基準ディレクトリではなく許可したディレクトリが境界になります。
 
 ```console
 $ sghtmltopdf pages/index.html -o out.pdf
 エラー: ../images/logo.png: 基準ディレクトリ(pages)の外を参照しています。
-  外部のファイルを読む場合は --allow でディレクトリを明示してください
+  外部のファイルを読む場合は --allow-path でディレクトリを明示してください
 
-$ sghtmltopdf pages/index.html --allow . -o out.pdf
+$ sghtmltopdf pages/index.html --allow-path . -o out.pdf
 ```
 
 判定はパス文字列に対して行うため、基準ディレクトリ配下のシンボリックリンクは辿ります。
-シンボリックリンクの先まで含めて閉じたい場合は`--allow`を使ってください(こちらは実パスで判定します)。
+シンボリックリンクの先まで含めて閉じたい場合は`--allow-path`を使ってください(こちらは実パスで判定します)。
+
+### `/`で始まる参照
+
+`/assets/logo.png`のように`/`で始まる参照は、まず基準ディレクトリからのサイトルート相対(`<基準ディレクトリ>/assets/logo.png`)として解決します。
+Railsのアセットパイプラインが出すパスがこの形なので、precompile済みの`public/`を基準ディレクトリにすればそのまま解決できます。
+
+そこにファイルが無い場合に限り、同じ文字列をファイルシステムの絶対パスとして解釈し直します。
+`<img src="/var/www/app/public/logo.png">`のような書き方のためのフォールバックです。
+このとき読めるかどうかは他の参照と同じ規則で決まります。
+絶対パスが基準ディレクトリの中を指していればそのまま読め、外を指していれば`--allow-path`が要ります。
+
+どちらの解釈でもファイルが見つからない場合は、両方のパスを挙げたエラーになります。
 
 ## 入力の大きさの制限
 

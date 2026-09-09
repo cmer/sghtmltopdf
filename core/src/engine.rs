@@ -23,8 +23,8 @@ use std::rc::Rc;
 
 use crate::fonts::{
     ensure_cjk_fallback_font, load_font_faces, load_fonts_for_uncovered_chars,
-    load_missing_system_fonts, warn_font_without_outlines, warn_uncovered_chars, Font,
-    FontCollection, SystemFonts,
+    load_missing_system_fonts, warn_font_cannot_render, warn_uncovered_chars, Font, FontCollection,
+    SystemFonts,
 };
 use crate::html::{
     collect_anchor_targets, find_base_href, find_document_title, Dom, NodeData, NodeId,
@@ -141,6 +141,19 @@ pub struct EngineOptions {
     /// 候補リスト([`crate::fonts`])で解決する。既定`font-family`(未指定)は
     /// これに関わらず`--font`のフォントへフォールバックする。
     pub generic_fonts: Vec<(GenericFamily, FontSpec)>,
+    /// システムフォントの探索を止める(`--disable-system-fonts`相当)。
+    ///
+    /// 既定`false`。`true`にすると`fonts`・`generic_fonts`・`@font-face`で
+    /// 与えたフォントだけで組む。family名や字形カバレッジの穴を埋める探索
+    /// ([`crate::fonts::load_missing_system_fonts`]等)は走るが、参照する
+    /// データベースが空になるため何も足されない。描けない文字は警告のうえ
+    /// 落ちる。
+    ///
+    /// 同じHTMLから環境によらず同じPDFを得たいとき(手元とCI・コンテナで
+    /// 出力を揃えたいとき)に使う。`font-family: serif`のイタリックのように
+    /// 明示指定に該当フェースが無い組み合わせは、マシンごとに違うシステム
+    /// フォントで埋められてしまうため、これを止めないとバイト列が揃わない。
+    pub disable_system_fonts: bool,
     /// `@font-face`の`src: url(...)`を相対解決する基準ディレクトリ。
     /// 入力がファイルに対応しない場合(Rackボディ等)は`None`でよく、
     /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
@@ -613,8 +626,8 @@ fn load_explicit_fonts<E>(specs: &[FontSpec]) -> Result<Vec<Font>, EngineError<E
             .map_err(|e| EngineError::Font(format!("フォントの読み込みに失敗しました: {e}")))?;
         // 明示指定でも、輪郭を持たないフォントは採らない。埋め込んでも
         // 何も描かれないうえ、サブセット化が効かずPDFだけが膨らむため。
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         loaded.push(font);
@@ -896,8 +909,8 @@ fn register_generic_fonts<E>(
                 family.css_name()
             ))
         })?;
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         fonts.push_font_face(family.css_name().to_string(), None, None, Vec::new(), font);
@@ -1067,7 +1080,11 @@ impl<S: Sink> Engine<S> {
             );
         }
 
-        let system_fonts = SystemFonts::scan();
+        let system_fonts = if self.options.disable_system_fonts {
+            SystemFonts::none()
+        } else {
+            SystemFonts::scan()
+        };
         let mut fonts = FontCollection::new(load_explicit_fonts(&self.options.fonts)?);
 
         register_generic_fonts(&mut fonts, &self.options.generic_fonts)?;
@@ -1454,7 +1471,11 @@ impl<S: Sink> Engine<S> {
         check_document_limits(dom.max_depth(), dom.node_count())?;
         let sink = sink.expect("Mode::Batchではsinkがfinishまでそのまま保持される");
 
-        let system_fonts = SystemFonts::scan();
+        let system_fonts = if options.disable_system_fonts {
+            SystemFonts::none()
+        } else {
+            SystemFonts::scan()
+        };
         let mut fonts = FontCollection::new(load_explicit_fonts(&options.fonts)?);
 
         let mut ua = user_agent_stylesheet();
