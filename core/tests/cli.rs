@@ -1513,6 +1513,49 @@ fn streaming_stays_quiet_when_everything_is_resolvable() {
 
 /// 実在のカラー絵文字フォントを明示指定しても採用しないこと。
 ///
+/// `--disable-system-fonts`はシステムフォントの探索を止める。
+///
+/// `--font`で1本だけ渡した状態で`font-family: serif`を書くと、既定では
+/// インストール済みの明朝体(macOSならTimes New Roman、Linuxなら
+/// DejaVu Serif等)が探し出されて一緒に埋め込まれるため、同じHTMLでも
+/// マシンによって別のPDFが出る。フラグを付けると埋め込まれるフォント
+/// プログラムは渡した1本だけになる。
+#[test]
+fn disable_system_fonts_embeds_only_the_fonts_given_on_the_command_line() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-e2e-{}-disable-system-fonts",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    std::fs::write(
+        &input,
+        "<html><body><p style=\"font-family: serif;\">serif text</p></body></html>",
+    )
+    .unwrap();
+    let output = dir.join("out.pdf");
+
+    let out = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("--disable-system-fonts")
+        .arg("-o")
+        .arg(&output)
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(out.status.success(), "変換は成功するはず");
+
+    let bytes = std::fs::read(&output).expect("output PDF should exist");
+    assert_eq!(
+        count_occurrences(&bytes, b"/FontFile2"),
+        1,
+        "埋め込まれるのは--fontで渡した1本だけのはず"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// このフォントは`cmap`を持つので「絵文字を描画できる」ように見えるが、
 /// 輪郭を一切持たないため実際には何も描けない。採用してしまうと、文字が
 /// 豆腐にすらならず消えたうえ、サブセット化が効かず10MB超のフォントが
@@ -1530,8 +1573,16 @@ fn a_colour_emoji_font_is_refused_with_a_warning() {
 
     let out = Command::new(BIN)
         .arg(&input)
+        // 本文を描く1本。カラーフォントを外した後もフォントが1本も無い状態には
+        // ならないようにする(そうなると変換自体が失敗する)。
+        .arg("--font")
+        .arg(FONT_PATH)
         .arg("--font")
         .arg(COLOR_EMOJI_FONT_PATH)
+        // これが無いと、外したカラーフォントの代わりに絵文字を描けるシステム
+        // フォントが見つかる環境(macOS等)では警告が出ず、結果が実行環境次第に
+        // なってしまう。
+        .arg("--disable-system-fonts")
         .arg("-o")
         .arg(&output)
         .output()

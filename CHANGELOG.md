@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `--disable-system-fonts` (`EngineOptions::disable_system_fonts`) turns the system font
+  search off, so a document is built only from `--font`, `--gothic-font`/`--serif-font`/
+  `--mono-font` and `@font-face`. Passing fonts explicitly was not enough on its own:
+  a combination with no matching face — `font-family: serif` in italic, say — was still
+  filled in from whatever the machine had installed, so the same HTML produced a PDF
+  embedding Times New Roman on macOS and DejaVu Serif on a Linux container. With the
+  flag the output is identical on either. Characters that no given font can draw are
+  warned about and left undrawn, as before.
+
 ### Fixed
 
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
