@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: sghtmltopdf\n"
-"POT-Creation-Date: 2026-08-30T18:38:36+09:00\n"
+"POT-Creation-Date: 2026-09-06T22:36:28-05:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -70,7 +70,7 @@ msgstr "Selectors, values, and at-rules"
 
 #: src/SUMMARY.md:22 src/usage/cli/reference.md:60 src/usage/ruby_rails.md:95
 #: src/supports/fonts.md:1 src/migration/wkhtmltopdf.md:18
-#: src/migration/wicked-pdf.md:126
+#: src/migration/wicked-pdf.md:133
 msgid "フォント"
 msgstr "Fonts"
 
@@ -484,12 +484,12 @@ msgid ""
 msgstr ""
 "Memory use is roughly on par with wkhtmltopdf. At 60,000 elements and for "
 "the 20,000 row statement sghtmltopdf uses slightly more, and it grows with "
-"document size just as wkhtmltopdf does. [Streaming mode](usage/cli/streaming."
-"md) brings this down to 25MB for the paragraph document. It does not help "
-"for a statement built from one huge table, however. Pages are flushed at the "
-"boundaries of the elements directly under `<body>`, so a document that "
-"contains a single table cannot release memory until the end of that table "
-"has been written."
+"document size just as wkhtmltopdf does. [Streaming mode](usage/cli/"
+"streaming.md) brings this down to 25MB for the paragraph document. It does "
+"not help for a statement built from one huge table, however. Pages are "
+"flushed at the boundaries of the elements directly under `<body>`, so a "
+"document that contains a single table cannot release memory until the end of "
+"that table has been written."
 
 #: src/index.md:79
 msgid ""
@@ -531,8 +531,8 @@ msgid ""
 "\n"
 "    CallCLI[\"ターミナル / CI\"] --> CLI\n"
 "    CallHTTP[\"他言語・curl\"] -->|\"POST /pdf?options\"| Server\n"
-"    CallRuby[\"Rails / Rubyアプリ<br/>(gem sghtmltopdf)\"] -->|\"Sghtmltopdf."
-"render\"| FFI\n"
+"    CallRuby[\"Rails / Rubyアプリ<br/>(gem sghtmltopdf)\"] -->|"
+"\"Sghtmltopdf.render\"| FFI\n"
 "    CallRuby -->|\"server_url 設定時\"| Delegate[\"ServerClient\"]\n"
 "    Delegate -->|\"POST /pdf?options<br/>(別プロセス・別ホストへHTTP委譲)\"| "
 "Server\n"
@@ -566,8 +566,8 @@ msgstr ""
 "    CallCLI[\"Shell / CI\"] --> CLI\n"
 "    CallHTTP[\"Any language (curl, ...)\"] -->|\"POST /pdf?options\"| "
 "Server\n"
-"    CallRuby[\"Ruby app / Rails<br/>(gem sghtmltopdf)\"] -->|\"Sghtmltopdf."
-"render\"| FFI\n"
+"    CallRuby[\"Ruby app / Rails<br/>(gem sghtmltopdf)\"] -->|"
+"\"Sghtmltopdf.render\"| FFI\n"
 "    CallRuby -->|\"when server_url is set\"| Delegate[\"ServerClient\"]\n"
 "    Delegate -->|\"POST /pdf?options<br/>(HTTP, separate process/host)\"| "
 "Server\n"
@@ -1928,7 +1928,7 @@ msgstr "Link each heading back to the table of contents"
 msgid "`--page-offset <N>`"
 msgstr "`--page-offset <N>`"
 
-#: src/usage/cli/reference.md:168 src/usage/cli/reference.md:231
+#: src/usage/cli/reference.md:168 src/usage/cli/reference.md:243
 msgid "0"
 msgstr "0"
 
@@ -1982,8 +1982,8 @@ msgid "禁止"
 msgstr "Denied"
 
 #: src/usage/cli/reference.md:181
-msgid "`--allow <PATH>`"
-msgstr "`--allow <PATH>`"
+msgid "`--allow-path <PATH>`"
+msgstr "`--allow-path <PATH>`"
 
 #: src/usage/cli/reference.md:181
 msgid "制限なし"
@@ -1995,12 +1995,12 @@ msgstr "`--allow-remote-assets`"
 
 #: src/usage/cli/reference.md:184
 msgid ""
-"`--allow`を1つ以上指定すると、ローカル参照はそのディレクトリ配下だけに限定さ"
-"れます。 `<img src>`・外部CSS・`@font-face`のすべてに効きます。"
+"`--allow-path`を1つ以上指定すると、ローカル参照はそのディレクトリ配下だけに限"
+"定されます。 `<img src>`・外部CSS・`@font-face`のすべてに効きます。"
 msgstr ""
-"Given one or more `--allow` paths, local references are confined to those "
-"directories. This applies to `<img src>`, external CSS, and `@font-face` "
-"alike."
+"Given one or more `--allow-path` directories, local references are confined "
+"to those directories. This applies to `<img src>`, external CSS, and `@font-"
+"face` alike."
 
 #: src/usage/cli/reference.md:187
 msgid ""
@@ -2035,26 +2035,65 @@ msgstr ""
 
 #: src/usage/cli/reference.md:199
 msgid ""
-"外のファイルを意図的に参照する場合は`--allow`で範囲を明示してください。 `--"
-"allow`を指定した場合は、基準ディレクトリではなく許可したディレクトリが境界に"
-"なります。"
-msgstr "Ranges"
+"外のファイルを意図的に参照する場合は`--allow-path`で範囲を明示してください。 "
+"`--allow-path`を指定した場合は、基準ディレクトリではなく許可したディレクトリ"
+"が境界になります。"
+msgstr ""
+"Name the range explicitly with `--allow-path` when you mean to reference a "
+"file outside it. Once `--allow-path` is given, the boundary is the allowed "
+"directories rather than the base directory."
 
 #: src/usage/cli/reference.md:210
 msgid ""
 "判定はパス文字列に対して行うため、基準ディレクトリ配下のシンボリックリンクは"
-"辿ります。 シンボリックリンクの先まで含めて閉じたい場合は`--allow`を使ってく"
-"ださい(こちらは実パスで判定します)。"
+"辿ります。 シンボリックリンクの先まで含めて閉じたい場合は`--allow-path`を使っ"
+"てください(こちらは実パスで判定します)。"
 msgstr ""
 "The check is lexical, so symlinks under the base directory are followed. Use "
-"`--allow` when you want the boundary to hold across symlinks as well (that "
-"check resolves real paths)."
+"`--allow-path` when you want the boundary to hold across symlinks as well "
+"(that check resolves real paths)."
 
 #: src/usage/cli/reference.md:213
+msgid "`/`で始まる参照"
+msgstr "A reference starting with `/`"
+
+#: src/usage/cli/reference.md:215
+msgid ""
+"`/assets/logo.png`のように`/`で始まる参照は、まず基準ディレクトリからのサイト"
+"ルート相対(`<基準ディレクトリ>/assets/logo.png`)として解決します。 Railsのア"
+"セットパイプラインが出すパスがこの形なので、precompile済みの`public/`を基準"
+"ディレクトリにすればそのまま解決できます。"
+msgstr ""
+"A reference starting with `/`, such as `/assets/logo.png`, is first resolved "
+"relative to the site root, that is, to the base directory (`<base directory>/"
+"assets/logo.png`). That is the shape the Rails asset pipeline emits, so "
+"pointing the base directory at a precompiled `public/` resolves it as it is."
+
+#: src/usage/cli/reference.md:218
+msgid ""
+"そこにファイルが無い場合に限り、同じ文字列をファイルシステムの絶対パスとして"
+"解釈し直します。 `<img src=\"/var/www/app/public/logo.png\">`のような書き方の"
+"ためのフォールバックです。 このとき読めるかどうかは他の参照と同じ規則で決まり"
+"ます。 絶対パスが基準ディレクトリの中を指していればそのまま読め、外を指してい"
+"れば`--allow-path`が要ります。"
+msgstr ""
+"Only when there is no file there is the same string read again as a "
+"filesystem path. It is the fallback for a document written as `<img src=\"/"
+"var/www/app/public/logo.png\">`. What may be read is then decided by the "
+"same rules as for any other reference: an absolute path inside the base "
+"directory is read as it is, one outside it needs `--allow-path`."
+
+#: src/usage/cli/reference.md:223
+msgid ""
+"どちらの解釈でもファイルが見つからない場合は、両方のパスを挙げたエラーになり"
+"ます。"
+msgstr "When neither reading finds a file, the error names both paths."
+
+#: src/usage/cli/reference.md:225
 msgid "入力の大きさの制限"
 msgstr "Limits on input size"
 
-#: src/usage/cli/reference.md:215
+#: src/usage/cli/reference.md:227
 msgid ""
 "要素数がおよそ50万ノードを超えるHTMLはエラーになります。 算出スタイル・ボック"
 "スツリー・レイアウト結果がノード数に比例して積み上がるためで、実測では1ノード"
@@ -2064,7 +2103,7 @@ msgstr ""
 "box tree and the layout result all grow in proportion to the node count; "
 "measured at 472 B to 1210 B per node."
 
-#: src/usage/cli/reference.md:218
+#: src/usage/cli/reference.md:230
 msgid ""
 "数千ページ規模の文書でも数十万ノードなので、実在の文書がここに当たることはま"
 "ずありません。 当たった場合は文書を分割するか、[ストリーミングモード]"
@@ -2077,7 +2116,7 @@ msgstr ""
 "each processed part as it goes, so it can convert documents whose total "
 "exceeds the limit."
 
-#: src/usage/cli/reference.md:222
+#: src/usage/cli/reference.md:234
 msgid ""
 "テキストの量に比例するメモリはこの上限では抑えられません(要素3個でも10MiBのテ"
 "キストなら約1.7GiB使います)。 HTTPサーバモードでは`--max-body-size`がその役割"
@@ -2087,11 +2126,11 @@ msgstr ""
 "(three elements holding 10 MiB of text still use about 1.7 GiB). In HTTP "
 "server mode `--max-body-size` plays that role."
 
-#: src/usage/cli/reference.md:225
+#: src/usage/cli/reference.md:237
 msgid "ログとexit code"
 msgstr "Logging and exit codes"
 
-#: src/usage/cli/reference.md:227
+#: src/usage/cli/reference.md:239
 msgid ""
 "`--log-level <none|error|warn|info>`(既定`info`)、`-q`/`--quiet`(=`--log-"
 "level none`)。"
@@ -2099,34 +2138,34 @@ msgstr ""
 "`--log-level <none|error|warn|info>`, `info` by default, and `-q` or `--"
 "quiet`, which is the same as `--log-level none`."
 
-#: src/usage/cli/reference.md:229
+#: src/usage/cli/reference.md:241
 msgid "code"
 msgstr "Code"
 
-#: src/usage/cli/reference.md:229 src/usage/ruby_rails.md:54
+#: src/usage/cli/reference.md:241 src/usage/ruby_rails.md:54
 #: src/usage/ruby_rails.md:165 src/migration/wkhtmltopdf-options.md:6
 msgid "意味"
 msgstr "Meaning"
 
-#: src/usage/cli/reference.md:231
+#: src/usage/cli/reference.md:243
 msgid "成功"
 msgstr "Success"
 
-#: src/usage/cli/reference.md:232
+#: src/usage/cli/reference.md:244
 msgid "1"
 msgstr "1"
 
-#: src/usage/cli/reference.md:232
+#: src/usage/cli/reference.md:244
 msgid "使用法エラー(不明なオプション、値の形式不正、非対応オプションの指定)"
 msgstr ""
 "Usage error: an unknown option, a malformed value, or an option that is not "
 "supported"
 
-#: src/usage/cli/reference.md:233
+#: src/usage/cli/reference.md:245
 msgid "2"
 msgstr "2"
 
-#: src/usage/cli/reference.md:233
+#: src/usage/cli/reference.md:245
 msgid ""
 "入力/リソースエラー(ファイルが無い、フォントが読めない、`abort`指定での取得失"
 "敗)"
@@ -2134,20 +2173,20 @@ msgstr ""
 "Input or resource error: a missing file, a font that cannot be read, or a "
 "failed fetch under `abort`"
 
-#: src/usage/cli/reference.md:234
+#: src/usage/cli/reference.md:246
 msgid "3"
 msgstr "3"
 
-#: src/usage/cli/reference.md:234
+#: src/usage/cli/reference.md:246
 msgid "レンダリングエラー(ストリーミングモードの制約違反など)"
 msgstr ""
 "Rendering error, such as breaking one of the streaming mode restrictions"
 
-#: src/usage/cli/reference.md:235
+#: src/usage/cli/reference.md:247
 msgid "4"
 msgstr "4"
 
-#: src/usage/cli/reference.md:235
+#: src/usage/cli/reference.md:247
 msgid ""
 "制限時間超過(HTTPサーバモードの`--timeout`のみ。CLIには時間制限がないため出ま"
 "せん)"
@@ -2284,8 +2323,8 @@ msgstr ""
 "An element directly under `<body>` has its style settled the moment its next "
 "sibling appears. Only selectors that need to know whether more elements of "
 "the same kind follow are therefore undecidable. Rewrite rules such as "
-"\"remove the rule on the last row only\" by adding a class and writing `."
-"last { … }` instead."
+"\"remove the rule on the last row only\" by adding a class and writing "
+"`.last { … }` instead."
 
 #: src/usage/cli/streaming.md:37
 msgid ""
@@ -2293,10 +2332,10 @@ msgid ""
 "child`など)はバッチと同じ結果になります。 詳細は[セレクタ](../../supports/"
 "selectors.md#ストリーミングモード固有の制約)を参照してください。"
 msgstr ""
-"Every other sibling selector — `+`, `~`, `:first-child`, `:nth-child()`, `:"
-"last-child` and so on — gives the same result as batch mode. See [Selectors]"
-"(../../supports/selectors.md#restrictions-specific-to-streaming-mode) for "
-"the details."
+"Every other sibling selector — `+`, `~`, `:first-child`, `:nth-child()`, "
+"`:last-child` and so on — gives the same result as batch mode. See "
+"[Selectors](../../supports/selectors.md#restrictions-specific-to-streaming-"
+"mode) for the details."
 
 #: src/usage/cli/streaming.md:40
 msgid "使えるもの"
@@ -3050,8 +3089,8 @@ msgstr ""
 
 #: src/usage/ruby_rails.md:10
 msgid ""
-"wicked_pdfから移ってくる場合は[wicked_pdfからの移行](../migration/wicked-pdf."
-"md)もあわせて読んでください。"
+"wicked_pdfから移ってくる場合は[wicked_pdfからの移行](../migration/wicked-"
+"pdf.md)もあわせて読んでください。"
 msgstr ""
 "If you are coming from wicked_pdf, read [Migrating from wicked_pdf](../"
 "migration/wicked-pdf.md) as well."
@@ -3066,8 +3105,8 @@ msgstr "Precompiled gems are distributed, so no Rust toolchain is needed."
 #: src/supports/properties.md:65 src/supports/properties.md:86
 #: src/supports/properties.md:113 src/supports/properties.md:128
 #: src/supports/properties.md:150 src/supports/properties.md:159
-#: src/supports/properties.md:170 src/supports/properties.md:185
-#: src/supports/properties.md:220 src/supports/properties.md:239
+#: src/supports/properties.md:170 src/supports/properties.md:186
+#: src/supports/properties.md:221 src/supports/properties.md:240
 #: src/supports/selectors.md:15 src/supports/selectors.md:28
 #: src/supports/selectors.md:47 src/supports/selectors.md:58
 #: src/supports/selectors.md:77 src/supports/selectors.md:90
@@ -3164,7 +3203,7 @@ msgstr ""
 "the same parser."
 
 #: src/usage/ruby_rails.md:50 src/usage/ruby_rails.md:87
-#: src/usage/ruby_rails.md:142 src/usage/ruby_rails.md:192
+#: src/usage/ruby_rails.md:142 src/usage/ruby_rails.md:230
 #: src/migration/wicked-pdf.md:34
 msgid "\"A4\""
 msgstr "\"A4\""
@@ -3203,8 +3242,8 @@ msgid "`grayscale: false` / `nil`"
 msgstr "`grayscale: false` or `nil`"
 
 #: src/usage/ruby_rails.md:59
-msgid "`allow: [\"/a\", \"/b\"]`"
-msgstr "`allow: [\"/a\", \"/b\"]`"
+msgid "`allow_path: [\"/a\", \"/b\"]`"
+msgstr "`allow_path: [\"/a\", \"/b\"]`"
 
 #: src/usage/ruby_rails.md:59
 msgid "同じオプションの繰り返し"
@@ -3318,14 +3357,14 @@ msgid "# config/initializers/sghtmltopdf.rb など\n"
 msgstr "# for example config/initializers/sghtmltopdf.rb\n"
 
 #: src/usage/ruby_rails.md:88 src/migration/wicked-pdf.md:36
-#: src/migration/wicked-pdf.md:133
+#: src/migration/wicked-pdf.md:140
 msgid "\"vendor/fonts/NotoSansJP-Regular.ttf\""
 msgstr "\"vendor/fonts/NotoSansJP-Regular.ttf\""
 
 #: src/usage/ruby_rails.md:92
 msgid ""
-"マージ順はグローバル設定 → 呼び出し時の引数で、後者が勝ちます。 `Sghtmltopdf."
-"reset_config!`で空に戻せます(主にテスト用)。"
+"マージ順はグローバル設定 → 呼び出し時の引数で、後者が勝ちます。 "
+"`Sghtmltopdf.reset_config!`で空に戻せます(主にテスト用)。"
 msgstr ""
 "Global configuration is merged first and the arguments at the call site win. "
 "`Sghtmltopdf.reset_config!` clears it again, mainly for tests."
@@ -3353,9 +3392,10 @@ msgstr "\"/app/vendor/fonts/NotoSansMono-Regular.ttf\""
 
 #: src/usage/ruby_rails.md:108
 msgid ""
-"`font`系で渡すフォントは、後述の`allow`(ローカル参照の制限)の対象外です。"
+"`font`系で渡すフォントは、後述の`allow_path`(ローカル参照の制限)の対象外で"
+"す。"
 msgstr ""
-"Fonts passed through the `font` options are exempt from `allow`, the "
+"Fonts passed through the `font` options are exempt from `allow_path`, the "
 "restriction on local references described below."
 
 #: src/usage/ruby_rails.md:110
@@ -3475,14 +3515,14 @@ msgstr "\"invoice\""
 msgid "# ファイル名(.pdfは自動で付く)\n"
 msgstr "# the file name; .pdf is appended for you\n"
 
-#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:263
+#: src/usage/ruby_rails.md:140 src/usage/ruby_rails.md:301
 #: src/migration/wicked-pdf.md:22 src/migration/wicked-pdf.md:92
 msgid "\"invoices/show\""
 msgstr "\"invoices/show\""
 
-#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:176
-#: src/usage/ruby_rails.md:263 src/migration/wicked-pdf.md:22
-#: src/migration/wicked-pdf.md:114
+#: src/usage/ruby_rails.md:141 src/usage/ruby_rails.md:178
+#: src/usage/ruby_rails.md:301 src/migration/wicked-pdf.md:22
+#: src/migration/wicked-pdf.md:120
 msgid "\"pdf\""
 msgstr "\"pdf\""
 
@@ -3568,52 +3608,201 @@ msgstr ""
 "`stylesheet_link_tag` works as is"
 
 #: src/usage/ruby_rails.md:168
-msgid "`allow`"
-msgstr "`allow`"
+msgid "`allow_path`"
+msgstr "`allow_path`"
 
 #: src/usage/ruby_rails.md:168
-msgid "`[Rails.root]`"
-msgstr "`[Rails.root]`"
+msgid "`public/`とアセットパイプラインのロードパス"
+msgstr "`public/` and the asset pipeline load paths"
 
 #: src/usage/ruby_rails.md:168
-msgid "ローカル参照をアプリ配下に限定する"
-msgstr "Confines local references to the application directory"
+msgid "ローカル参照をアプリのアセット配下に限定する"
+msgstr "Confines local references to the application's assets"
 
 #: src/usage/ruby_rails.md:170
 msgid ""
 "どちらも`Sghtmltopdf.configure`で上書きできます(イニシャライザの実行順に依存"
-"しません)。 `allow`の既定はテンプレートにユーザー入力が混ざっても文書外のファ"
-"イルを読ませないためのものなので、アプリの外(例: `/usr/share/fonts`)を参照し"
-"ている場合は明示的に足してください。"
+"しません)。 `allow_path`の既定はテンプレートにユーザー入力が混ざっても文書外"
+"のファイルを読ませないためのものなので、アプリの外(例: `/usr/share/fonts`)を"
+"参照している場合は明示的に足してください。 内訳は`public/`と"
+"`config.assets.paths`(Propshaft/Sprocketsのロードパス)で、gemやengineが提供す"
+"るアセットのように`Rails.root`の外にあるものも含みます。 `config/`や`db/`は入"
+"らないので、`Rails.root.join(\"tmp/chart.png\")`のようにアセット以外の場所を"
+"参照している場合も足してください。"
 msgstr ""
 "Both can be overridden with `Sghtmltopdf.configure`, regardless of "
-"initializer order. The `allow` default exists so that user input mixed into "
-"a template cannot read files outside the document; if you reference "
+"initializer order. The `allow_path` default exists so that user input mixed "
+"into a template cannot read files outside the document; if you reference "
 "something outside the application, such as `/usr/share/fonts`, add it "
-"explicitly."
+"explicitly. It is made up of `public/` and `config.assets.paths` (the "
+"Propshaft or Sprockets load paths), which includes assets that live outside "
+"`Rails.root`, such as the ones a gem or an engine provides. `config/` and "
+"`db/` are not in it, so add those too if you reference somewhere that is not "
+"an asset, such as `Rails.root.join(\"tmp/chart.png\")`."
 
-#: src/usage/ruby_rails.md:173
+#: src/usage/ruby_rails.md:175
 msgid ""
-"開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、CSS"
-"の中身を`<style>`へ展開するヘルパがあります。"
+"開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、ア"
+"セットの中身を文書へ埋め込むヘルパがあります。"
 msgstr ""
 "For cases such as development, where assets have not been written to `public/"
-"` yet, there are helpers that inline the CSS into a `<style>` element."
+"` yet, there are helpers that put the asset itself into the document."
 
-#: src/usage/ruby_rails.md:177 src/usage/ruby_rails.md:178
-#: src/supports/images.md:148
+#: src/usage/ruby_rails.md:179 src/usage/ruby_rails.md:180
+#: src/supports/images.md:148 src/migration/wicked-pdf.md:121
 msgid "\"logo.png\""
 msgstr "\"logo.png\""
 
-#: src/usage/ruby_rails.md:178
+#: src/usage/ruby_rails.md:180
 msgid "<%# 見つからなければnil %>"
 msgstr "<%# nil if it cannot be found %>"
 
-#: src/usage/ruby_rails.md:181
+#: src/usage/ruby_rails.md:183
+msgid ""
+"どちらもアセットの実ファイルをパイプラインのロードパスから引き当てます。 開発"
+"環境で素の`image_tag`が使えないのはこのためです。 `image_tag`が出す`/assets/"
+"logo-abc123.png`はダイジェストもマウント位置もパイプラインが実行時に作る仮想"
+"的なもので、対応するファイルはディスク上にありません。"
+msgstr ""
+"Both look the asset up in the pipeline load path to find the real file. That "
+"is why a plain `image_tag` does not work in development: the `/assets/logo-"
+"abc123.png` it emits is virtual, with both the digest and the mount point "
+"made up by the pipeline at request time, and no file of that name is on disk."
+
+#: src/usage/ruby_rails.md:187
+msgid ""
+"`sghtmltopdf_stylesheet_link_tag`はCSSの中身を`<style>`へ展開します。 このと"
+"き中身をそのまま写すのではなく、`url()`の参照先をエンジンが読める形へ指し直"
+"し、`@import`を再帰的に取り込みます。"
+msgstr ""
+"`sghtmltopdf_stylesheet_link_tag` expands the CSS itself into a `<style>`. "
+"It does not copy the file verbatim: every `url()` is pointed at something "
+"the engine can read, and every `@import` is spliced in."
+
+#: src/usage/ruby_rails.md:190
+msgid ""
+"指し直しが必要なのは、アセットパイプラインがprecompile時に`url()`を"
+"`asset_path`で書き換えるためです。 `asset_host`を設定していればHTTPSの絶対URL"
+"になり(Sprocketsの場合)、そうでなければダイジェスト付きの`/assets/…`になりま"
+"す。 PDFのレンダリングはHTTPサーバを介さないので、どちらもそのままでは取得で"
+"きません。 `@font-face`の取得に失敗しても`font-family`の次の候補には進まず、"
+"エンジン既定のフォントに落ちるだけなので、気づきにくい形で見た目が変わりま"
+"す。"
+msgstr ""
+"That is needed because the asset pipeline rewrites every `url()` through "
+"`asset_path` while precompiling. With `asset_host` set it becomes an "
+"absolute HTTPS URL (under Sprockets), and without it a digested `/assets/…` "
+"path. Rendering a PDF does not go through an HTTP server, so neither can be "
+"fetched as it is. A `@font-face` that fails to load does not move on to the "
+"next `font-family` candidate either: it falls back to the engine's default "
+"font, so the appearance changes in a way that is easy to miss."
+
+#: src/usage/ruby_rails.md:195
+msgid "CSS中の`url()`"
+msgstr "`url()` in the CSS"
+
+#: src/usage/ruby_rails.md:195
+msgid "指し直し先"
+msgstr "Pointed at"
+
+#: src/usage/ruby_rails.md:197
+msgid "`https://cdn.example.com/assets/x-<digest>.otf`"
+msgstr "`https://cdn.example.com/assets/x-<digest>.otf`"
+
+#: src/usage/ruby_rails.md:197
+msgid "パス部分をローカルのファイルに対応付ける"
+msgstr "The path part is mapped onto a local file"
+
+#: src/usage/ruby_rails.md:198
+msgid "`/assets/x-<digest>.otf`"
+msgstr "`/assets/x-<digest>.otf`"
+
+#: src/usage/ruby_rails.md:198
+msgid "`public/`、次にパイプラインのロードパス"
+msgstr "`public/`, then the asset pipeline load path"
+
+#: src/usage/ruby_rails.md:199
+msgid "`fonts/x.otf`"
+msgstr "`fonts/x.otf`"
+
+#: src/usage/ruby_rails.md:199
+msgid "まずCSSファイル自身のディレクトリ、次にパイプラインのロードパス"
+msgstr ""
+"The stylesheet's own directory first, then the asset pipeline load path"
+
+#: src/usage/ruby_rails.md:200
+msgid "`data:`、`#fragment`のみ"
+msgstr "`data:`, a bare `#fragment`"
+
+#: src/usage/ruby_rails.md:200
+msgid "そのまま"
+msgstr "Left alone"
+
+#: src/usage/ruby_rails.md:201
+msgid "ローカルに見つからないURL"
+msgstr "A URL that names no local file"
+
+#: src/usage/ruby_rails.md:201
+msgid "そのまま(CDNのフォントなど本物のリモート参照)"
+msgstr ""
+"Left alone (a genuine remote reference, such as a font served by a CDN)"
+
+#: src/usage/ruby_rails.md:203
+msgid ""
+"絶対URLはホスト名を`asset_host`と突き合わせません。 `asset_host`はProcや`%d`"
+"を含む文字列も取れるため、逆引きの一般解がないからです。 代わりにパス部分が"
+"ディスク上に実在するかどうかで判定します。"
+msgstr ""
+"The host of an absolute URL is not compared against `asset_host`. It may be "
+"a Proc, or a string holding `%d`, so there is no general way to recognise "
+"one in reverse. Whether the path part exists on disk decides instead."
+
+#: src/usage/ruby_rails.md:207
+msgid ""
+"指し直したあとの形は`sghtmltopdf_image_tag`と同じで、`base_url`の下なら相対パ"
+"ス、読める場所にあれば絶対パス、読めなければ`data:`URIです。"
+msgstr ""
+"What comes out takes the same shape as `sghtmltopdf_image_tag`: a path "
+"relative to `base_url` when the file sits under it, an absolute path when "
+"the engine may read it elsewhere, and a `data:` URI when it may not."
+
+#: src/usage/ruby_rails.md:209
+msgid ""
+"`sghtmltopdf_image_tag`は画像をパスで指します。 `base_url`の下にあれば相対パ"
+"ス、そうでなければ絶対パスです。 エンジンは`base_url`から解決できない絶対パス"
+"をファイルシステムのパスとして読むので、開発環境で`app/assets`にあるファイル"
+"もそのまま指せます。"
+msgstr ""
+"`sghtmltopdf_image_tag` references the image by path: relative when it sits "
+"under `base_url`, and absolute when it does not. The engine reads an "
+"absolute path as a filesystem path once it fails to resolve under "
+"`base_url`, so a file in `app/assets` in development can be pointed at as it "
+"is."
+
+#: src/usage/ruby_rails.md:213
+msgid ""
+"パスで指せるのはエンジンがそこを読める場合だけなので、`allow_path`(未設定なら"
+"`base_url`)の外にあるファイルは`data:`URIとして埋め込みます。 取得の失敗は既"
+"定で無視されるため、パスで指したまま読めないと画像が無言で消えてしまうからで"
+"す。 同じ理由で、`server_url`を設定して別プロセスへ委譲する場合も埋め込みま"
+"す。委譲先が同じファイルシステムを見ているとは限りません。"
+msgstr ""
+"A path only works where the engine is allowed to read, so a file outside "
+"`allow_path` (or outside `base_url`, when `allow_path` is not set) is "
+"embedded as a `data:` URI instead. A failed fetch is ignored by default, so "
+"an image pointed at by a path the engine cannot read would silently vanish. "
+"The same goes for delegating to another process with `server_url`, which may "
+"not be looking at this filesystem."
+
+#: src/usage/ruby_rails.md:217
+msgid "`inline: true`を渡すと常に埋め込みます。"
+msgstr "Pass `inline: true` to embed unconditionally."
+
+#: src/usage/ruby_rails.md:219
 msgid "サーバへ委譲する"
 msgstr "Delegating to a server"
 
-#: src/usage/ruby_rails.md:183
+#: src/usage/ruby_rails.md:221
 msgid ""
 "`server_url`を指定すると、変換を[HTTPサーバモード](../server/index.md)で動く "
 "別プロセスへ投げます。 アプリのCPUを使いたくない場合や、gemの対応プラット"
@@ -3624,21 +3813,21 @@ msgstr ""
 "the application's CPU on rendering, or when you run somewhere the gem does "
 "not support, such as Windows."
 
-#: src/usage/ruby_rails.md:189 src/migration/wicked-pdf.md:143
+#: src/usage/ruby_rails.md:227 src/migration/wicked-pdf.md:150
 msgid "\"http://pdf.internal:8080\""
 msgstr "\"http://pdf.internal:8080\""
 
-#: src/usage/ruby_rails.md:192
+#: src/usage/ruby_rails.md:230
 msgid "# 委譲される\n"
 msgstr "# delegated\n"
 
-#: src/usage/ruby_rails.md:195
+#: src/usage/ruby_rails.md:233
 msgid "URLは1つだけです。負荷分散はLB(nginx・k8s Service)を前段に置く前提です"
 msgstr ""
 "Only one URL is accepted. Load balancing is expected to be handled by "
 "something in front, such as nginx or a Kubernetes Service"
 
-#: src/usage/ruby_rails.md:196
+#: src/usage/ruby_rails.md:234
 msgid ""
 "到達できないときはローカルへフォールバックしません(`ServerError`)。 サーバ起"
 "動時にだけ指定できるフォントが効かず、出力が変わってしまうためです"
@@ -3647,7 +3836,7 @@ msgstr ""
 "it raises `ServerError`. Fonts can only be set when the server starts, so "
 "falling back would silently change the output"
 
-#: src/usage/ruby_rails.md:198
+#: src/usage/ruby_rails.md:236
 msgid ""
 "HTTPのステータスは上のエラー分類へ対応します(400→`UsageError`、"
 "413→`InputError`、500→`RenderError`、その他→`ServerError`)"
@@ -3655,11 +3844,11 @@ msgstr ""
 "The HTTP statuses map onto the error classes above: 400 to `UsageError`, 413 "
 "to `InputError`, 500 to `RenderError`, and anything else to `ServerError`"
 
-#: src/usage/ruby_rails.md:200
+#: src/usage/ruby_rails.md:238
 msgid "サーバでは指定できないオプション"
 msgstr "Options that cannot be set against a server"
 
-#: src/usage/ruby_rails.md:202
+#: src/usage/ruby_rails.md:240
 msgid ""
 "ローカルパスを取るものと出力先・アクセス制御はサーバ起動時にしか設定できませ"
 "ん(指定すると`UsageError`)。"
@@ -3668,22 +3857,22 @@ msgstr ""
 "controls can only be set when the server starts; passing them raises "
 "`UsageError`."
 
-#: src/usage/ruby_rails.md:212
+#: src/usage/ruby_rails.md:250
 msgid ""
-"Railtieが入れる`base_url`/`allow`の既定値は自動的に外れるので、Railsでそのま"
-"ま`server_url`を足しても400にはなりません。 `configure`で明示的に設定している"
-"場合は、サーバ側の起動オプションへ移してください。"
+"Railtieが入れる`base_url`/`allow_path`の既定値は自動的に外れるので、Railsでそ"
+"のまま`server_url`を足しても400にはなりません。 `configure`で明示的に設定して"
+"いる場合は、サーバ側の起動オプションへ移してください。"
 msgstr ""
-"The `base_url` and `allow` defaults supplied by the Railtie are dropped "
+"The `base_url` and `allow_path` defaults supplied by the Railtie are dropped "
 "automatically, so simply adding `server_url` in a Rails app does not produce "
 "a 400. If you set them explicitly with `configure`, move them to the "
 "server's startup options."
 
-#: src/usage/ruby_rails.md:215
+#: src/usage/ruby_rails.md:253
 msgid "チャンクごとに受け取る"
 msgstr "Receiving the PDF in chunks"
 
-#: src/usage/ruby_rails.md:217
+#: src/usage/ruby_rails.md:255
 msgid ""
 "ブロックを渡すと、PDF全体を組み立ててから返す代わりにチャンクごとにブロックが"
 "呼ばれます(返り値は`nil`)。 Rackの`response.stream`へ流したり、S3のマルチパー"
@@ -3693,7 +3882,7 @@ msgstr ""
 "assembled and returned; the return value is `nil`. This is the hook for "
 "writing into Rack's `response.stream` or feeding an S3 multipart upload."
 
-#: src/usage/ruby_rails.md:224
+#: src/usage/ruby_rails.md:262
 msgid ""
 "ローカル変換でもサーバ委譲でも、PDF全体が組み上がるのを待たずに書き出せま"
 "す。 ローカルは確定したページから順に、サーバはその`?stream=1`(chunked "
@@ -3704,7 +3893,7 @@ msgstr ""
 "is finalised; with a server, its `?stream=1` response, sent with chunked "
 "transfer encoding, is passed straight through."
 
-#: src/usage/ruby_rails.md:227
+#: src/usage/ruby_rails.md:265
 msgid ""
 "ただし逐次になるのはPDFの書き出しだけで、HTMLのパースとレイアウトは文書全体に"
 "対して先に行います。 そのため最初のチャンクが届くのは変換の終盤で、ピークメモ"
@@ -3717,7 +3906,7 @@ msgstr ""
 "block. To have pages finalised while the HTML is still being read, combine "
 "this with [streaming mode](#when-you-need-to-keep-memory-down)."
 
-#: src/usage/ruby_rails.md:231
+#: src/usage/ruby_rails.md:269
 msgid ""
 "1回に渡すバイト数の目安は`chunk_size:`で変えられます(既定64KiB、ローカル変換"
 "のみ)。 小さくすると細かく届きますが、そのたびにGVLを取り直すのでレンダリング"
@@ -3728,25 +3917,25 @@ msgstr ""
 "more finely, but the GVL has to be reacquired each time, which slows "
 "rendering down."
 
-#: src/usage/ruby_rails.md:238
+#: src/usage/ruby_rails.md:276
 msgid "`Thread#kill`とタイムアウトが効く"
 msgstr "`Thread#kill` and timeouts work"
 
-#: src/usage/ruby_rails.md:240
+#: src/usage/ruby_rails.md:278
 msgid ""
 "ブロックの呼び出しはRubyのメソッド呼び出しなので、その時点で保留中の割り込み"
-"が処理されます。 ブロック付きで呼んでいる限り、`Thread#kill`や`Timeout."
-"timeout`・`Rack::Timeout`がチャンク境界で効きます。"
+"が処理されます。 ブロック付きで呼んでいる限り、`Thread#kill`や"
+"`Timeout.timeout`・`Rack::Timeout`がチャンク境界で効きます。"
 msgstr ""
 "Calling the block is an ordinary Ruby method call, so any pending interrupt "
 "is handled at that point. As long as you pass a block, `Thread#kill`, "
 "`Timeout.timeout`, and `Rack::Timeout` all take effect at chunk boundaries."
 
-#: src/usage/ruby_rails.md:245
+#: src/usage/ruby_rails.md:283
 msgid "# 10秒で中断できる\n"
 msgstr "# can be interrupted after 10 seconds\n"
 
-#: src/usage/ruby_rails.md:249
+#: src/usage/ruby_rails.md:287
 msgid ""
 "ブロックを渡さない`render`/`render_to_file`は変換の間まったくRubyへ戻らないた"
 "め、途中で止められません。 長い変換に上限をかけたい場合はブロック付きで呼んで"
@@ -3756,11 +3945,11 @@ msgstr ""
 "the conversion and therefore cannot be stopped part way. To put a limit on a "
 "long conversion, call them with a block."
 
-#: src/usage/ruby_rails.md:252
+#: src/usage/ruby_rails.md:290
 msgid "Railsで逐次返却する"
 msgstr "Streaming the response from Rails"
 
-#: src/usage/ruby_rails.md:254
+#: src/usage/ruby_rails.md:292
 msgid ""
 "`render pdf:`のレンダラは、組み上がったPDFを`send_data`で一括返却します。 確"
 "定したページから順に返したい場合は`ActionController::Live`と組み合わせます。"
@@ -3769,15 +3958,15 @@ msgstr ""
 "`send_data`. To send pages as they are finalised, combine it with "
 "`ActionController::Live`."
 
-#: src/usage/ruby_rails.md:262
+#: src/usage/ruby_rails.md:300
 msgid "\"Content-Type\""
 msgstr "\"Content-Type\""
 
-#: src/usage/ruby_rails.md:262 src/usage/ruby_rails.md:281
+#: src/usage/ruby_rails.md:300 src/usage/ruby_rails.md:319
 msgid "\"application/pdf\""
 msgstr "\"application/pdf\""
 
-#: src/usage/ruby_rails.md:271
+#: src/usage/ruby_rails.md:309
 msgid ""
 "途中まで書き出したあとに失敗すると、クライアントには壊れたPDFが届きます(ヘッ"
 "ダは既に送信済みなのでステータスを変えられません)。 サーバモードの`?stream=1`"
@@ -3787,11 +3976,11 @@ msgstr ""
 "broken PDF, because the headers have already gone out and the status can no "
 "longer be changed. This is the same property as `?stream=1` in server mode."
 
-#: src/usage/ruby_rails.md:274
+#: src/usage/ruby_rails.md:312
 msgid "S3へ直接上げる"
 msgstr "Uploading straight to S3"
 
-#: src/usage/ruby_rails.md:276
+#: src/usage/ruby_rails.md:314
 msgid ""
 "gemはS3向けの実装を持ちません(依存を増やさず、書き方も短いためです)。 マルチ"
 "パートアップロードは最後のパート以外は5MB以上という制約があるので、溜めてから"
@@ -3801,20 +3990,20 @@ msgstr ""
 "the code is short anyway. A multipart upload requires every part except the "
 "last to be at least 5MB, so buffer before sending."
 
-#: src/usage/ruby_rails.md:282
+#: src/usage/ruby_rails.md:320
 msgid "\"\""
 msgstr "\"\""
 
-#: src/usage/ruby_rails.md:305
+#: src/usage/ruby_rails.md:343
 msgid "小さいPDFなら`put_object(body: Sghtmltopdf.render(html))`で十分です。"
 msgstr ""
 "For a small PDF, `put_object(body: Sghtmltopdf.render(html))` is enough."
 
-#: src/usage/ruby_rails.md:307
+#: src/usage/ruby_rails.md:345
 msgid "メモリを抑えたいとき"
 msgstr "When you need to keep memory down"
 
-#: src/usage/ruby_rails.md:309
+#: src/usage/ruby_rails.md:347
 msgid ""
 "数万要素規模のHTMLでは、エンジンの[ストリーミングモード](./cli/streaming.md)"
 "を使うとメモリが大きく減ります(実測: 60,000要素で 228MB → 28MB。[メモリと処理"
@@ -3822,10 +4011,10 @@ msgid ""
 msgstr ""
 "For HTML with tens of thousands of elements, the engine's [streaming mode](./"
 "cli/streaming.md) cuts memory use sharply; measured at 60,000 elements it "
-"goes from 228MB to 28MB. See [Memory and processing time](./cli/streaming."
-"md#memory-and-processing-time)."
+"goes from 228MB to 28MB. See [Memory and processing time](./cli/"
+"streaming.md#memory-and-processing-time)."
 
-#: src/usage/ruby_rails.md:315
+#: src/usage/ruby_rails.md:353
 msgid ""
 "その代わり、文書全体を見ないと決まらないもの(`toc`・`counter(pages)`・"
 "`<body>`より後の`<style>`など)が使えません。 制約の一覧は[ストリーミングモー"
@@ -3909,8 +4098,8 @@ msgstr "Display and visibility"
 #: src/supports/properties.md:86 src/supports/properties.md:113
 #: src/supports/properties.md:128 src/supports/properties.md:150
 #: src/supports/properties.md:159 src/supports/properties.md:170
-#: src/supports/properties.md:185 src/supports/properties.md:220
-#: src/supports/properties.md:239 src/supports/pagination.md:13
+#: src/supports/properties.md:186 src/supports/properties.md:221
+#: src/supports/properties.md:240 src/supports/pagination.md:13
 msgid "プロパティ"
 msgstr "Property"
 
@@ -3919,8 +4108,8 @@ msgstr "Property"
 #: src/supports/properties.md:86 src/supports/properties.md:113
 #: src/supports/properties.md:128 src/supports/properties.md:150
 #: src/supports/properties.md:159 src/supports/properties.md:170
-#: src/supports/properties.md:185 src/supports/properties.md:220
-#: src/supports/properties.md:239 src/supports/selectors.md:15
+#: src/supports/properties.md:186 src/supports/properties.md:221
+#: src/supports/properties.md:240 src/supports/selectors.md:15
 #: src/supports/selectors.md:28 src/supports/selectors.md:47
 #: src/supports/selectors.md:77 src/supports/selectors.md:121
 #: src/migration/wkhtmltopdf-options.md:29
@@ -3961,13 +4150,14 @@ msgstr "`display`"
 #: src/supports/properties.md:131 src/supports/properties.md:133
 #: src/supports/properties.md:153 src/supports/properties.md:155
 #: src/supports/properties.md:161 src/supports/properties.md:172
-#: src/supports/properties.md:173 src/supports/properties.md:189
-#: src/supports/properties.md:194 src/supports/properties.md:196
+#: src/supports/properties.md:173 src/supports/properties.md:190
+#: src/supports/properties.md:195 src/supports/properties.md:197
 #: src/supports/selectors.md:38 src/supports/selectors.md:49
 #: src/supports/selectors.md:50 src/supports/selectors.md:79
 #: src/supports/selectors.md:81 src/supports/selectors.md:83
 #: src/supports/selectors.md:123 src/supports/selectors.md:124
 #: src/supports/selectors.md:125 src/supports/selectors.md:126
+#: src/supports/selectors.md:129
 msgid "⚠️"
 msgstr "⚠️"
 
@@ -4130,15 +4320,15 @@ msgstr "`margin`"
 #: src/supports/properties.md:135 src/supports/properties.md:152
 #: src/supports/properties.md:154 src/supports/properties.md:162
 #: src/supports/properties.md:163 src/supports/properties.md:174
-#: src/supports/properties.md:175 src/supports/properties.md:187
-#: src/supports/properties.md:188 src/supports/properties.md:190
-#: src/supports/properties.md:191 src/supports/properties.md:192
-#: src/supports/properties.md:193 src/supports/properties.md:195
-#: src/supports/properties.md:222 src/supports/properties.md:223
-#: src/supports/properties.md:224 src/supports/properties.md:225
-#: src/supports/properties.md:226 src/supports/properties.md:227
-#: src/supports/properties.md:228 src/supports/properties.md:229
-#: src/supports/properties.md:241 src/supports/properties.md:242
+#: src/supports/properties.md:175 src/supports/properties.md:188
+#: src/supports/properties.md:189 src/supports/properties.md:191
+#: src/supports/properties.md:192 src/supports/properties.md:193
+#: src/supports/properties.md:194 src/supports/properties.md:196
+#: src/supports/properties.md:223 src/supports/properties.md:224
+#: src/supports/properties.md:225 src/supports/properties.md:226
+#: src/supports/properties.md:227 src/supports/properties.md:228
+#: src/supports/properties.md:229 src/supports/properties.md:230
+#: src/supports/properties.md:242 src/supports/properties.md:243
 #: src/supports/selectors.md:17 src/supports/selectors.md:18
 #: src/supports/selectors.md:19 src/supports/selectors.md:20
 #: src/supports/selectors.md:21 src/supports/selectors.md:22
@@ -4357,15 +4547,15 @@ msgstr "`outline-offset`"
 
 #: src/supports/properties.md:60 src/supports/properties.md:92
 #: src/supports/properties.md:122 src/supports/properties.md:164
-#: src/supports/properties.md:176 src/supports/properties.md:197
-#: src/supports/properties.md:198 src/supports/properties.md:230
-#: src/supports/properties.md:231 src/supports/properties.md:232
+#: src/supports/properties.md:176 src/supports/properties.md:198
+#: src/supports/properties.md:199 src/supports/properties.md:231
+#: src/supports/properties.md:232 src/supports/properties.md:233
 #: src/supports/selectors.md:24 src/supports/selectors.md:51
 #: src/supports/selectors.md:52 src/supports/selectors.md:64
 #: src/supports/selectors.md:80 src/supports/selectors.md:85
 #: src/supports/selectors.md:86 src/supports/selectors.md:98
 #: src/supports/selectors.md:100 src/supports/selectors.md:128
-#: src/supports/selectors.md:129
+#: src/supports/selectors.md:130
 msgid "❌"
 msgstr "❌"
 
@@ -4426,11 +4616,15 @@ msgstr "`top`, `right`, `bottom`, `left`"
 #: src/supports/properties.md:70
 msgid ""
 "`absolute`/`fixed`では`bottom`単独指定による下端揃えが非対応(高さの循環参照を"
-"避けるため`top`基準に解決する)。`relative`ではオフセットとして機能する"
+"避けるため`top`基準に解決する)。`relative`では背景・枠線と中身(テキスト・画"
+"像・子ボックス)をまとめてずらすオフセットとして機能する。`relative`の`top`/"
+"`bottom`のパーセンテージは0扱い"
 msgstr ""
 "With `absolute` and `fixed`, aligning to the bottom by giving `bottom` alone "
 "is not supported; everything resolves from `top`, to avoid a circular "
-"dependency on the height. With `relative` they act as offsets"
+"dependency on the height. With `relative` they act as offsets that move the "
+"background and border together with the content (text, images, child boxes). "
+"Percentages in `top`/`bottom` on a `relative` element count as 0"
 
 #: src/supports/properties.md:71
 msgid "`inset`(ショートハンド)"
@@ -5067,8 +5261,9 @@ msgstr ""
 "For `::before`, `::after`, `::first-letter`, and the `@page` margin boxes. "
 "String literals, `attr()`, `counter()` and `counters()`, and `open-quote`, "
 "`close-quote`, `no-open-quote`, and `no-close-quote` can be concatenated. "
-"Inserting an image with `url()` is not supported. As a simplification, `::"
-"before` and `::after` are not generated on an element that has block children"
+"Inserting an image with `url()` is not supported. As a simplification, "
+"`::before` and `::after` are not generated on an element that has block "
+"children"
 
 #: src/supports/properties.md:162
 msgid "`counter-reset`"
@@ -5090,7 +5285,7 @@ msgstr "`none`, or repeated `name [<integer>]`, the value being 1 when omitted"
 msgid "`counter-set`"
 msgstr "`counter-set`"
 
-#: src/supports/properties.md:164 src/supports/properties.md:232
+#: src/supports/properties.md:164 src/supports/properties.md:233
 msgid "未実装"
 msgstr "Not implemented"
 
@@ -5170,34 +5365,38 @@ msgstr "Flexbox"
 #: src/supports/properties.md:182
 msgid ""
 "`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)へ委"
-"譲する。 flexコンテナはページ分割上アトミック(`display: table`と同じく途中で"
-"分割されない)。"
+"譲する。 1ページに収まるflexコンテナはページ分割上アトミック(途中で分割せず、"
+"収まらなければ次ページへ送る)。 1ページに収まらない高さのコンテナは、縦に重な"
+"らないアイテム群を単位に分割する(詳細は[ページ分割](./pagination.md)を参照)。"
 msgstr ""
 "Laying out `display: flex` is delegated to [taffy](https://github.com/"
-"DioxusLabs/taffy). A flex container is atomic as far as page breaking goes: "
-"like `display: table`, it is never split part way through."
+"DioxusLabs/taffy). A flex container that fits on a page is atomic as far as "
+"page breaking goes: it is never split part way through, and it moves to the "
+"next page when it does not fit. A container taller than one page is split in "
+"units of items that do not overlap vertically (see [Page breaking](./"
+"pagination.md) for the details)."
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:188
 msgid "`flex-direction`"
 msgstr "`flex-direction`"
 
-#: src/supports/properties.md:187
+#: src/supports/properties.md:188
 msgid "`row`/`row-reverse`/`column`/`column-reverse`"
 msgstr "`row`, `row-reverse`, `column`, and `column-reverse`"
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:189
 msgid "`flex-wrap`"
 msgstr "`flex-wrap`"
 
-#: src/supports/properties.md:188
+#: src/supports/properties.md:189
 msgid "`nowrap`/`wrap`/`wrap-reverse`"
 msgstr "`nowrap`, `wrap`, and `wrap-reverse`"
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:190
 msgid "`justify-content`"
 msgstr "`justify-content`"
 
-#: src/supports/properties.md:189
+#: src/supports/properties.md:190
 msgid ""
 "`normal`(初期値)/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`space-"
 "between`/`space-around`/`space-evenly`。`safe`/`unsafe`オーバーフローキーワー"
@@ -5207,21 +5406,21 @@ msgstr ""
 "`center`, `space-between`, `space-around`, and `space-evenly`. The `safe` "
 "and `unsafe` overflow keywords are not supported"
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:191
 msgid "`align-items`"
 msgstr "`align-items`"
 
-#: src/supports/properties.md:190
+#: src/supports/properties.md:191
 msgid "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 "`flex-start` (`start`), `flex-end` (`end`), `center`, `baseline`, and "
 "`stretch`"
 
-#: src/supports/properties.md:191
+#: src/supports/properties.md:192
 msgid "`align-content`"
 msgstr "`align-content`"
 
-#: src/supports/properties.md:191
+#: src/supports/properties.md:192
 msgid ""
 "`flex-start`(`start`)/`flex-end`(`end`)/`center`/`stretch`/`space-between`/"
 "`space-around`/`space-evenly`"
@@ -5229,41 +5428,41 @@ msgstr ""
 "`flex-start` (`start`), `flex-end` (`end`), `center`, `stretch`, `space-"
 "between`, `space-around`, and `space-evenly`"
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:193
 msgid "`align-self`"
 msgstr "`align-self`"
 
-#: src/supports/properties.md:192
+#: src/supports/properties.md:193
 msgid ""
 "`auto`/`flex-start`(`start`)/`flex-end`(`end`)/`center`/`baseline`/`stretch`"
 msgstr ""
 "`auto`, `flex-start` (`start`), `flex-end` (`end`), `center`, `baseline`, "
 "and `stretch`"
 
-#: src/supports/properties.md:193
+#: src/supports/properties.md:194
 msgid "`flex-grow` / `flex-shrink`"
 msgstr "`flex-grow`, `flex-shrink`"
 
-#: src/supports/properties.md:193
+#: src/supports/properties.md:194
 msgid "非負の`<number>`(負値は無効な宣言として無視)"
 msgstr ""
 "A non-negative `<number>`; a negative value makes the declaration invalid "
 "and it is ignored"
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:195
 msgid "`flex-basis`"
 msgstr "`flex-basis`"
 
-#: src/supports/properties.md:194
+#: src/supports/properties.md:195
 msgid "`auto`/`content`/`<length-percentage>`。`content`は`auto`と同一視"
 msgstr ""
 "`auto`, `content`, and `<length-percentage>`. `content` is treated as `auto`"
 
-#: src/supports/properties.md:195
+#: src/supports/properties.md:196
 msgid "`flex`(ショートハンド)"
 msgstr "`flex`, the shorthand"
 
-#: src/supports/properties.md:195
+#: src/supports/properties.md:196
 msgid ""
 "`none`および`<grow> [<shrink>] [<basis>]`。CSS仕様の既定値規則(`flex: 1`の"
 "basisは`0%`、`flex: <width>`のgrow/shrinkは1)を再現"
@@ -5272,53 +5471,53 @@ msgstr ""
 "rules are reproduced: the basis of `flex: 1` is `0%`, and the grow and "
 "shrink of `flex: <width>` are 1"
 
-#: src/supports/properties.md:196
+#: src/supports/properties.md:197
 msgid "`gap` / `row-gap` / `column-gap`"
 msgstr "`gap`, `row-gap`, `column-gap`"
 
-#: src/supports/properties.md:196
+#: src/supports/properties.md:197
 msgid "flexコンテナでのみ有効(多段組みの`column-gap`としては機能しない)"
 msgstr ""
 "In effect on flex containers only; it does not act as the multi-column "
 "`column-gap`"
 
-#: src/supports/properties.md:197
+#: src/supports/properties.md:198
 msgid "`order`"
 msgstr "`order`"
 
-#: src/supports/properties.md:197
+#: src/supports/properties.md:198
 msgid "taffy 0.12系が未対応のため"
 msgstr "The taffy 0.12 series does not support it"
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:199
 msgid "`place-content` / `place-items` / `place-self`(ショートハンド)"
 msgstr "`place-content`, `place-items`, `place-self`, the shorthands"
 
-#: src/supports/properties.md:198
+#: src/supports/properties.md:199
 msgid "未実装。個別のロングハンドを使う"
 msgstr "Not implemented. Use the individual longhands"
 
-#: src/supports/properties.md:199 src/supports/properties.md:228
+#: src/supports/properties.md:200 src/supports/properties.md:229
 msgid "`justify-items` / `justify-self`"
 msgstr "`justify-items`, `justify-self`"
 
-#: src/supports/properties.md:199 src/migration/wicked-pdf.md:72
+#: src/supports/properties.md:200 src/migration/wicked-pdf.md:72
 #: src/migration/wicked-pdf.md:73 src/migration/wicked-pdf.md:74
 #: src/migration/wicked-pdf.md:75 src/migration/wicked-pdf.md:76
 #: src/migration/wicked-pdf.md:77
 msgid "—"
 msgstr "—"
 
-#: src/supports/properties.md:199
+#: src/supports/properties.md:200
 msgid "flexアイテムには適用されない(下記)"
 msgstr "They do not apply to flex items; see below"
 
-#: src/supports/properties.md:201
+#: src/supports/properties.md:202
 msgid "`justify-items`/`justify-self`がflexで効かないのは仕様"
 msgstr ""
 "`justify-items` and `justify-self` having no effect in flex is by design"
 
-#: src/supports/properties.md:203
+#: src/supports/properties.md:204
 msgid ""
 "CSS Box Alignmentでは`justify-items`/`justify-self`はGrid・ブロックレイアウト"
 "用のプロパティで、flexアイテムには適用されない(主軸方向のアイテム個別の配置は"
@@ -5333,7 +5532,7 @@ msgstr ""
 "which layout is delegated, only the Grid algorithm looks at them; the "
 "flexbox algorithm never does."
 
-#: src/supports/properties.md:207
+#: src/supports/properties.md:208
 msgid ""
 "したがってこのエンジンでパースに対応しても見た目は変わらないため、意図的に実"
 "装していない。 flexで特定のアイテムだけを寄せたい場合は`margin: auto`を使う"
@@ -5343,36 +5542,36 @@ msgstr ""
 "deliberately left unimplemented. To push a particular flex item to one side, "
 "use `margin: auto`, which is supported:"
 
-#: src/supports/properties.md:211
+#: src/supports/properties.md:212
 msgid "/* justify-self: end 相当(主軸の終端へ) */"
 msgstr ""
 "/* the equivalent of justify-self: end, pushing to the end of the main axis "
 "*/"
 
-#: src/supports/properties.md:212
+#: src/supports/properties.md:213
 msgid "/* justify-self: center 相当 */"
 msgstr "/* the equivalent of justify-self: center */"
 
-#: src/supports/properties.md:215
+#: src/supports/properties.md:216
 msgid "Grid"
 msgstr "Grid"
 
-#: src/supports/properties.md:217
+#: src/supports/properties.md:218
 msgid ""
-"`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 Flexboxと違い、"
-"1ページに収まらないグリッドは行単位でページ分割される(テーブルと同じ方針。複"
-"数行にまたがるアイテムがある境界では分割しない)。"
+"`display: grid`のレイアウトはFlexboxと同じくtaffyへ委譲する。 1ページに収まら"
+"ないグリッドは行単位でページ分割される(テーブルと同じ方針。複数行にまたがるア"
+"イテムがある境界では分割しない)。"
 msgstr ""
-"Laying out `display: grid` is delegated to taffy, as flexbox is. Unlike "
-"flexbox, a grid that does not fit on one page is broken between rows, the "
-"same approach as tables; no break is taken at a boundary crossed by an item "
-"that spans several rows."
+"Laying out `display: grid` is delegated to taffy, as flexbox is. A grid that "
+"does not fit on one page is broken between rows, the same approach as "
+"tables; no break is taken at a boundary crossed by an item that spans "
+"several rows."
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:223
 msgid "`grid-template-columns` / `grid-template-rows`"
 msgstr "`grid-template-columns`, `grid-template-rows`"
 
-#: src/supports/properties.md:222
+#: src/supports/properties.md:223
 msgid ""
 "`none`/`<length>`/`<percentage>`/`fr`/`auto`/`min-content`/`max-content`/"
 "`minmax()`/`fit-content()`/`repeat(<整数>\\|auto-fill\\|auto-fit)`/"
@@ -5382,11 +5581,11 @@ msgstr ""
 "content`, `minmax()`, `fit-content()`, `repeat(<integer>\\|auto-fill\\|auto-"
 "fit)`, and `[name]` for line names. `calc()` is not supported in a track size"
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:224
 msgid "`grid-template-areas`"
 msgstr "`grid-template-areas`"
 
-#: src/supports/properties.md:223
+#: src/supports/properties.md:224
 msgid ""
 "文字列マトリクス。列数の不一致・非矩形のエリアは不正な値として宣言ごと無視す"
 "る(仕様通り)。`.`は名前なしセル"
@@ -5395,43 +5594,43 @@ msgstr ""
 "makes the value invalid and the whole declaration is ignored, as the "
 "specification says. A `.` is an unnamed cell"
 
-#: src/supports/properties.md:224
+#: src/supports/properties.md:225
 msgid "`grid-auto-columns` / `grid-auto-rows`"
 msgstr "`grid-auto-columns`, `grid-auto-rows`"
 
-#: src/supports/properties.md:224
+#: src/supports/properties.md:225
 msgid "`<track-size>+`"
 msgstr "`<track-size>+`"
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:226
 msgid "`grid-auto-flow`"
 msgstr "`grid-auto-flow`"
 
-#: src/supports/properties.md:225
+#: src/supports/properties.md:226
 msgid "`row`/`column`/`dense`(併記可)"
 msgstr "`row`, `column`, and `dense`, which may be combined"
 
-#: src/supports/properties.md:226
+#: src/supports/properties.md:227
 msgid "`grid-row-start` / `-end` / `grid-column-start` / `-end`"
 msgstr "`grid-row-start`, `-end`, `grid-column-start`, `-end`"
 
-#: src/supports/properties.md:226
+#: src/supports/properties.md:227
 msgid ""
 "`auto`/`<integer>`/`span <integer>`/`<custom-ident>`/`span <custom-ident>`"
 msgstr ""
 "`auto`, `<integer>`, `span <integer>`, `<custom-ident>`, and `span <custom-"
 "ident>`"
 
-#: src/supports/properties.md:227
+#: src/supports/properties.md:228
 msgid "`grid-row` / `grid-column` / `grid-area`"
 msgstr "`grid-row`, `grid-column`, `grid-area`"
 
-#: src/supports/properties.md:227
+#: src/supports/properties.md:228
 msgid ""
 "`/`区切りのショートハンド。`grid-area: <name>`で名前付きエリアを指定できる"
 msgstr "The shorthands, separated by `/`. `grid-area: <name>` names an area"
 
-#: src/supports/properties.md:228
+#: src/supports/properties.md:229
 msgid ""
 "Gridでのみ意味を持つ(flexアイテムには適用されない、[上記](#justify-"
 "itemsjustify-selfがflexで効かないのは仕様))"
@@ -5439,20 +5638,20 @@ msgstr ""
 "Meaningful in Grid only; they do not apply to flex items, as [noted above]"
 "(#justify-items-and-justify-self-having-no-effect-in-flex-is-by-design)"
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:230
 msgid ""
 "`align-items` / `align-self` / `justify-content` / `align-content` / `gap`"
 msgstr "`align-items`, `align-self`, `justify-content`, `align-content`, `gap`"
 
-#: src/supports/properties.md:229
+#: src/supports/properties.md:230
 msgid "Flexboxと共有(値の範囲は[Flexbox](#flexbox)節を参照)"
 msgstr "Ranges"
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:231
 msgid "`grid` / `grid-template`(ショートハンド)"
 msgstr "`grid`, `grid-template`, the shorthands"
 
-#: src/supports/properties.md:230
+#: src/supports/properties.md:231
 msgid ""
 "個別のロングハンドを使う。トラック定義とエリア定義を1つの構文へ詰め込む複雑な"
 "文法のため非対応"
@@ -5460,19 +5659,19 @@ msgstr ""
 "Use the individual longhands. These pack track and area definitions into one "
 "syntax, and that grammar is too involved to support"
 
-#: src/supports/properties.md:231
+#: src/supports/properties.md:232
 msgid "`display: inline-grid`"
 msgstr "`display: inline-grid`"
 
-#: src/supports/properties.md:231
+#: src/supports/properties.md:232
 msgid "`inline-flex`と同じ理由で非対応"
 msgstr "Not supported, for the same reason as `inline-flex`"
 
-#: src/supports/properties.md:232
+#: src/supports/properties.md:233
 msgid "subgrid / masonry"
 msgstr "subgrid, masonry"
 
-#: src/supports/properties.md:234
+#: src/supports/properties.md:235
 msgid ""
 "`auto`トラックだけで構成したグリッドにコンテナ幅の指定がある場合、余った幅は"
 "`auto`トラックへ配分されますが、その配分比率はCSSの規定(`auto`トラックへ均等)"
@@ -5483,29 +5682,29 @@ msgstr ""
 "proportion CSS prescribes (an equal share to each `auto` track). Use `fr` or "
 "a length if the column widths need to be exact."
 
-#: src/supports/properties.md:237
+#: src/supports/properties.md:238
 msgid "置換要素(画像)"
 msgstr "Replaced elements: images"
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:242
 msgid "`object-fit`"
 msgstr "`object-fit`"
 
-#: src/supports/properties.md:241
+#: src/supports/properties.md:242
 msgid "`fill`/`contain`/`cover`/`none`/`scale-down`。`<img>`にのみ意味を持つ"
 msgstr ""
 "`fill`, `contain`, `cover`, `none`, and `scale-down`. Meaningful on `<img>` "
 "only"
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:243
 msgid "`object-position`"
 msgstr "`object-position`"
 
-#: src/supports/properties.md:242
+#: src/supports/properties.md:243
 msgid "`background-position`と同じ値文法。初期値`50% 50%`"
 msgstr "The same syntax as `background-position`. `50% 50%` by default"
 
-#: src/supports/properties.md:244
+#: src/supports/properties.md:245
 msgid ""
 "`<img>`はインライン配置・`width`/`height`属性/CSSによるサイズ指定に対応。 対"
 "応フォーマットはPNG/JPEG/WebP。 CSSで`width`/`height`の片方だけを指定した場合"
@@ -5516,11 +5715,11 @@ msgstr ""
 "When CSS gives only one of `width` and `height`, the other is derived from "
 "the intrinsic aspect ratio (see [`aspect-ratio`](#box-model))."
 
-#: src/supports/properties.md:248
+#: src/supports/properties.md:249
 msgid "非対応プロパティ一覧"
 msgstr "List of unsupported properties"
 
-#: src/supports/properties.md:250
+#: src/supports/properties.md:251
 msgid ""
 "以下は宣言ごと無視される(パースエラー)。 実装が無いだけで、意図的に永久除外と"
 "決めたものだけではない。 カテゴリ表の`❌`行も参照。"
@@ -5529,7 +5728,7 @@ msgstr ""
 "are simply unimplemented, not all deliberately ruled out forever. See the "
 "`❌` rows in the tables above as well."
 
-#: src/supports/properties.md:254
+#: src/supports/properties.md:255
 msgid ""
 "ショートハンド: `font`/`place-content`/`place-items`/`place-self`/`text-"
 "decoration`の色・線種部分"
@@ -5537,7 +5736,7 @@ msgstr ""
 "Shorthands: `font`, `place-content`, `place-items`, `place-self`, and the "
 "colour and line-style parts of `text-decoration`"
 
-#: src/supports/properties.md:255
+#: src/supports/properties.md:256
 msgid ""
 "論理プロパティのうち寸法系: `inline-size`/`block-size`/`min-inline-size`/"
 "`max-block-size`等(`margin`/`padding`/`inset`/`border`の論理プロパティは対応"
@@ -5547,7 +5746,7 @@ msgstr ""
 "size`, `max-block-size` and so on (the `margin`, `padding`, `inset` and "
 "`border` logical properties are supported)"
 
-#: src/supports/properties.md:256
+#: src/supports/properties.md:257
 msgid ""
 "書字方向: `direction`/`unicode-bidi`/`writing-mode`/`text-orientation`/`text-"
 "combine-upright`"
@@ -5555,7 +5754,7 @@ msgstr ""
 "Writing direction: `direction`, `unicode-bidi`, `writing-mode`, `text-"
 "orientation`, `text-combine-upright`"
 
-#: src/supports/properties.md:257
+#: src/supports/properties.md:258
 msgid ""
 "テキスト詳細: `text-decoration-color`/`-style`/`-thickness`/`text-underline-"
 "offset`/`text-emphasis-skip`/`tab-size`/`ruby-*`/`text-justify`/`line-break`"
@@ -5564,7 +5763,7 @@ msgstr ""
 "underline-offset`, `text-emphasis-skip`, `tab-size`, `ruby-*`, `text-"
 "justify`, `line-break`"
 
-#: src/supports/properties.md:258
+#: src/supports/properties.md:259
 msgid ""
 "フォント詳細: `font-variant`/`font-stretch`/`font-feature-settings`/`font-"
 "variation-settings`/`font-kerning`/`font-display`"
@@ -5572,7 +5771,7 @@ msgstr ""
 "Font details: `font-variant`, `font-stretch`, `font-feature-settings`, `font-"
 "variation-settings`, `font-kerning`, `font-display`"
 
-#: src/supports/properties.md:259
+#: src/supports/properties.md:260
 msgid ""
 "多段組み: `columns`/`column-count`/`column-width`/`column-rule`/`column-"
 "span`/`column-fill`"
@@ -5580,7 +5779,7 @@ msgstr ""
 "Multi-column: `columns`, `column-count`, `column-width`, `column-rule`, "
 "`column-span`, `column-fill`"
 
-#: src/supports/properties.md:260
+#: src/supports/properties.md:261
 msgid ""
 "視覚効果: `filter`/`backdrop-filter`/`mix-blend-mode`/`background-blend-"
 "mode`/`clip`/`clip-path`/`mask`/`isolation`"
@@ -5588,7 +5787,7 @@ msgstr ""
 "Visual effects: `filter`, `backdrop-filter`, `mix-blend-mode`, `background-"
 "blend-mode`, `clip`, `clip-path`, `mask`, `isolation`"
 
-#: src/supports/properties.md:261
+#: src/supports/properties.md:262
 msgid ""
 "3D/アニメーション: `perspective`/`transform-style`/`backface-visibility`/"
 "`translate`/`rotate`/`scale`(個別プロパティ版)/`transition-*`/`animation-*`/"
@@ -5598,7 +5797,7 @@ msgstr ""
 "the individual `translate`, `rotate`, and `scale` properties, `transition-"
 "*`, `animation-*`, `will-change`"
 
-#: src/supports/properties.md:262
+#: src/supports/properties.md:263
 msgid ""
 "枠線・背景の拡張: `border-image-*`/`background-clip`/`background-origin`/"
 "`outline-offset`"
@@ -5606,7 +5805,7 @@ msgstr ""
 "Border and background extensions: `border-image-*`, `background-clip`, "
 "`background-origin`, `outline-offset`"
 
-#: src/supports/properties.md:263
+#: src/supports/properties.md:264
 msgid ""
 "オーバーフロー: `overflow-x`/`overflow-y`/`resize`/`scroll-*`/`overscroll-"
 "behavior`"
@@ -5614,7 +5813,7 @@ msgstr ""
 "Overflow: `overflow-x`, `overflow-y`, `resize`, `scroll-*`, `overscroll-"
 "behavior`"
 
-#: src/supports/properties.md:264
+#: src/supports/properties.md:265
 msgid ""
 "UI/対話: `cursor`/`pointer-events`/`user-select`/`caret-color`/`accent-"
 "color`/`appearance`"
@@ -5622,7 +5821,7 @@ msgstr ""
 "UI and interaction: `cursor`, `pointer-events`, `user-select`, `caret-"
 "color`, `accent-color`, `appearance`"
 
-#: src/supports/properties.md:265
+#: src/supports/properties.md:266
 msgid ""
 "その他: `all`/`content-visibility`/`counter-set`/`page`(名前付きページ)/"
 "`speak`等の音声メディア系/`zoom`"
@@ -5754,8 +5953,8 @@ msgstr ""
 
 #: src/supports/selectors.md:33
 msgid ""
-"`:first-of-type` / `:last-of-type` / `:only-of-type` / `:nth-of-type()` / `:"
-"nth-last-of-type()`"
+"`:first-of-type` / `:last-of-type` / `:only-of-type` / `:nth-of-type()` / "
+"`:nth-last-of-type()`"
 msgstr ""
 "`:first-of-type`, `:last-of-type`, `:only-of-type`, `:nth-of-type()`, `:nth-"
 "last-of-type()`"
@@ -5795,9 +5994,9 @@ msgstr "`:has()`"
 
 #: src/supports/selectors.md:37
 msgid ""
-"子孫・`>`・`+`・`~`のいずれも書ける。詳細度は`:is()`と同じ規則。入れ子(`:"
-"has()`の中の`:has()`)と擬似要素は仕様どおり書けない。ストリーミングモードでは"
-"`:has(~ ...)`が非マッチ(下記参照)"
+"子孫・`>`・`+`・`~`のいずれも書ける。詳細度は`:is()`と同じ規則。入れ子"
+"(`:has()`の中の`:has()`)と擬似要素は仕様どおり書けない。ストリーミングモード"
+"では`:has(~ ...)`が非マッチ(下記参照)"
 msgstr ""
 "Descendant, `>`, `+` and `~` may all be used. Specificity follows the same "
 "rule as `:is()`. Nesting (a `:has()` inside a `:has()`) and pseudo-elements "
@@ -5806,8 +6005,8 @@ msgstr ""
 
 #: src/supports/selectors.md:38
 msgid ""
-"`:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / `:"
-"target` / `:enabled` / `:disabled` / `:checked` / `:visited`"
+"`:hover` / `:active` / `:focus` / `:focus-within` / `:focus-visible` / "
+"`:target` / `:enabled` / `:disabled` / `:checked` / `:visited`"
 msgstr ""
 "`:hover`, `:active`, `:focus`, `:focus-within`, `:focus-visible`, `:target`, "
 "`:enabled`, `:disabled`, `:checked`, `:visited`"
@@ -5837,9 +6036,9 @@ msgid ""
 msgstr ""
 "A selector containing an unsupported pseudo-element, such as `::first-line`, "
 "causes the whole rule to be dropped. Ones that parse, such as `:hover`, "
-"survive as rules but never match. The argument list of `:is()` and `:"
-"where()` is the one exception: an unsupported argument is dropped on its own "
-"and the rule survives."
+"survive as rules but never match. The argument list of `:is()` and "
+"`:where()` is the one exception: an unsupported argument is dropped on its "
+"own and the rule survives."
 
 #: src/supports/selectors.md:45 src/supports/selectors.md:47
 msgid "擬似要素"
@@ -6167,8 +6366,8 @@ msgid ""
 "intro`)・`:blank`・複合擬似クラス(`:first:left`)は非対応"
 msgstr ""
 "`size`, taking a keyword, one or two `<length>` values, or `landscape` and "
-"`portrait`, plus the `margin` properties. The pseudo-classes `:first`, `:"
-"left`, and `:right` are supported on their own; named pages such as `@page "
+"`portrait`, plus the `margin` properties. The pseudo-classes `:first`, "
+"`:left`, and `:right` are supported on their own; named pages such as `@page "
 "intro`, `:blank`, and compound pseudo-classes such as `:first:left` are not"
 
 #: src/supports/selectors.md:125
@@ -6226,30 +6425,47 @@ msgid "入力はUTF-8前提"
 msgstr "The input is assumed to be UTF-8"
 
 #: src/supports/selectors.md:129
-msgid ""
-"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / "
-"`@container` / `@property`"
-msgstr ""
-"`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@layer`, "
-"`@container`, `@property`"
+msgid "`@layer`"
+msgstr "`@layer`"
 
 #: src/supports/selectors.md:129
+msgid ""
+"ブロックの中のルールを書かれた順にトップレベルへ展開する(`@layer a { .x {} }`"
+"は`.x {}`と同じ)。レイヤーの優先順位は実装せず、通常のカスケード(詳細度・後勝"
+"ち)で決まる。`@layer a, b;`の順序宣言は無視する。Tailwind v4のように出力全体"
+"を`@layer`で包むCSSをそのまま渡せる"
+msgstr ""
+"Rules inside the block are hoisted to the top level in source order (`@layer "
+"a { .x {} }` is the same as `.x {}`). Layer precedence is not implemented; "
+"the usual cascade (specificity, last wins) decides. The `@layer a, b;` "
+"ordering statement is ignored. A stylesheet that wraps its whole output in "
+"`@layer`, as Tailwind v4 does, can be passed as is"
+
+#: src/supports/selectors.md:130
+msgid ""
+"`@supports` / `@keyframes` / `@namespace` / `@counter-style` / "
+"`@container` / `@property`"
+msgstr ""
+"`@supports`, `@keyframes`, `@namespace`, `@counter-style`, `@container`, "
+"`@property`"
+
+#: src/supports/selectors.md:130
 msgid "ブロックごと無視される"
 msgstr "The whole block is ignored"
 
-#: src/supports/selectors.md:131
+#: src/supports/selectors.md:132
 msgid "ストリーミングモード固有の制約"
 msgstr "Restrictions specific to streaming mode"
 
-#: src/supports/selectors.md:133
+#: src/supports/selectors.md:134
 msgid ""
-"`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 `Mode::"
-"Streaming`でのみ以下が適用される。"
+"`Mode::Batch`(一括処理)ではDOM全体が揃っているため下記の制約は無い。 "
+"`Mode::Streaming`でのみ以下が適用される。"
 msgstr ""
 "In `Mode::Batch` the whole DOM is available, so none of this applies. The "
 "following holds only in `Mode::Streaming`."
 
-#: src/supports/selectors.md:136
+#: src/supports/selectors.md:137
 msgid ""
 "`<body>`直下のトップレベル要素は、次の兄弟が現れた時点で確定として処理しま"
 "す。 そのため「この先に同じ型の要素が続くか」が要るセレクタだけ、`<body>`直下"
@@ -6262,17 +6478,17 @@ msgstr ""
 "for those top-level elements — inside one of them the subtree is complete, "
 "so nothing changes."
 
-#: src/supports/selectors.md:139
+#: src/supports/selectors.md:140
 msgid ""
-"`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/`:"
-"has(~ ...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告が"
-"出ます"
+"`:last-of-type`/`:only-of-type`/`:nth-last-child()`/`:nth-last-of-type()`/"
+"`:has(~ ...)`は、余分にマッチしたり取りこぼしたりします。 これらを使うと警告"
+"が出ます"
 msgstr ""
 "`:last-of-type`, `:only-of-type`, `:nth-last-child()`, `:nth-last-of-type()` "
 "and `:has(~ ...)` match too much or miss altogether. Using any of them "
 "prints a warning"
 
-#: src/supports/selectors.md:141
+#: src/supports/selectors.md:142
 msgid ""
 "`:last-child`・`:empty`・`:has()`の子孫/直後の兄弟は、確定の条件と一致するの"
 "でバッチと同じ結果になります"
@@ -6281,11 +6497,11 @@ msgstr ""
 "next sibling, on the other hand, line up with what settling already "
 "guarantees, so they give the same result as batch mode"
 
-#: src/supports/selectors.md:142
+#: src/supports/selectors.md:143
 msgid ""
-"`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/`:"
-"only-child`もバッチと同じ結果になります。 これらを使っている文書では、処理済"
-"みのトップレベル要素を子孫だけ解放し、要素そのものを兄弟として残すためです "
+"`+`/`~`・`:first-child`/`:nth-child()`/`:first-of-type`/`:nth-of-type()`/"
+"`:only-child`もバッチと同じ結果になります。 これらを使っている文書では、処理"
+"済みのトップレベル要素を子孫だけ解放し、要素そのものを兄弟として残すためです "
 "(残るのはトップレベル要素1個につき1ノードなので、解放できる量はほぼ変わりませ"
 "ん)"
 msgstr ""
@@ -6295,21 +6511,21 @@ msgstr ""
 "descendants released, so the element itself stays visible as a sibling (what "
 "remains is one node per top-level element, so almost as much is still freed)"
 
-#: src/supports/selectors.md:145
+#: src/supports/selectors.md:146
 msgid ""
-"`<body>`開始後の`<style>`タグはエラー: `EngineError::"
-"UnsupportedInStreamingMode`を返す。 黙って見た目が崩れるのを避けるため、"
-"`<style>`は`<head>`に集約する"
+"`<body>`開始後の`<style>`タグはエラー: "
+"`EngineError::UnsupportedInStreamingMode`を返す。 黙って見た目が崩れるのを避"
+"けるため、`<style>`は`<head>`に集約する"
 msgstr ""
-"A `<style>` tag after `<body>` starts is an error and returns `EngineError::"
-"UnsupportedInStreamingMode`. Keep all `<style>` in `<head>`, so that the "
-"layout does not quietly fall apart"
+"A `<style>` tag after `<body>` starts is an error and returns "
+"`EngineError::UnsupportedInStreamingMode`. Keep all `<style>` in `<head>`, "
+"so that the layout does not quietly fall apart"
 
-#: src/supports/selectors.md:147
+#: src/supports/selectors.md:148
 msgid "`position: absolute`/`fixed`は無視される"
 msgstr "`position: absolute` and `fixed` are ignored"
 
-#: src/supports/selectors.md:148
+#: src/supports/selectors.md:149
 msgid "`counter(pages)`(総ページ数)は使えない"
 msgstr "`counter(pages)`, the total page count, is unavailable"
 
@@ -6486,9 +6702,9 @@ msgstr ""
 
 #: src/supports/fonts.md:78
 msgid ""
-"読み込みの待ち合わせはありません。 headless Chromeで必要だった`document."
-"fonts.ready`待ちのような処理は不要で、フォントが未解決のままPDF化されることは"
-"ありません。"
+"読み込みの待ち合わせはありません。 headless Chromeで必要だった"
+"`document.fonts.ready`待ちのような処理は不要で、フォントが未解決のままPDF化さ"
+"れることはありません。"
 msgstr ""
 "There is nothing to wait for. The `document.fonts.ready` dance that headless "
 "Chrome needs is unnecessary here, and a PDF is never produced with fonts "
@@ -6584,46 +6800,83 @@ msgstr "Emoji"
 
 #: src/supports/fonts.md:115
 msgid ""
-"絵文字はモノクロのアウトラインフォントで描きます。 GoogleのNoto Emoji(カラー"
-"のNoto Color Emojiではなく、アウトライン版)を指定すれば、そのまま描画されま"
-"す。"
+"カラー絵文字はそのままカラーで描画します。 対応しているのは埋め込みビットマッ"
+"プ(`CBDT`/`CBLC`・`sbix`)と`COLR`/`CPAL`のversion 0です。"
 msgstr ""
-"Emoji are drawn from a monochrome outline font. Point at Google's Noto Emoji "
-"(the outline one, not the colour Noto Color Emoji) and it renders as it is."
+"Colour emoji are drawn in colour. Embedded bitmaps (`CBDT`/`CBLC`, `sbix`) "
+"and version 0 of `COLR`/`CPAL` are supported."
 
 #: src/supports/fonts.md:122
 msgid ""
-"カラーフォントは非対応です。 `CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`のいずれも扱"
-"いません。"
+"macOSのApple Color Emoji(`sbix`)、LinuxのNoto Color Emoji(`CBDT`/`CBLC`)のど"
+"ちらも使えます。 明示しなくても、文書に出てくる文字を描けるフォントとしてシス"
+"テムから自動的に見つかります。"
 msgstr ""
-"Colour fonts are not supported. Neither `CBDT`/`CBLC`, `COLR`/`CPAL` nor "
-"`sbix` is handled."
+"Both macOS's Apple Color Emoji (`sbix`) and Linux's Noto Color Emoji (`CBDT`/"
+"`CBLC`) work. You do not have to name one: the system font search finds it "
+"as a font that can draw the characters in the document."
 
 #: src/supports/fonts.md:125
-msgid "この種のフォントは指定しても使われず、警告が出ます。"
-msgstr ""
-"Such a font is not used even when you name it explicitly, and a warning is "
-"printed."
-
-#: src/supports/fonts.md:133
 msgid ""
-"黙って無視するのではなく採用しないのは、輪郭を持たないフォントを埋め込むと、"
-"文字が豆腐にすらならず完全に消えたうえ、サブセット化が効かずPDFだけが数MB膨ら"
-"むためです。 不採用にすれば通常のフォント探索へ落ち、描画できる文字が無ければ"
-"「豆腐になります」の警告が文字を名指しして出ます。"
+"モノクロのアウトラインフォント(GoogleのNoto Emojiなど)もこれまでどおり使えま"
+"す。"
 msgstr ""
-"Declining the font rather than quietly ignoring it matters because embedding "
-"an outline-less font makes the characters vanish entirely — not even a tofu "
-"box — while subsetting has nothing to strip, so the PDF alone grows by "
-"several megabytes. Declining it lets the usual font search take over, and if "
-"nothing can draw a character the \"you will get tofu\" warning names that "
-"character."
+"A monochrome outline font, such as Google's Noto Emoji, still works as "
+"before."
+
+#: src/supports/fonts.md:127
+msgid "PDFの中でどうなるか"
+msgstr "What this looks like in the PDF"
+
+#: src/supports/fonts.md:129
+msgid ""
+"カラーグリフはType 3フォントとしてPDFへ書き出します。 グリフはテキストのまま"
+"なので、抽出・検索・コピーは通常の文字と同じように効きます。"
+msgstr ""
+"Colour glyphs are written to the PDF as a Type 3 font. They stay text, so "
+"extraction, search and copy work exactly as they do for ordinary characters."
+
+#: src/supports/fonts.md:132
+msgid ""
+"元のフォントプログラムは埋め込みません。 輪郭を持たないフォントはサブセット化"
+"しても削るものが無いため、埋め込むと10MB超のファイルがほぼ素通しでPDFへ入って"
+"しまいます。 かわりにビットマップは画像として、`COLR`のレイヤはパスの塗りとし"
+"て、使ったグリフの分だけが入ります。"
+msgstr ""
+"The original font program is never embedded. Subsetting has nothing to strip "
+"from a font without outlines, so embedding one would drag a 10MB file into "
+"the PDF almost untouched. Instead the bitmaps go in as images and the `COLR` "
+"layers as filled paths, only for the glyphs the document actually uses."
 
 #: src/supports/fonts.md:136
+msgid "`--grayscale`は絵文字のビットマップにも効きます。"
+msgstr "`--grayscale` applies to emoji bitmaps too."
+
+#: src/supports/fonts.md:138
+msgid "対応していないもの"
+msgstr "What is not supported"
+
+#: src/supports/fonts.md:140
+msgid ""
+"COLRv1(グラデーション・変換・合成)。COLRv1のフォントは`glyf`を持つため、ベー"
+"スの輪郭がモノクロで描画されます"
+msgstr ""
+"COLRv1 (gradients, transforms, compositing). A COLRv1 font carries `glyf`, "
+"so its base outlines are drawn in monochrome"
+
+#: src/supports/fonts.md:141
+msgid "OpenType SVG(`SVG `テーブル)"
+msgstr "OpenType SVG (the `SVG ` table)"
+
+#: src/supports/fonts.md:142
+msgid "`font-palette`によるパレットの選択(常に0番のパレットを使います)"
+msgstr "Palette selection through `font-palette`; palette 0 is always used"
+
+#: src/supports/fonts.md:144
 msgid "サブセット化"
 msgstr "Subsetting"
 
-#: src/supports/fonts.md:138
+#: src/supports/fonts.md:146
 msgid ""
 "埋め込まれるのは実際に使ったグリフだけです。 日本語フォントを丸ごと指定して"
 "も、PDFのサイズは文書に出てくる文字の分にしかなりません。"
@@ -6632,11 +6885,11 @@ msgstr ""
 "complete Japanese font, the PDF only grows by the characters that appear in "
 "the document."
 
-#: src/supports/fonts.md:141
+#: src/supports/fonts.md:149
 msgid "ストリーミングモードでの注意"
 msgstr "A note on streaming mode"
 
-#: src/supports/fonts.md:143
+#: src/supports/fonts.md:151
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では、文書全体を一度に持たな"
 "いため 上の3・4のシステムフォント探索が行われません(警告を出して既定フォント"
@@ -6649,7 +6902,7 @@ msgstr ""
 "with the `--font` options or `@font-face` gives you the fonts you intended "
 "even when streaming."
 
-#: src/supports/fonts.md:147
+#: src/supports/fonts.md:155
 msgid ""
 "例外として、フォントを1つも指定しなかった場合だけは、既定フォント(ラテン)に加"
 "えてCJKを描画できるフォントを1本先回りで読み込みます。 日本語の文書を何も指定"
@@ -7009,16 +7262,16 @@ msgstr ""
 msgid ""
 "SVGの中の`<image href=\"...\">`のような外部参照は解決しません。参照ごとに 警"
 "告を出して無視します。SVGの中からのファイル読み出しは`<img>`側の 封じ込め(基"
-"準ディレクトリ・`--allow`・`--disable-local-file-access`)を 迂回してしまうた"
-"め、経路自体を塞いでいます。`data:` URIは対象外 (SVG自身の中で完結しているた"
-"め許可されます)"
+"準ディレクトリ・`--allow-path`・`--disable-local-file-access`)を 迂回してしま"
+"うため、経路自体を塞いでいます。`data:` URIは対象外 (SVG自身の中で完結してい"
+"るため許可されます)"
 msgstr ""
 "External references from inside an SVG, such as `<image href=\"...\">`, are "
 "not resolved. Each one is ignored with a warning. Reading a file from inside "
 "an SVG would bypass the containment that applies to `<img>` (the base "
-"directory, `--allow`, and `--disable-local-file-access`), so the path is "
-"closed off entirely. `data:` URIs are exempt (they are self-contained within "
-"the SVG itself)"
+"directory, `--allow-path`, and `--disable-local-file-access`), so the path "
+"is closed off entirely. `data:` URIs are exempt (they are self-contained "
+"within the SVG itself)"
 
 #: src/supports/images.md:138
 msgid ""
@@ -7201,9 +7454,9 @@ msgstr ""
 
 #: src/supports/images.md:209
 msgid ""
-"IPv4を埋め込むIPv6表記(IPv4-mapped `::ffff:a.b.c.d`、IPv4-compatible `::a.b."
-"c.d`、NAT64 `64:ff9b::/96`、6to4 `2002::/16`)は、埋め込まれたIPv4側で判定しま"
-"す。 これらを素通しするとIPv4側のフィルタを迂回できてしまうためです。"
+"IPv4を埋め込むIPv6表記(IPv4-mapped `::ffff:a.b.c.d`、IPv4-compatible "
+"`::a.b.c.d`、NAT64 `64:ff9b::/96`、6to4 `2002::/16`)は、埋め込まれたIPv4側で"
+"判定します。 これらを素通しするとIPv4側のフィルタを迂回できてしまうためです。"
 msgstr ""
 "IPv6 forms that embed an IPv4 address (IPv4-mapped `::ffff:a.b.c.d`, IPv4-"
 "compatible `::a.b.c.d`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) are judged "
@@ -7227,9 +7480,11 @@ msgstr "Private"
 
 #: src/supports/images.md:218
 msgid ""
-"信頼できないHTMLを変換する場合は、`--allow`でローカル参照の範囲も併せて絞って"
-"ください。"
-msgstr "Ranges"
+"信頼できないHTMLを変換する場合は、`--allow-path`でローカル参照の範囲も併せて"
+"絞ってください。"
+msgstr ""
+"When converting untrusted HTML, narrow the range of local references as well "
+"with `--allow-path`."
 
 #: src/supports/images.md:224
 msgid "JPEGはそのまま埋め込まれる"
@@ -7457,8 +7712,8 @@ msgid ""
 "`counter(pages)`は[ストリーミングモード](../usage/cli/streaming.md)では使えま"
 "せん(総ページ数が1パスでは決まらないため)"
 msgstr ""
-"`counter(pages)` is unavailable in [streaming mode](../usage/cli/streaming."
-"md), because the total page count is not known in a single pass"
+"`counter(pages)` is unavailable in [streaming mode](../usage/cli/"
+"streaming.md), because the total page count is not known in a single pass"
 
 #: src/supports/pagination.md:75
 msgid ""
@@ -7536,10 +7791,16 @@ msgid "`display: flex`"
 msgstr "`display: flex`"
 
 #: src/supports/pagination.md:94
-msgid "アトミック。途中で分割せず、収まらなければ次ページへ送る"
+msgid ""
+"収まればアトミック(途中で分割せず、次ページへ送る)。1ページに収まらない高さの"
+"コンテナは、縦に重ならないアイテム群(列flexなら各アイテム、折り返す行flexなら"
+"各flex line)を単位に分割し、アイテムが1つだけの帯はブロックと同様に内部でも分"
+"割する"
 msgstr ""
-"Atomic. It is never split; if it does not fit, the whole thing moves to the "
-"next page"
+"Atomic when it fits (never split; moved to the next page whole). A container "
+"taller than one page is split in units of bands, groups of items that do not "
+"overlap vertically (each item of a column flex, each flex line of a wrapping "
+"row flex); a band holding a single item is split inside as well, like a block"
 
 #: src/supports/pagination.md:95
 msgid "`display: grid`"
@@ -7568,30 +7829,41 @@ msgstr ""
 "one piece. Use Grid or a table where you want it split."
 
 #: src/supports/pagination.md:101
+msgid ""
+"1ページに収まらないflexコンテナ(列flexで組んだ文書本文など)は、はみ出した部分"
+"を失わずに後続ページへ流れます。 折り返さない行flexで1ページより高いflex line"
+"は分割できず、はみ出します(クリップされません)。"
+msgstr ""
+"A flex container that does not fit on one page (a document body laid out as "
+"a column flex, say) flows onto the following pages without losing the "
+"overflow. A flex line taller than one page in a row flex that does not wrap "
+"cannot be split and overflows (it is not clipped)."
+
+#: src/supports/pagination.md:104
 msgid "よく使う書き方"
 msgstr "Common patterns"
 
-#: src/supports/pagination.md:103
+#: src/supports/pagination.md:106
 msgid "見出しが単独でページ末尾に残らないようにする:"
 msgstr "Keep a heading from being stranded at the bottom of a page:"
 
-#: src/supports/pagination.md:107
+#: src/supports/pagination.md:110
 msgid "/* 見出しの直後で改ページしない */"
 msgstr "/* do not break right after a heading */"
 
-#: src/supports/pagination.md:112
+#: src/supports/pagination.md:115
 msgid "明細の1件が2ページに割れないようにする:"
 msgstr "Keep a single line item from splitting across two pages:"
 
-#: src/supports/pagination.md:118
+#: src/supports/pagination.md:121
 msgid "章ごとに必ず改ページする:"
 msgstr "Always start a new page for each chapter:"
 
-#: src/supports/pagination.md:124
+#: src/supports/pagination.md:127
 msgid "Note"
 msgstr "Note"
 
-#: src/supports/pagination.md:126
+#: src/supports/pagination.md:129
 msgid ""
 "[ストリーミングモード](../usage/cli/streaming.md)では`:last-child`などの後方"
 "参照セレクタが常に非マッチになります。 上の例の`+`(隣接兄弟)は使えます。"
@@ -7907,8 +8179,8 @@ msgid ""
 "並びは公式マニュアルに合わせてあります。"
 msgstr ""
 "This covers every option listed by `--extended-help` in wkhtmltopdf 0.12.6, "
-"that is the official manual at <https://wkhtmltopdf.org/usage/wkhtmltopdf."
-"txt>. The sections and their order follow that manual."
+"that is the official manual at <https://wkhtmltopdf.org/usage/"
+"wkhtmltopdf.txt>. The sections and their order follow that manual."
 
 #: src/migration/wkhtmltopdf-options.md:6
 msgid "記号"
@@ -8309,9 +8581,12 @@ msgid "`--allow <path>`"
 msgstr "`--allow <path>`"
 
 #: src/migration/wkhtmltopdf-options.md:78
-msgid "ローカル読み込みを許可するディレクトリ。サーバモードでは特に重要"
+msgid ""
+"ローカル読み込みを許可するディレクトリ。sghtmltopdfでの綴りは`--allow-path`"
+"で、`--allow`は別名として受ける。サーバモードでは特に重要"
 msgstr ""
-"The directories local reads are confined to; it matters most in server mode"
+"The directories local reads are confined to. sghtmltopdf spells it `--allow-"
+"path` and takes `--allow` as an alias; it matters most in server mode"
 
 #: src/migration/wkhtmltopdf-options.md:79
 msgid "`--background` / `--no-background`"
@@ -8835,9 +9110,9 @@ msgstr "How the option names map"
 #: src/migration/wicked-pdf.md:46
 msgid ""
 "wicked_pdfはネストしたHash(`margin: {top: 10}`)を使うが、sghtmltopdfは CLIの"
-"フラグ名をそのままキーにした平坦なHashを使う(`_`が`-`に対応する。`page_size:"
-"` → `--page-size`)。 オプションの定義はRust側の1箇所に集約されていて、Ruby側"
-"はホワイトリストを持ちません。"
+"フラグ名をそのままキーにした平坦なHashを使う(`_`が`-`に対応する。"
+"`page_size:` → `--page-size`)。 オプションの定義はRust側の1箇所に集約されてい"
+"て、Ruby側はホワイトリストを持ちません。"
 msgstr ""
 "wicked_pdf takes nested hashes such as `margin: {top: 10}`, while "
 "sghtmltopdf takes a flat hash whose keys are the CLI flag names, with `_` "
@@ -9130,35 +9405,56 @@ msgid "`wicked_pdf_asset_base64`"
 msgstr "`wicked_pdf_asset_base64`"
 
 #: src/migration/wicked-pdf.md:106
-msgid "— (ローカルファイルを直接読めるので不要)"
-msgstr "— (unnecessary, since local files can be read directly)"
+msgid "— (`sghtmltopdf_image_tag`に`inline: true`)"
+msgstr "— (`sghtmltopdf_image_tag` with `inline: true`)"
 
 #: src/migration/wicked-pdf.md:108
 msgid ""
-"素の`stylesheet_link_tag`/`image_tag`も、アセットが`public/`配下へprecompile"
-"されていればそのまま動きます。 PDFのレンダリングはHTTPサーバを介さないので、"
-"`/assets/…`のようなURLは`--base-url`(Railsでの既定は`Rails.root/public`)を基"
-"準にローカルファイルとして解決される。"
+"素の`image_tag`も、アセットが`public/`配下へprecompileされていればそのまま動"
+"きます。 PDFのレンダリングはHTTPサーバを介さないので、`/assets/…`のようなURL"
+"は`--base-url`(Railsでの既定は`Rails.root/public`)を基準にローカルファイルと"
+"して解決される。"
 msgstr ""
-"A plain `stylesheet_link_tag` or `image_tag` works as it is, as long as the "
-"assets have been precompiled into `public/`. Rendering does not go through "
-"an HTTP server, so a URL such as `/assets/…` is resolved as a local file "
-"against `--base-url`, which defaults to `Rails.root/public` under Rails."
+"A plain `image_tag` works as it is, as long as the assets have been "
+"precompiled into `public/`. Rendering does not go through an HTTP server, so "
+"a URL such as `/assets/…` is resolved as a local file against `--base-url`, "
+"which defaults to `Rails.root/public` under Rails."
 
 #: src/migration/wicked-pdf.md:111
 msgid ""
-"開発環境のようにアセットがまだ`public/`に無い場合は、CSSの中身を`<style>`へ展"
-"開する`sghtmltopdf_stylesheet_link_tag`を使う。"
+"開発環境のようにアセットがまだ`public/`に無い場合は、パイプラインのロードパス"
+"から実ファイルを引くヘルパを使う。 `sghtmltopdf_stylesheet_link_tag`はCSSを"
+"`<style>`へ展開し、`sghtmltopdf_image_tag`は画像をパスで指す(読めない場所にあ"
+"る場合は`data:`URIで埋め込む)。 `wicked_pdf_image_tag`が`file://`のURLを出し"
+"ていたのに対し、こちらはエンジンがローカルファイルとして読む形になる。"
 msgstr ""
-"Where the assets are not in `public/` yet, as in development, use "
-"`sghtmltopdf_stylesheet_link_tag`, which inlines the CSS into a `<style>` "
-"element."
+"When the assets are not in `public/` yet, as in development, use the helpers "
+"that look the real file up in the pipeline load path: "
+"`sghtmltopdf_stylesheet_link_tag` expands the CSS into a `<style>`, and "
+"`sghtmltopdf_image_tag` references the image by path (embedding it as a "
+"`data:` URI when it sits somewhere the engine cannot read). Where "
+"`wicked_pdf_image_tag` emitted a `file://` URL, here the engine reads it as "
+"a local file."
 
-#: src/migration/wicked-pdf.md:117
+#: src/migration/wicked-pdf.md:115
+msgid ""
+"CSSについては素の`stylesheet_link_tag`では足りません。 パイプラインは"
+"precompile時にCSS中の`url()`も書き換えるため、`asset_host`を設定していると"
+"`@font-face`の参照がHTTPSの絶対URLになり、取得できずにフォントが既定へ落ちま"
+"す。 `sghtmltopdf_stylesheet_link_tag`は展開時にこれをディスク上のファイルへ"
+"指し直します。"
+msgstr ""
+"A plain `stylesheet_link_tag` is not enough for CSS. The pipeline rewrites "
+"the `url()`s inside the CSS too, so with `asset_host` set a `@font-face` "
+"reference becomes an absolute HTTPS URL, which cannot be fetched and leaves "
+"the font falling back to the default. `sghtmltopdf_stylesheet_link_tag` "
+"points those at the file on disk while it expands the CSS."
+
+#: src/migration/wicked-pdf.md:124
 msgid "既定値の違い"
 msgstr "Differences in the defaults"
 
-#: src/migration/wicked-pdf.md:119
+#: src/migration/wicked-pdf.md:126
 msgid ""
 "マージン: wkhtmltopdfは四辺10mm。sghtmltopdfは四辺1in(96px)。 同じ見た目にし"
 "たければ`margin_*`を明示する"
@@ -9166,7 +9462,7 @@ msgstr ""
 "Margins: wkhtmltopdf uses 10mm on all four sides, sghtmltopdf 1in (96px) on "
 "all four sides. State `margin_*` explicitly to keep the same look"
 
-#: src/migration/wicked-pdf.md:121
+#: src/migration/wicked-pdf.md:128
 msgid ""
 "CLIオプションとCSSの`@page`: wkhtmltopdfはCLIが勝つが、sghtmltopdfは `@page` "
 "が勝つ(オプションは初期値)"
@@ -9174,16 +9470,24 @@ msgstr ""
 "CLI options versus `@page` in CSS: in wkhtmltopdf the CLI wins, in "
 "sghtmltopdf `@page` wins and the options are initial values"
 
-#: src/migration/wicked-pdf.md:122
+#: src/migration/wicked-pdf.md:129
 msgid ""
-"ローカルファイルの参照範囲: Railsでは`--allow`の既定が`Rails.root`になる。ア"
-"プリの外(例: `/usr/share/fonts`)のファイルを`<img>`や`@font-face`の`url()`で"
-"参照している場合は、`Sghtmltopdf.configure { |c| c.allow = [Rails.root.to_s, "
-"\"/usr/share/fonts\"] }`のように明示する。`--font`系(`gothic_font`など)で渡す"
-"フォントはこの制限を受けない"
-msgstr "Ranges"
+"ローカルファイルの参照範囲: Railsでは`--allow-path`(旧`--allow`。別名として受"
+"ける)の既定が`public/`とアセットパイプラインのロードパスになる。そこから外れ"
+"るファイル(例: `/usr/share/fonts`、`Rails.root.join(\"tmp\")`)を`<img>`や"
+"`@font-face`の`url()`で参照している場合は、`Sghtmltopdf.configure { |c| "
+"c.allow_path += [\"/usr/share/fonts\"] }`のように明示する。`--font`系"
+"(`gothic_font`など)で渡すフォントはこの制限を受けない"
+msgstr ""
+"Range of local file references: on Rails the `--allow-path` default "
+"(formerly `--allow`, still accepted as an alias) is `public/` plus the asset "
+"pipeline load paths. If you reference a file outside those, say `/usr/share/"
+"fonts` or `Rails.root.join(\"tmp\")`, from an `<img>` or a `url()` in `@font-"
+"face`, name it explicitly with `Sghtmltopdf.configure { |c| c.allow_path += "
+"[\"/usr/share/fonts\"] }`. Fonts passed through the `--font` options "
+"(`gothic_font` and friends) are not subject to this restriction."
 
-#: src/migration/wicked-pdf.md:123
+#: src/migration/wicked-pdf.md:130
 msgid ""
 "リモート取得: `http(s)`のアセット取得は既定で無効。必要なら"
 "`allow_remote_assets: true`"
@@ -9191,20 +9495,20 @@ msgstr ""
 "Remote fetching: retrieving `http(s)` assets is off by default. Turn it on "
 "with `allow_remote_assets: true` if you need it"
 
-#: src/migration/wicked-pdf.md:124
+#: src/migration/wicked-pdf.md:131
 msgid ""
-"`disable_local_file_access`との併用: `--allow`は読み取り範囲を狭めるだけで、"
-"許可を与えるものではない。wicked_pdfで`disable_local_file_access: true`と"
+"`disable_local_file_access`との併用: `--allow-path`は読み取り範囲を狭めるだけ"
+"で、許可を与えるものではない。wicked_pdfで`disable_local_file_access: true`と"
 "`allow: [dir]`を併用して「dirだけ読める」状態にしていた場合、そのまま持ち込む"
-"とローカル読み取りが全て止まる。`allow`だけを残すこと"
+"とローカル読み取りが全て止まる。`allow_path`だけを残すこと"
 msgstr ""
-"Combining with `disable_local_file_access`: `--allow` only narrows the range "
-"of local reads, it does not grant them. If you used "
+"Combining with `disable_local_file_access`: `--allow-path` only narrows the "
+"range of local reads, it does not grant them. If you used "
 "`disable_local_file_access: true` together with `allow: [dir]` in wicked_pdf "
 "to mean \"only dir is readable\", carrying both across stops local reads "
-"entirely. Keep `allow` on its own."
+"entirely. Keep `allow_path` on its own."
 
-#: src/migration/wicked-pdf.md:128
+#: src/migration/wicked-pdf.md:135
 msgid ""
 "wkhtmltopdfはシステムのフォント設定に依存するが、sghtmltopdfは`gothic_font`/"
 "`serif_font`/`mono_font`で指定できる。 日本語を出す場合は、コンテナのフォント"
@@ -9215,11 +9519,11 @@ msgstr ""
 "Japanese output it is safer to state them, so that you are not at the mercy "
 "of what a container happens to have."
 
-#: src/migration/wicked-pdf.md:137
+#: src/migration/wicked-pdf.md:144
 msgid "別プロセスへ逃がす(wicked_pdfには無い選択肢)"
 msgstr "Moving the work to another process, which wicked_pdf could not do"
 
-#: src/migration/wicked-pdf.md:139
+#: src/migration/wicked-pdf.md:146
 msgid ""
 "wicked_pdfはリクエストごとにwkhtmltopdfのプロセスを起動するが、sghtmltopdfの"
 "gemはアプリのプロセス内で変換する(重い処理の間はGVLを解放するのでPumaの他ス"
@@ -9232,7 +9536,7 @@ msgstr ""
 "still do not want to spend the application's CPU on it, `server_url` "
 "delegates to a separate `sghtmltopdf server` process."
 
-#: src/migration/wicked-pdf.md:146
+#: src/migration/wicked-pdf.md:153
 msgid ""
 "負荷分散はLB(nginx・k8s Service)を前段に置く前提で、URLは1つだけ受ける。 到達"
 "できないときは`Sghtmltopdf::ServerError`になり、ローカル変換へはフォールバッ"
@@ -9243,28 +9547,29 @@ msgstr ""
 "reached you get `Sghtmltopdf::ServerError`; it does not fall back to "
 "converting locally."
 
-#: src/migration/wicked-pdf.md:149
+#: src/migration/wicked-pdf.md:156
 msgid ""
-"サーバモードでは`base_url`・`allow`・フォント指定などローカルパスを取るオプ"
-"ションはリクエストから指定できない(サーバ起動時にだけ設定できる)。 Railtieが"
-"入れる既定値は自動的に外れるが、`configure`で明示的に設定している場合は"
-"400(`UsageError`)になるので、サーバ側の起動オプションへ移す。"
+"サーバモードでは`base_url`・`allow_path`・フォント指定などローカルパスを取る"
+"オプションはリクエストから指定できない(サーバ起動時にだけ設定できる)。 "
+"Railtieが入れる既定値は自動的に外れるが、`configure`で明示的に設定している場"
+"合は400(`UsageError`)になるので、サーバ側の起動オプションへ移す。"
 msgstr ""
-"In server mode, options that take a local path, such as `base_url`, `allow`, "
-"and the font settings, cannot be given per request; they are only settable "
-"when the server starts. The defaults supplied by the Railtie are dropped "
-"automatically, but anything you set explicitly with `configure` produces a "
-"400 and a `UsageError`, so move those to the server's startup options."
+"In server mode, options that take a local path, such as `base_url`, "
+"`allow_path`, and the font settings, cannot be given per request; they are "
+"only settable when the server starts. The defaults supplied by the Railtie "
+"are dropped automatically, but anything you set explicitly with `configure` "
+"produces a 400 and a `UsageError`, so move those to the server's startup "
+"options."
 
-#: src/migration/wicked-pdf.md:152
+#: src/migration/wicked-pdf.md:159
 msgid "まだ無いもの"
 msgstr "Not there yet"
 
-#: src/migration/wicked-pdf.md:154
+#: src/migration/wicked-pdf.md:161
 msgid "PDFの結合・アウトライン: 非対応"
 msgstr "Merging PDFs and PDF outlines are not supported"
 
-#: src/migration/wicked-pdf.md:156
+#: src/migration/wicked-pdf.md:163
 msgid ""
 "なお逐次出力(ストリーミング)はwicked_pdfには無い機能で、ブロック付きの"
 "`render`で使える。 `ActionController::Live`と組み合わせれば、確定したページか"
@@ -9310,8 +9615,8 @@ msgstr "Including a chart drawn on the client with something like Chart.js"
 
 #: src/appendix/limitations.md:13
 msgid ""
-"JSでページ番号やヘッダーを差し込む(→ [プレースホルダ](../usage/cli/reference."
-"md#ヘッダーフッター)を使ってください)"
+"JSでページ番号やヘッダーを差し込む(→ [プレースホルダ](../usage/cli/"
+"reference.md#ヘッダーフッター)を使ってください)"
 msgstr ""
 "Injecting page numbers or headers with JavaScript; use the [placeholders](../"
 "usage/cli/reference.md#headers-and-footers) instead"
@@ -9435,10 +9740,12 @@ msgstr "Fonts may be TTF or OTF only; WOFF and WOFF2 are not supported"
 
 #: src/appendix/limitations.md:43
 msgid ""
-"カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は"
-"[フォント](../supports/fonts.md#絵文字)を参照してください"
+"カラーフォントは埋め込みビットマップ(`CBDT`/`CBLC`・`sbix`)と`COLR`/`CPAL` v0"
+"のみ。COLRv1(グラデーション)とOpenType SVGは非対応です。絵文字は[フォント]"
+"(../supports/fonts.md#絵文字)を参照してください"
 msgstr ""
-"Colour fonts (`CBDT`/`CBLC`, `COLR`/`CPAL`, `sbix`) are not supported. For "
+"Colour fonts are limited to embedded bitmaps (`CBDT`/`CBLC`, `sbix`) and "
+"`COLR`/`CPAL` v0. COLRv1 (gradients) and OpenType SVG are not supported. For "
 "emoji see [Fonts](../supports/fonts.md#emoji)"
 
 #: src/appendix/limitations.md:44
@@ -9508,11 +9815,11 @@ msgstr "How whitespace is treated"
 
 #: src/appendix/limitations.md:64
 msgid ""
-"畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 `&nbsp;"
-"`(U+00A0)やthin space(U+2009)などは畳み込まれない普通の文字として、 フォント"
-"本来の字幅で描かれます。改行してよい位置はUAX #14の行分割クラスに従い、 "
-"`&nbsp;`・narrow no-break space・figure space・word joinerの前後では改行しま"
-"せん (`word-break: break-all`を指定した場合も同様です)。"
+"畳み込みの対象はCSS Text 3が定める空白(space・tab・改行)だけです。 "
+"`&nbsp;`(U+00A0)やthin space(U+2009)などは畳み込まれない普通の文字として、 "
+"フォント本来の字幅で描かれます。改行してよい位置はUAX #14の行分割クラスに従"
+"い、 `&nbsp;`・narrow no-break space・figure space・word joinerの前後では改行"
+"しません (`word-break: break-all`を指定した場合も同様です)。"
 msgstr ""
 "Only the whitespace CSS Text 3 defines as such — space, tab and newline — is "
 "collapsed. `&nbsp;` (U+00A0), thin space (U+2009) and the like are ordinary "
@@ -9584,15 +9891,232 @@ msgstr ""
 "arises. Items above that are not deliberate non-goals, such as PDF outlines, "
 "may well be supported later."
 
+#~ msgid "`--allow <PATH>`"
+#~ msgstr "`--allow <PATH>`"
+
+#~ msgid ""
+#~ "`--allow`を1つ以上指定すると、ローカル参照はそのディレクトリ配下だけに限定"
+#~ "されます。 `<img src>`・外部CSS・`@font-face`のすべてに効きます。"
+#~ msgstr ""
+#~ "Given one or more `--allow` paths, local references are confined to those "
+#~ "directories. This applies to `<img src>`, external CSS, and `@font-face` "
+#~ "alike."
+
+#~ msgid ""
+#~ "外のファイルを意図的に参照する場合は`--allow`で範囲を明示してください。 "
+#~ "`--allow`を指定した場合は、基準ディレクトリではなく許可したディレクトリが"
+#~ "境界になります。"
+#~ msgstr "Ranges"
+
+#~ msgid ""
+#~ "判定はパス文字列に対して行うため、基準ディレクトリ配下のシンボリックリンク"
+#~ "は辿ります。 シンボリックリンクの先まで含めて閉じたい場合は`--allow`を使っ"
+#~ "てください(こちらは実パスで判定します)。"
+#~ msgstr ""
+#~ "The check is lexical, so symlinks under the base directory are followed. "
+#~ "Use `--allow` when you want the boundary to hold across symlinks as well "
+#~ "(that check resolves real paths)."
+
+#~ msgid "`allow: [\"/a\", \"/b\"]`"
+#~ msgstr "`allow: [\"/a\", \"/b\"]`"
+
+#~ msgid ""
+#~ "`font`系で渡すフォントは、後述の`allow`(ローカル参照の制限)の対象外です。"
+#~ msgstr ""
+#~ "Fonts passed through the `font` options are exempt from `allow`, the "
+#~ "restriction on local references described below."
+
+#~ msgid "`allow`"
+#~ msgstr "`allow`"
+
+#~ msgid "`[Rails.root]`"
+#~ msgstr "`[Rails.root]`"
+
+#~ msgid "ローカル参照をアプリ配下に限定する"
+#~ msgstr "Confines local references to the application directory"
+
+#~ msgid ""
+#~ "どちらも`Sghtmltopdf.configure`で上書きできます(イニシャライザの実行順に依"
+#~ "存しません)。 `allow`の既定はテンプレートにユーザー入力が混ざっても文書外"
+#~ "のファイルを読ませないためのものなので、アプリの外(例: `/usr/share/fonts`)"
+#~ "を参照している場合は明示的に足してください。"
+#~ msgstr ""
+#~ "Both can be overridden with `Sghtmltopdf.configure`, regardless of "
+#~ "initializer order. The `allow` default exists so that user input mixed "
+#~ "into a template cannot read files outside the document; if you reference "
+#~ "something outside the application, such as `/usr/share/fonts`, add it "
+#~ "explicitly."
+
+#~ msgid ""
+#~ "開発環境のようにアセットがまだ`public/`へ書き出されていない場合のために、"
+#~ "CSSの中身を`<style>`へ展開するヘルパがあります。"
+#~ msgstr ""
+#~ "For cases such as development, where assets have not been written to "
+#~ "`public/` yet, there are helpers that inline the CSS into a `<style>` "
+#~ "element."
+
+#~ msgid ""
+#~ "Railtieが入れる`base_url`/`allow`の既定値は自動的に外れるので、Railsでその"
+#~ "まま`server_url`を足しても400にはなりません。 `configure`で明示的に設定し"
+#~ "ている場合は、サーバ側の起動オプションへ移してください。"
+#~ msgstr ""
+#~ "The `base_url` and `allow` defaults supplied by the Railtie are dropped "
+#~ "automatically, so simply adding `server_url` in a Rails app does not "
+#~ "produce a 400. If you set them explicitly with `configure`, move them to "
+#~ "the server's startup options."
+
+#~ msgid ""
+#~ "`absolute`/`fixed`では`bottom`単独指定による下端揃えが非対応(高さの循環参"
+#~ "照を避けるため`top`基準に解決する)。`relative`ではオフセットとして機能する"
+#~ msgstr ""
+#~ "With `absolute` and `fixed`, aligning to the bottom by giving `bottom` "
+#~ "alone is not supported; everything resolves from `top`, to avoid a "
+#~ "circular dependency on the height. With `relative` they act as offsets"
+
+#~ msgid ""
+#~ "SVGの中の`<image href=\"...\">`のような外部参照は解決しません。参照ごとに "
+#~ "警告を出して無視します。SVGの中からのファイル読み出しは`<img>`側の 封じ込"
+#~ "め(基準ディレクトリ・`--allow`・`--disable-local-file-access`)を 迂回して"
+#~ "しまうため、経路自体を塞いでいます。`data:` URIは対象外 (SVG自身の中で完結"
+#~ "しているため許可されます)"
+#~ msgstr ""
+#~ "External references from inside an SVG, such as `<image href=\"...\">`, "
+#~ "are not resolved. Each one is ignored with a warning. Reading a file from "
+#~ "inside an SVG would bypass the containment that applies to `<img>` (the "
+#~ "base directory, `--allow`, and `--disable-local-file-access`), so the "
+#~ "path is closed off entirely. `data:` URIs are exempt (they are self-"
+#~ "contained within the SVG itself)"
+
+#~ msgid ""
+#~ "信頼できないHTMLを変換する場合は、`--allow`でローカル参照の範囲も併せて"
+#~ "絞ってください。"
+#~ msgstr "Ranges"
+
+#~ msgid "ローカル読み込みを許可するディレクトリ。サーバモードでは特に重要"
+#~ msgstr ""
+#~ "The directories local reads are confined to; it matters most in server "
+#~ "mode"
+
+#~ msgid "— (ローカルファイルを直接読めるので不要)"
+#~ msgstr "— (unnecessary, since local files can be read directly)"
+
+#~ msgid ""
+#~ "素の`stylesheet_link_tag`/`image_tag`も、アセットが`public/`配下へ"
+#~ "precompileされていればそのまま動きます。 PDFのレンダリングはHTTPサーバを介"
+#~ "さないので、`/assets/…`のようなURLは`--base-url`(Railsでの既定は"
+#~ "`Rails.root/public`)を基準にローカルファイルとして解決される。"
+#~ msgstr ""
+#~ "A plain `stylesheet_link_tag` or `image_tag` works as it is, as long as "
+#~ "the assets have been precompiled into `public/`. Rendering does not go "
+#~ "through an HTTP server, so a URL such as `/assets/…` is resolved as a "
+#~ "local file against `--base-url`, which defaults to `Rails.root/public` "
+#~ "under Rails."
+
+#~ msgid ""
+#~ "開発環境のようにアセットがまだ`public/`に無い場合は、CSSの中身を`<style>`"
+#~ "へ展開する`sghtmltopdf_stylesheet_link_tag`を使う。"
+#~ msgstr ""
+#~ "Where the assets are not in `public/` yet, as in development, use "
+#~ "`sghtmltopdf_stylesheet_link_tag`, which inlines the CSS into a `<style>` "
+#~ "element."
+
+#~ msgid ""
+#~ "ローカルファイルの参照範囲: Railsでは`--allow`の既定が`Rails.root`になる。"
+#~ "アプリの外(例: `/usr/share/fonts`)のファイルを`<img>`や`@font-face`の"
+#~ "`url()`で参照している場合は、`Sghtmltopdf.configure { |c| c.allow = "
+#~ "[Rails.root.to_s, \"/usr/share/fonts\"] }`のように明示する。`--font`系"
+#~ "(`gothic_font`など)で渡すフォントはこの制限を受けない"
+#~ msgstr "Ranges"
+
+#~ msgid ""
+#~ "`disable_local_file_access`との併用: `--allow`は読み取り範囲を狭めるだけ"
+#~ "で、許可を与えるものではない。wicked_pdfで`disable_local_file_access: "
+#~ "true`と`allow: [dir]`を併用して「dirだけ読める」状態にしていた場合、そのま"
+#~ "ま持ち込むとローカル読み取りが全て止まる。`allow`だけを残すこと"
+#~ msgstr ""
+#~ "Combining with `disable_local_file_access`: `--allow` only narrows the "
+#~ "range of local reads, it does not grant them. If you used "
+#~ "`disable_local_file_access: true` together with `allow: [dir]` in "
+#~ "wicked_pdf to mean \"only dir is readable\", carrying both across stops "
+#~ "local reads entirely. Keep `allow` on its own."
+
+#~ msgid ""
+#~ "サーバモードでは`base_url`・`allow`・フォント指定などローカルパスを取るオ"
+#~ "プションはリクエストから指定できない(サーバ起動時にだけ設定できる)。 "
+#~ "Railtieが入れる既定値は自動的に外れるが、`configure`で明示的に設定している"
+#~ "場合は400(`UsageError`)になるので、サーバ側の起動オプションへ移す。"
+#~ msgstr ""
+#~ "In server mode, options that take a local path, such as `base_url`, "
+#~ "`allow`, and the font settings, cannot be given per request; they are "
+#~ "only settable when the server starts. The defaults supplied by the "
+#~ "Railtie are dropped automatically, but anything you set explicitly with "
+#~ "`configure` produces a 400 and a `UsageError`, so move those to the "
+#~ "server's startup options."
+
+#~ msgid ""
+#~ "絵文字はモノクロのアウトラインフォントで描きます。 GoogleのNoto Emoji(カ"
+#~ "ラーのNoto Color Emojiではなく、アウトライン版)を指定すれば、そのまま描画"
+#~ "されます。"
+#~ msgstr ""
+#~ "Emoji are drawn from a monochrome outline font. Point at Google's Noto "
+#~ "Emoji (the outline one, not the colour Noto Color Emoji) and it renders "
+#~ "as it is."
+
+#~ msgid ""
+#~ "カラーフォント(`CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`)は非対応です。絵文字は"
+#~ "[フォント](../supports/fonts.md#絵文字)を参照してください"
+#~ msgstr ""
+#~ "Colour fonts (`CBDT`/`CBLC`, `COLR`/`CPAL`, `sbix`) are not supported. "
+#~ "For emoji see [Fonts](../supports/fonts.md#emoji)"
+
+#~ msgid ""
+#~ "カラーフォントは非対応です。 `CBDT`/`CBLC`・`COLR`/`CPAL`・`sbix`のいずれ"
+#~ "も扱いません。"
+#~ msgstr ""
+#~ "Colour fonts are not supported. Neither `CBDT`/`CBLC`, `COLR`/`CPAL` nor "
+#~ "`sbix` is handled."
+
+#~ msgid "この種のフォントは指定しても使われず、警告が出ます。"
+#~ msgstr ""
+#~ "Such a font is not used even when you name it explicitly, and a warning "
+#~ "is printed."
+
+#~ msgid ""
+#~ "黙って無視するのではなく採用しないのは、輪郭を持たないフォントを埋め込む"
+#~ "と、文字が豆腐にすらならず完全に消えたうえ、サブセット化が効かずPDFだけが"
+#~ "数MB膨らむためです。 不採用にすれば通常のフォント探索へ落ち、描画できる文"
+#~ "字が無ければ「豆腐になります」の警告が文字を名指しして出ます。"
+#~ msgstr ""
+#~ "Declining the font rather than quietly ignoring it matters because "
+#~ "embedding an outline-less font makes the characters vanish entirely — not "
+#~ "even a tofu box — while subsetting has nothing to strip, so the PDF alone "
+#~ "grows by several megabytes. Declining it lets the usual font search take "
+#~ "over, and if nothing can draw a character the \"you will get tofu\" "
+#~ "warning names that character."
+
+#~ msgid ""
+#~ "`display: flex`のレイアウトは[taffy](https://github.com/DioxusLabs/taffy)"
+#~ "へ委譲する。 flexコンテナはページ分割上アトミック(`display: table`と同じく"
+#~ "途中で分割されない)。"
+#~ msgstr ""
+#~ "Laying out `display: flex` is delegated to [taffy](https://github.com/"
+#~ "DioxusLabs/taffy). A flex container is atomic as far as page breaking "
+#~ "goes: like `display: table`, it is never split part way through."
+
+#~ msgid "アトミック。途中で分割せず、収まらなければ次ページへ送る"
+#~ msgstr ""
+#~ "Atomic. It is never split; if it does not fit, the whole thing moves to "
+#~ "the next page"
+
 #~ msgid "個別の`top`/`right`/`bottom`/`left`を使う"
 #~ msgstr "Use `top`, `right`, `bottom`, and `left` individually"
 
 #~ msgid ""
-#~ "`:last-child`・`:nth-last-child`・`:last-of-type`・`:nth-last-of-type`・`:"
-#~ "only-child`・`:only-of-type`・`:empty`"
+#~ "`:last-child`・`:nth-last-child`・`:last-of-type`・`:nth-last-of-type`・"
+#~ "`:only-child`・`:only-of-type`・`:empty`"
 #~ msgstr ""
-#~ "`:last-child`, `:nth-last-child`, `:last-of-type`, `:nth-last-of-type`, `:"
-#~ "only-child`, `:only-of-type`, and `:empty`"
+#~ "`:last-child`, `:nth-last-child`, `:last-of-type`, `:nth-last-of-type`, "
+#~ "`:only-child`, `:only-of-type`, and `:empty`"
 
 #~ msgid "常に非マッチになる(親の子リストが完結するまで判定できないため)"
 #~ msgstr ""
@@ -9857,3 +10381,29 @@ msgstr ""
 #~ "0.1.0 has not been released yet, so the gem is not on rubygems.org. To "
 #~ "try it, clone the repository and run `bundle install && bundle exec rake "
 #~ "compile` in `bindings/ruby`."
+
+#~ msgid ""
+#~ "`sghtmltopdf_stylesheet_link_tag`はCSSの中身を`<style>`へ展開します。"
+#~ msgstr ""
+#~ "`sghtmltopdf_stylesheet_link_tag` expands the CSS itself into a `<style>`."
+
+#~ msgid ""
+#~ "`sghtmltopdf_stylesheet_link_tag`はCSSの中身を`<style>`へ展開します。 "
+#~ "`sghtmltopdf_image_tag`は画像を`data:`URIとして`<img>`へ埋め込みます。 ど"
+#~ "ちらも取得を伴わないため、`base_url`や`allow`の設定に依存せず、`public/`の"
+#~ "外にあるファイルでも読めます。 画像が多くbase64でHTMLが膨らむ場合は、"
+#~ "`sghtmltopdf_image_tag \"logo.png\", inline: false`で`base_url`基準の相対"
+#~ "パスを出せます。 このとき`base_url`の外にあるファイルは、相対パスで指せな"
+#~ "いため埋め込みに戻ります。"
+#~ msgstr ""
+#~ "`sghtmltopdf_stylesheet_link_tag` expands the CSS itself into a "
+#~ "`<style>`. `sghtmltopdf_image_tag` embeds the image in the `<img>` as a "
+#~ "`data:` URI. Neither fetches anything, so they do not depend on "
+#~ "`base_url` or `allow`, and they read files outside `public/` as well. For "
+#~ "a document with so many images that base64 bloats the HTML, "
+#~ "`sghtmltopdf_image_tag \"logo.png\", inline: false` emits a path relative "
+#~ "to `base_url` instead. A file outside `base_url` falls back to being "
+#~ "embedded even then, since a relative path could not point at it."
+
+#~ msgid "— (`sghtmltopdf_image_tag`が既定で埋め込むので不要)"
+#~ msgstr "— (not needed: `sghtmltopdf_image_tag` embeds the image by default)"
