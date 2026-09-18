@@ -1120,6 +1120,40 @@ fn header_html_is_composed_onto_every_page() {
 }
 
 #[test]
+fn html_header_footer_totals_do_not_require_css_page_counters() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-e2e-html-totals-{}",
+        std::process::id()
+    ));
+    // Only the overlay contains digits, so the PDF's Unicode map identifies
+    // the expanded total without confusing it with body text or [page].
+    let overlay = write_temp_html(
+        &dir,
+        "overlay.html",
+        "<html><body style=\"margin:0\">[topage]</body></html>",
+    );
+    let cover = write_temp_html(&dir, "cover.html", BLANK_COVER_HTML);
+    for option in ["--header-html", "--footer-html"] {
+        for with_cover in [false, true] {
+            let mut args = vec!["--no-pdf-compression", option, overlay.to_str().unwrap()];
+            if with_cover {
+                args.extend(["--cover", cover.to_str().unwrap()]);
+            }
+            let bytes = run_cli_with(TWO_PAGE_HTML, &args, "html-totals");
+            assert_eq!(
+                count_occurrences(&bytes, b"/MediaBox"),
+                if with_cover { 3 } else { 2 }
+            );
+            assert!(
+                count_occurrences(&bytes, b"<0032>") > 0,
+                "{option} must expand [topage], excluding the cover"
+            );
+        }
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn header_html_takes_precedence_over_the_simple_option() {
     let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-hf-both-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
