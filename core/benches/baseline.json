@@ -495,13 +495,13 @@
     },
     {
       "name": "cli/report_header_footer_html",
-      "seconds": 0.034768084,
-      "peak_rss_bytes": 36995072,
+      "seconds": 0.035598458,
+      "peak_rss_bytes": 37568512,
       "alloc_count": 0,
       "alloc_bytes": 0,
       "peak_live_bytes": 0,
       "pages": 20,
-      "pdf_bytes": 166412
+      "pdf_bytes": 166513
     },
     {
       "name": "cli/report_cover",
