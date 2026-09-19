@@ -702,12 +702,12 @@ msgstr "\"sghtmltopdf\""
 #: src/getting-started/install.md:56
 msgid ""
 "ビルド済み(precompiled)のgemを配布する方針のため、利用側にRustのツールチェイ"
-"ンは要りません。 対応は`x86_64-linux`・`aarch64-linux`・`arm64-darwin`(glibc)"
-"と、Ruby 3.2以上です。"
+"ンは要りません。 対応は`x86_64-linux`・`aarch64-linux`(glibc)・`arm64-darwin`"
+"・`x86_64-darwin`と、Ruby 3.2以上です。"
 msgstr ""
 "Precompiled gems are distributed, so you do not need a Rust toolchain to "
-"install it. The supported platforms are `x86_64-linux`, `aarch64-linux`, and "
-"`arm64-darwin` (glibc), on Ruby 3.2 or later."
+"install it. The supported platforms are `x86_64-linux`, `aarch64-linux` "
+"(glibc), `arm64-darwin`, and `x86_64-darwin`, on Ruby 3.2 or later."
 
 #: src/getting-started/install.md:59
 msgid ""
@@ -3143,10 +3143,10 @@ msgstr "Platforms"
 #: src/usage/ruby_rails.md:23
 msgid ""
 "`x86_64-linux` / `aarch64-linux` / `x86_64-linux-musl` / `aarch64-linux-"
-"musl` / `arm64-darwin`"
+"musl` / `arm64-darwin` / `x86_64-darwin`"
 msgstr ""
 "`x86_64-linux`, `aarch64-linux`, `x86_64-linux-musl`, `aarch64-linux-musl`, "
-"`arm64-darwin`"
+"`arm64-darwin`, `x86_64-darwin`"
 
 #: src/usage/ruby_rails.md:24
 msgid "Ruby"
@@ -3159,13 +3159,13 @@ msgstr "3.2 or later"
 #: src/usage/ruby_rails.md:26
 msgid ""
 "Linuxはglibc(Debian/Ubuntu系)とmusl(Alpine)の両方があり、`gem install`が環境"
-"に合うほうを選びます。 Windows・Intel Macは対象外で、これらの環境ではインス"
-"トールできません。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
+"に合うほうを選びます。 Windowsは対象外で、この環境ではインストールできませ"
+"ん。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
 msgstr ""
 "Linux is covered for both glibc (Debian and Ubuntu) and musl (Alpine), and "
-"`gem install` picks whichever matches the environment. Windows and Intel "
-"Macs are out of scope, and the gem cannot be installed there. [Delegating to "
-"a server](#delegating-to-a-server) is an option in that case."
+"`gem install` picks whichever matches the environment. Windows is out of "
+"scope, and the gem cannot be installed there. [Delegating to a server]"
+"(#delegating-to-a-server) is an option in that case."
 
 #: src/usage/ruby_rails.md:33
 msgid "\"<h1>請求書</h1>\""

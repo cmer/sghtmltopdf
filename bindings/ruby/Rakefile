@@ -12,7 +12,7 @@ RbSys::ExtensionTask.new("sghtmltopdf", GEMSPEC) do |ext|
   ext.cross_platform = %w[
     x86_64-linux aarch64-linux
     x86_64-linux-musl aarch64-linux-musl
-    arm64-darwin
+    arm64-darwin x86_64-darwin
   ]
 end
 
@@ -28,7 +28,7 @@ end
 # `bundler/gem_tasks`の`release`は
 # 「ソースgemを1つbuild → gitタグを作る → push」という処理になっているが、
 # CIでのクロスビルドでは
-# 「ソースgemを1つbuild → gitタグを作る → push → precompiled gemを5つbuild → push」という流れにしたいので、
+# 「ソースgemを1つbuild → gitタグを作る → push → precompiled gemを6つbuild → push」という流れにしたいので、
 # `release`タスクを差し替える。
 Rake::Task["release"].clear
 

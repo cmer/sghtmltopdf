@@ -250,6 +250,11 @@ impl<S: Sink> StreamingPdfWriter<S> {
         for b in &page.boxes {
             collect_image_uses(b, background_images, &mut used_images);
         }
+        for overlay in &overlays {
+            for b in &overlay.boxes {
+                collect_image_uses(b, &overlay.background_images, &mut used_images);
+            }
+        }
         let mut page_image_refs = Vec::with_capacity(used_images.len());
         for image in &used_images {
             // `Ref`の振り直しに失敗したSVGは`None`になる(描画されない)。
@@ -327,6 +332,7 @@ impl<S: Sink> StreamingPdfWriter<S> {
                 fonts,
                 &text_fonts,
                 &self.alpha_gs_names,
+                &self.image_ids,
             );
         }
         if numbered {

@@ -150,7 +150,8 @@ sghtmltopdf report.html --header-html header.html --footer-html footer.html
 プレースホルダはHTMLのテキストとして置換されます(JavaScriptは実行しません)。
 
 * 余白に入りきらない分はクリップされます(マージンは自動で広がりません)
-* 外部リソースを取得しません。使えるのはインラインの`<style>`・テキスト・枠線・背景色までで、`<img>`と外部CSSは非対応です
+* `data:` URLの埋め込み画像を`<img>`と`background-image`で使用できます(PNG / JPEG / WebP / SVG。SVGは`svg` featureが必要)。`--no-images`も適用されます
+* 外部リソースは取得しません。ローカルファイル・リモートURLの画像と外部CSSは非対応です
 * ヘッダー/フッターHTML内の`@font-face`は読み込みません。そこでしか使わないフォントは`--font`で明示してください
 
 ## 表紙と目次

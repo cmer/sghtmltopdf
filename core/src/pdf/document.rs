@@ -4012,6 +4012,7 @@ struct ShapedMarginBox {
 #[derive(Clone)]
 pub struct PageOverlay {
     pub boxes: Vec<LaidOutBox>,
+    pub background_images: HashMap<NodeId, Rc<PreparedImage>>,
     pub styles: HashMap<NodeId, Rc<ComputedStyle>>,
     /// 余白領域を基準にした描画用の設定。
     pub settings: PageSettings,
@@ -4026,12 +4027,11 @@ pub(super) fn render_page_overlay(
     fonts: &FontCollection,
     text_fonts: &TextFonts<'_>,
     alpha_gs_names: &[String],
+    image_ids: &HashMap<usize, ImageIds>,
 ) {
     if overlay.boxes.is_empty() {
         return;
     }
-    let empty_images: HashMap<NodeId, Rc<PreparedImage>> = HashMap::new();
-    let empty_image_ids: HashMap<usize, ImageIds> = HashMap::new();
     let empty_form_ids: HashMap<NodeId, Ref> = HashMap::new();
     let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
 
@@ -4050,8 +4050,8 @@ pub(super) fn render_page_overlay(
             fonts,
             &overlay.settings,
             text_fonts,
-            &empty_image_ids,
-            &empty_images,
+            image_ids,
+            &overlay.background_images,
             alpha_gs_names,
             &empty_form_ids,
             &mut pending_forms,

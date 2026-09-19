@@ -13,7 +13,7 @@ unless File.exist?(File.join(core, "Cargo.toml"))
     無いためソースからのビルドが試みられましたが、ソースgemにはRustコアが
     含まれていないためビルドできません。
 
-    対応プラットフォーム: x86_64-linux / aarch64-linux / x86_64-linux-musl / aarch64-linux-musl / arm64-darwin
+    対応プラットフォーム: x86_64-linux / aarch64-linux / x86_64-linux-musl / aarch64-linux-musl / arm64-darwin / x86_64-darwin
   MESSAGE
 end
 
