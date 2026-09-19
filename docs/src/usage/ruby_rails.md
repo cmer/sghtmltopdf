@@ -20,11 +20,11 @@ gem "sghtmltopdf"
 
 | | 対応 |
 |---|---|
-| プラットフォーム | `x86_64-linux` / `aarch64-linux` / `x86_64-linux-musl` / `aarch64-linux-musl` / `arm64-darwin` |
+| プラットフォーム | `x86_64-linux` / `aarch64-linux` / `x86_64-linux-musl` / `aarch64-linux-musl` / `arm64-darwin` / `x86_64-darwin` |
 | Ruby | 3.2以上 |
 
 Linuxはglibc(Debian/Ubuntu系)とmusl(Alpine)の両方があり、`gem install`が環境に合うほうを選びます。
-Windows・Intel Macは対象外で、これらの環境ではインストールできません。
+Windowsは対象外で、この環境ではインストールできません。
 [サーバへ委譲する](#サーバへ委譲する)という手があります。
 
 ## 基本

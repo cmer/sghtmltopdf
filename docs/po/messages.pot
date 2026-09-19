@@ -525,7 +525,7 @@ msgstr ""
 #: src/getting-started/install.md:56
 msgid ""
 "ビルド済み(precompiled)のgemを配布する方針のため、利用側にRustのツールチェインは要りません。 "
-"対応は`x86_64-linux`・`aarch64-linux`・`arm64-darwin`(glibc)と、Ruby 3.2以上です。"
+"対応は`x86_64-linux`・`aarch64-linux`(glibc)・`arm64-darwin`・`x86_64-darwin`と、Ruby 3.2以上です。"
 msgstr ""
 
 #: src/getting-started/install.md:59
@@ -2491,7 +2491,7 @@ msgstr ""
 #: src/usage/ruby_rails.md:23
 msgid ""
 "`x86_64-linux` / `aarch64-linux` / `x86_64-linux-musl` / "
-"`aarch64-linux-musl` / `arm64-darwin`"
+"`aarch64-linux-musl` / `arm64-darwin` / `x86_64-darwin`"
 msgstr ""
 
 #: src/usage/ruby_rails.md:24
@@ -2505,7 +2505,7 @@ msgstr ""
 #: src/usage/ruby_rails.md:26
 msgid ""
 "Linuxはglibc(Debian/Ubuntu系)とmusl(Alpine)の両方があり、`gem install`が環境に合うほうを選びます。 "
-"Windows・Intel Macは対象外で、これらの環境ではインストールできません。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
+"Windowsは対象外で、この環境ではインストールできません。 [サーバへ委譲する](#サーバへ委譲する)という手があります。"
 msgstr ""
 
 #: src/usage/ruby_rails.md:33
