@@ -23,8 +23,8 @@ use std::rc::Rc;
 
 use crate::fonts::{
     ensure_cjk_fallback_font, load_font_faces, load_fonts_for_uncovered_chars,
-    load_missing_system_fonts, warn_font_without_outlines, warn_uncovered_chars, Font,
-    FontCollection, SystemFonts,
+    load_missing_system_fonts, warn_font_cannot_render, warn_uncovered_chars, Font, FontCollection,
+    SystemFonts,
 };
 use crate::html::{
     collect_anchor_targets, find_base_href, find_document_title, Dom, NodeData, NodeId,
@@ -141,6 +141,19 @@ pub struct EngineOptions {
     /// 候補リスト([`crate::fonts`])で解決する。既定`font-family`(未指定)は
     /// これに関わらず`--font`のフォントへフォールバックする。
     pub generic_fonts: Vec<(GenericFamily, FontSpec)>,
+    /// システムフォントの探索を止める(`--disable-system-fonts`相当)。
+    ///
+    /// 既定`false`。`true`にすると`fonts`・`generic_fonts`・`@font-face`で
+    /// 与えたフォントだけで組む。family名や字形カバレッジの穴を埋める探索
+    /// ([`crate::fonts::load_missing_system_fonts`]等)は走るが、参照する
+    /// データベースが空になるため何も足されない。描けない文字は警告のうえ
+    /// 落ちる。
+    ///
+    /// 同じHTMLから環境によらず同じPDFを得たいとき(手元とCI・コンテナで
+    /// 出力を揃えたいとき)に使う。`font-family: serif`のイタリックのように
+    /// 明示指定に該当フェースが無い組み合わせは、マシンごとに違うシステム
+    /// フォントで埋められてしまうため、これを止めないとバイト列が揃わない。
+    pub disable_system_fonts: bool,
     /// `@font-face`の`src: url(...)`を相対解決する基準ディレクトリ。
     /// 入力がファイルに対応しない場合(Rackボディ等)は`None`でよく、
     /// その場合はカレントディレクトリを基準にする。`<img src>`のローカル
@@ -303,9 +316,8 @@ fn overlay_area(settings: &PageSettings, top: bool) -> (PageSettings, Rect) {
 /// ヘッダー/フッターHTMLを1つ、余白領域向けにレイアウトして
 /// [`PageOverlay`]にする。
 ///
-/// 画像は非対応(`ImageAssetCache`を渡していないため
-/// `<img>`は空のボックスになる)。テキスト・枠線・背景色は本文と同じ
-/// パイプラインで描かれる。
+/// Embedded images use the same layout pipeline as body images. External
+/// resources remain disabled by `overlay_fetcher`.
 fn layout_overlay(
     html: &str,
     fonts: &FontCollection,
@@ -313,17 +325,28 @@ fn layout_overlay(
     top: bool,
     fetcher: &ImageFetcher,
     cache: &DocumentImageCache,
+    image_cache: Option<&ImageAssetCache>,
 ) -> Option<PageOverlay> {
     let (area_settings, clip) = overlay_area(settings, top);
     if area_settings.content_height() <= 0.0 || area_settings.content_width() <= 0.0 {
         return None;
     }
 
-    let dom = crate::html::parse(html.as_bytes());
+    let mut dom = crate::html::parse(html.as_bytes());
     let ua = user_agent_stylesheet();
     let author = extract_author_stylesheet(&dom, fetcher, cache);
     let styles = compute_styles(&dom, &ua, &author);
-    let pages = paginate_document(&dom, &styles, fonts, &area_settings);
+    let (pages, background_images) = if let Some(images) = image_cache {
+        (
+            paginate_document_with_absolutes(&mut dom, &styles, fonts, &area_settings, images),
+            resolve_background_images(&styles, images),
+        )
+    } else {
+        (
+            paginate_document(&dom, &styles, fonts, &area_settings),
+            HashMap::new(),
+        )
+    };
     let boxes = pages.into_iter().next().map(|page| page.boxes)?;
     if boxes.is_empty() {
         return None;
@@ -332,15 +355,24 @@ fn layout_overlay(
     Some(PageOverlay {
         boxes,
         styles,
+        background_images,
         settings: area_settings,
         clip,
     })
 }
 
 /// ヘッダー/フッターHTML用のフェッチャ。外部リソースは取得しない
-/// (インラインの`<style>`とテキストだけを対象にする。既知の限界)。
+/// Embedded `data:` images are allowed; local files and remote URLs are not.
 fn overlay_fetcher() -> ImageFetcher {
     ImageFetcher::new(PathBuf::from("."), false).with_local_access(false, Vec::new())
+}
+
+/// Keep decoded images alive across page-dependent overlay layouts so PDF
+/// resource identities remain stable and repeated logos are embedded only once.
+#[derive(Default)]
+struct OverlayCache {
+    pages: Option<Vec<PageOverlay>>,
+    images: Option<ImageAssetCache>,
 }
 
 /// このページに重ねるヘッダー/フッターのオーバーレイを作る。
@@ -353,25 +385,42 @@ fn build_page_overlays(
     total_pages: Option<usize>,
     fetcher: &ImageFetcher,
     cache: &DocumentImageCache,
-    cached: &mut Option<Vec<PageOverlay>>,
+    cached: &mut OverlayCache,
+    load_images: bool,
 ) -> Vec<PageOverlay> {
     // ページ番号を含まないなら初回のレイアウトを使い回す。
     if !html.depends_on_page() {
-        if let Some(overlays) = cached.as_ref() {
+        if let Some(overlays) = cached.pages.as_ref() {
             return overlays.clone();
         }
     }
 
+    let images = if load_images {
+        Some(cached.images.get_or_insert_with(|| {
+            ImageAssetCache::with_fetcher(overlay_fetcher())
+                .with_svg_fonts(SvgFontDb::from_collection(fonts))
+        }))
+    } else {
+        None
+    };
     let mut overlays = Vec::new();
     for (template, top) in [(&html.header, true), (&html.footer, false)] {
         let Some(template) = template else { continue };
         let text = html.expand(template, page_number, total_pages);
-        if let Some(overlay) = layout_overlay(&text, fonts, settings, top, fetcher, cache) {
+        if let Some(overlay) = layout_overlay(
+            &text,
+            fonts,
+            settings,
+            top,
+            fetcher,
+            cache,
+            images.as_deref(),
+        ) {
             overlays.push(overlay);
         }
     }
     if !html.depends_on_page() {
-        *cached = Some(overlays.clone());
+        cached.pages = Some(overlays.clone());
     }
     overlays
 }
@@ -613,8 +662,8 @@ fn load_explicit_fonts<E>(specs: &[FontSpec]) -> Result<Vec<Font>, EngineError<E
             .map_err(|e| EngineError::Font(format!("フォントの読み込みに失敗しました: {e}")))?;
         // 明示指定でも、輪郭を持たないフォントは採らない。埋め込んでも
         // 何も描かれないうえ、サブセット化が効かずPDFだけが膨らむため。
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         loaded.push(font);
@@ -843,7 +892,7 @@ struct StreamingState<S: Sink> {
     /// ページのジオメトリ(オーバーレイの領域計算に使う)。
     page_settings: PageSettings,
     /// ページ番号に依存しないヘッダー/フッターHTMLのレイアウト結果。
-    overlay_cache: Option<Vec<PageOverlay>>,
+    overlay_cache: OverlayCache,
     /// 解決できない`font-family`について警告済みの名前(同じ警告を
     /// 何度も出さないため)。
     warned_font_families: Vec<String>,
@@ -896,8 +945,8 @@ fn register_generic_fonts<E>(
                 family.css_name()
             ))
         })?;
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         fonts.push_font_face(family.css_name().to_string(), None, None, Vec::new(), font);
@@ -1067,7 +1116,11 @@ impl<S: Sink> Engine<S> {
             );
         }
 
-        let system_fonts = SystemFonts::scan();
+        let system_fonts = if self.options.disable_system_fonts {
+            SystemFonts::none()
+        } else {
+            SystemFonts::scan()
+        };
         let mut fonts = FontCollection::new(load_explicit_fonts(&self.options.fonts)?);
 
         register_generic_fonts(&mut fonts, &self.options.generic_fonts)?;
@@ -1215,7 +1268,7 @@ impl<S: Sink> Engine<S> {
             start_x,
             cursor_y: start_y,
             page_settings,
-            overlay_cache: None,
+            overlay_cache: OverlayCache::default(),
             warned_font_families: Vec::new(),
             warned_uncovered_chars: HashSet::new(),
             warned_inline_svg: false,
@@ -1336,7 +1389,18 @@ impl<S: Sink> Engine<S> {
                     &overlay_fetcher(),
                     &DocumentImageCache::new(),
                     &mut state.overlay_cache,
+                    options.content.load_images,
                 );
+                if options.content.abort_on_media_error {
+                    if let Some(err) = state
+                        .overlay_cache
+                        .images
+                        .as_ref()
+                        .and_then(ImageAssetCache::had_errors)
+                    {
+                        return Err(EngineError::MediaLoad(err));
+                    }
+                }
                 state.writer.set_page_overlays(overlays);
             }
             state
@@ -1418,7 +1482,17 @@ impl<S: Sink> Engine<S> {
                             &overlay_fetcher(),
                             &DocumentImageCache::new(),
                             &mut overlay_cache,
+                            self.options.content.load_images,
                         );
+                        if self.options.content.abort_on_media_error {
+                            if let Some(err) = overlay_cache
+                                .images
+                                .as_ref()
+                                .and_then(ImageAssetCache::had_errors)
+                            {
+                                return Err(EngineError::MediaLoad(err));
+                            }
+                        }
                         writer.set_page_overlays(overlays);
                     }
                     writer
@@ -1454,7 +1528,11 @@ impl<S: Sink> Engine<S> {
         check_document_limits(dom.max_depth(), dom.node_count())?;
         let sink = sink.expect("Mode::Batchではsinkがfinishまでそのまま保持される");
 
-        let system_fonts = SystemFonts::scan();
+        let system_fonts = if options.disable_system_fonts {
+            SystemFonts::none()
+        } else {
+            SystemFonts::scan()
+        };
         let mut fonts = FontCollection::new(load_explicit_fonts(&options.fonts)?);
 
         let mut ua = user_agent_stylesheet();
@@ -1574,12 +1652,14 @@ impl<S: Sink> Engine<S> {
             (Vec::new(), HashMap::new())
         };
 
-        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」。
-        let total_pages = if rules_use_page_count(&page_rules) {
-            Some(toc_pages.len() + pages.len())
-        } else {
-            None
-        };
+        // `counter(pages)` and HTML header/footer totals exclude the cover
+        // and include the TOC and body pages.
+        let total_pages =
+            if rules_use_page_count(&page_rules) || options.header_footer_html.uses_total_pages() {
+                Some(toc_pages.len() + pages.len())
+            } else {
+                None
+            };
 
         let mut writer = StreamingPdfWriter::with_options(
             &fonts,
@@ -1619,7 +1699,7 @@ impl<S: Sink> Engine<S> {
             page_number += 1;
         }
 
-        let mut overlay_cache: Option<Vec<PageOverlay>> = None;
+        let mut overlay_cache = OverlayCache::default();
         for page in pages.iter() {
             check_deadline(options.deadline)?;
             if !options.header_footer_html.is_empty() {
@@ -1632,7 +1712,17 @@ impl<S: Sink> Engine<S> {
                     &overlay_fetcher(),
                     &DocumentImageCache::new(),
                     &mut overlay_cache,
+                    options.content.load_images,
                 );
+                if options.content.abort_on_media_error {
+                    if let Some(err) = overlay_cache
+                        .images
+                        .as_ref()
+                        .and_then(ImageAssetCache::had_errors)
+                    {
+                        return Err(EngineError::MediaLoad(err));
+                    }
+                }
                 writer.set_page_overlays(overlays);
             }
             writer.set_next_page_number(Some(page_number));

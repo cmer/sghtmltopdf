@@ -11,7 +11,7 @@ use cssparser::UnicodeRange;
 use crate::img::ImageFetcher;
 use crate::style::{FontFaceRule, FontFaceSource, FontStyle, FontWeight};
 
-use super::font::{warn_font_without_outlines, Font};
+use super::font::{warn_font_cannot_render, Font};
 use super::system::SystemFonts;
 
 /// `@font-face`から読み込めたフォントと、CSS側で宣言されたfamily名・weight・style・unicode-range。
@@ -57,9 +57,10 @@ fn load_one(
             FontFaceSource::Local(name) => system.load_by_full_name(name),
         };
         if let Some(font) = font {
-            // 読み込めても輪郭が無ければ何も描けないので採らず、次のsrcへ進む。
-            if !font.has_outlines() {
-                warn_font_without_outlines(&format!("@font-face \"{}\"のsrc", rule.family));
+            // Loaded, but with nothing to draw with (no outlines, no colour
+            // glyphs), so decline it and move on to the next src.
+            if !font.can_render() {
+                warn_font_cannot_render(&format!("@font-face \"{}\"のsrc", rule.family));
                 continue;
             }
             return Some(LoadedFontFace {
@@ -240,7 +241,8 @@ mod tests {
         );
     }
 
-    /// `--allow`で許可したディレクトリの外にあるフォントは、`..`で辿っても読めないこと。
+    /// A font outside the `--allow-path` directories must not be readable, even
+    /// by way of `..`.
     #[test]
     fn a_url_source_outside_the_allowed_dirs_is_refused() {
         let base = Path::new(DEJAVU_PATH).to_path_buf();
@@ -255,7 +257,7 @@ mod tests {
         let loaded = load_font_faces(&rules, &restricted, &no_system_fonts());
         assert!(
             loaded.is_empty(),
-            "--allowの範囲外にあるフォントは読めてはならない"
+            "--allow-pathの範囲外にあるフォントは読めてはならない"
         );
     }
 

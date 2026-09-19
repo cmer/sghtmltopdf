@@ -1,10 +1,15 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "rails_helper"
 require "tmpdir"
 
 # ダミーのRailsアプリ(spec/dummy)のコントローラからPDFが返ること。
 RSpec.describe "Railsのコントローラ", type: :rails do
+  # `@font-face`の経路を見るために使う。ダミーアプリには置かず、
+  # 例ごとに`public/`へ複製して消す。
+  FONT_FIXTURE = File.expand_path("../../../core/tests/fonts/DejaVuSansMono.ttf", __dir__)
+
   describe "render pdf:" do
     it "PDFを返す" do
       get "/invoices/show"
@@ -40,7 +45,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
   # 環境に依存せず、それでいて「Rails統合層がHTMLかオプションを取りこぼす」
   # 退行はきちんと捕まえられる。
   #
-  # symlinkではなく複製にしているのは、`--allow`がsymlinkを辿った先の実体
+  # symlinkではなく複製にしているのは、`--allow-path`がsymlinkを辿った先の実体
   # パスで判定するため。`Rails.root`の外を指すsymlinkはCSSごと弾かれる。
   describe "examples/receipt.htmlの再現" do
     def example(name)
@@ -117,9 +122,11 @@ RSpec.describe "Railsのコントローラ", type: :rails do
   end
 
   describe "Rails向けの既定オプション" do
-    it "Railtieがbase_urlとallowを入れる" do
+    it "Railtieがbase_urlとallow_pathを入れる" do
       expect(CONFIG_AFTER_BOOT[:base_url]).to eq(Rails.root.join("public").to_s)
-      expect(CONFIG_AFTER_BOOT[:allow]).to eq([Rails.root.to_s])
+      # allow_pathはpublic/とパイプラインのロードパス。dummyアプリはパイプライン
+      # gemを入れていないのでpublic/だけになる(gemがある場合はpipeline_spec.rb)。
+      expect(CONFIG_AFTER_BOOT[:allow_path]).to eq([Rails.root.join("public").to_s])
     end
 
     it "config/initializersなど後からの設定で上書きできる" do
@@ -138,7 +145,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
       expect(normalize(resolved)).not_to eq(normalize(missing))
     end
 
-    it "allowの既定ではRails.rootの外のファイルを読まない" do
+    it "allow_pathの既定では許可ディレクトリの外のファイルを読まない" do
       Dir.mktmpdir do |dir|
         File.write(File.join(dir, "outside.css"), "h1 { font-size: 48px }")
         html = '<link rel="stylesheet" href="outside.css"><h1>Invoice</h1>'
@@ -193,7 +200,7 @@ RSpec.describe "Railsのコントローラ", type: :rails do
 
         expect(last_response.status).to eq(200)
         expect(last_response.body).to start_with("%PDF-")
-        # Railtieが入れる`base_url`/`allow`はサーバでは指定できないキーなので、
+        # Railtieが入れる`base_url`/`allow_path`はサーバでは指定できないキーなので、
         # 送ってしまうと400になる。
         expect(server.last_request.query).to eq("")
         expect(server.last_request.body).to include("<h1>Invoice #1234</h1>")
@@ -217,6 +224,266 @@ RSpec.describe "Railsのコントローラ", type: :rails do
 
       expect(view.sghtmltopdf_asset_path("no-such-file.css")).to be_nil
       expect(view.sghtmltopdf_asset_path("invoice.css")).to eq(Rails.root.join("public/invoice.css").to_s)
+    end
+
+    describe "sghtmltopdf_image_tag" do
+      let(:view) { InvoicesController.new.view_context }
+
+      it "public/の画像はbase_url基準の相対パスで指す" do
+        html = view.sghtmltopdf_image_tag("logo.png")
+
+        expect(html).to eq(%(<img src="logo.png">))
+      end
+
+      it "inline: trueならdata URIとして埋め込む" do
+        html = view.sghtmltopdf_image_tag("logo.png", inline: true)
+
+        expect(html).to include(%(src="data:image/png;base64,))
+        expect(html).to include([File.binread(Rails.root.join("public/logo.png"))].pack("m0"))
+      end
+
+      # #44: `image_tag`にファイルパスを渡していたため、`default_url_options`に
+      # ホストがあるとURLに化け、エンジンがリモート取得を試みて失敗していた。
+      it "default_url_optionsにホストがあってもURLにならない" do
+        Rails.application.routes.default_url_options[:host] = "localhost:3000"
+
+        expect(view.sghtmltopdf_image_tag("logo.png")).to eq(%(<img src="logo.png">))
+        expect(view.sghtmltopdf_image_tag("logo.png", inline: true)).not_to include("http://")
+      ensure
+        Rails.application.routes.default_url_options.delete(:host)
+      end
+
+      it "size:はwidth/heightへ展開される" do
+        html = view.sghtmltopdf_image_tag("logo.png", size: "40x30")
+
+        expect(html).to include(%(width="40"))
+        expect(html).to include(%(height="30"))
+        expect(html).not_to include("size=")
+      end
+
+      it "オプションはそのまま属性になる" do
+        html = view.sghtmltopdf_image_tag("logo.png", class: "seal", alt: "ロゴ")
+
+        expect(html).to include(%(class="seal"))
+        expect(html).to include(%(alt="ロゴ"))
+      end
+
+      # 既定がパス形式になったので`inline: false`は既定と同じ意味になる。
+      # 旧既定(埋め込み)を明示的に外していた呼び出しのために受け続ける。
+      it "inline: falseは既定と同じくパスを出す" do
+        html = view.sghtmltopdf_image_tag("logo.png", inline: false, class: "seal")
+
+        expect(html).to include(%(src="logo.png"))
+        expect(html).to include(%(class="seal"))
+      end
+
+      # allow_pathの外にあるファイルはパスで指してもエンジンが読めない。
+      # 取得失敗は既定で無視されるので、無言で消えないよう埋め込みへ倒す。
+      it "allow_pathの外のファイルは埋め込みに倒す" do
+        outside = Rails.root.join("app/assets/images/pipeline-logo.png").to_s
+
+        html = view.sghtmltopdf_image_tag(outside)
+
+        expect(html).to include("data:image/png;base64,")
+      end
+
+      # サーバへ委譲する場合、ローカルのパスは相手のファイルシステムに
+      # 無いかもしれない。埋め込みならどこで描いても読める。
+      it "server_urlが設定されていれば埋め込みに倒す" do
+        Sghtmltopdf.configure { |c| c.server_url = "http://127.0.0.1:1" }
+
+        expect(view.sghtmltopdf_image_tag("logo.png")).to include("data:image/png;base64,")
+      end
+
+      it "アプリのアセットでないものはRailsに任せる" do
+        html = view.sghtmltopdf_image_tag("https://example.com/logo.png")
+
+        expect(html).to include(%(src="https://example.com/logo.png"))
+      end
+
+      it "既定で出したパスをエンジンが解決できる" do
+        html = view.sghtmltopdf_image_tag("logo.png")
+
+        # `base_url`の既定(Rails.root/public)からの相対パスとして読める。
+        expect(Sghtmltopdf.render(html)).to include("/Subtype /Image")
+      end
+
+      it "ヘルパで埋めた画像がPDFに入る" do
+        get "/invoices/with_image"
+
+        expect(last_response.body).to start_with("%PDF-")
+        # 20x16のPNGがXObjectとして埋まっている。
+        expect(last_response.body).to include("/Subtype /Image")
+        expect(last_response.body).to include("/Width 20")
+        expect(last_response.body).to include("/Height 16")
+      end
+    end
+
+    # #45: precompileしたCSSの`url()`はパイプラインが`asset_path`で書き換えた
+    # あとなので、`asset_host`があればHTTPSの絶対URLになる。PDF生成はHTTP
+    # サーバを通らないので取得できず、`@font-face`は無言で既定フォントに
+    # 落ちる。ヘルパはこれをディスク上のファイルへ指し直す。
+    describe "sghtmltopdf_stylesheet_link_tag" do
+      let(:view) { InvoicesController.new.view_context }
+
+      # フォントをダミーアプリに置きっぱなしにしないよう、`public/`の下へ
+      # 一式を作って例ごとに消す。
+      around do |example|
+        @dir = Rails.root.join("public/css-fixtures")
+        FileUtils.mkdir_p(@dir.join("fonts"))
+        FileUtils.cp(FONT_FIXTURE, @dir.join("fonts/gyre.ttf"))
+        FileUtils.cp(Rails.root.join("public/logo.png"), @dir.join("seal.png"))
+        example.run
+      ensure
+        FileUtils.rm_rf(@dir)
+      end
+
+      # `public/css-fixtures/main.css`に`css`を書いて、ヘルパの出力を返す。
+      def inline(css, name: "main")
+        File.write(@dir.join("#{name}.css"), css)
+        view.sghtmltopdf_stylesheet_link_tag("css-fixtures/#{name}")
+      end
+
+      it "asset_hostのついた絶対URLをローカルのファイルへ指し直す" do
+        html = inline(<<~CSS)
+          @font-face {
+            font-family: "Gyre";
+            src: url(https://cdn.example.com/css-fixtures/fonts/gyre.ttf);
+          }
+        CSS
+
+        expect(html).to include(%(url("css-fixtures/fonts/gyre.ttf")))
+        expect(html).not_to include("https://")
+      end
+
+      it "ルート相対の参照をローカルのファイルへ指し直す" do
+        html = inline(%(body { background-image: url("/css-fixtures/seal.png"); }))
+
+        expect(html).to include(%(url("css-fixtures/seal.png")))
+      end
+
+      # エンジンは全CSSソースを連結してから解決するので、相対`url()`は
+      # 文書のbase_url基準になる。CSSファイルの実パスを知っているのは
+      # こちら側だけなので、ここで解決してから流し込む。
+      it "相対参照はCSSファイル自身のディレクトリ基準で解決する" do
+        html = inline(%(body { background-image: url(seal.png); }))
+
+        expect(html).to include(%(url("css-fixtures/seal.png")))
+      end
+
+      it "..で親をたどる参照も解決する" do
+        html = inline(%(body { background-image: url("../../logo.png"); }), name: "fonts/deep")
+
+        expect(html).to include(%(url("logo.png")))
+      end
+
+      it "クエリとフラグメントは落とす" do
+        html = inline(%(@font-face { src: url(fonts/gyre.ttf?v=2#iefix); }))
+
+        expect(html).to include(%(url("css-fixtures/fonts/gyre.ttf")))
+        expect(html).not_to include("iefix")
+      end
+
+      it "data: URIと素のフラグメントは素通しする" do
+        html = inline(<<~CSS)
+          @font-face { src: url(data:font/ttf;base64,AAEAAA); }
+          .mask { mask: url(#clip); }
+        CSS
+
+        expect(html).to include("url(data:font/ttf;base64,AAEAAA)")
+        expect(html).to include("url(#clip)")
+      end
+
+      it "ローカルに無いリモートURLは素通しする" do
+        html = inline(%(@font-face { src: url(https://fonts.gstatic.com/s/x.woff2); }))
+
+        expect(html).to include("url(https://fonts.gstatic.com/s/x.woff2)")
+      end
+
+      # `local()`はファイル参照ではないので触らない。
+      it "local()には手を付けない" do
+        html = inline(%(@font-face { src: local("Gyre"), url(fonts/gyre.ttf); }))
+
+        expect(html).to include(%(local("Gyre")))
+        expect(html).to include(%(url("css-fixtures/fonts/gyre.ttf")))
+      end
+
+      # 読めない場所のファイルをパスで指すと、取得失敗が既定で無視される
+      # ぶん無言で消える。`@font-face`は`abort`にしても中断されないので、
+      # なおさら埋め込みへ倒す。
+      it "エンジンが読めない場所のファイルは埋め込みに倒す" do
+        Sghtmltopdf.configure { |c| c.server_url = "http://127.0.0.1:1" }
+
+        html = inline(%(@font-face { src: url(fonts/gyre.ttf); }))
+
+        expect(html).to include("data:font/ttf;base64,")
+      end
+
+      it "@importを再帰的に展開し、取り込んだ先のurl()も書き換える" do
+        File.write(@dir.join("fonts/child.css"), %(body { background-image: url(../seal.png); }))
+        html = inline(%(@import url("fonts/child.css");\nh1 { color: red; }))
+
+        expect(html).not_to include("@import")
+        expect(html).to include(%(url("css-fixtures/seal.png")))
+        expect(html).to include("h1 { color: red; }")
+      end
+
+      it "引用符だけの@importとメディア条件つきの@importも展開する" do
+        File.write(@dir.join("a.css"), "h1 { color: red; }")
+        File.write(@dir.join("b.css"), "h2 { color: blue; }")
+        html = inline(%(@import "a.css";\n@import url(b.css) print;))
+
+        expect(html).to include("h1 { color: red; }")
+        expect(html).to include("h2 { color: blue; }")
+        expect(html).not_to include("print")
+      end
+
+      it "コメントアウトされた@importは展開しない" do
+        File.write(@dir.join("a.css"), "h1 { color: red; }")
+        html = inline(%(/* @import "a.css"; */\nh2 { color: blue; }))
+
+        expect(html).not_to include("color: red")
+        expect(html).to include(%(/* @import "a.css"; */))
+      end
+
+      # 自分の祖先を取り込むCSSは、深さ上限まで展開すると読み込み回数が
+      # 分岐ぶん膨らむ。連鎖に出てきたファイルはそこで止めてエンジンに任せる。
+      it "循環した@importはそのまま残す" do
+        File.write(@dir.join("a.css"), %(@import "main.css";\nh1 { color: red; }))
+        html = inline(%(@import url("a.css");))
+
+        expect(html).to include("h1 { color: red; }")
+        expect(html).to include(%(@import "main.css";))
+      end
+
+      it "ローカルに無い@importはそのまま残してエンジンに任せる" do
+        html = inline(%(@import url("https://example.com/x.css");))
+
+        expect(html).to include(%(@import url("https://example.com/x.css");))
+      end
+
+      # 埋め込まれたフォントはPDF上どれも`/EmbeddedFont`という名前になるので、
+      # 名前では見分けられない。#45の症状そのもの、つまり「取得に失敗すると
+      # `font-family`の次の候補ではなくエンジン既定へ落ちる」を突き合わせる。
+      it "指し直した@font-faceのフォントが実際に効く" do
+        css = <<~CSS
+          @font-face {
+            font-family: "Gyre";
+            src: url(https://cdn.example.com/css-fixtures/fonts/gyre.ttf);
+          }
+          body { font-family: "Gyre"; }
+        CSS
+        body = "<p>Hello</p>"
+
+        rewritten = Sghtmltopdf.render(inline(css) + body)
+        # 書き換える前のCSSをそのまま流し込んだ場合(修正前の挙動)。
+        verbatim = Sghtmltopdf.render(%(<style type="text/css">#{css}</style>#{body}))
+        without = Sghtmltopdf.render(body)
+
+        expect(rewritten).to include("/FontFile2")
+        expect(normalize(verbatim)).to eq(normalize(without))
+        expect(normalize(rewritten)).not_to eq(normalize(without))
+      end
     end
   end
 end

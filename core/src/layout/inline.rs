@@ -11,7 +11,7 @@ use crate::style::{
     RgbaColor, TextAlign, TextOverflow, TextTransform, VerticalAlign, WhiteSpace, WordBreak,
 };
 
-use super::block::{LaidOutBox, PosCtx};
+use super::block::{resolve_relative_offset, LaidOutBox, PosCtx};
 use super::box_tree::{BoxContent, InlineSpan, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::geometry::Rect;
@@ -198,6 +198,68 @@ enum InlineItem<'a> {
 /// ここから読む。
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layout_inline_content(
+    spans: &[InlineSpan],
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+    available_width: f32,
+    origin_x: f32,
+    origin_y: f32,
+    float_ctx: Option<&FloatContext>,
+    container_style: Option<&ComputedStyle>,
+    pos: &mut PosCtx,
+) -> Vec<LineBox> {
+    let mut lines = layout_inline_content_in_flow(
+        spans,
+        styles,
+        fonts,
+        available_width,
+        origin_x,
+        origin_y,
+        float_ctx,
+        container_style,
+        pos,
+    );
+    apply_relative_span_offsets(&mut lines, spans, available_width);
+    lines
+}
+
+/// Shifts the runs descending from a `position: relative` inline element
+/// (a `<span>`, say) visually, after line layout is done (#29). Line height,
+/// line breaking and the position of the following runs are untouched (as in the
+/// CSS spec, `relative` does not affect the flow). The vertical part rides on
+/// `baseline_shift` (positive means up), so the painting layer needs no change.
+///
+/// `flatten_spans` numbers the `style_index` of a run in the same order as
+/// `spans`, so `spans[style_index]` is the span the run came from (a run
+/// generated later, as a hyphen or an ellipsis, keeps the index of its original
+/// span).
+fn apply_relative_span_offsets(lines: &mut [LineBox], spans: &[InlineSpan], available_width: f32) {
+    if spans.iter().all(|span| span.relative_insets.is_empty()) {
+        return;
+    }
+    let offsets: Vec<(f32, f32)> = spans
+        .iter()
+        .map(|span| {
+            span.relative_insets
+                .iter()
+                .fold((0.0, 0.0), |(dx, dy), inset| {
+                    let (x, y) = resolve_relative_offset(inset, available_width);
+                    (dx + x, dy + y)
+                })
+        })
+        .collect();
+    for run in lines.iter_mut().flat_map(|line| line.runs.iter_mut()) {
+        let Some(&(dx, dy)) = offsets.get(run.style_index) else {
+            continue;
+        };
+        run.x_offset += dx;
+        run.baseline_shift -= dy;
+    }
+}
+
+/// The body of [`layout_inline_content`], before the relative offsets are applied.
+#[allow(clippy::too_many_arguments)]
+fn layout_inline_content_in_flow(
     spans: &[InlineSpan],
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
@@ -1609,11 +1671,22 @@ pub fn shape_standalone_line(
     )
 }
 
+/// Width of the gap between two words, measured on the font of the word that
+/// precedes it.
+///
+/// A font with no outlines is a colour-glyph-only font (Noto Color Emoji and
+/// friends): it is never chosen as a text font, only for the one emoji that
+/// needed it, and its space glyph is sized for emoji rather than for text
+/// (Noto Color Emoji is monospaced at about 1.25em). Measuring with it would
+/// leave a gap four times too wide after every emoji, so fall back to the
+/// first font in the collection that actually draws text.
 fn measure_space_width(fonts: &FontCollection, font_index: usize, font_size: f32) -> f32 {
-    let Some(font) = fonts.get(font_index) else {
-        return 0.0;
+    let font = match fonts.get(font_index) {
+        Some(font) if font.has_outlines() => Some(font),
+        _ => fonts.fonts().iter().find(|font| font.has_outlines()),
     };
-    measure_text(font, " ", font_size)
+    font.map(|font| measure_text(font, " ", font_size))
+        .unwrap_or(0.0)
 }
 
 /// 行内の各ランの計算済み`line_height`のうち最大値を基準に行の高さを決める。

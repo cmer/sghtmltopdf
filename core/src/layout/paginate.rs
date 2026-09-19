@@ -503,10 +503,13 @@ fn collect_completed_subtree_roots_in_box(b: &LaidOutBox, roots: &mut Vec<NodeId
                 collect_completed_subtree_roots_in_box(child, roots);
             }
         }
-        // flexコンテナはページ分割に対してアトミック(`display: table`と同じ
-        // 扱い)。グリッドは行単位で分割するが、断片ごとの完了判定は
-        // `place_grid`が`FragmentPosition`で表現するため、
-        // ここではテーブルと同じく再帰しない。
+        // A flex container is atomic when it fits (treated the same way as
+        // `display: table`). One taller than a page is split by `place_split`,
+        // and its items are then placed directly on the page (a fragment is never
+        // still a `Flex`), so seeing a `Flex` here always means the whole thing is
+        // complete. A grid is split by row, but `place_grid` expresses the
+        // completion of each fragment through `FragmentPosition`, so, as with a
+        // table, there is no recursion here.
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -566,7 +569,10 @@ fn place_box(
                     )
                 },
                 |child: &LaidOutBox| child.is_float,
-                margin_box_top,
+                |child: &LaidOutBox| {
+                    let top = margin_box_top(child);
+                    (top, top + child.layout.margin_box_height())
+                },
                 |child, ph, ps, c| {
                     place_box(child, ph, ps, c);
                 },
@@ -604,9 +610,36 @@ fn place_box(
                 move |i, _line| (forced_breaks[i], false),
                 // 行にfloatの概念は無い。
                 |_line: &LineBox| false,
-                |_line: &LineBox| 0.0,
+                |line: &LineBox| (line.rect.y, line.rect.y + line.rect.height),
                 |line, ph, ps, c| {
                     place_line(line, ph, ps, c);
+                },
+            );
+            return;
+        }
+        // A flex container is atomic as a rule: if it does not fit in what is
+        // left of the page it is moved to the next page whole. A container taller
+        // than a page, though, does not fit there either, and the overflow is
+        // never painted and simply disappears (#18). In that case only, it is
+        // split through the same path as a block, in units of bands: groups of
+        // items that do not overlap vertically.
+        LaidOutContent::Flex(children) if !children.is_empty() && height > page_height => {
+            let mut bands = group_flex_items_into_bands(std::mem::take(children));
+            place_split(
+                &mut container,
+                &mut bands,
+                page_height,
+                state,
+                cursor,
+                // Forced breaks are deliberately not given a meaning for bands.
+                // A container that fits is atomic and never looks at the `break-*`
+                // of its items, so honouring them only when it is split would make
+                // the behaviour hard to predict.
+                |_i, _band: &FlexBand| (false, false),
+                |_band: &FlexBand| false,
+                |band: &FlexBand| (band.top, band.bottom),
+                |band, ph, ps, c| {
+                    place_flex_band(band, ph, ps, c);
                 },
             );
             return;
@@ -644,8 +677,9 @@ fn subtree_requires_child_walk(b: &LaidOutBox) -> bool {
                 || child.fragmentation.break_after == BreakBetween::Always
                 || subtree_requires_child_walk(child)
         }),
-        // flexコンテナはアトミック。グリッドの行分割は`place_grid`が
-        // 担うため、ここでは再帰しない。
+        // A flex container is atomic when it fits, and even when it is split for
+        // being taller than a page the `break-*` of its items is not consulted.
+        // Splitting a grid by row is `place_grid`'s job. Neither recurses here.
         LaidOutContent::Inline(_)
         | LaidOutContent::Table(_)
         | LaidOutContent::Flex(_)
@@ -803,39 +837,37 @@ fn place_split<T>(
     cursor: &mut f32,
     break_hints: impl Fn(usize, &T) -> (bool, bool),
     is_float: impl Fn(&T) -> bool,
-    item_margin_box_top: impl Fn(&T) -> f32,
+    item_extent: impl Fn(&T) -> (f32, f32),
     place_one: impl Fn(&mut T, f32, &mut PaginationState<'_>, &mut f32),
 ) {
     let top_extra = container.top_extra();
-    let bottom_extra = container.layout.padding.bottom
-        + container.layout.border.bottom
-        + container.layout.margin.bottom;
 
-    // 最初のフラグメントの前に、コンテナ自身の上マージン/枠線/パディング分の
-    // スペースを確保する(この余白がページの残りを超える極端なケースの調整は
-    // 行わない
+    // Reserve room for the container's own top margin, border and padding
+    // before the first fragment (no adjustment is made for the extreme case
+    // where that room alone exceeds what is left of the page).
     *cursor += top_extra;
 
-    // 絶対Y座標(`b.layout.content.y`)→ページ内相対Y座標(`*cursor`)への
-    // 変換係数。コンテナの最初の子(通常フロー)の絶対Y位置は、コンテナ自身の
-    // content領域の絶対Y位置(`b.layout.content.y`)に一致するため、これを
-    // 初期値として使える。非float項目を配置するたびに更新する(改ページで
-    // `*cursor`がリセットされても追従できるようにするため)。
+    // How much to subtract from an absolute y (the coordinates layout produced)
+    // to get an in-page one (`*cursor`). The first in-flow child of a container
+    // starts at the container's own content top (`b.layout.content.y`), which is
+    // therefore the initial value. It is derived again from where each item
+    // actually landed, so that it follows along when a page break resets
+    // `*cursor`.
     let mut shift_reference = container.layout.content.y - *cursor;
 
-    // `b`が実際に背景色・枠線を描画しないなら、そもそも装飾フラグメントを
-    // 生成する必要がない。この場合`segments`の追跡自体が不要で、
-    // `PaginationState`にページを保持させる理由もなくなる
-    // (`enter_split`/`exit_split`を呼ばない)。装飾を持たないコンテナ
-    // (`<html>`/`<body>`や大半のラッパー`<div>`)がこの高速経路を通ることで、
-    // ストリーミング時のflush頻度が大きく改善される。
+    // A `b` that paints neither a background nor a border needs no decoration
+    // fragment at all. Then there is nothing to track in `segments` and no
+    // reason to hold pages back in `PaginationState` (`enter_split` and
+    // `exit_split` are not called). Undecorated containers (`<html>`, `<body>`
+    // and most wrapper `<div>`s) take this fast path, which is what makes
+    // streaming flush often.
     let needs_decoration = container.has_visible_decoration;
-    // outsideのマーカー(`list-style-position: outside`)は先頭フラグメントに
-    // 載せて描画するため、装飾が無くてもフラグメント生成は必要になる。これを
-    // 省くと、ページをまたいで分割された`li`のマーカーが落ちてしまう。
+    // An outside marker (`list-style-position: outside`) is painted on the first
+    // fragment, so a fragment is still needed even without decoration. Skipping
+    // it would drop the marker of an `li` split across pages.
     let needs_fragments = needs_decoration || container.marker.is_some();
     if needs_fragments {
-        // このコンテナが最初に触れる絶対ページインデックスを記録する
+        // Record the absolute index of the first page this container touches.
         state.enter_split();
     }
 
@@ -854,9 +886,10 @@ fn place_split<T>(
         Vec::new()
     };
 
-    // 強制改ページ(`break-before`/`break-after: always`)発生時、新しいページを
-    // 開始し対応するセグメントを追加する共通処理。オーバーフローによる自然な
-    // ページ送りとの二重計上を避けるため、`current_page`もその場で更新する。
+    // Shared handling of a forced break (`break-before`/`break-after: always`):
+    // start a new page and add the matching segment. `current_page` is updated
+    // right here as well, so that a natural break from overflow is not counted
+    // twice.
     let force_new_page = |state: &mut PaginationState<'_>,
                           cursor: &mut f32,
                           current_page: &mut usize,
@@ -872,32 +905,50 @@ fn place_split<T>(
     };
 
     let item_count = items.len();
+    // Right after a forced break, `shift_reference` still belongs to the
+    // previous page. The next item goes to the top of the new one, so it is
+    // derived again before use.
+    let mut forced_page_start = false;
     for (i, item) in items.iter_mut().enumerate() {
         let (breaks_before, breaks_after) = break_hints(i, item);
-        // 現在のページに実際の内容が何もなければ(祖先のマージン分だけ`cursor`が
-        // 進んでいるだけの場合を含む)、改ページしても無意味な空ページを
-        // 作るだけなので何もしない。
+        // If nothing has actually been placed on the current page (including the
+        // case where `cursor` has only moved by an ancestor's margin), breaking
+        // would only produce an empty page, so do nothing.
         if breaks_before && current_page_has_content(state) {
             force_new_page(state, cursor, &mut current_page, &mut segments);
+            forced_page_start = true;
         }
 
         if is_float(item) {
-            // floatはフローに参加しないため共有`cursor`を変更しない。
-            // `shift_reference`でシードした一時カーソルを使うことで、
-            // `place_one`(=`place_box`)内部の
-            // `shift = margin_box_top -*cursor`計算が周囲の通常フローと同じ
-            // 平行移動になり、正しいページ内相対位置に配置される。
-            let mut local_cursor = item_margin_box_top(item) - shift_reference;
+            // A float takes no part in the flow, so it leaves the shared
+            // `cursor` alone. Seeding a temporary cursor from `shift_reference`
+            // makes the `shift = margin_box_top - *cursor` inside `place_one`
+            // (that is, `place_box`) the same translation as the surrounding
+            // flow, which puts the float at the right in-page position.
+            let mut local_cursor = item_extent(item).0 - shift_reference;
             place_one(item, page_height, state, &mut local_cursor);
         } else {
-            let cursor_before_item = *cursor;
+            // Map the absolute coordinates layout produced straight into the
+            // page. Stacking margin box heights instead would count margin boxes
+            // that overlap through margin collapsing twice, reopening the very
+            // space the collapse removed: a top margin hoisted out of a first
+            // child is added once per ancestor level, and two collapsed sibling
+            // margins are both added.
+            if forced_page_start {
+                shift_reference = item_extent(item).0 - *cursor;
+                forced_page_start = false;
+            }
+            // Nothing above the top of the page is painted, so stop at 0.
+            *cursor = (item_extent(item).0 - shift_reference).max(0.0);
             place_one(item, page_height, state, cursor);
-            shift_reference = item_margin_box_top(item) - cursor_before_item;
+            // `place_one` may have broken the page, so derive the factor again
+            // from the result: the in-page coordinate of the item's bottom.
+            shift_reference = item_extent(item).1 - *cursor;
 
             let now_page = state.current_index();
             if now_page != current_page {
-                // 新しいページへ進んだ。今回作られたページは、この`b`の内容以外が
-                // 割り込む余地がないため、先頭(index 0)から始まる。
+                // Moved on to a new page. Nothing but this `b`'s own content can
+                // get in, so the pages created here start at index 0.
                 if needs_fragments {
                     for p in (current_page + 1)..=now_page {
                         segments.push(Segment {
@@ -910,22 +961,34 @@ fn place_split<T>(
             }
         }
 
-        // 次に置く要素がある場合のみ改ページする(末尾の要素の後ろに
-        // 空ページを作らないため)。
+        // Break only when there is something left to place, so that no empty
+        // page is created after the last item.
         if breaks_after && i + 1 < item_count {
             force_new_page(state, cursor, &mut current_page, &mut segments);
+            forced_page_start = true;
         }
     }
 
-    // 呼び出し元(兄弟要素)のため、下マージン/枠線/パディング分もカーソルへ加算する。
-    *cursor += bottom_extra;
+    // Hand the caller (the following sibling) the container's own bottom
+    // (margin box) in page coordinates. Merely adding `padding-bottom` and the
+    // rest would count a `margin-bottom` collapsed with the last child twice, or
+    // drop an explicit `height` larger than the content. The cursor is never
+    // pulled back above the bottom of the last item placed, so that overflowing
+    // content does not end up under a sibling.
+    let container_bottom = container.layout.content.y
+        + container.layout.content.height
+        + container.layout.padding.bottom
+        + container.layout.border.bottom
+        + container.layout.margin.bottom;
+    *cursor = (container_bottom - shift_reference).max(*cursor);
 
     if !needs_fragments {
         return;
     }
 
-    // 実際に内容が置かれたセグメントだけを残す(例: 最初の子がページ先頭で
-    // 改ページを起こし、直前のページには何も置かれなかった場合など)。
+    // Keep only the segments that actually received content (the first child
+    // may have forced a break at the top of a page, for one, leaving the page
+    // before it empty).
     let valid: Vec<&Segment> = segments
         .iter()
         .filter(|s| state.get(s.page_index).boxes.len() > s.start_index)
@@ -937,8 +1000,9 @@ fn place_split<T>(
         .filter_map(|(i, seg)| {
             let is_first = i == 0;
             let is_last = i == valid.len() - 1;
-            // 装飾を持たないコンテナはマーカーを載せる先頭フラグメントだけが
-            // 必要で、後続フラグメントは何も描画しない空の箱にしかならない。
+            // An undecorated container only needs the first fragment, the one
+            // carrying the marker; the rest would be empty boxes painting
+            // nothing.
             if !needs_decoration && !is_first {
                 return None;
             }
@@ -946,11 +1010,11 @@ fn place_split<T>(
             let (top, bottom) =
                 extent_of(&state.get(seg.page_index).boxes[seg.start_index..end_index]);
             let layout = fragment_layout(&container.layout, top, bottom, is_first, is_last);
-            // マーカーは`b`の先頭フラグメントにのみ残す(このボックスが
-            // 複数ページにまたがって分割される場合、後続フラグメントで
-            // 重複して描画されるのを避ける)。マーカーの座標はレイアウト時の
-            // 絶対座標のままなので、フラグメントのページ内相対座標へ移す
-            // (コンテナのcontent上端からの相対位置を保つ)。
+            // The marker stays on `b`'s first fragment only, so that a box split
+            // across pages does not paint it again on every later fragment. Its
+            // coordinates are still the absolute ones from layout, so move them
+            // into the fragment's in-page space, keeping the offset from the
+            // container's content top.
             let marker = if is_first {
                 container.marker.take().map(|mut marker| {
                     marker.rect.y -= container.layout.content.y - layout.content.y;
@@ -962,16 +1026,16 @@ fn place_split<T>(
             let decoration = LaidOutBox {
                 node: container.node,
                 layout,
-                // 装飾専用フラグメントはこれ以上分割対象にならないため、
-                // fragmentationヒントは意味を持たない(初期値のまま)。
+                // A decoration-only fragment is never split again, so the
+                // fragmentation hints mean nothing here (left at their default).
                 fragmentation: FragmentationHints::default(),
-                // このボックス自体は`Blocks(Vec::new())`で子を持たず、再度
-                // `place_split`に渡されることもない。マーカーのためだけに
-                // 作られたフラグメントは背景・枠線を描画しない。
+                // The box itself holds no children (`Blocks(Vec::new())`) and is
+                // never handed to `place_split` again. A fragment made only to
+                // carry a marker paints neither background nor border.
                 has_visible_decoration: needs_decoration,
-                // 装飾フラグメント自体はfloatではない(`b`自身がfloatでも、この
-                // 断片は通常フローの一部として`place_split`の残りのループに
-                // 混在するため`false`にしておく必要がある)。
+                // A decoration fragment is not itself a float: even when `b` is
+                // one, the fragment travels with the rest of `place_split`'s loop
+                // as part of the normal flow, so this has to stay `false`.
                 is_float: false,
                 content: LaidOutContent::Blocks(Vec::new()),
                 marker,
@@ -987,8 +1051,8 @@ fn place_split<T>(
             .insert(insert_index, decoration);
     }
 
-    // このコンテナの装飾フラグメント挿入がすべて終わったので、記録を外す。
-    // これでflush可能なページが増えていれば、ここで`on_flush`へ渡される。
+    // Every decoration fragment of this container is in place, so drop the
+    // record. If that made more pages flushable, they go to `on_flush` here.
     state.exit_split();
 }
 
@@ -1133,6 +1197,17 @@ fn place_grid(
         if pending.is_empty() {
             fragment_top = *cursor;
             shift = row.top - *cursor;
+
+            // When the first row of a fragment does not fit in what is left of
+            // the page, start at the top of the next one rather than overflow
+            // (without this, a row laid down at the bottom of the page loses its
+            // lower half). A row too tall for an empty page is placed as it is,
+            // so that pagination keeps moving forward.
+            if row.bottom - shift > page_height && current_page_has_content(state) {
+                new_page(state, cursor);
+                fragment_top = *cursor;
+                shift = row.top - *cursor;
+            }
         }
 
         // 直前の行帯からまたいでいるアイテムがあると、その境界では切れない。
@@ -1170,13 +1245,14 @@ fn place_grid(
     *cursor += bottom_extra;
 }
 
-/// 行帯とその中のアイテムをまとめてY方向へ平行移動する。
+/// Translates a row band, and the items inside it, along Y. As in `shift_box_y`,
+/// `delta` is the amount to subtract (absolute y minus in-page y).
 fn shift_grid_row_y(row: &LaidOutGridRow, delta: f32) -> LaidOutGridRow {
     LaidOutGridRow {
         items: row
             .items
             .iter()
-            .map(|item| shift_box_y(item, -delta))
+            .map(|item| shift_box_y(item, delta))
             .collect(),
         top: row.top - delta,
         bottom: row.bottom - delta,
@@ -1228,6 +1304,83 @@ fn flush_grid_fragment(
         }),
     };
     state.last_mut().boxes.push(fragment);
+}
+
+/// The unit a flex container taller than a page is split into: a band grouping
+/// items that overlap vertically. In a column flex each item is a band; in a row
+/// flex each flex line is. `top`/`bottom` are absolute y coordinates of the
+/// margin box.
+struct FlexBand {
+    items: Vec<LaidOutBox>,
+    top: f32,
+    bottom: f32,
+}
+
+/// Tolerance (px) used when deciding where a band ends. The coordinates taffy
+/// returns are floating point, so this keeps items that merely touch from being
+/// mistaken for overlapping ones.
+const FLEX_BAND_EPSILON: f32 = 0.01;
+
+/// Groups flex items into bands by vertical overlap.
+///
+/// With `flex-direction: column` each item is a band; with a wrapping row flex
+/// each flex line is; a row flex that does not wrap is usually a single band,
+/// that is, atomic as before. The decision is purely geometric, so items of one
+/// row that do not overlap vertically (`align-self` placing a short item at the
+/// far end of a tall line, say) do end up in bands of their own, and a visual
+/// order that differs from document order (through `order`, say) makes no
+/// difference.
+fn group_flex_items_into_bands(mut items: Vec<LaidOutBox>) -> Vec<FlexBand> {
+    // Order by top edge (a stable sort, so items sharing a top edge keep their
+    // document order).
+    items.sort_by(|a, b| margin_box_top(a).total_cmp(&margin_box_top(b)));
+    let mut bands: Vec<FlexBand> = Vec::new();
+    for item in items {
+        let top = margin_box_top(&item);
+        let bottom = top + item.layout.margin_box_height();
+        match bands.last_mut() {
+            Some(band) if top < band.bottom - FLEX_BAND_EPSILON => {
+                band.items.push(item);
+                band.bottom = band.bottom.max(bottom);
+            }
+            _ => bands.push(FlexBand {
+                items: vec![item],
+                top,
+                bottom,
+            }),
+        }
+    }
+    bands
+}
+
+/// Places one flex band on a page. Called from [`place_split`].
+///
+/// A band holding a single item (each item of a column flex) goes to
+/// [`place_box`] as an ordinary box, so an item taller than a page is split
+/// inside it like a block. A band with several items side by side is treated as
+/// one leaf, to keep the items in the same position relative to each other: if
+/// it does not fit in what is left it is moved to the top of the next page, and
+/// if the band itself is taller than a page it overflows, as before.
+fn place_flex_band(
+    band: &mut FlexBand,
+    page_height: f32,
+    state: &mut PaginationState<'_>,
+    cursor: &mut f32,
+) {
+    if let [item] = band.items.as_mut_slice() {
+        place_box(item, page_height, state, cursor);
+        return;
+    }
+    let height = band.bottom - band.top;
+    if *cursor > 0.0 && *cursor + height > page_height {
+        new_page(state, cursor);
+    }
+    let base = *cursor;
+    for item in band.items.iter_mut() {
+        let mut local_cursor = base + (margin_box_top(item) - band.top);
+        place_leaf(item, state, &mut local_cursor);
+    }
+    *cursor = base + height;
 }
 
 fn place_table(
@@ -1298,6 +1451,15 @@ fn place_table(
             let (top, s) = start_new_fragment(cursor, row_top, extra_above);
             fragment_top = top;
             shift = s;
+
+            // As with the grid, start on the next page when the first row does
+            // not fit in what is left (the caption height counts towards it).
+            if row_bottom - shift > page_height && current_page_has_content(state) {
+                new_page(state, cursor);
+                let (top, s) = start_new_fragment(cursor, row_top, extra_above);
+                fragment_top = top;
+                shift = s;
+            }
         }
 
         // この行を今のページに置くと溢れるなら、ここまでの断片を確定して改ページ。

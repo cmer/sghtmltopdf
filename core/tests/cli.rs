@@ -1120,6 +1120,40 @@ fn header_html_is_composed_onto_every_page() {
 }
 
 #[test]
+fn html_header_footer_totals_do_not_require_css_page_counters() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-e2e-html-totals-{}",
+        std::process::id()
+    ));
+    // Only the overlay contains digits, so the PDF's Unicode map identifies
+    // the expanded total without confusing it with body text or [page].
+    let overlay = write_temp_html(
+        &dir,
+        "overlay.html",
+        "<html><body style=\"margin:0\">[topage]</body></html>",
+    );
+    let cover = write_temp_html(&dir, "cover.html", BLANK_COVER_HTML);
+    for option in ["--header-html", "--footer-html"] {
+        for with_cover in [false, true] {
+            let mut args = vec!["--no-pdf-compression", option, overlay.to_str().unwrap()];
+            if with_cover {
+                args.extend(["--cover", cover.to_str().unwrap()]);
+            }
+            let bytes = run_cli_with(TWO_PAGE_HTML, &args, "html-totals");
+            assert_eq!(
+                count_occurrences(&bytes, b"/MediaBox"),
+                if with_cover { 3 } else { 2 }
+            );
+            assert!(
+                count_occurrences(&bytes, b"<0032>") > 0,
+                "{option} must expand [topage], excluding the cover"
+            );
+        }
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn header_html_takes_precedence_over_the_simple_option() {
     let dir = std::env::temp_dir().join(format!("sghtmltopdf-e2e-hf-both-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -1511,14 +1545,58 @@ fn streaming_stays_quiet_when_everything_is_resolvable() {
     assert!(stderr.is_empty(), "no warning expected, got: {stderr}");
 }
 
-/// 実在のカラー絵文字フォントを明示指定しても採用しないこと。
+/// `--disable-system-fonts`はシステムフォントの探索を止める。
 ///
-/// このフォントは`cmap`を持つので「絵文字を描画できる」ように見えるが、
-/// 輪郭を一切持たないため実際には何も描けない。採用してしまうと、文字が
-/// 豆腐にすらならず消えたうえ、サブセット化が効かず10MB超のフォントが
-/// ほぼ素通しでPDFへ入る。
+/// `--font`で1本だけ渡した状態で`font-family: serif`を書くと、既定では
+/// インストール済みの明朝体(macOSならTimes New Roman、Linuxなら
+/// DejaVu Serif等)が探し出されて一緒に埋め込まれるため、同じHTMLでも
+/// マシンによって別のPDFが出る。フラグを付けると埋め込まれるフォント
+/// プログラムは渡した1本だけになる。
 #[test]
-fn a_colour_emoji_font_is_refused_with_a_warning() {
+fn disable_system_fonts_embeds_only_the_fonts_given_on_the_command_line() {
+    let dir = std::env::temp_dir().join(format!(
+        "sghtmltopdf-e2e-{}-disable-system-fonts",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("input.html");
+    std::fs::write(
+        &input,
+        "<html><body><p style=\"font-family: serif;\">serif text</p></body></html>",
+    )
+    .unwrap();
+    let output = dir.join("out.pdf");
+
+    let out = Command::new(BIN)
+        .arg(&input)
+        .arg("--font")
+        .arg(FONT_PATH)
+        .arg("--disable-system-fonts")
+        .arg("-o")
+        .arg(&output)
+        .output()
+        .expect("failed to run sghtmltopdf binary");
+    assert!(out.status.success(), "変換は成功するはず");
+
+    let bytes = std::fs::read(&output).expect("output PDF should exist");
+    assert_eq!(
+        count_occurrences(&bytes, b"/FontFile2"),
+        1,
+        "埋め込まれるのは--fontで渡した1本だけのはず"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A real colour emoji font is used, and its glyphs come out as a Type 3 font.
+///
+/// The font has no outlines at all, so before colour font support it was
+/// declined outright and the emoji silently disappeared. Now the emoji is
+/// drawn from the font's embedded bitmaps, while the font program itself is
+/// still never embedded (subsetting cannot shrink a font with no `glyf`, so
+/// embedding it would drag the whole 10MB file into the PDF).
+#[test]
+fn a_colour_emoji_font_renders_its_bitmaps_without_embedding_the_font() {
     let dir = std::env::temp_dir().join(format!(
         "sghtmltopdf-e2e-{}-color-emoji",
         std::process::id()
@@ -1530,32 +1608,175 @@ fn a_colour_emoji_font_is_refused_with_a_warning() {
 
     let out = Command::new(BIN)
         .arg(&input)
+        // 本文を描く1本。カラーフォントを外した後もフォントが1本も無い状態には
+        // ならないようにする(そうなると変換自体が失敗する)。
+        .arg("--font")
+        .arg(FONT_PATH)
         .arg("--font")
         .arg(COLOR_EMOJI_FONT_PATH)
+        // これが無いと、外したカラーフォントの代わりに絵文字を描けるシステム
+        // フォントが見つかる環境(macOS等)では警告が出ず、結果が実行環境次第に
+        // なってしまう。
+        .arg("--disable-system-fonts")
         .arg("-o")
         .arg(&output)
         .output()
         .expect("failed to run sghtmltopdf binary");
-    assert!(out.status.success(), "変換自体は成功させる(1本外すだけ)");
+    assert!(out.status.success());
 
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
     assert!(
-        stderr.contains("輪郭を持たない") && stderr.contains("NotoColorEmoji.ttf"),
-        "不採用にした理由をフォント名付きで伝えるはず: {stderr}"
+        !stderr.contains("NotoColorEmoji.ttf"),
+        "the font is usable now, so nothing should be said about declining it: {stderr}"
     );
     assert!(
-        stderr.contains("\u{1F389}"),
-        "描画できなくなった文字を名指しする通常の警告にも乗るはず: {stderr}"
+        !stderr.contains('\u{1F389}'),
+        "the emoji is drawable, so it must not be reported as uncovered: {stderr}"
     );
 
     let bytes = std::fs::read(&output).expect("output PDF should exist");
     assert!(bytes.starts_with(b"%PDF-"));
+    assert!(
+        count_occurrences(&bytes, b"/Subtype /Type3") >= 1,
+        "the emoji should be drawn by a Type 3 font"
+    );
     let source_size = std::fs::metadata(COLOR_EMOJI_FONT_PATH).unwrap().len();
     assert!(
         (bytes.len() as u64) < source_size / 10,
-        "採用していたらフォントがほぼ素通しで入る。PDF={} 元フォント={source_size}",
+        "the bitmap font must not be embedded. PDF={} source font={source_size}",
         bytes.len()
     );
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// Header/footer images must be registered as PDF resources as well as laid out.
+#[test]
+fn header_footer_embedded_images_repeat_in_batch_and_streaming() {
+    use base64::Engine as _;
+    let png = base64::engine::general_purpose::STANDARD
+        .encode(include_bytes!("fixtures/images/spike_opaque.png"));
+    check_overlay_image(
+        &format!("data:image/png;base64,{png}"),
+        "/Subtype /Image",
+        "png",
+    );
+}
+
+#[cfg(feature = "svg")]
+#[test]
+fn header_footer_embedded_svg_images_repeat_in_batch_and_streaming() {
+    use base64::Engine as _;
+    let svg = base64::engine::general_purpose::STANDARD.encode(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="#ff0000"/></svg>"##,
+    );
+    check_overlay_image(
+        &format!("data:image/svg+xml;base64,{svg}"),
+        "/Subtype /Form",
+        "svg",
+    );
+}
+
+fn check_overlay_image(src: &str, resource_type: &str, kind: &str) {
+    let dir =
+        std::env::temp_dir().join(format!("sghtmltopdf-overlay-{kind}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let template = dir.join("overlay.html");
+    for page_dependent in [false, true] {
+        let token = if page_dependent { "[page]" } else { "Header" };
+        for background in [false, true] {
+            let image = if background {
+                format!(
+                    r#"<div style="width:20px;height:20px;background-repeat:no-repeat;background-image:url('{src}')"></div>"#
+                )
+            } else {
+                format!(r#"<img src="{src}" width="20" height="20">"#)
+            };
+            std::fs::write(
+                &template,
+                format!(r#"<html><body style="margin:0">{image}{token}</body></html>"#),
+            )
+            .unwrap();
+            for streaming in [false, true] {
+                let mut args = vec![
+                    "--no-pdf-compression",
+                    "--header-html",
+                    template.to_str().unwrap(),
+                    "--footer-html",
+                    template.to_str().unwrap(),
+                ];
+                if streaming {
+                    args.push("--streaming");
+                }
+                let bytes = run_cli_with(TWO_PAGE_HTML, &args, &format!("overlay-{kind}"));
+                assert_eq!(count_occurrences(&bytes, b"/MediaBox"), 2);
+                assert_eq!(
+                    count_occurrences(&bytes, resource_type.as_bytes()),
+                    1,
+                    "shared image should be embedded once"
+                );
+                assert_eq!(
+                    count_occurrences(&bytes, b" Do"),
+                    4,
+                    "header and footer image should be drawn on both pages"
+                );
+                assert!(
+                    count_occurrences(&bytes, b"W\nn") >= 4,
+                    "overlays must remain clipped"
+                );
+                args.push("--no-images");
+                let bytes = run_cli_with(TWO_PAGE_HTML, &args, &format!("overlay-{kind}-disabled"));
+                assert_eq!(count_occurrences(&bytes, resource_type.as_bytes()), 0);
+                assert_eq!(count_occurrences(&bytes, b" Do"), 0);
+            }
+        }
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn header_footer_images_keep_external_resources_blocked_and_honor_abort() {
+    let dir =
+        std::env::temp_dir().join(format!("sghtmltopdf-overlay-errors-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let template = dir.join("overlay.html");
+    let body = dir.join("body.html");
+    std::fs::write(&body, TWO_PAGE_HTML).unwrap();
+    let local_image = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/spike_opaque.png"
+    );
+    for src in [local_image, "data:image/png;base64,invalid"] {
+        std::fs::write(
+            &template,
+            format!(r#"<img src="{src}" width="20" height="20">[page]"#),
+        )
+        .unwrap();
+        for streaming in [false, true] {
+            let mut args = vec![
+                "--no-pdf-compression",
+                "--header-html",
+                template.to_str().unwrap(),
+                "--enable-local-file-access",
+            ];
+            if streaming {
+                args.push("--streaming");
+            }
+            let bytes = run_cli_with(TWO_PAGE_HTML, &args, "overlay-errors-ignore");
+            assert_eq!(count_occurrences(&bytes, b"/Subtype /Image"), 0);
+            let result = Command::new(BIN)
+                .arg(&body)
+                .args(&args)
+                .args(["--font", FONT_PATH, "--load-media-error-handling", "abort"])
+                .arg("-o")
+                .arg(dir.join("abort.pdf"))
+                .output()
+                .unwrap();
+            assert!(
+                !result.status.success(),
+                "abort must report failed header images"
+            );
+        }
+    }
+    std::fs::remove_dir_all(dir).ok();
 }

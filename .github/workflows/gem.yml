@@ -1,6 +1,6 @@
 name: gem
 
-# 毎PRで回すには重い(5プラットフォーム×複数Ruby ABI)ので、タグを打ったときと手動実行のときだけ動かす
+# 毎PRで回すには重い(6プラットフォーム×複数Ruby ABI)ので、タグを打ったときと手動実行のときだけ動かす
 
 on:
   workflow_dispatch:
@@ -27,6 +27,7 @@ jobs:
           - x86_64-linux-musl # Alpine
           - aarch64-linux-musl # Alpine
           - arm64-darwin
+          - x86_64-darwin
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
@@ -172,6 +173,25 @@ jobs:
           gem install --no-document ./pkg/*.gem
           ruby bindings/ruby/script/smoke.rb
 
+  # x86_64-darwin: Intel MacのランナーはmacOS 15のx86_64イメージ
+  # (GitHubが提供する最後のIntelイメージで、2027年8月までの予定)
+  smoke-macos-x86_64:
+    needs: cross-gem
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gem-x86_64-darwin
+          path: pkg
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: gem install して変換する
+        run: |
+          gem install --no-document ./pkg/*.gem
+          ruby bindings/ruby/script/smoke.rb
+
   # rubygems.orgへのpublish
   # 認証はtrusted publishing(OIDC)で、APIキーはリポジトリに置かない
   publish:
@@ -182,6 +202,7 @@ jobs:
       - smoke-linux-musl
       - smoke-linux-musl-arm64
       - smoke-macos-arm64
+      - smoke-macos-x86_64
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     # rubygems.orgのtrusted publisher設定でenvironmentを指定する
@@ -200,7 +221,7 @@ jobs:
           bundler-cache: true
           cargo-cache: "false"
           working-directory: bindings/ruby
-      # クロスビルドした5プラットフォーム分を`pkg/`へ集める
+      # クロスビルドした6プラットフォーム分を`pkg/`へ集める
       - uses: actions/download-artifact@v4
         with:
           pattern: gem-*
