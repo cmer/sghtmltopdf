@@ -1631,12 +1631,14 @@ impl<S: Sink> Engine<S> {
             (Vec::new(), HashMap::new())
         };
 
-        // `counter(pages)`の総ページ数はcoverを除いた「TOC + 本文」。
-        let total_pages = if rules_use_page_count(&page_rules) {
-            Some(toc_pages.len() + pages.len())
-        } else {
-            None
-        };
+        // `counter(pages)` and HTML header/footer totals exclude the cover
+        // and include the TOC and body pages.
+        let total_pages =
+            if rules_use_page_count(&page_rules) || options.header_footer_html.uses_total_pages() {
+                Some(toc_pages.len() + pages.len())
+            } else {
+                None
+            };
 
         let mut writer = StreamingPdfWriter::with_options(
             &fonts,
