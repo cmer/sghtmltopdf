@@ -9,26 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `--disable-system-fonts` (`EngineOptions::disable_system_fonts`) turns the system font
-  search off, so a document is built only from `--font`, `--gothic-font`/`--serif-font`/
-  `--mono-font` and `@font-face`. Passing fonts explicitly was not enough on its own:
-  a combination with no matching face — `font-family: serif` in italic, say — was still
-  filled in from whatever the machine had installed, so the same HTML produced a PDF
-  embedding Times New Roman on macOS and DejaVu Serif on a Linux container. With the
-  flag the output is identical on either. Characters that no given font can draw are
-  warned about and left undrawn, as before.
-
-## 0.4.0 - 2026-09-05
-
-### Added
-
-- Hoist the rules inside `@layer` blocks to the top level, in source order, instead of
-  dropping the whole block (#20). Tailwind v4 wraps its entire output in cascade layers,
-  so a stock v4 bundle rendered a completely unstyled document. Layer precedence is not
-  implemented: a print stylesheet is normally a single bundle with nothing to arbitrate
-  against, so plain source order gives the same result, and where it differs the usual
-  specificity contest decides. The bare `@layer a, b;` ordering statement is still ignored.
-
 - Render colour emoji in colour (#12). Embedded bitmaps (`CBDT`/`CBLC`, `sbix`) and
   `COLR`/`CPAL` v0 layered fills are both drawn; a font carrying either is now accepted by
   font selection, by `@font-face` and by the system font search, so Apple Color Emoji and
@@ -46,6 +26,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   COLRv1 (gradients, transforms, compositing) and OpenType SVG remain out of scope. A
   COLRv1 font carries `glyf`, so it still renders as its monochrome base outlines. Palette
   selection through `font-palette` is not supported; palette 0 is always used.
+
+  Routing every glyph to either the Type0 font or the Type 3 font is a hash lookup per
+  glyph, which on its own cost about 40% of the encoding phase on a document of around a
+  million glyphs (64.7ms to 91.3ms over 337 pages) and 13.5% on a 200-page receipt. A
+  document with no colour glyph in it therefore resolves its font once per text run rather
+  than once per glyph, the per-glyph loop is left with the subset lookup alone, and
+  `code_bytes()` allocates no `Vec<u8>` per glyph, which keeps both within 3% of the
+  encoding time before this feature.
+
+- `data:` URL images in `--header-html`/`--footer-html`, as `<img>` and as
+  `background-image` (#54). The overlay had no image cache passed to it, so an `<img>` laid
+  out as an empty box and a logo in a header simply did not appear. PNG, JPEG, WebP and SVG
+  (with the `svg` feature) all work, through the same layout and drawing path as a body
+  image, and a decoded image is kept across pages so a logo repeated on every page is
+  embedded once. External resources stay unavailable — local files and remote URLs are still
+  refused, as is an external stylesheet — and `--no-images` and the existing image error
+  handling apply to an overlay as they do to the body.
+
+- Precompiled gems for `x86_64-darwin`, so an Intel Mac installs a binary gem instead of
+  building the extension or falling back to server mode (#55). The platform is in the
+  `rake-compiler` cross target list and the cross-gem CI matrix, and the resulting gem is
+  smoke-installed on a real Intel runner (`macos-15-intel`). The platform lists and the
+  notes that called Intel Macs out of scope are updated across both READMEs, the
+  `extconf.rb` abort message and the documentation sources.
+
+- A benchmark suite under `core/benches`, with a regression gate CI runs on every push and
+  pull request (#53). Four `cargo bench` targets share one fixture corpus and the fonts in
+  `core/tests/fonts`, and run with `--disable-system-fonts` so a result does not depend on
+  the machine: `phases` times each pipeline stage in isolation, `end_to_end` the `Engine`
+  API, the CLI binary and an HTTP round trip, `scale` documents from 1k to 60k elements in
+  both batch and streaming mode, and `metrics` records allocations, peak heap and RSS, page
+  count and PDF size against a committed `baseline.json`. Wall-clock time on a shared runner
+  is too noisy to gate on, so only the metrics target fails a build: page count and PDF size
+  may not move at all, allocations may grow 5% and peak RSS 10%. A change that moves them on
+  purpose is re-recorded with `--save-baseline` and the new baseline ships in the same pull
+  request. `BENCHMARK.md` covers day-to-day use and `core/benches/README.md` documents every
+  fixture and every option of the gate.
+
+- `--disable-system-fonts` (`EngineOptions::disable_system_fonts`) turns the system font
+  search off, so a document is built only from `--font`, `--gothic-font`/`--serif-font`/
+  `--mono-font` and `@font-face`. Passing fonts explicitly was not enough on its own:
+  a combination with no matching face — `font-family: serif` in italic, say — was still
+  filled in from whatever the machine had installed, so the same HTML produced a PDF
+  embedding Times New Roman on macOS and DejaVu Serif on a Linux container. With the
+  flag the output is identical on either. Characters that no given font can draw are
+  warned about and left undrawn, as before.
+
+### Changed
+
+- Updated `rustls` (0.23.42 to 0.23.45) and `rustls-webpki` (0.103.13 to 0.103.15).
+
+### Fixed
+
+- Measure a word space with the text font rather than with a fallback colour font. Noto
+  Color Emoji is monospaced at about 1.25em, so the gap following an emoji came out roughly
+  four times too wide.
+
+- `[topage]` in `--header-html`/`--footer-html` now expands to the real total instead of an
+  empty string (#56). The total was only counted when the document's own `@page` rules used
+  `counter(pages)`, so a header or footer that asked for it and nothing else printed
+  "Page 1 of " on every page. The counting rules are unchanged: the cover is excluded and
+  the TOC is included. Streaming mode still cannot know the total, and rejects `[topage]` as
+  before.
+
+## 0.4.0 - 2026-09-05
+
+### Added
+
+- Hoist the rules inside `@layer` blocks to the top level, in source order, instead of
+  dropping the whole block (#20). Tailwind v4 wraps its entire output in cascade layers,
+  so a stock v4 bundle rendered a completely unstyled document. Layer precedence is not
+  implemented: a print stylesheet is normally a single bundle with nothing to arbitrate
+  against, so plain source order gives the same result, and where it differs the usual
+  specificity contest decides. The bare `@layer a, b;` ordering statement is still ignored.
 
 ### Changed
 
@@ -143,9 +197,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   long document body laid out with `flex-direction: column` flows across pages. The space
   `gap` (or `justify-content`) leaves between the bands is carried across the split, so a
   container that grows past one page keeps the spacing it had.
-- Measure a word space with the text font rather than with a fallback colour font. Noto
-  Color Emoji is monospaced at about 1.25em, so the gap following an emoji came out roughly
-  four times too wide.
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
   A line box keeps its text runs and its atomic inline boxes (`<img>`, `display: inline-block`,
   form controls) in separate lists, and the alignment step only shifted the runs, so a
