@@ -31,9 +31,13 @@ class InvoicesController < ActionController::Base
     render pdf: "invoice", template: "invoices/with_stylesheet"
   end
 
+  # Embeds a local image through the view helper.
+  def with_image
+    render pdf: "invoice", template: "invoices/with_image"
+  end
+
   # `examples/receipt.html` used directly as a view. Used to check against the CLI's output
   # (the CSS stays a `<link>`, resolving `public/main.css` through `--base-url`).
-
   def receipt
     render pdf: "receipt", template: "invoices/receipt"
   end

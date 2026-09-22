@@ -35,6 +35,8 @@ use subsetter::GlyphRemapper;
 
 use crate::fonts::Font;
 
+use super::color_font::{CODES_PER_COLOR_FONT, MAX_COLOR_GLYPHS_PER_FACE};
+
 /// The name used both for `/CMapName` in the `/ToUnicode` CMap and for `CMapName` inside the
 /// embedded program. A mismatch would be ill-formed per the PDF spec, so every use is fed
 /// from a single constant.
@@ -62,38 +64,126 @@ pub struct FontIds {
     pub cid_to_gid_map: Ref,
 }
 
-/// The usage of one font (collected by scanning the whole document in a first pass).
+/// What one font is used for, collected by walking the whole document first.
+///
+/// Glyphs are sorted into two groups. Ones drawn from outlines are subsetted
+/// into a CIDFontType2; ones drawn in colour (embedded bitmaps, `COLR` v0) go
+/// to a Type 3 font in [`super::color_font`]. That split is decided here once,
+/// and the same table is consulted again when the content stream is written.
 #[derive(Debug, Default)]
 pub struct FontUsage {
-    /// Original glyph ID -> (width in 1000-unit/em glyph space, the original text that glyph represents).
+    /// Original glyph ID -> (width in 1000-unit glyph space, the source text
+    /// this glyph stands for).
     glyphs: BTreeMap<u16, (f32, String)>,
+    /// Colour glyphs: original glyph ID -> its assignment.
+    color: BTreeMap<u16, ColorGlyphUse>,
+    /// The number the next colour glyph will be assigned.
+    next_color: usize,
+}
+
+/// What one colour glyph was assigned.
+#[derive(Debug)]
+pub(super) struct ColorGlyphUse {
+    /// The source text this glyph stands for, for `/ToUnicode`.
+    pub text: String,
+    /// Its running number within the document, from which both the Type 3
+    /// font and the character code follow: code `index % 256` of font
+    /// `index / 256`.
+    pub index: usize,
 }
 
 impl FontUsage {
-    /// Record a use of `glyph_id`. `text` is the original text for `/ToUnicode` generation
-    /// (the cluster string recovered from `ShapedGlyph::cluster`).
+    /// Record a use of `glyph_id`. `text` is the source text it stands for,
+    /// for building `/ToUnicode`: the cluster string looked back up from
+    /// `ShapedGlyph::cluster`.
     ///
-    /// It is not necessarily one character, because of ligatures (`fl` becoming one glyph,
-    /// say). Keeping only one character would make "float" extract and search as "foat".
+    /// It is not necessarily a single character, because of ligatures (`fl`
+    /// becoming one glyph). Recording only one character would make text
+    /// extraction and search read "float" as "foat".
     ///
-    /// Several characters can also share one glyph. When a font lacks a `&nbsp;` glyph the
-    /// shaper substitutes the space glyph (HarfBuzz's space fallback), so that glyph
-    /// represents both U+0020 and U+00A0 in the document. Leaving it first-wins would mean
-    /// that one `&nbsp;` appearing earlier makes every later space extract as U+00A0,
-    /// breaking text search and copying. On a collision, the ordinary space wins.
+    /// Several characters can also share one glyph. When a font has no
+    /// `&nbsp;` glyph the shaper substitutes the space glyph (HarfBuzz's space
+    /// fallback), so that glyph stands for both U+0020 and U+00A0 in the
+    /// document. First-write-wins would mean that a single early `&nbsp;`
+    /// makes every space in the document extract as U+00A0, breaking search
+    /// and copy. On a collision the plain space wins.
     pub fn record(&mut self, font: &Font, glyph_id: u16, text: &str) {
+        if let Some(existing) = self.color.get_mut(&glyph_id) {
+            prefer_plain_space(&mut existing.text, text);
+            return;
+        }
         match self.glyphs.entry(glyph_id) {
+            Entry::Occupied(mut slot) => prefer_plain_space(&mut slot.get_mut().1, text),
             Entry::Vacant(slot) => {
+                // A glyph that can be drawn in colour goes to the Type 3
+                // side. Type 3 is a simple font, so codes are one byte and
+                // the number of fonts we reserve is capped; anything past the
+                // cap falls back to the outline side.
+                if self.next_color < MAX_COLOR_GLYPHS_PER_FACE && font.has_color_glyph(glyph_id) {
+                    self.color.insert(
+                        glyph_id,
+                        ColorGlyphUse {
+                            text: text.to_string(),
+                            index: self.next_color,
+                        },
+                    );
+                    self.next_color += 1;
+                    return;
+                }
+                // A glyph from a font with no outlines and no colour
+                // representation cannot be drawn at all. Recording it would
+                // mean embedding a font program no viewer can read, so drop
+                // it here.
+                if !font.has_outlines() {
+                    return;
+                }
                 let advance = font.glyph_hor_advance(glyph_id).unwrap_or(0) as f32;
                 let width_1000 = advance * 1000.0 / font.units_per_em() as f32;
                 slot.insert((width_1000, text.to_string()));
             }
-            Entry::Occupied(mut slot) => {
-                if text == " " && slot.get().1 != " " {
-                    slot.get_mut().1 = text.to_string();
-                }
-            }
         }
+    }
+
+    /// If `glyph_id` was recorded as a colour glyph, which Type 3 font it
+    /// landed in and under which one-byte character code.
+    pub(super) fn color_code(&self, glyph_id: u16) -> Option<(usize, u8)> {
+        let index = self.color.get(&glyph_id)?.index;
+        Some((
+            index / CODES_PER_COLOR_FONT,
+            (index % CODES_PER_COLOR_FONT) as u8,
+        ))
+    }
+
+    /// The colour glyphs held by Type 3 font `ordinal`, in code order.
+    pub(super) fn color_glyphs_of(&self, ordinal: usize) -> Vec<(u8, u16, &str)> {
+        let mut out: Vec<(u8, u16, &str)> = self
+            .color
+            .iter()
+            .filter(|(_, use_)| use_.index / CODES_PER_COLOR_FONT == ordinal)
+            .map(|(&gid, use_)| {
+                (
+                    (use_.index % CODES_PER_COLOR_FONT) as u8,
+                    gid,
+                    use_.text.as_str(),
+                )
+            })
+            .collect();
+        out.sort_by_key(|(code, ..)| *code);
+        out
+    }
+
+    /// How many Type 3 fonts the recorded colour glyphs need.
+    pub(super) fn color_font_count(&self) -> usize {
+        self.next_color.div_ceil(CODES_PER_COLOR_FONT)
+    }
+}
+
+/// When a plain space and something like `&nbsp;` share one glyph, make
+/// `/ToUnicode` point at the plain space; otherwise every space in the
+/// document extracts as U+00A0 and search and copy break.
+fn prefer_plain_space(recorded: &mut String, text: &str) {
+    if text == " " && recorded != " " {
+        *recorded = text.to_string();
     }
 }
 

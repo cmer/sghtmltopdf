@@ -169,6 +169,20 @@ impl SystemFonts {
         Self { db }
     }
 
+    /// A database holding no system fonts at all.
+    ///
+    /// The constructor behind `--disable-system-fonts`
+    /// ([`crate::engine::EngineOptions::disable_system_fonts`]). The font lookup
+    /// paths ([`load_missing_system_fonts`] and the like) still run, but none of
+    /// them finds anything, so the output depends only on the fonts named with
+    /// `--font` and friends. Use it to get the same PDF from the same HTML
+    /// everywhere (to make CI or a container agree with a local machine).
+    pub fn none() -> Self {
+        Self {
+            db: fontdb::Database::new(),
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn from_dir(dir: &std::path::Path) -> Self {
         let mut db = fontdb::Database::new();
@@ -205,10 +219,10 @@ impl SystemFonts {
                 Font::from_bytes(data.to_vec(), index).ok()
             })
             .flatten()
-            // A font with no outlines (a bitmap colour emoji font, say) can draw nothing
-            // even when the name matches, so it is not taken. Every system font lookup
-            // goes through here, so the check lives in this one place.
-            .filter(|font| font.has_outlines())
+            // A font with neither outlines nor colour glyphs draws nothing,
+            // however well its name matched. Every system font lookup goes
+            // through here, so this is the one place that test lives.
+            .filter(|font| font.can_render())
     }
 
     /// Resolve a CSS generic family name (`monospace`/`serif`) to a concrete font by trying
@@ -289,16 +303,15 @@ impl SystemFonts {
             let Some((family, _)) = info.families.first() else {
                 continue;
             };
-            // Being in the `cmap` is not enough: outlines are required too (the same check
-            // as `Font::has_glyph`, done here without building a `Font`). Colour emoji
-            // fonts have a `cmap`, so without this we would wrongly decide we can draw.
+            // Being in the `cmap` is not enough; the face also needs
+            // something to draw with. Same test as `Font::has_glyph`, done in
+            // place without building a `Font`.
             let covered = self
                 .db
                 .with_face_data(info.id, |data, index| {
                     skrifa::FontRef::from_index(data, index)
                         .map(|font| {
-                            font.charmap().map(c).is_some()
-                                && font.outline_glyphs().format().is_some()
+                            font.charmap().map(c).is_some() && super::font::face_can_render(&font)
                         })
                         .unwrap_or(false)
                 })
@@ -330,14 +343,22 @@ impl SystemFonts {
     /// Pick one face the font's own metadata calls "monospaced", then `load` it again by
     /// family name (so `load` handles the weight/style face selection).
     fn load_any_monospaced(&self, weight: FontWeight, style: FontStyle) -> Option<Font> {
-        // Even with the monospace flag set, `load` may not take it (no outlines), so try
-        // them in turn rather than stopping at the first. Colour emoji fonts are registered
-        // as monospaced (every glyph has the same advance) and really do turn up here.
+        // `load` can decline a face even when the monospace flag is set, so
+        // try them in order rather than stopping at the first hit.
+        //
+        // Only faces with outlines qualify. A colour emoji font has the same
+        // advance for every glyph and so is registered as monospaced, and does
+        // reach this point — but `font-family: monospace` resolving to Noto
+        // Color Emoji would mean a document that draws emoji and not one
+        // character of body text.
         self.db
             .faces()
             .filter(|info| info.monospaced)
             .filter_map(|info| info.families.first().map(|(name, _)| name.clone()))
-            .find_map(|family| self.load(&family, weight, style))
+            .find_map(|family| {
+                self.load(&family, weight, style)
+                    .filter(|font| font.has_outlines())
+            })
     }
 
     /// For `src: local(...)` in `@font-face`. Directly load the one face matching `name`
@@ -785,6 +806,20 @@ mod tests {
     }
 
     #[test]
+    fn none_finds_nothing_so_the_document_is_built_from_the_given_fonts_only() {
+        let system = SystemFonts::none();
+        assert!(system
+            .load("DejaVu Sans", FontWeight::Normal, FontStyle::Normal)
+            .is_none());
+        assert!(system
+            .load_generic("monospace", FontWeight::Normal, FontStyle::Normal)
+            .is_none());
+        assert!(system
+            .load_covering('\u{3042}', FontWeight::Normal, FontStyle::Normal)
+            .is_none());
+    }
+
+    #[test]
     fn load_generic_resolves_monospace_through_the_candidate_list() {
         let system = SystemFonts::from_dir(std::path::Path::new(FONTS_DIR));
         let font = system
@@ -1027,16 +1062,13 @@ mod tests {
         assert_eq!(fonts.len(), 1);
     }
 
-    /// Regression test for colour emoji fonts.
-    ///
-    /// A font with a `cmap` but no outlines must be kept out of the automatic search by
-    /// character coverage. Letting one through would adopt a font that can draw nothing as
-    /// "the font that can draw this character", silently producing invisible text and a huge
-    /// PDF (which really happened with Noto Color Emoji).
+    /// A bitmap colour emoji font is picked up by the coverage search (#12).
+    /// It has no outlines, but it can draw the character from its embedded
+    /// bitmaps, so it genuinely is "a font that can draw this".
     #[test]
-    fn a_colour_font_is_not_picked_up_by_the_coverage_search() {
-        // Build a directory holding only the colour font, so it is the only search candidate
-        // (passing `FONTS_DIR` directly would mix in fonts that have outlines).
+    fn a_bitmap_colour_font_is_picked_up_by_the_coverage_search() {
+        // Build a directory holding only the colour font: passing `FONTS_DIR`
+        // as-is would mix in fonts that do have outlines.
         let dir = std::env::temp_dir().join(format!(
             "sghtmltopdf-fonts-colour-only-{}",
             std::process::id()
@@ -1049,12 +1081,17 @@ mod tests {
         .unwrap();
 
         let system = SystemFonts::from_dir(&dir);
-        assert!(
-            system
-                .load_covering('\u{1F389}', FontWeight::Normal, FontStyle::Normal)
-                .is_none(),
-            "a font without outlines must not be judged able to draw the emoji"
-        );
+        let (family, font) = system
+            .load_covering('\u{1F389}', FontWeight::Normal, FontStyle::Normal)
+            .expect("a font that can draw the emoji from bitmaps should be accepted");
+        assert!(family.contains("Emoji"), "family name: {family}");
+        assert!(!font.has_outlines());
+        assert!(font.has_color_glyphs());
+
+        // A character the font cannot draw at all is still not found.
+        assert!(system
+            .load_covering('日', FontWeight::Normal, FontStyle::Normal)
+            .is_none());
 
         std::fs::remove_dir_all(&dir).ok();
     }

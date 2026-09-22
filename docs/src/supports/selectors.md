@@ -126,7 +126,8 @@
 | `@font-face` | ⚠️ | `font-family`/`src`/`unicode-range`/`font-weight`/`font-style`ディスクリプタに対応(`src`の`local()`・`format()`/`tech()`付き`url()`も受理)。`font-display`等その他のディスクリプタは無視。フォントファイルはTTF/OTFのみで、WOFF/WOFF2は非対応 |
 | `@import` | ✅ | ネスト(深さ上限16、超過分はその1件だけ無視)・循環参照の検出に対応。`@import url(...) screen;`のようなメディアクエリ条件は評価せず常に取り込む |
 | `@charset` | ❌ | 入力はUTF-8前提 |
-| `@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@layer` / `@container` / `@property` | ❌ | ブロックごと無視される |
+| `@layer` | ⚠️ | ブロックの中のルールを書かれた順にトップレベルへ展開する(`@layer a { .x {} }`は`.x {}`と同じ)。レイヤーの優先順位は実装せず、通常のカスケード(詳細度・後勝ち)で決まる。`@layer a, b;`の順序宣言は無視する。Tailwind v4のように出力全体を`@layer`で包むCSSをそのまま渡せる |
+| `@supports` / `@keyframes` / `@namespace` / `@counter-style` / `@container` / `@property` | ❌ | ブロックごと無視される |
 
 ## ストリーミングモード固有の制約
 

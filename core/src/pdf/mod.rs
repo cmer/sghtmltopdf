@@ -1,5 +1,6 @@
 //! Encoding of layout results into PDF objects.
 
+mod color_font;
 mod document;
 mod font;
 mod img;

@@ -77,6 +77,22 @@ RSpec.describe "Sghtmltopdf.render" do
       expect(normalize(Sghtmltopdf.render(html, page_size: "A4")))
         .not_to eq(normalize(Sghtmltopdf.render(html)))
     end
+
+    # `allow` is an alias of `allow_path`. If both keys were carried around
+    # separately, a default under one and a call-site value under the other
+    # would not override each other in the merge, and both would reach argv
+    # (repeating the same flag means "union").
+    it "folds alias keys into the canonical name so they can override defaults" do
+      Sghtmltopdf.configure { |c| c.allow_path = ["/nonexistent-default"] }
+
+      expect(Sghtmltopdf.config[:allow]).to eq(["/nonexistent-default"])
+
+      Sghtmltopdf.configure { |c| c.allow = ["/nonexistent-other"] }
+
+      expect(Sghtmltopdf.config[:allow_path]).to eq(["/nonexistent-other"])
+      expect(Sghtmltopdf.config.to_h.keys).to include(:allow_path)
+      expect(Sghtmltopdf.config.to_h.keys).not_to include(:allow)
+    end
   end
 
   describe "thread safety" do
@@ -141,7 +157,7 @@ RSpec.describe "matching the CLI's output" do
     ["the default options", [], {}],
     ["page size and margins", ["--page-size", "A4", "--margin-top", "20mm"], {page_size: "A4", margin_top: "20mm"}],
     ["grayscale", ["--grayscale"], {grayscale: true}],
-    ["メタデータ", ["--title", "請求書", "--author", "わか"], {title: "請求書", author: "わか"}],
+    ["metadata", ["--title", "請求書", "--author", "わか"], {title: "請求書", author: "わか"}],
     ["no compression", ["--no-pdf-compression"], {no_pdf_compression: true}],
   ].each do |name, cli_args, gem_options|
     it "produces the same PDF as the CLI with #{name}" do

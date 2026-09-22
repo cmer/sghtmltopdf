@@ -16,4 +16,8 @@ group :test do
   gem "railties", ">= 7.0"
   # For checking the dummy app by hand via `bundle exec rackup spec/dummy/config.ru`
   gem "webrick", "~> 1.9"
+  # The path taken when an asset pipeline is installed (spec/pipeline_spec.rb).
+  # The dummy app itself stays without a pipeline gem, so this one is loaded
+  # in a separate process.
+  gem "propshaft", "~> 1.3"
 end

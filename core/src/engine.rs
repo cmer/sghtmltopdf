@@ -23,8 +23,8 @@ use std::rc::Rc;
 
 use crate::fonts::{
     ensure_cjk_fallback_font, load_font_faces, load_fonts_for_uncovered_chars,
-    load_missing_system_fonts, warn_font_without_outlines, warn_uncovered_chars, Font,
-    FontCollection, SystemFonts,
+    load_missing_system_fonts, warn_font_cannot_render, warn_uncovered_chars, Font, FontCollection,
+    SystemFonts,
 };
 use crate::html::{
     collect_anchor_targets, find_base_href, find_document_title, Dom, NodeData, NodeId,
@@ -141,6 +141,19 @@ pub struct EngineOptions {
     /// system font candidate list ([`crate::fonts`]). The default `font-family` (unset) falls
     /// back to the `--font` font regardless.
     pub generic_fonts: Vec<(GenericFamily, FontSpec)>,
+    /// Stop looking up system fonts (the equivalent of `--disable-system-fonts`).
+    ///
+    /// Defaults to `false`. When `true`, text is composed only from the fonts given via
+    /// `fonts`, `generic_fonts` and `@font-face`. The lookups that fill gaps in family names
+    /// and glyph coverage ([`crate::fonts::load_missing_system_fonts`] and the like) still
+    /// run, but the database they consult is empty, so nothing is added. Characters that
+    /// cannot be drawn are dropped with a warning.
+    ///
+    /// Use this to get the same PDF from the same HTML regardless of environment (to make
+    /// local, CI and container output match). A combination with no matching face among
+    /// the explicit fonts, such as the italic of `font-family: serif`, would otherwise be
+    /// filled with whatever system font each machine has, so the bytes would not match.
+    pub disable_system_fonts: bool,
     /// The base directory for resolving `src: url(...)` in `@font-face` relatively.
     /// Where the input corresponds to no file (a Rack body, say) it may be `None`, and the
     /// current directory is then the base. The same base directory is used for resolving
@@ -301,10 +314,8 @@ fn overlay_area(settings: &PageSettings, top: bool) -> (PageSettings, Rect) {
 
 /// Lay one header/footer HTML out against the margin area and turn it into a [`PageOverlay`].
 ///
-///
-/// Images are not supported (no `ImageAssetCache` is passed, so an `<img>` becomes an empty
-/// box). Text, borders and background colours are drawn through the same pipeline as the
-/// body.
+/// Embedded images use the same layout pipeline as body images. External
+/// resources remain disabled by `overlay_fetcher`.
 fn layout_overlay(
     html: &str,
     fonts: &FontCollection,
@@ -312,17 +323,28 @@ fn layout_overlay(
     top: bool,
     fetcher: &ImageFetcher,
     cache: &DocumentImageCache,
+    image_cache: Option<&ImageAssetCache>,
 ) -> Option<PageOverlay> {
     let (area_settings, clip) = overlay_area(settings, top);
     if area_settings.content_height() <= 0.0 || area_settings.content_width() <= 0.0 {
         return None;
     }
 
-    let dom = crate::html::parse(html.as_bytes());
+    let mut dom = crate::html::parse(html.as_bytes());
     let ua = user_agent_stylesheet();
     let author = extract_author_stylesheet(&dom, fetcher, cache);
     let styles = compute_styles(&dom, &ua, &author);
-    let pages = paginate_document(&dom, &styles, fonts, &area_settings);
+    let (pages, background_images) = if let Some(images) = image_cache {
+        (
+            paginate_document_with_absolutes(&mut dom, &styles, fonts, &area_settings, images),
+            resolve_background_images(&styles, images),
+        )
+    } else {
+        (
+            paginate_document(&dom, &styles, fonts, &area_settings),
+            HashMap::new(),
+        )
+    };
     let boxes = pages.into_iter().next().map(|page| page.boxes)?;
     if boxes.is_empty() {
         return None;
@@ -331,15 +353,24 @@ fn layout_overlay(
     Some(PageOverlay {
         boxes,
         styles,
+        background_images,
         settings: area_settings,
         clip,
     })
 }
 
-/// The fetcher for the header/footer HTML. It fetches no external resources
-/// (only an inline `<style>` and text are covered; a known limitation).
+/// The fetcher for the header/footer HTML. It fetches no external resources.
+/// Embedded `data:` images are allowed; local files and remote URLs are not.
 fn overlay_fetcher() -> ImageFetcher {
     ImageFetcher::new(PathBuf::from("."), false).with_local_access(false, Vec::new())
+}
+
+/// Keep decoded images alive across page-dependent overlay layouts so PDF
+/// resource identities remain stable and repeated logos are embedded only once.
+#[derive(Default)]
+struct OverlayCache {
+    pages: Option<Vec<PageOverlay>>,
+    images: Option<ImageAssetCache>,
 }
 
 /// Build the header/footer overlays to composite onto this page.
@@ -352,25 +383,42 @@ fn build_page_overlays(
     total_pages: Option<usize>,
     fetcher: &ImageFetcher,
     cache: &DocumentImageCache,
-    cached: &mut Option<Vec<PageOverlay>>,
+    cached: &mut OverlayCache,
+    load_images: bool,
 ) -> Vec<PageOverlay> {
     // Where no page number is involved, the first layout is reused.
     if !html.depends_on_page() {
-        if let Some(overlays) = cached.as_ref() {
+        if let Some(overlays) = cached.pages.as_ref() {
             return overlays.clone();
         }
     }
 
+    let images = if load_images {
+        Some(cached.images.get_or_insert_with(|| {
+            ImageAssetCache::with_fetcher(overlay_fetcher())
+                .with_svg_fonts(SvgFontDb::from_collection(fonts))
+        }))
+    } else {
+        None
+    };
     let mut overlays = Vec::new();
     for (template, top) in [(&html.header, true), (&html.footer, false)] {
         let Some(template) = template else { continue };
         let text = html.expand(template, page_number, total_pages);
-        if let Some(overlay) = layout_overlay(&text, fonts, settings, top, fetcher, cache) {
+        if let Some(overlay) = layout_overlay(
+            &text,
+            fonts,
+            settings,
+            top,
+            fetcher,
+            cache,
+            images.as_deref(),
+        ) {
             overlays.push(overlay);
         }
     }
     if !html.depends_on_page() {
-        *cached = Some(overlays.clone());
+        cached.pages = Some(overlays.clone());
     }
     overlays
 }
@@ -612,8 +660,8 @@ fn load_explicit_fonts<E>(specs: &[FontSpec]) -> Result<Vec<Font>, EngineError<E
             .map_err(|e| EngineError::Font(format!("failed to load the font: {e}")))?;
         // Even when named explicitly, a font with no outlines is not taken. Embedding it would
         // draw nothing while defeating subsetting and bloating the PDF.
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         loaded.push(font);
@@ -841,7 +889,7 @@ struct StreamingState<S: Sink> {
     /// The page geometry (used to compute the overlay areas).
     page_settings: PageSettings,
     /// The layout result of a header/footer HTML that does not depend on the page number.
-    overlay_cache: Option<Vec<PageOverlay>>,
+    overlay_cache: OverlayCache,
     /// The `font-family` names already warned about as unresolvable (so the same warning is
     /// not repeated).
     warned_font_families: Vec<String>,
@@ -892,8 +940,8 @@ fn register_generic_fonts<E>(
                 family.css_name()
             ))
         })?;
-        if !font.has_outlines() {
-            warn_font_without_outlines(&spec.path.display().to_string());
+        if !font.can_render() {
+            warn_font_cannot_render(&spec.path.display().to_string());
             continue;
         }
         fonts.push_font_face(family.css_name().to_string(), None, None, Vec::new(), font);
@@ -1062,7 +1110,11 @@ impl<S: Sink> Engine<S> {
             );
         }
 
-        let system_fonts = SystemFonts::scan();
+        let system_fonts = if self.options.disable_system_fonts {
+            SystemFonts::none()
+        } else {
+            SystemFonts::scan()
+        };
         let mut fonts = FontCollection::new(load_explicit_fonts(&self.options.fonts)?);
 
         register_generic_fonts(&mut fonts, &self.options.generic_fonts)?;
@@ -1210,7 +1262,7 @@ impl<S: Sink> Engine<S> {
             start_x,
             cursor_y: start_y,
             page_settings,
-            overlay_cache: None,
+            overlay_cache: OverlayCache::default(),
             warned_font_families: Vec::new(),
             warned_uncovered_chars: HashSet::new(),
             warned_inline_svg: false,
@@ -1331,7 +1383,18 @@ impl<S: Sink> Engine<S> {
                     &overlay_fetcher(),
                     &DocumentImageCache::new(),
                     &mut state.overlay_cache,
+                    options.content.load_images,
                 );
+                if options.content.abort_on_media_error {
+                    if let Some(err) = state
+                        .overlay_cache
+                        .images
+                        .as_ref()
+                        .and_then(ImageAssetCache::had_errors)
+                    {
+                        return Err(EngineError::MediaLoad(err));
+                    }
+                }
                 state.writer.set_page_overlays(overlays);
             }
             state
@@ -1413,7 +1476,17 @@ impl<S: Sink> Engine<S> {
                             &overlay_fetcher(),
                             &DocumentImageCache::new(),
                             &mut overlay_cache,
+                            self.options.content.load_images,
                         );
+                        if self.options.content.abort_on_media_error {
+                            if let Some(err) = overlay_cache
+                                .images
+                                .as_ref()
+                                .and_then(ImageAssetCache::had_errors)
+                            {
+                                return Err(EngineError::MediaLoad(err));
+                            }
+                        }
                         writer.set_page_overlays(overlays);
                     }
                     writer
@@ -1449,7 +1522,11 @@ impl<S: Sink> Engine<S> {
         check_document_limits(dom.max_depth(), dom.node_count())?;
         let sink = sink.expect("under Mode::Batch the sink is held unchanged until finish");
 
-        let system_fonts = SystemFonts::scan();
+        let system_fonts = if options.disable_system_fonts {
+            SystemFonts::none()
+        } else {
+            SystemFonts::scan()
+        };
         let mut fonts = FontCollection::new(load_explicit_fonts(&options.fonts)?);
 
         let mut ua = user_agent_stylesheet();
@@ -1569,12 +1646,14 @@ impl<S: Sink> Engine<S> {
             (Vec::new(), HashMap::new())
         };
 
-        // The total page count for `counter(pages)` is "TOC + body", excluding the cover.
-        let total_pages = if rules_use_page_count(&page_rules) {
-            Some(toc_pages.len() + pages.len())
-        } else {
-            None
-        };
+        // `counter(pages)` and HTML header/footer totals exclude the cover
+        // and include the TOC and body pages.
+        let total_pages =
+            if rules_use_page_count(&page_rules) || options.header_footer_html.uses_total_pages() {
+                Some(toc_pages.len() + pages.len())
+            } else {
+                None
+            };
 
         let mut writer = StreamingPdfWriter::with_options(
             &fonts,
@@ -1614,7 +1693,7 @@ impl<S: Sink> Engine<S> {
             page_number += 1;
         }
 
-        let mut overlay_cache: Option<Vec<PageOverlay>> = None;
+        let mut overlay_cache = OverlayCache::default();
         for page in pages.iter() {
             check_deadline(options.deadline)?;
             if !options.header_footer_html.is_empty() {
@@ -1627,7 +1706,17 @@ impl<S: Sink> Engine<S> {
                     &overlay_fetcher(),
                     &DocumentImageCache::new(),
                     &mut overlay_cache,
+                    options.content.load_images,
                 );
+                if options.content.abort_on_media_error {
+                    if let Some(err) = overlay_cache
+                        .images
+                        .as_ref()
+                        .and_then(ImageAssetCache::had_errors)
+                    {
+                        return Err(EngineError::MediaLoad(err));
+                    }
+                }
                 writer.set_page_overlays(overlays);
             }
             writer.set_next_page_number(Some(page_number));

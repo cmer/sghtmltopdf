@@ -46,6 +46,7 @@ module Sghtmltopdf
     # The rough bytes per call can be changed with `chunk_size:` (64KiB by default; local
     # conversion only; a smaller value means reacquiring the GVL more often).
     def render(html, **options, &block)
+      options = Options.canonicalize(options)
       client = server_client(options)
       return client.render(html.to_s, server_options(options), &block) if client
       return Native.render(html.to_s, argv_for(options)) if block.nil?
@@ -59,6 +60,7 @@ module Sghtmltopdf
     # It writes to a temporary file and renames only on success, so a failure part-way through
     # leaves no broken PDF at the destination (the same when delegating to a server).
     def render_to_file(html, path, **options)
+      options = Options.canonicalize(options)
       client = server_client(options)
       return client.render_to_file(html.to_s, server_options(options), path.to_s) if client
 

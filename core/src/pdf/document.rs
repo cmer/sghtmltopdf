@@ -62,7 +62,8 @@ use crate::style::{
     PropertyDeclaration, RgbaColor,
 };
 
-use super::font::{deflate, embed_font, FontIds, FontUsage};
+use super::color_font::{write_color_fonts, FontPlan};
+use super::font::{deflate, embed_font, FontUsage};
 use super::img::{embed_image, ids_for_image, image_resource_name, ImageIds, PreparedImage};
 use super::options::{current_datetime, producer_string, DocumentMetadata, PdfOutputOptions};
 
@@ -179,21 +180,6 @@ pub fn encode_pdf_with_options(
     let catalog_id = alloc.next();
     let pages_tree_id = alloc.next();
 
-    let font_ids: Vec<FontIds> = (0..fonts.len())
-        .map(|_| FontIds {
-            font_file: alloc.next(),
-            descriptor: alloc.next(),
-            cid_font: alloc.next(),
-            type0_font: alloc.next(),
-            to_unicode: alloc.next(),
-            // `encode_pdf` uses `/CIDToGIDMap /Identity` (embed_font) and never refers to it,
-            // but it is allocated anyway to keep `FontIds` the same type as the one
-            // `embed_font_streaming_chunks` uses.
-            cid_to_gid_map: alloc.next(),
-        })
-        .collect();
-    let font_resource_names: Vec<String> = (0..fonts.len()).map(|i| format!("F{i}")).collect();
-
     // The ExtGStates for semi-transparent drawing of `background-color`/`box-shadow`.
     // Regardless of use, 21 steps of 0.05 are allocated once for the whole document and, like
     // the fonts, listed unconditionally in every page's Resources.
@@ -204,7 +190,9 @@ pub fn encode_pdf_with_options(
         pdf.ext_graphics(id).non_stroking_alpha(a).stroking_alpha(a);
     }
 
-    // Pass 1: collect the glyphs used (no content stream is written yet).
+    // Pass 1: collect the glyphs the document uses (no content stream yet).
+    // This also decides, per glyph, whether it is drawn as an outline or as a
+    // colour glyph, which is what tells us how many Type 3 fonts to allocate.
     let mut usages: Vec<FontUsage> = (0..fonts.len()).map(|_| FontUsage::default()).collect();
     for page in pages {
         for b in &page.boxes {
@@ -212,18 +200,33 @@ pub fn encode_pdf_with_options(
         }
     }
 
-    // Embed the fonts subsetted to just those glyphs, obtaining the original GID to CID mapping.
+    let color_font_counts: Vec<usize> = usages.iter().map(|u| u.color_font_count()).collect();
+    let plan = FontPlan::new(fonts, &mut alloc, &color_font_counts);
+
+    // Subset each font down to the glyphs actually used and embed it, keeping
+    // the original-GID -> CID mapping. Fonts without outlines have no Type0
+    // font at all, so there is nothing to embed for them.
     let remaps: Vec<HashMap<u16, u16>> = fonts
         .fonts()
         .iter()
-        .zip(font_ids.iter())
+        .enumerate()
         .zip(usages.iter())
-        .map(|((font, &ids), usage)| {
-            embed_font(&mut pdf, font, ids, usage, output.compress)
+        .map(|((index, font), usage)| match plan.simple(index) {
+            Some(simple) => embed_font(&mut pdf, font, simple.ids, usage, output.compress)
                 .into_iter()
-                .collect()
+                .collect(),
+            None => HashMap::new(),
         })
         .collect();
+    for (_, chunk) in write_color_fonts(fonts, &plan, &usages, &mut alloc, output) {
+        pdf.extend(&chunk);
+    }
+    let text_fonts = TextFonts {
+        any_color: usages.iter().any(|u| u.color_font_count() > 0),
+        remaps: Some(&remaps),
+        plan: &plan,
+        usages: &usages,
+    };
 
     // Pass 2: actually write the pages' content streams. Unlike fonts, image XObjects need no
     // up-front subsetting information to be reused across pages, so "write it if this is its
@@ -281,8 +284,7 @@ pub fn encode_pdf_with_options(
                 styles,
                 fonts,
                 settings,
-                Some(&remaps),
-                &font_resource_names,
+                &text_fonts,
                 &image_ids,
                 background_images,
                 &alpha_gs_names,
@@ -330,8 +332,7 @@ pub fn encode_pdf_with_options(
         }
         write_resources(
             p.resources(),
-            &font_resource_names,
-            &font_ids,
+            &plan,
             &page_image_refs,
             &form_refs,
             &alpha_gs_names,
@@ -365,8 +366,7 @@ pub fn encode_pdf_with_options(
             form.group().transparency().isolated(true).knockout(false);
             write_resources(
                 form.resources(),
-                &font_resource_names,
-                &font_ids,
+                &plan,
                 &page_image_refs,
                 &form_refs,
                 &alpha_gs_names,
@@ -592,16 +592,15 @@ pub(super) fn write_document_info(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_resources(
     mut resources: pdf_writer::writers::Resources<'_>,
-    font_resource_names: &[String],
-    font_ids: &[FontIds],
+    plan: &FontPlan,
     page_image_refs: &[Ref],
     form_refs: &[Ref],
     alpha_gs_names: &[String],
     alpha_gs_ids: &[Ref],
 ) {
     let mut font_dict = resources.fonts();
-    for (name, ids) in font_resource_names.iter().zip(font_ids.iter()) {
-        font_dict.pair(Name(name.as_bytes()), ids.type0_font);
+    for (name, id) in plan.resource_entries() {
+        font_dict.pair(Name(name.as_bytes()), id);
     }
     font_dict.finish();
     let mut xobject_dict = resources.x_objects();
@@ -615,6 +614,95 @@ pub(super) fn write_resources(
     let mut ext_g_state_dict = resources.ext_g_states();
     for (name, &id) in alpha_gs_names.iter().zip(alpha_gs_ids.iter()) {
         ext_g_state_dict.pair(Name(name.as_bytes()), id);
+    }
+}
+
+/// Everything the text writer needs to know about fonts.
+///
+/// Carried from `render_box` down to `render_line`. It holds both the one
+/// difference between batch and streaming output (whether CIDs are renumbered
+/// to subset glyph IDs) and the routing of each glyph to either the ordinary
+/// Type0 font or a Type 3 colour font.
+pub(super) struct TextFonts<'a> {
+    /// Whether any glyph in the document is drawn in colour at all.
+    pub any_color: bool,
+    /// Maps original glyph IDs to subset glyph IDs (CIDs). `Some` only in
+    /// batch mode (`encode_pdf`); streaming passes `None` and always uses the
+    /// original glyph ID as the CID.
+    pub remaps: Option<&'a [HashMap<u16, u16>]>,
+    /// The font resources that were allocated (Type0 and Type 3).
+    pub plan: &'a FontPlan,
+    /// The glyph routing table. Read back exactly as `FontUsage::record` left
+    /// it: if collection and drawing disagreed, glyphs would come out wrong.
+    pub usages: &'a [FontUsage],
+}
+
+impl TextFonts<'_> {
+    /// Which PDF font and which code to draw `glyph_id` of font `font_index`
+    /// with.
+    fn target(&self, font_index: usize, glyph_id: u16) -> GlyphTarget<'_> {
+        if let Some((ordinal, code)) = self
+            .usages
+            .get(font_index)
+            .and_then(|usage| usage.color_code(glyph_id))
+        {
+            if let Some(color) = self.plan.color(font_index, ordinal) {
+                return GlyphTarget::Color {
+                    name: &color.name,
+                    code,
+                };
+            }
+        }
+        let Some(simple) = self.plan.simple(font_index) else {
+            return GlyphTarget::Dropped;
+        };
+        // With `remaps` (batch) translate to the subset glyph ID; without it
+        // (streaming) keep the original glyph ID.
+        let cid = match self.remaps {
+            Some(remaps) => match remaps.get(font_index).and_then(|m| m.get(&glyph_id)) {
+                Some(&cid) => cid,
+                // Not in the subset, i.e. judged undrawable.
+                None => return GlyphTarget::Dropped,
+            },
+            None => glyph_id,
+        };
+        GlyphTarget::Simple {
+            name: &simple.name,
+            cid,
+        }
+    }
+}
+
+/// How a single glyph is to be drawn.
+#[derive(PartialEq)]
+enum GlyphTarget<'a> {
+    /// The ordinary Type0 font, with two-byte CIDs.
+    Simple { name: &'a str, cid: u16 },
+    /// A Type 3 colour font, with one-byte codes.
+    Color { name: &'a str, code: u8 },
+    /// A glyph with neither an outline nor a colour representation. Nothing
+    /// is emitted for it.
+    Dropped,
+}
+
+impl GlyphTarget<'_> {
+    /// The resource name, which is what decides whether two glyphs can share
+    /// one `Tf`/`Tm`.
+    fn resource_name(&self) -> Option<&str> {
+        match self {
+            GlyphTarget::Simple { name, .. } | GlyphTarget::Color { name, .. } => Some(name),
+            GlyphTarget::Dropped => None,
+        }
+    }
+
+    /// The bytes to hand to a text-showing operator: two for Type0, one for
+    /// Type 3.
+    fn code_bytes(&self) -> Vec<u8> {
+        match self {
+            GlyphTarget::Simple { cid, .. } => cid.to_be_bytes().to_vec(),
+            GlyphTarget::Color { code, .. } => vec![*code],
+            GlyphTarget::Dropped => Vec::new(),
+        }
     }
 }
 
@@ -1052,8 +1140,7 @@ pub(super) fn render_box(
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     alpha_gs_names: &[String],
@@ -1072,8 +1159,7 @@ pub(super) fn render_box(
         styles,
         fonts,
         settings,
-        remaps,
-        font_resource_names,
+        text_fonts,
         image_ids,
         background_images,
         alpha_gs_names,
@@ -1098,8 +1184,7 @@ fn render_box_with_style(
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     alpha_gs_names: &[String],
@@ -1114,8 +1199,7 @@ fn render_box_with_style(
             styles,
             fonts,
             settings,
-            remaps,
-            font_resource_names,
+            text_fonts,
             image_ids,
             background_images,
             alpha_gs_names,
@@ -1135,8 +1219,7 @@ fn render_box_with_style(
         styles,
         fonts,
         settings,
-        remaps,
-        font_resource_names,
+        text_fonts,
         image_ids,
         background_images,
         alpha_gs_names,
@@ -1159,8 +1242,7 @@ fn render_box_opacity_wrapped(
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     alpha_gs_names: &[String],
@@ -1175,8 +1257,7 @@ fn render_box_opacity_wrapped(
             styles,
             fonts,
             settings,
-            remaps,
-            font_resource_names,
+            text_fonts,
             image_ids,
             background_images,
             alpha_gs_names,
@@ -1202,8 +1283,7 @@ fn render_box_opacity_wrapped(
         styles,
         fonts,
         settings,
-        remaps,
-        font_resource_names,
+        text_fonts,
         image_ids,
         background_images,
         alpha_gs_names,
@@ -1282,8 +1362,7 @@ fn render_box_with_style_inner(
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     image_ids: &HashMap<usize, ImageIds>,
     background_images: &HashMap<NodeId, Rc<PreparedImage>>,
     alpha_gs_names: &[String],
@@ -1307,8 +1386,7 @@ fn render_box_with_style_inner(
                         styles,
                         fonts,
                         settings,
-                        remaps,
-                        font_resource_names,
+                        text_fonts,
                         image_ids,
                         background_images,
                         alpha_gs_names,
@@ -1325,8 +1403,7 @@ fn render_box_with_style_inner(
                         styles,
                         fonts,
                         settings,
-                        remaps,
-                        font_resource_names,
+                        text_fonts,
                         image_ids,
                         background_images,
                         alpha_gs_names,
@@ -1343,8 +1420,7 @@ fn render_box_with_style_inner(
                         styles,
                         fonts,
                         settings,
-                        remaps,
-                        font_resource_names,
+                        text_fonts,
                         image_ids,
                         background_images,
                         alpha_gs_names,
@@ -1360,8 +1436,7 @@ fn render_box_with_style_inner(
                             styles,
                             fonts,
                             settings,
-                            remaps,
-                            font_resource_names,
+                            text_fonts,
                             image_ids,
                             background_images,
                             alpha_gs_names,
@@ -1404,15 +1479,7 @@ fn render_box_with_style_inner(
     // The marker of a `display: list-item`. It reuses the same `render_line` as an ordinary
     // text line.
     if let Some(marker) = &b.marker {
-        render_line(
-            content,
-            marker,
-            fonts,
-            settings,
-            remaps,
-            font_resource_names,
-            alpha_gs_names,
-        );
+        render_line(content, marker, fonts, settings, text_fonts, alpha_gs_names);
     }
 
     // `overflow: hidden`/`scroll`/`auto` (not distinguished; all clip the same way).
@@ -1438,8 +1505,7 @@ fn render_box_with_style_inner(
                     styles,
                     fonts,
                     settings,
-                    remaps,
-                    font_resource_names,
+                    text_fonts,
                     image_ids,
                     background_images,
                     alpha_gs_names,
@@ -1456,8 +1522,7 @@ fn render_box_with_style_inner(
                     styles,
                     fonts,
                     settings,
-                    remaps,
-                    font_resource_names,
+                    text_fonts,
                     image_ids,
                     background_images,
                     alpha_gs_names,
@@ -1468,15 +1533,7 @@ fn render_box_with_style_inner(
         }
         LaidOutContent::Inline(lines) => {
             for line in lines {
-                render_line(
-                    content,
-                    line,
-                    fonts,
-                    settings,
-                    remaps,
-                    font_resource_names,
-                    alpha_gs_names,
-                );
+                render_line(content, line, fonts, settings, text_fonts, alpha_gs_names);
                 // A `display: inline-block` within a line goes through the same drawing path
                 // as an ordinary block (borders, background and the text inside).
                 for atomic in &line.atomics {
@@ -1486,8 +1543,7 @@ fn render_box_with_style_inner(
                         styles,
                         fonts,
                         settings,
-                        remaps,
-                        font_resource_names,
+                        text_fonts,
                         image_ids,
                         background_images,
                         alpha_gs_names,
@@ -1519,8 +1575,7 @@ fn render_box_with_style_inner(
                     styles,
                     fonts,
                     settings,
-                    remaps,
-                    font_resource_names,
+                    text_fonts,
                     image_ids,
                     background_images,
                     alpha_gs_names,
@@ -1574,8 +1629,7 @@ fn render_box_with_style_inner(
                             styles,
                             fonts,
                             settings,
-                            remaps,
-                            font_resource_names,
+                            text_fonts,
                             image_ids,
                             background_images,
                             alpha_gs_names,
@@ -1589,8 +1643,7 @@ fn render_box_with_style_inner(
                             styles,
                             fonts,
                             settings,
-                            remaps,
-                            font_resource_names,
+                            text_fonts,
                             image_ids,
                             background_images,
                             alpha_gs_names,
@@ -3052,45 +3105,181 @@ const ITALIC_SHEAR: f32 = 0.2126; // tan(12°)
 /// The stroke width for faux bold (fill plus outline), as a ratio of the font size.
 const BOLD_STROKE_RATIO: f32 = 0.03;
 
-/// The lower bound (px) for correcting a glyph advance mismatch. Anything below it only
-/// inflates the TJ array without any visible effect, so it is ignored.
+/// A stretch of a run that can be drawn with one PDF font.
+///
+/// Even within a single run the destination can change from glyph to glyph: a
+/// colour emoji goes to a Type 3 font and everything else to the ordinary
+/// Type0 font, and the two differ in both resource name and code width, so
+/// each switch needs a fresh `Tf` and `Tm`.
+///
+/// `x` is relative to the run's origin, in px. `letter-spacing` is added
+/// separately through `Tc`, but it still has to be counted into the pen
+/// advance to find where a segment starts.
+struct RunSegment<'a> {
+    x: f32,
+    /// Where the segment's first glyph goes; its resource name stands for the
+    /// whole segment.
+    first: GlyphTarget<'a>,
+    /// The glyphs in this segment, as indices into `run.glyphs`.
+    range: std::ops::Range<usize>,
+}
+
+/// Cut `run` into [`RunSegment`]s. An undrawable glyph
+/// ([`GlyphTarget::Dropped`]) joins no segment; only the pen advances past it.
+///
+/// With `include_color` false, colour glyphs are dropped too. That is for
+/// `text-shadow`, where redrawing the full-colour artwork at an offset would
+/// not be a shadow.
+///
+/// `codes` is filled with one entry per glyph in the run: the CID for a glyph
+/// bound for a Type0 font, the one-byte code for one bound for a Type 3 font,
+/// and a placeholder for a dropped glyph (which no segment covers, so it is
+/// never read). Resolving a glyph is a hash lookup, so the writer reads the
+/// answer back from here rather than asking a second time.
+fn run_segments<'a>(
+    run: &TextRun,
+    text_fonts: &'a TextFonts<'a>,
+    include_color: bool,
+    codes: &mut Vec<u16>,
+) -> Vec<RunSegment<'a>> {
+    let mut segments: Vec<RunSegment<'a>> = Vec::new();
+    codes.clear();
+    codes.resize(run.glyphs.len(), 0);
+    // Nothing in this document is drawn in colour, so every glyph in the run
+    // goes to the same Type0 font. Resolving that font is then a per-run
+    // decision rather than a per-glyph one, and the loop below is left with
+    // just the subset lookup. Without this, routing every glyph through
+    // `target` costs about 40% of the encoding phase on a text-heavy
+    // document.
+    if !text_fonts.any_color {
+        let Some(simple) = text_fonts.plan.simple(run.font_index) else {
+            // No Type0 font for this face, so nothing in the run is drawable.
+            return segments;
+        };
+        let Some(remaps) = text_fonts.remaps else {
+            // Streaming keeps the original glyph IDs as CIDs, so no glyph can
+            // fall outside a subset and the run is one segment.
+            let Some(first) = run.glyphs.first() else {
+                return segments;
+            };
+            for (code, glyph) in codes.iter_mut().zip(&run.glyphs) {
+                *code = glyph.glyph_id;
+            }
+            segments.push(RunSegment {
+                x: 0.0,
+                first: GlyphTarget::Simple {
+                    name: &simple.name,
+                    cid: first.glyph_id,
+                },
+                range: 0..run.glyphs.len(),
+            });
+            return segments;
+        };
+        let remap = remaps.get(run.font_index);
+        let mut x = 0.0;
+        for (index, glyph) in run.glyphs.iter().enumerate() {
+            // A glyph missing from the subset was judged undrawable; it joins
+            // no segment and only the pen advances past it.
+            if let Some(&cid) = remap.and_then(|m| m.get(&glyph.glyph_id)) {
+                codes[index] = cid;
+                match segments.last_mut() {
+                    Some(last) if last.range.end == index => last.range.end = index + 1,
+                    _ => segments.push(RunSegment {
+                        x,
+                        first: GlyphTarget::Simple {
+                            name: &simple.name,
+                            cid,
+                        },
+                        range: index..index + 1,
+                    }),
+                }
+            }
+            x += glyph.x_advance + run.letter_spacing;
+        }
+        return segments;
+    }
+    let mut x = 0.0;
+    for (index, glyph) in run.glyphs.iter().enumerate() {
+        let target = match text_fonts.target(run.font_index, glyph.glyph_id) {
+            GlyphTarget::Color { .. } if !include_color => GlyphTarget::Dropped,
+            target => target,
+        };
+        if target != GlyphTarget::Dropped {
+            codes[index] = match target {
+                GlyphTarget::Simple { cid, .. } => cid,
+                GlyphTarget::Color { code, .. } => code as u16,
+                GlyphTarget::Dropped => 0,
+            };
+            match segments.last_mut() {
+                Some(last)
+                    if last.range.end == index
+                        && last.first.resource_name() == target.resource_name() =>
+                {
+                    last.range.end = index + 1;
+                }
+                _ => segments.push(RunSegment {
+                    x,
+                    first: target,
+                    range: index..index + 1,
+                }),
+            }
+        }
+        x += glyph.x_advance + run.letter_spacing;
+    }
+    segments
+}
+
+/// The smallest advance-width discrepancy worth correcting, in px. Below this
+/// a correction only inflates the TJ array without being visible.
 const ADVANCE_EPSILON: f32 = 0.01;
 
-/// Write out a run's glyphs. Where an advance disagrees with `/W`, a TJ correction is inserted after the glyph.
+/// Write out one segment's glyphs, inserting a TJ correction after any glyph
+/// whose advance disagrees with the font's own width.
 ///
-/// The width by which a PDF advances a glyph comes from the CIDFont's `/W`, which can hold
-/// only one value per glyph ID. Layout, meanwhile, uses the `x_advance` the shaper returns.
-/// The two need not agree.
+/// The width by which a PDF advances past a glyph comes from the font's width
+/// information (a CIDFont's `/W`, a Type 3 font's `/Widths`), which can hold
+/// only one value per glyph ID. Layout, meanwhile, uses the `x_advance` the
+/// shaper returned, and the two need not agree.
 ///
-/// * `merge_adjacent_runs` restores inter-word whitespace as "a space glyph whose advance is
-///   the gap". A gap widened by `text-align: justify` does not match the space's own width,
-///   so without a correction a justified line falls short of the right edge by the amount it was stretched.
-/// * For a fixed-width space the font lacks (`&thinsp;` and the like), the shaper substitutes
-///   the space glyph while replacing only the advance with the prescribed value (em/5 and so
-///   on). An ordinary space uses the same glyph, so `/W` can express only one of the widths.
+/// * `merge_adjacent_runs` restores a word space as "a space glyph carrying
+///   the gap's advance". A gap widened by `text-align: justify` is not the
+///   space's own width, so without a correction a justified line falls short
+///   of the right margin by however much it was stretched.
+/// * For a fixed-width space the font lacks (`&thinsp;` and friends) the
+///   shaper substitutes the space glyph but overrides the advance to the
+///   prescribed value (em/5 and so on). A plain space uses the same glyph, so
+///   the width information can only express one of the two.
 ///
-/// The difference is made up by TJ array corrections. A TJ number is in 1/1000ths of text
-/// space and is *subtracted* from the advance (a positive value tightens), so a negative
-/// value is used to widen. `letter-spacing` is added separately by `Tc` and is not part of this difference.
-fn show_run_glyphs(
+/// The difference is made up with TJ array corrections. TJ numbers are in
+/// thousandths of a text space unit and are subtracted from the advance
+/// (positive tightens), so widening takes a negative value. `letter-spacing`
+/// is added separately through `Tc` and so is left out of this difference.
+fn show_segment_glyphs(
     content: &mut RenderTarget<'_>,
     run: &TextRun,
     font: &Font,
-    remap: Option<&HashMap<u16, u16>>,
+    codes: &[u16],
+    segment: &RunSegment<'_>,
 ) {
-    // With `remaps` as `Some` (batch processing) the subsetted glyph IDs are used; with `None`
-    // (streaming) the original glyph IDs stay.
-    let cid_of = |glyph_id: u16| match remap {
-        Some(remap) => remap.get(&glyph_id).copied().unwrap_or(0),
-        None => glyph_id,
+    let glyphs = &run.glyphs[segment.range.clone()];
+    let codes = &codes[segment.range.clone()];
+    // Every glyph in a segment goes to the same font, and code width follows
+    // from that: two bytes for a Type0 CID, one for a Type 3 character code.
+    let color_segment = matches!(segment.first, GlyphTarget::Color { .. });
+    let push_code = |out: &mut Vec<u8>, code: u16| {
+        if color_segment {
+            out.push(code as u8);
+        } else {
+            out.extend_from_slice(&code.to_be_bytes());
+        }
     };
 
     let units_per_em = font.units_per_em() as f32;
     // A run with a font size of 0 cannot be corrected (there is no conversion to 1/1000ths).
     if run.font_size <= 0.0 || units_per_em <= 0.0 {
-        let mut glyph_bytes = Vec::with_capacity(run.glyphs.len() * 2);
-        for glyph in &run.glyphs {
-            glyph_bytes.extend_from_slice(&cid_of(glyph.glyph_id).to_be_bytes());
+        let mut glyph_bytes = Vec::with_capacity(glyphs.len() * 2);
+        for &code in codes {
+            push_code(&mut glyph_bytes, code);
         }
         content.show(pdf_writer::Str(&glyph_bytes));
         return;
@@ -3100,9 +3289,9 @@ fn show_run_glyphs(
     let mut items = positioned.items();
     // Glyphs needing no correction are emitted together as one string (with no corrections at
     // all it becomes a one-element TJ array, no bigger than a `Tj`).
-    let mut pending = Vec::with_capacity(run.glyphs.len() * 2);
-    for glyph in &run.glyphs {
-        pending.extend_from_slice(&cid_of(glyph.glyph_id).to_be_bytes());
+    let mut pending = Vec::with_capacity(glyphs.len() * 2);
+    for (glyph, &code) in glyphs.iter().zip(codes) {
+        push_code(&mut pending, code);
         let pdf_advance = font.glyph_hor_advance(glyph.glyph_id).unwrap_or(0) as f32
             * run.font_size
             / units_per_em;
@@ -3128,8 +3317,7 @@ fn render_line(
     line: &LineBox,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     alpha_gs_names: &[String],
 ) {
     if line.runs.is_empty() {
@@ -3176,13 +3364,16 @@ fn render_line(
         line,
         fonts,
         settings,
-        remaps,
-        font_resource_names,
+        text_fonts,
         alpha_gs_names,
         baseline_y,
     );
 
     content.begin_text();
+
+    // Resolved glyph codes for the run being written. Held across runs so the
+    // whole line reuses one buffer.
+    let mut glyph_codes: Vec<u16> = Vec::new();
 
     // Where the gap between two runs exceeds the sum of the actual glyph widths, it counts as
     // a word boundary (that is, one space). A run boundary from a style or font change within
@@ -3194,18 +3385,6 @@ fn render_line(
         if run.glyphs.is_empty() {
             continue;
         }
-        // With `remaps` as `Some` (batch processing) the translation table to subsetted glyph
-        // IDs is consulted; with `None` (streaming) a CID is always the original glyph ID.
-        let remap = match remaps {
-            Some(remaps) => match remaps.get(run.font_index) {
-                Some(remap) => Some(remap),
-                None => continue,
-            },
-            None => None,
-        };
-        let Some(resource_name) = font_resource_names.get(run.font_index) else {
-            continue;
-        };
 
         // Inter-word whitespace is expressed in layout only as a gap (an addition to
         // x_offset), and no `TextRun.text` contains an actual whitespace character (to keep
@@ -3250,15 +3429,29 @@ fn render_line(
 
         let x = settings.margin.left + line.rect.x + run.x_offset;
         let shear = if run.italic { ITALIC_SHEAR } else { 0.0 };
-        content.set_font(Name(resource_name.as_bytes()), run.font_size);
-        content.set_text_matrix([1.0, 0.0, shear, 1.0, x, baseline_y + run.baseline_shift]);
         // `letter-spacing` cannot be reflected in the glyph widths themselves (the font's
         // `/Widths`), so PDF's `Tc` (character spacing) is used. Unlike `Tw` (word spacing) it
         // applies to composite fonts (two-byte CIDs) too. It is set explicitly even at 0, so
         // the previous run's value cannot linger in the graphics state.
-
         content.set_char_spacing(run.letter_spacing);
-        show_run_glyphs(content, run, font, remap);
+        // Colour glyphs and the rest use different PDF fonts even inside one
+        // run, so emit a fresh `Tf` and `Tm` per segment. The `Tm` is written
+        // absolute, as the run origin plus the segment's offset within it.
+        for segment in run_segments(run, text_fonts, true, &mut glyph_codes) {
+            let Some(resource_name) = segment.first.resource_name() else {
+                continue;
+            };
+            content.set_font(Name(resource_name.as_bytes()), run.font_size);
+            content.set_text_matrix([
+                1.0,
+                0.0,
+                shear,
+                1.0,
+                x + segment.x,
+                baseline_y + run.baseline_shift,
+            ]);
+            show_segment_glyphs(content, run, font, &glyph_codes, &segment);
+        }
     }
 
     content.end_text();
@@ -3299,15 +3492,7 @@ fn render_line(
     }
 
     // Like the decoration lines, `text-emphasis` marks are drawn after the text itself.
-    render_emphasis_marks(
-        content,
-        line,
-        fonts,
-        settings,
-        remaps,
-        font_resource_names,
-        baseline_y,
-    );
+    render_emphasis_marks(content, line, fonts, settings, text_fonts, baseline_y);
 }
 
 /// Draw the `text-emphasis` marks.
@@ -3320,8 +3505,7 @@ fn render_emphasis_marks(
     line: &LineBox,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     baseline_y: f32,
 ) {
     for run in &line.runs {
@@ -3354,8 +3538,7 @@ fn render_emphasis_marks(
                     center_y,
                     run,
                     fonts,
-                    remaps,
-                    font_resource_names,
+                    text_fonts,
                 );
             }
             x += advance;
@@ -3372,8 +3555,7 @@ fn render_emphasis_mark(
     center_y: f32,
     run: &TextRun,
     fonts: &FontCollection,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
 ) {
     let (r, g, b) = (
         mark.color.red as f32 / 255.0,
@@ -3386,15 +3568,7 @@ fn render_emphasis_mark(
         EmphasisStyle::Shape { shape, filled } => (*shape, *filled),
         EmphasisStyle::String(ch) => {
             render_emphasis_glyph(
-                content,
-                *ch,
-                center_x,
-                center_y,
-                mark,
-                run,
-                fonts,
-                remaps,
-                font_resource_names,
+                content, *ch, center_x, center_y, mark, run, fonts, text_fonts,
             );
             return;
         }
@@ -3460,23 +3634,19 @@ fn render_emphasis_glyph(
     mark: &EmphasisMark,
     run: &TextRun,
     fonts: &FontCollection,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
 ) {
-    let Some(resource_name) = font_resource_names.get(run.font_index) else {
-        return;
-    };
     let Some(glyph_id) = fonts.get(run.font_index).and_then(|font| font.glyph_id(ch)) else {
         return;
     };
-    let cid = match remaps {
-        Some(remaps) => match remaps.get(run.font_index) {
-            Some(remap) => remap.get(&glyph_id).copied().unwrap_or(0),
-            None => return,
-        },
-        None => glyph_id,
+    // A mark is a single glyph, so there is nothing to segment. A colour
+    // glyph works here through the same mechanism.
+    let target = text_fonts.target(run.font_index, glyph_id);
+    let Some(resource_name) = target.resource_name() else {
+        return;
     };
-    if cid == 0 {
+    let code = target.code_bytes();
+    if code.iter().all(|&b| b == 0) {
         return;
     }
 
@@ -3498,7 +3668,7 @@ fn render_emphasis_glyph(
         center_x - mark.size / 2.0,
         center_y - mark.size / 2.0,
     ]);
-    content.show(pdf_writer::Str(&cid.to_be_bytes()));
+    content.show(pdf_writer::Str(&code));
     content.end_text();
 }
 
@@ -3539,11 +3709,12 @@ fn render_text_shadows(
     line: &LineBox,
     fonts: &FontCollection,
     settings: &PageSettings,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     alpha_gs_names: &[String],
     baseline_y: f32,
 ) {
+    // Reused across runs, like in `render_line`.
+    let mut glyph_codes: Vec<u16> = Vec::new();
     for run in &line.runs {
         let Some(shadows) = run.text_shadow.as_deref() else {
             continue;
@@ -3551,20 +3722,16 @@ fn render_text_shadows(
         if shadows.is_empty() || run.glyphs.is_empty() {
             continue;
         }
-        let remap = match remaps {
-            Some(remaps) => match remaps.get(run.font_index) {
-                Some(remap) => Some(remap),
-                None => continue,
-            },
-            None => None,
-        };
-        let Some(resource_name) = font_resource_names.get(run.font_index) else {
-            continue;
-        };
         // A shadow is the same glyph run as the text itself, so its advance corrections have to match or it will shift.
         let Some(font) = fonts.get(run.font_index) else {
             continue;
         };
+        // Colour glyphs cast no shadow: all that would happen is the artwork
+        // itself being redrawn at the shadow's offset.
+        let segments = run_segments(run, text_fonts, false, &mut glyph_codes);
+        if segments.is_empty() {
+            continue;
+        }
 
         let x = settings.margin.left + line.rect.x + run.x_offset;
         let run_baseline_y = baseline_y + run.baseline_shift;
@@ -3586,18 +3753,23 @@ fn render_text_shadows(
                     shadow.color.blue as f32 / 255.0,
                 );
                 content.set_text_rendering_mode(TextRenderingMode::Fill);
-                content.set_font(Name(resource_name.as_bytes()), run.font_size);
-                // CSS's offset-y is positive downwards; PDF's Y is positive upwards.
-                content.set_text_matrix([
-                    1.0,
-                    0.0,
-                    shear,
-                    1.0,
-                    x + shadow.offset_x + dx,
-                    run_baseline_y - shadow.offset_y - dy,
-                ]);
                 content.set_char_spacing(run.letter_spacing);
-                show_run_glyphs(content, run, font, remap);
+                for segment in &segments {
+                    let Some(resource_name) = segment.first.resource_name() else {
+                        continue;
+                    };
+                    content.set_font(Name(resource_name.as_bytes()), run.font_size);
+                    // CSS's offset-y is positive downwards; PDF's Y is positive upwards.
+                    content.set_text_matrix([
+                        1.0,
+                        0.0,
+                        shear,
+                        1.0,
+                        x + segment.x + shadow.offset_x + dx,
+                        run_baseline_y - shadow.offset_y - dy,
+                    ]);
+                    show_segment_glyphs(content, run, font, &glyph_codes, segment);
+                }
                 content.end_text();
                 content.restore_state();
             }
@@ -3834,6 +4006,7 @@ struct ShapedMarginBox {
 #[derive(Clone)]
 pub struct PageOverlay {
     pub boxes: Vec<LaidOutBox>,
+    pub background_images: HashMap<NodeId, Rc<PreparedImage>>,
     pub styles: HashMap<NodeId, Rc<ComputedStyle>>,
     /// The drawing settings relative to the margin area.
     pub settings: PageSettings,
@@ -3846,14 +4019,13 @@ pub(super) fn render_page_overlay(
     content: &mut RenderTarget<'_>,
     overlay: &PageOverlay,
     fonts: &FontCollection,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
     alpha_gs_names: &[String],
+    image_ids: &HashMap<usize, ImageIds>,
 ) {
     if overlay.boxes.is_empty() {
         return;
     }
-    let empty_images: HashMap<NodeId, Rc<PreparedImage>> = HashMap::new();
-    let empty_image_ids: HashMap<usize, ImageIds> = HashMap::new();
     let empty_form_ids: HashMap<NodeId, Ref> = HashMap::new();
     let mut pending_forms: Vec<(Ref, Vec<u8>)> = Vec::new();
 
@@ -3871,10 +4043,9 @@ pub(super) fn render_page_overlay(
             &overlay.styles,
             fonts,
             &overlay.settings,
-            None,
-            font_resource_names,
-            &empty_image_ids,
-            &empty_images,
+            text_fonts,
+            image_ids,
+            &overlay.background_images,
             alpha_gs_names,
             &empty_form_ids,
             &mut pending_forms,
@@ -3970,8 +4141,7 @@ pub(super) fn render_margin_boxes(
     page_rules: &[PageRule],
     page_number: usize,
     total_pages: Option<usize>,
-    remaps: Option<&[HashMap<u16, u16>]>,
-    font_resource_names: &[String],
+    text_fonts: &TextFonts<'_>,
 ) {
     for shaped in shape_margin_boxes_for_page(settings, fonts, page_rules, page_number, total_pages)
     {
@@ -3986,15 +4156,7 @@ pub(super) fn render_margin_boxes(
             VAlign::Middle => shaped.rect.y + (shaped.rect.height - line.rect.height) / 2.0,
             VAlign::Bottom => shaped.rect.y + shaped.rect.height - line.rect.height,
         };
-        render_line(
-            content,
-            &line,
-            fonts,
-            settings,
-            remaps,
-            font_resource_names,
-            &[],
-        );
+        render_line(content, &line, fonts, settings, text_fonts, &[]);
     }
 }
 

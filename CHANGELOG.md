@@ -5,10 +5,198 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.5.0 - 2026-09-20
+
+### Added
+
+- Render colour emoji in colour (#12). Embedded bitmaps (`CBDT`/`CBLC`, `sbix`) and
+  `COLR`/`CPAL` v0 layered fills are both drawn; a font carrying either is now accepted by
+  font selection, by `@font-face` and by the system font search, so Apple Color Emoji and
+  Noto Color Emoji work whether they are named through `--font` or found automatically.
+  Before this, such a font was declined outright (#9) and the emoji fell back to tofu.
+
+  Colour glyphs go into the PDF as a Type 3 font, one glyph procedure per glyph: a bitmap
+  draws an image XObject with its alpha channel as an `/SMask`, and a `COLR` v0 glyph fills
+  its layers as paths in the palette's colours. The glyphs stay text, so `/ToUnicode`,
+  extraction, search and copy work exactly as they do for ordinary characters, and line
+  breaking, justification, `letter-spacing` and `--grayscale` all apply to them. The
+  original font program is never embedded, so the 9.9MB pass-through of a bitmap-only font
+  cannot happen: only the glyphs the document actually uses are written.
+
+  COLRv1 (gradients, transforms, compositing) and OpenType SVG remain out of scope. A
+  COLRv1 font carries `glyf`, so it still renders as its monochrome base outlines. Palette
+  selection through `font-palette` is not supported; palette 0 is always used.
+
+  Routing every glyph to either the Type0 font or the Type 3 font is a hash lookup per
+  glyph, which on its own cost about 40% of the encoding phase on a document of around a
+  million glyphs (64.7ms to 91.3ms over 337 pages) and 13.5% on a 200-page receipt. A
+  document with no colour glyph in it therefore resolves its font once per text run rather
+  than once per glyph, the per-glyph loop is left with the subset lookup alone, and
+  `code_bytes()` allocates no `Vec<u8>` per glyph, which keeps both within 3% of the
+  encoding time before this feature.
+
+- `data:` URL images in `--header-html`/`--footer-html`, as `<img>` and as
+  `background-image` (#54). The overlay had no image cache passed to it, so an `<img>` laid
+  out as an empty box and a logo in a header simply did not appear. PNG, JPEG, WebP and SVG
+  (with the `svg` feature) all work, through the same layout and drawing path as a body
+  image, and a decoded image is kept across pages so a logo repeated on every page is
+  embedded once. External resources stay unavailable — local files and remote URLs are still
+  refused, as is an external stylesheet — and `--no-images` and the existing image error
+  handling apply to an overlay as they do to the body.
+
+- Precompiled gems for `x86_64-darwin`, so an Intel Mac installs a binary gem instead of
+  building the extension or falling back to server mode (#55). The platform is in the
+  `rake-compiler` cross target list and the cross-gem CI matrix, and the resulting gem is
+  smoke-installed on a real Intel runner (`macos-15-intel`). The platform lists and the
+  notes that called Intel Macs out of scope are updated across both READMEs, the
+  `extconf.rb` abort message and the documentation sources.
+
+- A benchmark suite under `core/benches`, with a regression gate CI runs on every push and
+  pull request (#53). Four `cargo bench` targets share one fixture corpus and the fonts in
+  `core/tests/fonts`, and run with `--disable-system-fonts` so a result does not depend on
+  the machine: `phases` times each pipeline stage in isolation, `end_to_end` the `Engine`
+  API, the CLI binary and an HTTP round trip, `scale` documents from 1k to 60k elements in
+  both batch and streaming mode, and `metrics` records allocations, peak heap and RSS, page
+  count and PDF size against a committed `baseline.json`. Wall-clock time on a shared runner
+  is too noisy to gate on, so only the metrics target fails a build: page count and PDF size
+  may not move at all, allocations may grow 5% and peak RSS 10%. A change that moves them on
+  purpose is re-recorded with `--save-baseline` and the new baseline ships in the same pull
+  request. `BENCHMARK.md` covers day-to-day use and `core/benches/README.md` documents every
+  fixture and every option of the gate.
+
+- `--disable-system-fonts` (`EngineOptions::disable_system_fonts`) turns the system font
+  search off, so a document is built only from `--font`, `--gothic-font`/`--serif-font`/
+  `--mono-font` and `@font-face`. Passing fonts explicitly was not enough on its own:
+  a combination with no matching face — `font-family: serif` in italic, say — was still
+  filled in from whatever the machine had installed, so the same HTML produced a PDF
+  embedding Times New Roman on macOS and DejaVu Serif on a Linux container. With the
+  flag the output is identical on either. Characters that no given font can draw are
+  warned about and left undrawn, as before.
+
+### Changed
+
+- Updated `rustls` (0.23.42 to 0.23.45) and `rustls-webpki` (0.103.13 to 0.103.15).
 
 ### Fixed
 
+- Measure a word space with the text font rather than with a fallback colour font. Noto
+  Color Emoji is monospaced at about 1.25em, so the gap following an emoji came out roughly
+  four times too wide.
+
+- `[topage]` in `--header-html`/`--footer-html` now expands to the real total instead of an
+  empty string (#56). The total was only counted when the document's own `@page` rules used
+  `counter(pages)`, so a header or footer that asked for it and nothing else printed
+  "Page 1 of " on every page. The counting rules are unchanged: the cover is excluded and
+  the TOC is included. Streaming mode still cannot know the total, and rejects `[topage]` as
+  before.
+
+## 0.4.0 - 2026-09-05
+
+### Added
+
+- Hoist the rules inside `@layer` blocks to the top level, in source order, instead of
+  dropping the whole block (#20). Tailwind v4 wraps its entire output in cascade layers,
+  so a stock v4 bundle rendered a completely unstyled document. Layer precedence is not
+  implemented: a print stylesheet is normally a single bundle with nothing to arbitrate
+  against, so plain source order gives the same result, and where it differs the usual
+  specificity contest decides. The bare `@layer a, b;` ordering statement is still ignored.
+
+### Changed
+
+- `--allow` is now spelled `--allow-path`, with `--allow` kept as an alias, so nothing
+  has to change. On its own `--allow` says nothing about what it allows, and it sat next
+  to `--allow-remote-assets`, which allows something else entirely. The Ruby key follows:
+  `allow_path:`, with `allow:` normalized to it — the two are folded into one key rather
+  than passed through as two, since repeating the flag means "add another directory", so
+  a default under one spelling and a call-site value under the other would have been
+  merged instead of replaced.
+
+- The Rails defaults now let the engine read under `public/` and the asset pipeline load
+  paths (`config.assets.paths`) rather than the whole of `Rails.root`. `config/`, `db/` and
+  `storage/` are no longer reachable through an `<img src>` or a `url()` in a template,
+  while the assets a gem or an engine provides — which live outside `Rails.root` and so
+  were never covered — now are. An app that references a file elsewhere, say
+  `Rails.root.join("tmp/chart.png")`, has to name that directory itself with
+  `Sghtmltopdf.configure { |c| c.allow_path += ["…"] }`. The defaults are computed in
+  `after_initialize` because the pipeline fills `config.assets.paths` in an initializer of
+  its own, which runs after the one this gem adds.
+
+### Fixed
+
+- Read a `src` (or `url()`, or `href`) written as a filesystem path instead of joining it
+  onto the base directory and looking for something that cannot be there. A reference
+  starting with `/` is still resolved relative to the site root first, which is what the
+  Rails asset pipeline emits and what every document that works today relies on; only when
+  no file is there is the same string read again as an absolute path. Whether it may be
+  read is decided by the existing rules, so one inside the base directory is read as it is
+  and one outside it needs `--allow-path`. `<img src="/var/www/app/public/logo.png">` used to
+  look for `<base directory>/var/www/app/public/logo.png` and could not be made to work by
+  any flag; when neither reading finds a file, the error now names both paths.
+- `sghtmltopdf_image_tag` no longer hands a filesystem path to `image_tag` (#44). Rails
+  turned that path into a URL — with `default_url_options[:host]` set, an `http://` one the
+  engine refused to fetch, and without it an absolute path that was resolved against
+  `base_url` and missed — so the helper documented for local images could not load one. It
+  now looks the file up in the asset pipeline and references it by path: relative to
+  `base_url` when it sits under it, and the absolute filesystem path otherwise, which the
+  engine reads as a filesystem path once it fails to resolve under `base_url`. A file that
+  `allow_path` does not cover, or a run delegated to a server that may not share this
+  filesystem, is embedded as a `data:` URI instead, so a path the engine cannot read
+  cannot silently vanish from the PDF; `inline: true` embeds unconditionally. The `size:`
+  shorthand is expanded into `width`/`height`, as `image_tag` does. `sghtmltopdf_asset_path`
+  also stops mapping a source that is already a URL onto a same-named file under `public/`,
+  and no longer gives up on a `public/`-only file in a Propshaft app, where `asset_path`
+  raises `MissingAssetError` rather than returning a path.
+- `sghtmltopdf_stylesheet_link_tag` now points the `url()`s of the CSS it inlines at files
+  the engine can read, instead of copying the file verbatim (#45). The asset pipeline
+  rewrites every `url()` through `asset_path` while precompiling, so a `@font-face` source
+  became a digested `/assets/…` path, or an absolute `https://…` URL once `asset_host` was
+  set; rendering never goes through the HTTP server, so neither could be fetched and the
+  family fell back to the engine default rather than to the next `font-family` — silently,
+  since a `@font-face` that cannot be loaded only warns. Each reference is now mapped back
+  onto its file — the path part of an absolute URL, a site-root-relative path under
+  `public/` or the pipeline load path, a relative one against the stylesheet's own
+  directory as CSS says it means — and written the way `sghtmltopdf_image_tag` writes an
+  image: relative to `base_url`, the absolute path when it sits elsewhere the engine may
+  read, a `data:` URI when it may not. A reference that names no file of the application,
+  such as a font served by a CDN, is left alone. `@import` is spliced in rather than left
+  for the engine, which resolves every `url()` against the document's base whatever
+  stylesheet it came from, so the same problem would reappear one level down.
+- `position: relative` now moves the content of the element together with its background
+  and border (#29). The offset was applied to the box's own rectangle after its lines and
+  child boxes had been placed, so text, images, nested blocks and list markers were left
+  at the unoffset position. A `position: relative` inline element (`<span>`) now shifts
+  its own text too, and an absolutely positioned descendant of a relative element uses the
+  offset padding box as its containing block.
+- Keep the spacing that margin collapsing produced when a document is split across pages.
+  The pagination rebuilt each page by stacking margin boxes at a running cursor, which
+  reopened every margin the layout had collapsed: adjacent siblings were pushed apart by
+  the smaller of the two margins (paragraphs 50.6px apart instead of 34.7px with the
+  default stylesheet), and a `margin-top` hoisted out of a first child was added once per
+  ancestor, so the top of the first page was pushed down by a multiple of it (85.8px
+  instead of 21.4px for `<h1>` under `<html><body>`). Boxes are now placed at the offsets
+  the layout gave them, so a document that spans several pages has the same geometry as
+  the same content on a single page, and pages hold as much as they should.
+- Start a `display: grid` or `display: table` on the next page when its first row does not
+  fit in what is left of the current one. The row-splitting rule only broke once a fragment
+  already held a row, so the first row was laid down at the bottom of the page whatever the
+  space left and was cut off by the page edge, where blocks and flex containers move on.
+- Place the row bands of a `display: grid` container the same way as everything else when
+  its subtree is moved vertically. `shift_box_y_in_place` and `shift_content_vertical`
+  added the delta to `LaidOutGridRow`'s `top`/`bottom` while subtracting it from every
+  other coordinate, so a paginated grid under collapsing margins started its second page
+  above the top of the page and lost the rows there.
+- Paint the rows of a `display: grid` container on the pages it was split across (#18).
+  The pagination allocated the right number of pages and moved each row band into page
+  coordinates, but shifted the items inside the band the opposite way, so every page after
+  the first came out blank and the paragraphs on them were missing from the PDF.
+- Split a `display: flex` container that is taller than a page instead of silently losing
+  everything past the first page (#18). A flex container that fits on a page is still
+  moved to the next page whole; one that cannot fit anywhere is now split between bands
+  of items that do not overlap vertically (each item of a column flex, each line of a
+  wrapped row flex), and a band holding a single item is split inside like a block, so a
+  long document body laid out with `flex-direction: column` flows across pages. The space
+  `gap` (or `justify-content`) leaves between the bands is carried across the split, so a
+  container that grows past one page keeps the spacing it had.
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
   A line box keeps its text runs and its atomic inline boxes (`<img>`, `display: inline-block`,
   form controls) in separate lists, and the alignment step only shifted the runs, so a

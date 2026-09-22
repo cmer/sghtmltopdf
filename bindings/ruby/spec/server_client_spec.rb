@@ -67,7 +67,7 @@ RSpec.describe "server_url" do
     it "does not send the injected defaults to the server (they cannot be set there)" do
       FakeServer.run do |server|
         # The same shape as the defaults the Railtie injects.
-        Sghtmltopdf.config.apply_defaults(base_url: "/app/public", allow: ["/app"])
+        Sghtmltopdf.config.apply_defaults(base_url: "/app/public", allow_path: ["/app"])
         Sghtmltopdf.render(html, server_url: server.url, page_size: "A4")
 
         expect(server.last_request.query).to eq("page-size=A4")

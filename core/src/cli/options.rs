@@ -87,12 +87,19 @@ pub struct ServerArgs {
     #[arg(long, value_name = "PATH")]
     pub mono_font: Option<PathBuf>,
 
+    /// Do not look up system fonts (compose using only the fonts given via
+    /// --font etc.; cannot be changed per request)
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub disable_system_fonts: bool,
+
     /// Allow references to local files (forbidden by default in server mode)
     #[arg(long, action = ArgAction::SetTrue)]
     pub enable_local_file_access: bool,
 
     /// Directories local references may read from (repeatable)
-    #[arg(long, value_name = "PATH")]
+    ///
+    /// `--allow` is the wkhtmltopdf spelling, kept as an alias.
+    #[arg(long = "allow-path", visible_alias = "allow", value_name = "PATH")]
     pub allow: Vec<PathBuf>,
 
     /// Allow remote http(s) fetches (forbidden by default)
@@ -210,6 +217,13 @@ pub struct ConvertArgs {
     /// Face index for --mono-font
     #[arg(long, value_name = "N", requires = "mono_font")]
     pub mono_font_index: Option<u32>,
+
+    /// Do not look up system fonts (compose using only the fonts given via --font etc.)
+    ///
+    /// Use this to get the same PDF from the same HTML on any environment.
+    /// Characters that cannot be covered are reported as a warning and not drawn.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub disable_system_fonts: bool,
 
     /// PDF title (the HTML <title> is used if unset)
     #[arg(long, value_name = "TEXT")]
@@ -404,7 +418,11 @@ pub struct ConvertArgs {
     pub enable_local_file_access: bool,
 
     /// Directories local references may read from (repeatable; only these subtrees become readable)
-    #[arg(long, value_name = "PATH")]
+    ///
+    /// `--allow` is the wkhtmltopdf spelling, kept as an alias. `--allow-path`
+    /// is the primary name because `--allow` on its own says nothing about
+    /// what is allowed, and sits right next to `--allow-remote-assets`.
+    #[arg(long = "allow-path", visible_alias = "allow", value_name = "PATH")]
     pub allow: Vec<PathBuf>,
 
     /// Process in streaming mode (some options and CSS are unavailable and raise an error)
@@ -676,22 +694,22 @@ impl ConvertArgs {
 
     /// Permission settings for local file references.
     ///
-    /// The `--allow` directories are resolved to real paths here. Resolving them on every
-    /// reference would mean falling back to comparing raw paths whenever resolution fails,
-    /// leaving `..` in the comparison. A directory that cannot be resolved is an error at
-    /// startup rather than being silently ignored.
+    /// The `--allow-path` directories are resolved to real paths here. Resolving
+    /// them at each reference would fall back to comparing the raw paths when
+    /// resolution fails, leaving `..` in the comparison. A directory that cannot
+    /// be resolved is an error at startup rather than a silent skip.
     pub fn local_access(&self) -> Result<LocalAccess, String> {
         let mut allowed_dirs = Vec::with_capacity(self.allow.len());
         for dir in &self.allow {
             let canonical = dir.canonicalize().map_err(|e| {
                 format!(
-                    "cannot resolve the directory given to --allow: {} ({e})",
+                    "cannot resolve the directory given to --allow-path: {} ({e})",
                     dir.display()
                 )
             })?;
             if !canonical.is_dir() {
                 return Err(format!(
-                    "--allow must be given a directory: {}",
+                    "--allow-path must be given a directory: {}",
                     dir.display()
                 ));
             }
@@ -1039,7 +1057,7 @@ mod tests {
         Cli::command().debug_assert();
     }
 
-    /// `--allow` directories are resolved to real paths at startup.
+    /// The `--allow-path` directories are resolved to real paths at startup.
     #[test]
     fn allow_dirs_are_resolved_to_real_paths() {
         let dir = std::env::temp_dir().join(format!(
@@ -1067,8 +1085,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// An `--allow` that cannot be resolved is an error rather than silently ignored
-    /// (ignoring it would change the permitted set unintentionally).
+    /// An unresolvable `--allow-path` is an error, not a silent skip
+    /// (skipping it would change the permitted set unintentionally).
     #[test]
     fn an_allow_dir_that_does_not_exist_is_an_error() {
         let (cli, _) = parse(&[
@@ -1083,7 +1101,7 @@ mod tests {
         assert!(err.contains("--allow"), "got: {err}");
     }
 
-    /// Passing a file to `--allow` is an error too.
+    /// Passing a file to `--allow-path` is an error too.
     #[test]
     fn an_allow_path_that_is_not_a_directory_is_an_error() {
         let dir = std::env::temp_dir().join(format!(

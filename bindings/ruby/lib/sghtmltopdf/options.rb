@@ -17,7 +17,25 @@ module Sghtmltopdf
     # appear in neither the argv nor the query.
     TRANSPORT_KEYS = %i[server_url server_open_timeout server_read_timeout chunk_size].freeze
 
+    # Alias keys (values are the canonical names). The CLI accepts `--allow` as an
+    # alias of `--allow-path`, but the Ruby side must not carry both keys around.
+    # If the defaults use one key and the call uses the other, a hash merge does
+    # not override: both end up in argv (repeating the same flag means "union",
+    # not "replace").
+    ALIAS_KEYS = {allow: :allow_path}.freeze
+
     module_function
+
+    # Map an alias key to its canonical name.
+    def canonical_key(key)
+      key = key.to_sym
+      ALIAS_KEYS.fetch(key, key)
+    end
+
+    # Normalize all keys of a hash.
+    def canonicalize(options)
+      options.to_h { |key, value| [canonical_key(key), value] }
+    end
 
     # @param options [Hash] the Ruby options hash
     # @return [Array<String>] the argument list passed to clap
@@ -112,7 +130,8 @@ module Sghtmltopdf
     # Enumerate only the conversion options, as pairs, in the order they were given.
     def each_pair(options, &block)
       options.each do |key, value|
-        next if TRANSPORT_KEYS.include?(key.to_sym)
+        key = canonical_key(key)
+        next if TRANSPORT_KEYS.include?(key)
 
         pairs_for(key, value).each(&block)
       end

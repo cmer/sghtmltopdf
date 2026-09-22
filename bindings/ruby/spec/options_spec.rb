@@ -45,11 +45,16 @@ RSpec.describe Sghtmltopdf::Options do
     end
 
     it "turns an array into a repeated option" do
-      expect(argv(allow: ["/a", "/b"])).to eq(["--allow", "/a", "--allow", "/b"])
+      expect(argv(allow_path: ["/a", "/b"])).to eq(["--allow-path", "/a", "--allow-path", "/b"])
     end
 
     it "applies the same rules to true/false inside an array" do
-      expect(argv(allow: ["/a", nil, "/b"])).to eq(["--allow", "/a", "--allow", "/b"])
+      expect(argv(allow_path: ["/a", nil, "/b"])).to eq(["--allow-path", "/a", "--allow-path", "/b"])
+    end
+
+    # `--allow` is a wkhtmltopdf-compatible alias. argv normalizes it to the canonical name.
+    it "turns an alias key into the canonical flag" do
+      expect(argv(allow: ["/a"])).to eq(["--allow-path", "/a"])
     end
 
     it "raises for a Hash given to anything but font" do

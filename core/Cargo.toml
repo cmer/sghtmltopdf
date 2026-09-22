@@ -1,6 +1,6 @@
 [package]
 name = "sghtmltopdf-core"
-version = "0.3.0"
+version = "0.5.0"
 edition = "2021"
 description = "PDF rendering engine that is not depend on Chromium/WebKit/Gecko"
 license = "MIT"
@@ -115,6 +115,34 @@ taffy = "0.12.2"
 tiny_http = { version = "0.12", optional = true }
 ureq = "3.3.0"
 
+# Benchmarks (benches/). criterion measures time statistically, while
+# benches/metrics.rs collects deterministic metrics such as allocation count,
+# page count, PDF size, and peak RSS itself and compares them against
+# baseline.json. See benches/README.md for details.
+[[bench]]
+name = "phases"
+harness = false
+
+[[bench]]
+name = "end_to_end"
+harness = false
+# Needs both features because it launches the CLI binary and the HTTP server
+required-features = ["cli", "server"]
+
+[[bench]]
+name = "scale"
+harness = false
+
+[[bench]]
+name = "metrics"
+harness = false
+required-features = ["cli"]
+
 [dev-dependencies]
+criterion = { version = "0.8", features = ["html_reports"] }
 dhat = "0.3.3"
+# For reading peak RSS (getrusage)
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ureq = "3.3.0"

@@ -76,3 +76,32 @@ jobs:
       - name: rake (compile → spec)
         working-directory: bindings/ruby
         run: bundle exec rake
+
+  # Benchmarks (core/benches). See BENCHMARK.md for usage.
+  #
+  # The benches run with `--disable-system-fonts`, so deterministic metrics
+  # such as page count, PDF size, and allocation count match between the
+  # development machine (macOS aarch64) and the runner (Linux x86_64). That is
+  # why the committed `baseline.json` can be used as the reference as is.
+  # Timing varies a lot on runners (it can swing by several hundred percent on
+  # shared machines), so `--no-time` excludes it from the check. Peak RSS is
+  # never compared when the OS/architecture differs from the baseline.
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # If a change is meant to move the page count or PDF size, re-record
+      # `baseline.json` with `--save-baseline` as described in BENCHMARK.md
+      # and include it in the same PR.
+      - name: metricsゲート
+        run: |
+          cargo bench -p sghtmltopdf-core --bench metrics -- --runs 1 --no-time
+      # The criterion numbers are not used for the check (they cannot be
+      # measured on a runner), but each bench runs once so that breakage is
+      # still noticed.
+      - name: criterionのbenchを1回ずつ流す
+        run: |
+          cargo bench -p sghtmltopdf-core \
+            --bench phases --bench end_to_end --bench scale -- --test
