@@ -2018,6 +2018,38 @@ mod tests {
     }
 
     #[test]
+    fn floats_with_non_round_percentages_summing_to_100_sit_side_by_side() {
+        // Bootstrap 3の`.col-xs-8`/`.col-xs-4`相当。f32の丸め誤差で2つの幅の和が
+        // containing widthをわずかに超えても、2番目のfloatは次の段に落ちない(#64)。
+        let dom = html::parse(
+            br#"<div class="outer"><div class="a">A</div><div class="b">B</div></div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .a { float: left; width: 66.66667%; height: 50px; } \
+             .b { float: left; width: 33.33333%; height: 30px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        for containing_width in [595.0, 612.0, 700.0, 793.7, 800.0, 1000.0] {
+            let laid = layout_document(&tree, &styles, &fonts, containing_width);
+            let a_box = find_laid_out(&laid, divs[1]).expect("a not found");
+            let b_box = find_laid_out(&laid, divs[2]).expect("b not found");
+
+            assert_eq!(
+                b_box.layout.content.y, 0.0,
+                "b stacked below a at containing width {containing_width}"
+            );
+            assert_eq!(b_box.layout.content.x, a_box.layout.content.width);
+        }
+    }
+
+    #[test]
     fn clear_pushes_the_element_below_the_float() {
         let dom = html::parse(
             br#"<div class="outer"><div class="f">F</div><div class="c">after</div></div>"#,

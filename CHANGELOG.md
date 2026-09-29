@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Two floats whose percentage widths add up to exactly 100% in decimal (e.g. Bootstrap 3's
+  `66.66667%` + `33.33333%`) now sit side by side instead of stacking (#64). Resolving the
+  percentages in `f32` could make their sum overshoot the containing width by a few
+  thousandths of a point, which failed the "does it fit" check. Float placement now allows
+  0.01pt of slack.
 - `text-align` now moves inline images and `inline-block` boxes along with the text (#19).
   A line box keeps its text runs and its atomic inline boxes (`<img>`, `display: inline-block`,
   form controls) in separate lists, and the alignment step only shifted the runs, so a

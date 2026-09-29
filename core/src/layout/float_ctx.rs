@@ -8,6 +8,11 @@
 
 use crate::style::{Clear, Float};
 
+/// `place`の「収まるか」判定で許容する誤差(pt)。`66.66667%`+`33.33333%`の
+/// ように10進では100%ちょうどになる幅も、f32で解決すると和がcontaining widthを
+/// 僅かに超えることがあり、許容しないと2番目のfloatが次の段に落ちる(#64)。
+const FIT_EPSILON: f32 = 0.01;
+
 /// 絶対(ページ内)座標で表した1つのfloatの矩形。`inner_edge_x`は回り込み判定に
 /// 必要な内側境界のみ(左floatなら右端、右floatなら左端)を保持する。
 #[derive(Debug, Clone, Copy)]
@@ -73,7 +78,7 @@ impl FloatContext {
                 )
             };
 
-            if available_right - available_left >= margin_box_width {
+            if available_right - available_left + FIT_EPSILON >= margin_box_width {
                 let x = if side == Float::Left {
                     available_left
                 } else {
@@ -202,6 +207,17 @@ mod tests {
         // 幅400のfloatはy=0時点では収まらない(占有幅300、空き200)。1番目のfloatが
         // 抜けるy=30まで進めば、残る占有は50のみとなり幅450の空きが生まれ収まる。
         assert_eq!(ctx.place(Float::Left, 0.0, 0.0, 500.0, 400.0), (50.0, 30.0));
+    }
+
+    #[test]
+    fn place_tolerates_rounding_error_in_the_fit_check() {
+        let mut ctx = FloatContext::new();
+        ctx.register(Float::Left, 0.0, 0.0, 400.0, 50.0);
+        // 空き100に対して0.005だけはみ出す(f32の丸め誤差相当)が同じ段に収める。
+        assert_eq!(
+            ctx.place(Float::Left, 0.0, 0.0, 500.0, 100.005),
+            (400.0, 0.0)
+        );
     }
 
     #[test]
