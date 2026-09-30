@@ -24,10 +24,10 @@ use crate::style::{
 };
 
 use super::block::{
-    box_style, layout_box_with_forced_size, measure_box_with_forced_width, resolve_border,
-    resolve_padding, LaidOutBox, PosCtx,
+    box_style, layout_box_with_forced_size, measure_box_with_forced_width,
+    replaced_auto_content_width, resolve_border, resolve_padding, LaidOutBox, PosCtx,
 };
-use super::box_tree::{FlexBox, LayoutBox};
+use super::box_tree::{BoxContent, FlexBox, LayoutBox};
 use super::float_ctx::FloatContext;
 use super::table::measure_natural_content_width;
 
@@ -179,7 +179,15 @@ pub(super) fn layout_taffy_subtree(
                 .width
                 .map(|w| (w - pb_x).max(0.0))
                 .unwrap_or_else(|| {
-                    let natural = measure_natural_content_width(item, styles, fonts);
+                    // taffy clamps the width we return by `max-width` alone, so an image must
+                    // come back already sized by the ratio-preserving table, or a `max-height`
+                    // would leave it at its intrinsic width.
+                    let natural = match &item.content {
+                        BoxContent::Image(image) => {
+                            replaced_auto_content_width(item_style, image, content_width)
+                        }
+                        _ => measure_natural_content_width(item, styles, fonts),
+                    };
                     match available_space.width {
                         // Even with a definite "available width", return the content width
                         // when the content is narrower. Always returning `w` here would fill
