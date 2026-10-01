@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   min-content width), so a long wrappable column gives up the space first. If even the
   min-content widths do not fit, the table overflows rather than the columns overlapping.
 
+- `white-space: nowrap` in a table cell no longer leaves the table's own box behind its
+  columns (#71). The columns already hold the whole line (see above), but the table box kept
+  its specified width, so its background and border stopped short of the overflowing
+  columns; it now grows with them. A float or `inline-block` with `width: auto` likewise no
+  longer shrinks below its min-content width, so a nowrap line is not wider than its box.
+
 ## 0.5.1 - 2026-09-23
 
 ### Added
