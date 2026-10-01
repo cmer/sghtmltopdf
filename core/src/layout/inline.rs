@@ -1958,6 +1958,8 @@ pub(super) fn plain_text_min_content_width(
         || style.overflow_wrap != OverflowWrap::Normal
         || style.text_transform != TextTransform::None
         || fonts.is_empty()
+        // The first line carries the indent, so leave it to the full layout.
+        || style.text_indent != LengthPercentage::Length(0.0)
     {
         return None;
     }

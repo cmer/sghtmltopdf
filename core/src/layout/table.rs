@@ -1867,7 +1867,14 @@ mod tests {
             "a-very-long-hyphenated-word is here",
             "W i i i",
         ];
-        for css in ["", "td { letter-spacing: 2px; font-size: 20px; }"] {
+        for css in [
+            "",
+            "td { letter-spacing: 2px; font-size: 20px; }",
+            "td { letter-spacing: -1px; }",
+            "td { hyphens: auto; }",
+            "td { hyphens: none; }",
+            "td { text-indent: 20px; }",
+        ] {
             for text in texts {
                 let dom =
                     html::parse(format!("<table><tr><td>{text}</td></tr></table>").as_bytes());
@@ -1887,13 +1894,16 @@ mod tests {
                 };
                 let fast = plain_text_min_content_width(spans, &styles, &test_fonts(), || {
                     measure_natural_content_width(cell, &styles, &test_fonts())
-                })
-                .expect("plain text takes the fast path");
+                });
                 let slow = slow_min_content(cell, &styles);
-                assert!(
-                    (fast - slow).abs() < 0.01,
-                    "{text:?} with {css:?}: fast {fast} vs layout {slow}"
-                );
+                match fast {
+                    Some(fast) => assert!(
+                        (fast - slow).abs() < 0.01,
+                        "{text:?} with {css:?}: fast {fast} vs layout {slow}"
+                    ),
+                    // `text-indent` is left to the full layout.
+                    None => assert!(css.contains("text-indent"), "{text:?} with {css:?}"),
+                }
             }
         }
     }
