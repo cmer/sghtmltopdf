@@ -25,7 +25,7 @@ use crate::style::{
 
 use super::block::{
     box_style, layout_box_with_forced_size, measure_box_with_forced_width,
-    replaced_auto_content_width, resolve_border, resolve_padding, LaidOutBox, PosCtx,
+    replaced_auto_content_size, resolve_border, resolve_padding, LaidOutBox, PosCtx,
 };
 use super::box_tree::{BoxContent, FlexBox, LayoutBox};
 use super::float_ctx::FloatContext;
@@ -120,13 +120,30 @@ pub(super) fn layout_taffy_subtree(
         .map(|item| box_style(item, styles))
         .collect();
 
+    // An image item's size depends only on the item and `content_width`, neither of which
+    // changes while taffy runs. Measuring it through `measure_box_with_forced_width` instead
+    // would resolve a percentage `max-width` against the item's own width.
+    let image_sizes: Vec<Option<(f32, f32)>> = flex_items
+        .iter()
+        .zip(&item_styles)
+        .map(|(item, item_style)| match &item.content {
+            BoxContent::Image(image) => {
+                replaced_auto_content_size(item_style, image, content_width)
+            }
+            _ => None,
+        })
+        .collect();
+
     let leaves: Vec<tf::NodeId> = item_styles
         .iter()
         .enumerate()
         .map(|(index, item_style)| {
             let leaf_style = match mode {
                 TaffyMode::Flex => item_taffy_style(item_style),
-                TaffyMode::Grid => super::grid::item_taffy_style(item_style),
+                TaffyMode::Grid => super::grid::item_taffy_style(
+                    item_style,
+                    matches!(flex_items[index].content, BoxContent::Image(_)),
+                ),
             };
             tree.new_leaf_with_context(leaf_style, index)
                 .expect("adding a leaf node to taffy cannot fail")
@@ -182,11 +199,9 @@ pub(super) fn layout_taffy_subtree(
                     // taffy clamps the width we return by `max-width` alone, so an image must
                     // come back already sized by the ratio-preserving table, or a `max-height`
                     // would leave it at its intrinsic width.
-                    let natural = match &item.content {
-                        BoxContent::Image(image) => {
-                            replaced_auto_content_width(item_style, image, content_width)
-                        }
-                        _ => measure_natural_content_width(item, styles, fonts),
+                    let natural = match image_sizes[index] {
+                        Some((image_width, _)) => image_width,
+                        None => measure_natural_content_width(item, styles, fonts),
                     };
                     match available_space.width {
                         // Even with a definite "available width", return the content width
@@ -203,6 +218,14 @@ pub(super) fn layout_taffy_subtree(
                 .height
                 .map(|h| (h - pb_y).max(0.0))
                 .unwrap_or_else(|| {
+                    if let Some((image_width, image_height)) = image_sizes[index] {
+                        return if image_width > 0.0 && width != image_width {
+                            image_height * width / image_width
+                        } else {
+                            image_height
+                        };
+                    }
+
                     let outer_width = width + pb_x;
                     if let Some(memo) = item.measured.height(width, outer_width) {
                         return memo;

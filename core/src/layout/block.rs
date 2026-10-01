@@ -1323,22 +1323,32 @@ pub(super) fn apply_replaced_element_auto_size(
     style.height = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(height));
 }
 
-/// The content-box width an `auto`-width replaced element settles on, for callers that size
-/// it before laying it out (a flex item measured by taffy).
-pub(super) fn replaced_auto_content_width(
+/// The content-box `(width, height)` a replaced element with `width` and `height` both
+/// `auto` settles on, for callers that size it before laying it out (a flex or grid item
+/// measured by taffy). `None` when either of them is set.
+pub(super) fn replaced_auto_content_size(
     style: &ComputedStyle,
     image: &ImageBoxContent,
     containing_width: f32,
-) -> f32 {
+) -> Option<(f32, f32)> {
+    if !matches!(style.width, LengthPercentageOrAuto::Auto)
+        || !matches!(style.height, LengthPercentageOrAuto::Auto)
+    {
+        return None;
+    }
     let mut style = style.clone();
     apply_replaced_element_auto_size(&mut style, image, containing_width);
     let width = resolve_lpa_or_zero(style.width, containing_width);
+    let height = resolve_lpa_or_zero(style.height, containing_width);
     if style.box_sizing == BoxSizing::BorderBox {
         let padding = resolve_padding(&style, containing_width);
         let border = resolve_border(&style);
-        (width - padding.left - padding.right - border.left - border.right).max(0.0)
+        Some((
+            (width - padding.left - padding.right - border.left - border.right).max(0.0),
+            (height - padding.top - padding.bottom - border.top - border.bottom).max(0.0),
+        ))
     } else {
-        width
+        Some((width, height))
     }
 }
 

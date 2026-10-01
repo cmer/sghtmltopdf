@@ -199,7 +199,7 @@ pub(super) fn container_taffy_style(style: &ComputedStyle, content_width: f32) -
 }
 
 /// The taffy `Style` for a grid item.
-pub(super) fn item_taffy_style(style: &ComputedStyle) -> tf::Style {
+pub(super) fn item_taffy_style(style: &ComputedStyle, replaced: bool) -> tf::Style {
     let mut base = super::flex::item_taffy_style(style);
     base.grid_row = tf::Line {
         start: map_grid_line(&style.grid_row_start),
@@ -210,6 +210,12 @@ pub(super) fn item_taffy_style(style: &ComputedStyle) -> tf::Style {
         end: map_grid_line(&style.grid_column_end),
     };
     base.justify_self = map_align_self(style.justify_self);
+    // `justify-items`/`align-items` have no `normal` here, their initial value being read as
+    // `stretch`, but `normal` puts a replaced element at `start` instead of stretching it.
+    if replaced {
+        base.justify_self = base.justify_self.or(Some(tf::AlignSelf::START));
+        base.align_self = base.align_self.or(Some(tf::AlignSelf::START));
+    }
     base
 }
 

@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   percentages in `f32` could make their sum overshoot the containing width by a few
   thousandths of a point, which failed the "does it fit" check. Float placement now allows
   0.01pt of slack.
+- An image whose `width` and `height` are both `auto` keeps its aspect ratio under
+  `min-width`/`max-width`/`min-height`/`max-height` (#68). Each axis used to be clamped on
+  its own, distorting the image; the four limits are now resolved together with the
+  CSS2.2 §10.4 table, in block, inline, flex and grid layout alike. Under
+  `box-sizing: border-box`, padding and border no longer eat into the intrinsic size.
+- An image grid item with `justify-self`/`align-self` left at `auto` is placed at the start
+  of its grid area instead of being stretched to it, as `normal` alignment does for
+  replaced elements.
 
 ## 0.5.1 - 2026-09-23
 
