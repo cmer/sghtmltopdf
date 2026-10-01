@@ -492,7 +492,9 @@ fn compute_fixed_column_widths(
 }
 
 /// Find each column's used width. The maximum per column of the "natural width" derived
-/// from the cells' content is scaled proportionally to fit the containing width exactly.
+/// from the cells' content is scaled proportionally to fill the containing width exactly. When
+/// the table has to shrink instead, the columns give up only their slack above min-content
+/// (see [`fit_columns`]).
 ///
 /// A column with a `<col>` hint (`column_hints`) is fixed at that width, and the remaining
 /// width is distributed over the unhinted columns in proportion to their natural widths.
@@ -504,35 +506,19 @@ fn compute_column_widths(
     column_count: usize,
     containing_width: f32,
 ) -> Vec<f32> {
-    let mut natural = vec![0.0f32; column_count];
-
-    // Pass 1: find each column's maximum natural width using only the colspan=1 cells.
-    for row_cells in grid {
-        for gc in row_cells {
-            if gc.col_end - gc.col_start == 1 {
-                natural[gc.col_start] =
-                    natural[gc.col_start].max(natural_cell_width(gc.cell, styles, fonts));
-            }
-        }
-    }
-
-    // Pass 2: for cells spanning several columns via colspan, if the sum of the spanned
-    // columns' natural widths falls short of the cell's own natural width, distribute the shortfall evenly over them.
-    for row_cells in grid {
-        for gc in row_cells {
-            if gc.col_end - gc.col_start > 1 {
-                let span_natural_sum: f32 = natural[gc.col_start..gc.col_end].iter().sum();
-                let cell_natural = natural_cell_width(gc.cell, styles, fonts);
-                if cell_natural > span_natural_sum {
-                    let deficit = cell_natural - span_natural_sum;
-                    let share = deficit / (gc.col_end - gc.col_start) as f32;
-                    for w in &mut natural[gc.col_start..gc.col_end] {
-                        *w += share;
-                    }
-                }
-            }
-        }
-    }
+    let natural = column_widths_by(grid, column_count, |cell| {
+        natural_cell_width(cell, styles, fonts)
+    });
+    // The min-content width of each column, found the same way. A column can never be
+    // narrower than its widest unbreakable run (CSS2.1 17.5.2.2), whatever the table width.
+    let min_content = column_widths_by(grid, column_count, |cell| {
+        min_cell_width(cell, styles, fonts)
+    });
+    let min_content: Vec<f32> = min_content
+        .iter()
+        .zip(&natural)
+        .map(|(min, natural)| min.min(*natural))
+        .collect();
 
     let has_hint = column_hints
         .iter()
@@ -541,19 +527,82 @@ fn compute_column_widths(
     if has_hint {
         return distribute_with_column_hints(
             &natural,
+            &min_content,
             column_hints,
             column_count,
             containing_width,
         );
     }
 
-    let natural_sum: f32 = natural.iter().sum();
-    if natural_sum > 0.0 {
-        let scale = containing_width / natural_sum;
-        natural.iter().map(|w| w * scale).collect()
-    } else {
-        vec![containing_width / column_count as f32; column_count]
+    fit_columns(&natural, &min_content, containing_width)
+}
+
+/// Per-column maximum of `cell_width` over the cells, colspan handled as for column widths
+/// throughout: colspan=1 cells first, then a spanning cell's shortfall is spread evenly over
+/// the columns it covers.
+fn column_widths_by(
+    grid: &[Vec<GridCell<'_>>],
+    column_count: usize,
+    cell_width: impl Fn(&TableCell) -> f32,
+) -> Vec<f32> {
+    let mut widths = vec![0.0f32; column_count];
+
+    // Pass 1: find each column's maximum width using only the colspan=1 cells.
+    for row_cells in grid {
+        for gc in row_cells {
+            if gc.col_end - gc.col_start == 1 {
+                widths[gc.col_start] = widths[gc.col_start].max(cell_width(gc.cell));
+            }
+        }
     }
+
+    // Pass 2: for cells spanning several columns via colspan, if the sum of the spanned
+    // columns' widths falls short of the cell's own width, distribute the shortfall evenly over them.
+    for row_cells in grid {
+        for gc in row_cells {
+            if gc.col_end - gc.col_start > 1 {
+                let span_sum: f32 = widths[gc.col_start..gc.col_end].iter().sum();
+                let cell = cell_width(gc.cell);
+                if cell > span_sum {
+                    let share = (cell - span_sum) / (gc.col_end - gc.col_start) as f32;
+                    for w in &mut widths[gc.col_start..gc.col_end] {
+                        *w += share;
+                    }
+                }
+            }
+        }
+    }
+    widths
+}
+
+/// Fit columns with the given natural (max-content) and min-content widths into `target`.
+///
+/// * The natural widths fit or fall short of `target`: they are scaled up proportionally
+///   to fill it exactly (the table stretches to its width).
+/// * They exceed `target`: the shrink is taken out of each column's (natural - min-content)
+///   slack, in proportion to that slack, so no column goes below its min-content width.
+/// * Even the min-content widths exceed `target`: every column stays at its min-content
+///   width and the table overflows rather than the columns overlapping.
+fn fit_columns(natural: &[f32], min_content: &[f32], target: f32) -> Vec<f32> {
+    let natural_sum: f32 = natural.iter().sum();
+    if natural_sum <= 0.0 {
+        return vec![target / natural.len().max(1) as f32; natural.len()];
+    }
+    if natural_sum <= target {
+        let scale = target / natural_sum;
+        return natural.iter().map(|w| w * scale).collect();
+    }
+    let min_sum: f32 = min_content.iter().sum();
+    if min_sum >= target {
+        return min_content.to_vec();
+    }
+    // `natural_sum > target > min_sum`, so the slack is positive.
+    let keep = (target - min_sum) / (natural_sum - min_sum);
+    natural
+        .iter()
+        .zip(min_content)
+        .map(|(n, m)| m + (n - m) * keep)
+        .collect()
 }
 
 /// Under `table-layout: fixed`, the width a first-row cell contributes to its column.
@@ -583,6 +632,7 @@ fn fixed_cell_width(cell_style: &ComputedStyle, containing_width: f32) -> Option
 /// `containing_width`, only the hinted columns are scaled down proportionally to fit.
 fn distribute_with_column_hints(
     natural: &[f32],
+    min_content: &[f32],
     column_hints: &[Option<f32>],
     column_count: usize,
     containing_width: f32,
@@ -603,9 +653,24 @@ fn distribute_with_column_hints(
         .sum();
     let remaining = (containing_width - hint_sum).max(0.0);
 
+    // When the unhinted columns have to shrink, they do so down to their min-content widths
+    // and no further (the same rule as [`fit_columns`]).
+    let auto_cols: Vec<usize> = (0..column_count)
+        .filter(|&i| hint_of(i).is_none())
+        .collect();
+    let shrunk = (auto_natural_sum > remaining).then(|| {
+        let n: Vec<f32> = auto_cols.iter().map(|&i| natural[i]).collect();
+        let m: Vec<f32> = auto_cols.iter().map(|&i| min_content[i]).collect();
+        fit_columns(&n, &m, remaining)
+    });
+
     (0..column_count)
         .map(|i| match hint_of(i) {
             Some(w) => w,
+            None if shrunk.is_some() => {
+                let pos = auto_cols.iter().position(|&c| c == i).unwrap_or(0);
+                shrunk.as_ref().map_or(0.0, |v| v[pos])
+            }
             None if auto_natural_sum > 0.0 => remaining * natural[i] / auto_natural_sum,
             None => {
                 let auto_count = (0..column_count).filter(|&i| hint_of(i).is_none()).count();
@@ -625,6 +690,25 @@ fn natural_cell_width(
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
 ) -> f32 {
+    cell_content_width(cell, styles, fonts, Basis::Max)
+}
+
+/// One cell's min-content width (the same clamp and padding/border as [`natural_cell_width`],
+/// around the content's min-content width).
+fn min_cell_width(
+    cell: &TableCell,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+) -> f32 {
+    cell_content_width(cell, styles, fonts, Basis::Min)
+}
+
+fn cell_content_width(
+    cell: &TableCell,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+    basis: Basis,
+) -> f32 {
     let style = box_style(&cell.content, styles);
     // A percentage padding cannot resolve here, before layout is settled, because the basis
     // width is unknown, so it resolves against 0 (a simplification).
@@ -633,7 +717,7 @@ fn natural_cell_width(
     // The clamp is applied to the content width (min/max are content-box based) and
     // padding/border are added afterwards. The percentage basis for min/max is also unknown
     // at this point, so it too resolves against 0 (the same simplification as padding).
-    let content_natural = measure_natural_content_width(&cell.content, styles, fonts);
+    let content_natural = measure_content_width(&cell.content, styles, fonts, basis);
     let clamped = clamp_used_width(
         &style,
         0.0,
@@ -644,18 +728,19 @@ fn natural_cell_width(
     clamped + padding.left + padding.right + border.left + border.right
 }
 
-/// One child box's natural width plus that child's own padding and border.
+/// One child box's natural or min-content width (per `basis`) plus that child's own padding and border.
 /// A percentage resolves against 0, the basis width being unknown at this point
 /// (the same simplification as `natural_cell_width`). Margins are not included.
-fn outer_natural_width(
+fn outer_content_width(
     child: &LayoutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
+    basis: Basis,
 ) -> f32 {
     let style = box_style(child, styles);
     let padding = resolve_padding(&style, 0.0);
     let border = resolve_border(&style);
-    measure_natural_content_width(child, styles, fonts)
+    measure_content_width(child, styles, fonts, basis)
         + padding.left
         + padding.right
         + border.left
@@ -703,15 +788,56 @@ pub(super) fn measure_natural_content_width(
     if let Some(memo) = b.measured.natural_width() {
         return memo;
     }
-    let width = compute_natural_content_width(b, styles, fonts);
+    let width = compute_content_width(b, styles, fonts, Basis::Max);
     b.measured.set_natural_width(width);
     width
 }
 
-fn compute_natural_content_width(
+/// The min-content width of a box: the narrowest it can get without its content overflowing,
+/// found by breaking every line at each opportunity (so the widest unbreakable run decides).
+/// It is measured with the same breakdown as [`measure_natural_content_width`], with each
+/// container taking the "min" reading of its own axes (a row flex container still sums its
+/// items, since this engine does not shrink them below their own min-content, but a nested
+/// table or grid row adds up the min-content of its cells).
+pub(super) fn measure_min_content_width(
     b: &LayoutBox,
     styles: &HashMap<NodeId, Rc<ComputedStyle>>,
     fonts: &FontCollection,
+) -> f32 {
+    if let Some(memo) = b.measured.min_content_width() {
+        return memo;
+    }
+    let width = compute_content_width(b, styles, fonts, Basis::Min);
+    b.measured.set_min_content_width(width);
+    width
+}
+
+/// Which intrinsic width is being measured.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Basis {
+    /// Max-content: no line breaks except forced ones.
+    Max,
+    /// Min-content: a line break at every soft break opportunity.
+    Min,
+}
+
+fn measure_content_width(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+    basis: Basis,
+) -> f32 {
+    match basis {
+        Basis::Max => measure_natural_content_width(b, styles, fonts),
+        Basis::Min => measure_min_content_width(b, styles, fonts),
+    }
+}
+
+fn compute_content_width(
+    b: &LayoutBox,
+    styles: &HashMap<NodeId, Rc<ComputedStyle>>,
+    fonts: &FontCollection,
+    basis: Basis,
 ) -> f32 {
     match &b.content {
         BoxContent::Inline(spans) => {
@@ -723,7 +849,13 @@ fn compute_natural_content_width(
                 spans.as_slice(),
                 styles,
                 fonts,
-                UNCONSTRAINED_WIDTH,
+                // At min-content the line box is as narrow as it can get, so every soft
+                // break opportunity is taken and the widest unbreakable run is what remains.
+                if basis == Basis::Min {
+                    0.0
+                } else {
+                    UNCONSTRAINED_WIDTH
+                },
                 0.0,
                 0.0,
                 None,
@@ -735,14 +867,14 @@ fn compute_natural_content_width(
         }
         BoxContent::Blocks(children) => children
             .iter()
-            .map(|child| outer_natural_width(child, styles, fonts))
+            .map(|child| outer_content_width(child, styles, fonts, basis))
             .fold(0.0f32, f32::max),
         BoxContent::Flex(flex) => {
             let style = box_style(b, styles);
             let items: Vec<f32> = flex
                 .items
                 .iter()
-                .map(|item| outer_natural_width(item, styles, fonts))
+                .map(|item| outer_content_width(item, styles, fonts, basis))
                 .collect();
             match style.flex_direction {
                 FlexDirection::Row | FlexDirection::RowReverse => {
@@ -766,7 +898,7 @@ fn compute_natural_content_width(
                 .chunks(columns)
                 .map(|row| {
                     row.iter()
-                        .map(|item| outer_natural_width(item, styles, fonts))
+                        .map(|item| outer_content_width(item, styles, fonts, basis))
                         .sum::<f32>()
                         + gaps
                 })
@@ -778,7 +910,7 @@ fn compute_natural_content_width(
             .map(|row| {
                 row.cells
                     .iter()
-                    .map(|cell| natural_cell_width(cell, styles, fonts))
+                    .map(|cell| cell_content_width(cell, styles, fonts, basis))
                     .sum::<f32>()
             })
             .fold(0.0f32, f32::max),
@@ -1567,5 +1699,118 @@ mod tests {
         let total: f32 = widths.iter().sum();
         assert!((total - 500.0).abs() < 1.0, "got {widths:?}");
         assert!(widths[1] > widths[0], "got {widths:?}");
+    }
+
+    /// The widest line laid out inside a box (descending through nested blocks).
+    fn widest_line(b: &LaidOutBox) -> f32 {
+        match &b.content {
+            super::super::block::LaidOutContent::Inline(lines) => {
+                lines.iter().map(|l| l.rect.width).fold(0.0, f32::max)
+            }
+            super::super::block::LaidOutContent::Blocks(children) => {
+                children.iter().map(widest_line).fold(0.0, f32::max)
+            }
+            _ => 0.0,
+        }
+    }
+
+    /// Assert that no cell's text runs past its content box (the content box is the cell's
+    /// border box minus its horizontal padding, which these tests set to a known value).
+    fn assert_no_cell_overflows(table: &LaidOutBox, padding: f32) {
+        let super::super::block::LaidOutContent::Table(laid_table) = &table.content else {
+            panic!("expected a laid-out table");
+        };
+        for row in &laid_table.rows {
+            for cell in &row.cells {
+                let content = cell.layout.border_box().width - 2.0 * padding;
+                let line = widest_line(cell);
+                assert!(
+                    line <= content + 0.01,
+                    "text of {line} overflows a cell content box of {content}"
+                );
+            }
+        }
+    }
+
+    const SHRINK_HTML: &str = "<table><tr><th>ITEM</th><th>PRICE</th><th>TOTAL</th></tr>\
+        <tr><td>Refund August overpayment caused by understated sibling deposit</td>\
+        <td>$300.00</td><td>$3,480.00</td></tr></table>";
+    const SHRINK_CSS: &str = "body { margin: 0; } td, th { padding: 4px; }";
+
+    #[test]
+    fn shrinking_takes_the_space_from_the_wrappable_column() {
+        // The table's natural width is above 300, so it must shrink. The amounts cannot wrap,
+        // so the long first column has to give up all of the space.
+        let table = layout_table_html(SHRINK_HTML, SHRINK_CSS, 300.0);
+        assert_no_cell_overflows(&table, 4.0);
+        let widths = cell_widths(&table, 1);
+        assert!(
+            (widths.iter().sum::<f32>() - 300.0).abs() < 0.5,
+            "got {widths:?}"
+        );
+    }
+
+    #[test]
+    fn a_column_of_unbreakable_text_keeps_its_min_content_width_at_any_table_width() {
+        for containing in [260.0, 300.0, 400.0, 600.0] {
+            let table = layout_table_html(SHRINK_HTML, SHRINK_CSS, containing);
+            assert_no_cell_overflows(&table, 4.0);
+        }
+    }
+
+    #[test]
+    fn columns_overflow_instead_of_overlapping_when_min_content_exceeds_the_table() {
+        // 60px cannot hold the two amounts side by side, so the table overflows its
+        // container and the columns stay laid out one after another.
+        let table = layout_table_html(SHRINK_HTML, SHRINK_CSS, 60.0);
+        assert_no_cell_overflows(&table, 4.0);
+        let lefts = cell_lefts(&table, 1);
+        let widths = cell_widths(&table, 1);
+        for i in 1..lefts.len() {
+            assert!(
+                lefts[i] >= lefts[i - 1] + widths[i - 1] - 0.01,
+                "columns overlap: lefts {lefts:?}, widths {widths:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn fit_columns_shrinks_only_the_slack_above_min_content() {
+        // natural 100 + 40, min 20 + 40: the whole 30 of shrinking comes out of column 0.
+        let w = fit_columns(&[100.0, 40.0], &[20.0, 40.0], 110.0);
+        assert!(
+            (w[0] - 70.0).abs() < 0.01 && (w[1] - 40.0).abs() < 0.01,
+            "{w:?}"
+        );
+        // The shrink is shared in proportion to the slack when both columns have some.
+        let w = fit_columns(&[100.0, 50.0], &[40.0, 30.0], 120.0);
+        assert!((w.iter().sum::<f32>() - 120.0).abs() < 0.01, "{w:?}");
+        assert!(w[0] >= 40.0 && w[1] >= 30.0, "{w:?}");
+    }
+
+    #[test]
+    fn fit_columns_stretches_proportionally_and_never_goes_below_min_content() {
+        let w = fit_columns(&[10.0, 30.0], &[5.0, 30.0], 80.0);
+        assert!(
+            (w[0] - 20.0).abs() < 0.01 && (w[1] - 60.0).abs() < 0.01,
+            "{w:?}"
+        );
+        // Even the min-content widths do not fit: they are kept (the table overflows).
+        let w = fit_columns(&[100.0, 40.0], &[20.0, 40.0], 50.0);
+        assert_eq!(w, vec![20.0, 40.0]);
+    }
+
+    #[test]
+    fn unhinted_columns_keep_min_content_next_to_a_col_width_hint() {
+        let table = layout_table_html(
+            "<table><colgroup><col style=\"width: 130px\"><col><col></colgroup>\
+             <tr><td>Refund August overpayment caused by understated sibling deposit</td>\
+             <td>$300.00</td><td>$3,480.00</td></tr></table>",
+            SHRINK_CSS,
+            300.0,
+        );
+        assert_no_cell_overflows(&table, 4.0);
+        let widths = cell_widths(&table, 0);
+        assert!((widths[0] - 130.0).abs() < 0.5, "got {widths:?}");
     }
 }
