@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- Two floats whose percentage widths add up to exactly 100% in decimal (e.g. Bootstrap 3's
+  `66.66667%` + `33.33333%`) now sit side by side instead of stacking (#64). Resolving the
+  percentages in `f32` could make their sum overshoot the containing width by a few
+  thousandths of a point, which failed the "does it fit" check. Float placement now allows
+  0.01pt of slack.
+
 ## 0.5.1 - 2026-09-23
 
 ### Added
