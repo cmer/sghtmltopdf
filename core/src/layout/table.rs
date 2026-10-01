@@ -55,7 +55,7 @@ pub(super) fn layout_table(
     x: f32,
     y: f32,
     pos: &mut PosCtx,
-) -> (LaidOutTable, f32) {
+) -> (LaidOutTable, f32, f32) {
     // The caption is laid out independently even when there are no rows (so the empty-table-
     // plus-caption case works too, this happens before the column_count == 0 early return).
     // The caption is also taken to establish a new Block Formatting Context, keeping it
@@ -107,6 +107,7 @@ pub(super) fn layout_table(
                 rows: Vec::new(),
             },
             total_height,
+            containing_width,
         );
     }
 
@@ -339,6 +340,9 @@ pub(super) fn layout_table(
             rows: laid_rows,
         },
         total_height,
+        // The columns can add up to more than the width offered (min-content floors), in which
+        // case the table is wider than its box.
+        containing_width.max(col_x[column_count]),
     )
 }
 
@@ -1918,5 +1922,76 @@ mod tests {
                 }
             }
         }
+    }
+
+    const NOWRAP_ROW: &str = r#"<table><tr><td class="item">Refund August overpayment caused by an understated sibling deposit, final</td><td>$3,480.00</td></tr></table>"#;
+
+    #[test]
+    fn nowrap_cell_keeps_its_line_and_the_table_box_grows_with_the_columns() {
+        let css = "body { margin: 0; } table { width: 540px; border-spacing: 0; } .item { white-space: nowrap; }";
+        let table = layout_table_html(NOWRAP_ROW, css, 800.0);
+        let widths = cell_widths(&table, 0);
+        let total: f32 = widths.iter().sum();
+        assert!(total > 540.0, "columns must overflow 540px, got {widths:?}");
+        assert!(
+            (table.layout.content.width - total).abs() < 0.5,
+            "the table box must grow with its columns: box {} vs columns {total}",
+            table.layout.content.width
+        );
+    }
+
+    #[test]
+    fn table_box_keeps_its_specified_width_when_the_columns_fit() {
+        let css = "body { margin: 0; } table { width: 800px; border-spacing: 0; } .item { white-space: nowrap; }";
+        let table = layout_table_html(NOWRAP_ROW, css, 800.0);
+        assert!((table.layout.content.width - 800.0).abs() < 0.5);
+    }
+
+    /// The border box width of the first element with this tag.
+    fn laid_out_width_of(html_src: &str, css: &str, containing_width: f32, tag: &str) -> f32 {
+        let dom = html::parse(html_src.as_bytes());
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(css);
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+        let laid = layout_document(&tree, &styles, &fonts, containing_width);
+        let node = find(&dom, dom.document(), tag).expect("element not found");
+        find_laid_out(&laid, node)
+            .expect("box not found")
+            .layout
+            .border_box()
+            .width
+    }
+
+    #[test]
+    fn float_with_nowrap_text_does_not_shrink_below_the_line() {
+        let css = "body { margin: 0; } .w { width: 60px; } .f { float: left; }";
+        let nowrap = laid_out_width_of(
+            r#"<div class="w"><p class="f" style="white-space: nowrap">aaaa bbbb cccc dddd</p></div>"#,
+            css,
+            800.0,
+            "p",
+        );
+        let wide = laid_out_width_of(
+            r#"<div><p class="f" style="white-space: nowrap">aaaa bbbb cccc dddd</p></div>"#,
+            css,
+            800.0,
+            "p",
+        );
+        assert!((nowrap - wide).abs() < 0.5, "{nowrap} vs {wide}");
+        assert!(nowrap > 60.0);
+    }
+
+    #[test]
+    fn float_with_wrappable_text_still_shrinks_to_the_available_width() {
+        let css = "body { margin: 0; } .w { width: 100px; } .f { float: left; }";
+        let w = laid_out_width_of(
+            r#"<div class="w"><p class="f">aaaa bbbb cccc dddd eeee ffff</p></div>"#,
+            css,
+            800.0,
+            "p",
+        );
+        assert!((w - 100.0).abs() < 0.5, "got {w}");
     }
 }
