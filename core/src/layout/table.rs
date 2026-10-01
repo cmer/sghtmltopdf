@@ -33,7 +33,7 @@ use super::block::{
 };
 use super::box_tree::{BoxContent, LayoutBox, TableBox, TableCell, TableRow};
 use super::float_ctx::FloatContext;
-use super::inline::layout_inline_content;
+use super::inline::{clear_word_width_cache, layout_inline_content, plain_text_min_content_width};
 
 /// A width that can be treated as effectively infinite, used to disable wrapping.
 const UNCONSTRAINED_WIDTH: f32 = f32::MAX / 4.0;
@@ -512,14 +512,20 @@ fn compute_column_widths(
     });
     // The min-content width of each column, found the same way. A column can never be
     // narrower than its widest unbreakable run (CSS2.1 17.5.2.2), whatever the table width.
-    let min_content = column_widths_by(grid, column_count, |cell| {
-        min_cell_width(cell, styles, fonts)
-    });
-    let min_content: Vec<f32> = min_content
-        .iter()
-        .zip(&natural)
-        .map(|(min, natural)| min.min(*natural))
-        .collect();
+    // It costs a second inline layout per cell and only matters when the table has to
+    // shrink, so it is measured on demand.
+    let min_content = || {
+        clear_word_width_cache();
+        let min_content = column_widths_by(grid, column_count, |cell| {
+            min_cell_width(cell, styles, fonts)
+        });
+        clear_word_width_cache();
+        min_content
+            .iter()
+            .zip(&natural)
+            .map(|(min, natural)| min.min(*natural))
+            .collect::<Vec<f32>>()
+    };
 
     let has_hint = column_hints
         .iter()
@@ -528,14 +534,14 @@ fn compute_column_widths(
     if has_hint {
         return distribute_with_column_hints(
             &natural,
-            &min_content,
+            min_content,
             column_hints,
             column_count,
             containing_width,
         );
     }
 
-    fit_columns(&natural, &min_content, containing_width)
+    fit_columns(&natural, min_content, containing_width)
 }
 
 /// Per-column maximum of `cell_width` over the cells, colspan handled as for column widths
@@ -584,7 +590,7 @@ fn column_widths_by(
 ///   slack, in proportion to that slack, so no column goes below its min-content width.
 /// * Even the min-content widths exceed `target`: every column stays at its min-content
 ///   width and the table overflows rather than the columns overlapping.
-fn fit_columns(natural: &[f32], min_content: &[f32], target: f32) -> Vec<f32> {
+fn fit_columns(natural: &[f32], min_content: impl FnOnce() -> Vec<f32>, target: f32) -> Vec<f32> {
     let natural_sum: f32 = natural.iter().sum();
     if natural_sum <= 0.0 {
         return vec![target / natural.len().max(1) as f32; natural.len()];
@@ -593,15 +599,16 @@ fn fit_columns(natural: &[f32], min_content: &[f32], target: f32) -> Vec<f32> {
         let scale = target / natural_sum;
         return natural.iter().map(|w| w * scale).collect();
     }
+    let min_content = min_content();
     let min_sum: f32 = min_content.iter().sum();
     if min_sum >= target {
-        return min_content.to_vec();
+        return min_content;
     }
     // `natural_sum > target > min_sum`, so the slack is positive.
     let keep = (target - min_sum) / (natural_sum - min_sum);
     natural
         .iter()
-        .zip(min_content)
+        .zip(&min_content)
         .map(|(n, m)| m + (n - m) * keep)
         .collect()
 }
@@ -633,7 +640,7 @@ fn fixed_cell_width(cell_style: &ComputedStyle, containing_width: f32) -> Option
 /// `containing_width`, only the hinted columns are scaled down proportionally to fit.
 fn distribute_with_column_hints(
     natural: &[f32],
-    min_content: &[f32],
+    min_content: impl FnOnce() -> Vec<f32>,
     column_hints: &[Option<f32>],
     column_count: usize,
     containing_width: f32,
@@ -661,8 +668,14 @@ fn distribute_with_column_hints(
         .collect();
     let shrunk = (auto_natural_sum > remaining).then(|| {
         let n: Vec<f32> = auto_cols.iter().map(|&i| natural[i]).collect();
-        let m: Vec<f32> = auto_cols.iter().map(|&i| min_content[i]).collect();
-        fit_columns(&n, &m, remaining)
+        fit_columns(
+            &n,
+            || {
+                let all = min_content();
+                auto_cols.iter().map(|&i| all[i]).collect()
+            },
+            remaining,
+        )
     });
 
     (0..column_count)
@@ -853,6 +866,13 @@ fn compute_content_width(
 ) -> f32 {
     match &b.content {
         BoxContent::Inline(spans) => {
+            if basis == Basis::Min {
+                if let Some(width) = plain_text_min_content_width(spans, styles, fonts, || {
+                    measure_natural_content_width(b, styles, fonts)
+                }) {
+                    return width;
+                }
+            }
             // This is a measuring pass, so any `absolute` among an `inline-block`'s
             // descendants is discarded (the final layout pass walks the same descendants and collects them).
             let mut discarded = Vec::new();
@@ -1789,26 +1809,26 @@ mod tests {
     #[test]
     fn fit_columns_shrinks_only_the_slack_above_min_content() {
         // natural 100 + 40, min 20 + 40: the whole 30 of shrinking comes out of column 0.
-        let w = fit_columns(&[100.0, 40.0], &[20.0, 40.0], 110.0);
+        let w = fit_columns(&[100.0, 40.0], || vec![20.0, 40.0], 110.0);
         assert!(
             (w[0] - 70.0).abs() < 0.01 && (w[1] - 40.0).abs() < 0.01,
             "{w:?}"
         );
         // The shrink is shared in proportion to the slack when both columns have some.
-        let w = fit_columns(&[100.0, 50.0], &[40.0, 30.0], 120.0);
+        let w = fit_columns(&[100.0, 50.0], || vec![40.0, 30.0], 120.0);
         assert!((w.iter().sum::<f32>() - 120.0).abs() < 0.01, "{w:?}");
         assert!(w[0] >= 40.0 && w[1] >= 30.0, "{w:?}");
     }
 
     #[test]
     fn fit_columns_stretches_proportionally_and_never_goes_below_min_content() {
-        let w = fit_columns(&[10.0, 30.0], &[5.0, 30.0], 80.0);
+        let w = fit_columns(&[10.0, 30.0], || vec![5.0, 30.0], 80.0);
         assert!(
             (w[0] - 20.0).abs() < 0.01 && (w[1] - 60.0).abs() < 0.01,
             "{w:?}"
         );
         // Even the min-content widths do not fit: they are kept (the table overflows).
-        let w = fit_columns(&[100.0, 40.0], &[20.0, 40.0], 50.0);
+        let w = fit_columns(&[100.0, 40.0], || vec![20.0, 40.0], 50.0);
         assert_eq!(w, vec![20.0, 40.0]);
     }
 
@@ -1824,5 +1844,69 @@ mod tests {
         assert_no_cell_overflows(&table, 4.0);
         let widths = cell_widths(&table, 0);
         assert!((widths[0] - 130.0).abs() < 0.5, "got {widths:?}");
+    }
+
+    /// The widest line from a full layout at width 0 (what min-content falls back to).
+    fn slow_min_content(b: &LayoutBox, styles: &HashMap<NodeId, Rc<ComputedStyle>>) -> f32 {
+        let BoxContent::Inline(spans) = &b.content else {
+            panic!("expected inline content");
+        };
+        let mut discarded = Vec::new();
+        let mut pos = PosCtx::new(&mut discarded, (0.0, 0.0));
+        layout_inline_content(
+            spans.as_slice(),
+            styles,
+            &test_fonts(),
+            0.0,
+            0.0,
+            0.0,
+            None,
+            None,
+            &mut pos,
+        )
+        .iter()
+        .map(|l| l.rect.width)
+        .fold(0.0f32, f32::max)
+    }
+
+    #[test]
+    fn plain_text_min_content_matches_a_zero_width_line_layout() {
+        clear_word_width_cache();
+        let texts = [
+            "$3,480.00",
+            "Refund August overpayment caused by understated sibling deposit",
+            "  leading and   trailing   ",
+            "a-very-long-hyphenated-word is here",
+            "W i i i",
+        ];
+        for css in ["", "td { letter-spacing: 2px; font-size: 20px; }"] {
+            for text in texts {
+                let dom =
+                    html::parse(format!("<table><tr><td>{text}</td></tr></table>").as_bytes());
+                let ua = user_agent_stylesheet();
+                let styles = compute_styles(&dom, &ua, &parse_stylesheet(css));
+                let tree = build_box_tree(&dom, &styles);
+                fn first_cell(b: &LayoutBox) -> Option<&LayoutBox> {
+                    match &b.content {
+                        BoxContent::Table(t) => t.rows.first()?.cells.first().map(|c| &c.content),
+                        BoxContent::Blocks(children) => children.iter().find_map(first_cell),
+                        _ => None,
+                    }
+                }
+                let cell = first_cell(&tree).expect("cell");
+                let BoxContent::Inline(spans) = &cell.content else {
+                    panic!("expected inline content");
+                };
+                let fast = plain_text_min_content_width(spans, &styles, &test_fonts(), || {
+                    measure_natural_content_width(cell, &styles, &test_fonts())
+                })
+                .expect("plain text takes the fast path");
+                let slow = slow_min_content(cell, &styles);
+                assert!(
+                    (fast - slow).abs() < 0.01,
+                    "{text:?} with {css:?}: fast {fast} vs layout {slow}"
+                );
+            }
+        }
     }
 }
