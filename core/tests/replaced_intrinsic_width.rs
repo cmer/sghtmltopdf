@@ -227,6 +227,15 @@ fn a_downscaled_block_image_does_not_widen_its_table_column() {
 }
 
 #[test]
+fn an_image_that_failed_to_load_keeps_its_width_attribute_next_to_a_css_height() {
+    // No decoded size means no aspect ratio, so the width cannot be derived from the height.
+    let body = "<div class=row><div><img src=\"missing.png\" width=\"80\"></div><div class=name>x</div></div>";
+    let css = format!("{BASE} img {{ display: block; height: 60px }}");
+    let item = content_box(&css, body, "div", 1);
+    assert!((item.width - 80.0).abs() < 0.5, "item width {}", item.width);
+}
+
+#[test]
 fn a_float_shrinks_to_the_used_width_of_its_block_image() {
     let body = format!("<div class=f><img src=\"{}\"></div>", png_data_uri(600, 20));
     let css = "* { margin: 0; padding: 0 } .f { float: left } img { display: block; width: 160px }";

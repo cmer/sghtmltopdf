@@ -815,7 +815,14 @@ fn replaced_natural_content_width(style: &ComputedStyle, image: &ImageBoxContent
     let border_lr = border.left + border.right;
     let LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width)) = style.width
     else {
-        return 0.0;
+        // A settled `height` with no intrinsic ratio (the decode failed) leaves the width
+        // `auto`. The final layout then shrinks to this same measure, so keep the attribute
+        // (or natural) width it has always used rather than collapsing to 0.
+        return image
+            .attr_width
+            .map(|w| w as f32)
+            .or_else(|| image.image.as_ref().map(|img| img.width))
+            .unwrap_or(0.0);
     };
     let width = if style.box_sizing == BoxSizing::BorderBox {
         (width - padding_lr - border_lr).max(0.0)
