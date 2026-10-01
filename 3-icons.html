@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><style>
+  @page { size: letter; margin: 0.5in }
+  * { margin: 0; padding: 0; box-sizing: border-box }
+  .size-6 { width: 24px; height: 24px }
+  .row { color: #d00; font-size: 16px; margin-bottom: 12px }
+  .blue { color: #06c }
+  .blk { display: block; margin: 8px 0; color: #080 }
+</style></head><body>
+<div class="row">Heroicons check, color red from parent:
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+inline in a line of text.</div>
+<div class="row blue">Blue, no xmlns:
+<svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><circle cx="12" cy="12" r="9"/></svg>
+<svg viewBox="0 0 24 24" fill="currentColor" style="width:48px"><path d="M12 2l3 7h7l-6 5 2 8-6-4-6 4 2-8-6-5h7z"/></svg> after
+</div>
+<svg class="blk" viewBox="0 0 120 30" width="240"><rect width="120" height="30" fill="currentColor"/><text x="4" y="20" fill="white" font-size="14">SVG text</text></svg>
+<svg viewBox="0 0 60 20" width="60" height="20" style="display:block"><style>.q{fill:orange}</style><rect class="q" width="60" height="20"/></svg>
+<p>No size, no viewBox (300x150 default):</p>
+<svg xmlns="http://www.w3.org/2000/svg"><rect width="300" height="150" fill="#ccc"/><circle cx="150" cy="75" r="50" fill="#36c"/></svg>
+<p>After text</p>
+</body></html>
