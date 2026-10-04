@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `::backdrop`, `::file-selector-button`, `::placeholder`, `::selection` and `::marker` now parse and never match, instead of being parse errors that dropped the whole selector list. Tailwind v4's preflight reset (`*, ::after, ::before, ::backdrop, ::file-selector-button { ... }`) was being discarded entirely. (#72)
 - A flex item's declared `width` and its horizontal margins now count towards the container's
   shrink-to-fit width. An empty `width: 10px` icon box in an `inline-block`, float or nested
   flex container used to contribute 0, so the container came out too narrow (#73).
