@@ -246,3 +246,36 @@ fn a_float_shrinks_to_the_used_width_of_its_block_image() {
         float.width
     );
 }
+
+#[test]
+fn a_percentage_max_width_with_auto_width_does_not_collapse_a_small_image() {
+    let (item, name) = flex_row("img { display: block; max-width: 100% }", 200);
+    assert!(
+        (item.width - 200.0).abs() < 0.5,
+        "item width {}",
+        item.width
+    );
+    assert!((name.height - one_line_height()).abs() < 0.5);
+}
+
+#[test]
+fn tailwind_preflight_image_rules_do_not_collapse_a_large_image() {
+    // `img { display: block; max-width: 100%; height: auto }` on a 600px image: the item
+    // shrinks to what the row leaves it, never to 0.
+    let (item, name) = flex_row(
+        "img { display: block; max-width: 100%; height: auto }",
+        600,
+    );
+    assert!(item.width > 300.0, "item width {}", item.width);
+    assert!(name.width > 0.0 && item.width + name.width <= 540.5);
+}
+
+#[test]
+fn a_percentage_min_width_does_not_inflate_the_contribution() {
+    let (item, _) = flex_row("img { display: block; min-width: 50% }", 200);
+    assert!(
+        (item.width - 200.0).abs() < 0.5,
+        "item width {}",
+        item.width
+    );
+}

@@ -976,6 +976,14 @@ fn replaced_natural_content_width(style: &ComputedStyle, image: &ImageBoxContent
             style.width = LengthPercentageOrAuto::Auto;
         }
     }
+    if let MaxSize::LengthPercentage(lp) = style.max_width {
+        if !is_definite(lp) {
+            style.max_width = MaxSize::None;
+        }
+    }
+    if !is_definite(style.min_width) {
+        style.min_width = LengthPercentage::Length(0.0);
+    }
     apply_replaced_element_auto_size(&mut style, image, 0.0);
     let padding = resolve_padding(&style, 0.0);
     let border = resolve_border(&style);
@@ -997,14 +1005,6 @@ fn replaced_natural_content_width(style: &ComputedStyle, image: &ImageBoxContent
     } else {
         width
     };
-    if let MaxSize::LengthPercentage(lp) = style.max_width {
-        if !is_definite(lp) {
-            style.max_width = MaxSize::None;
-        }
-    }
-    if !is_definite(style.min_width) {
-        style.min_width = LengthPercentage::Length(0.0);
-    }
     clamp_used_width(&style, 0.0, padding_lr, border_lr, width)
 }
 
