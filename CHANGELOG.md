@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `display: inline-flex` is supported. The element is an inline-level box on the line, like
+  `inline-block` (shrink-to-fit width, padding, border and background), and its children are
+  laid out as a flex container. It used to fall back to plain `inline`, so badges and pills
+  lost their shape (#73). Its text lines up with the surrounding text on the first item's
+  baseline. `inline-grid` is still unsupported.
+
 ### Fixed
 
 - A percentage `height`, `min-height` or `max-height` now resolves against the containing
@@ -19,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   containing block. With a content-dependent containing block height the percentage still
   behaves as `auto` (`0` for `min-height`, `none` for `max-height`). That also holds for the
   page root (`html, body { height: 100% }`), table cells and flex or grid items.
+- `::backdrop`, `::file-selector-button`, `::placeholder`, `::selection` and `::marker` now parse and never match, instead of being parse errors that dropped the whole selector list. Tailwind v4's preflight reset (`*, ::after, ::before, ::backdrop, ::file-selector-button { ... }`) was being discarded entirely. (#72)
+- A flex item's declared `width` and its horizontal margins now count towards the container's
+  shrink-to-fit width. An empty `width: 10px` icon box in an `inline-block`, float or nested
+  flex container used to contribute 0, so the container came out too narrow (#73).
+- Two floats whose percentage widths add up to exactly 100% in decimal (e.g. Bootstrap 3's
+  `66.66667%` + `33.33333%`) now sit side by side instead of stacking (#64). Resolving the
+  percentages in `f32` could make their sum overshoot the containing width by a few
+  thousandths of a point, which failed the "does it fit" check. Float placement now allows
+  0.01pt of slack.
+- An image whose `width` and `height` are both `auto` keeps its aspect ratio under
+  `min-width`/`max-width`/`min-height`/`max-height` (#68). Each axis used to be clamped on
+  its own, distorting the image; the four limits are now resolved together with the
+  CSS2.2 §10.4 table, in block, inline, flex and grid layout alike. Under
+  `box-sizing: border-box`, padding and border no longer eat into the intrinsic size.
+- An image grid item with `justify-self`/`align-self` left at `auto` is placed at the start
+  of its grid area instead of being stretched to it, as `normal` alignment does for
+  replaced elements.
 
 ## 0.5.1 - 2026-09-23
 

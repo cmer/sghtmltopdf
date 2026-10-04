@@ -316,6 +316,155 @@ fn an_explicit_ratio_applies_to_an_image_without_any_css_size() {
     assert_eq!(content.height, 32.0, "height follows the specified ratio");
 }
 
+// ===== `<img>` under min-*/max-* (CSS2.2 section 10.4) =====
+
+fn image_size(css: &str) -> (f32, f32) {
+    let html_src = format!(r#"<img src="{}">"#, jpeg_data_uri());
+    let (dom, laid) = layout(&html_src, &format!("body {{ margin: 0; }} {css}"));
+    let content = content_box(&dom, &laid, "img", 0);
+    (content.width, content.height)
+}
+
+#[test]
+fn max_width_on_an_image_shrinks_the_height_with_it() {
+    assert_eq!(image_size("img { max-width: 16px; }"), (16.0, 12.0));
+}
+
+#[test]
+fn max_height_on_an_image_shrinks_the_width_with_it() {
+    assert_eq!(image_size("img { max-height: 12px; }"), (16.0, 12.0));
+}
+
+#[test]
+fn min_width_on_an_image_grows_the_height_with_it() {
+    assert_eq!(image_size("img { min-width: 64px; }"), (64.0, 48.0));
+}
+
+#[test]
+fn min_height_on_an_image_grows_the_width_with_it() {
+    assert_eq!(image_size("img { min-height: 48px; }"), (64.0, 48.0));
+}
+
+#[test]
+fn the_tighter_of_max_width_and_max_height_decides_the_image_size() {
+    // Both are exceeded. The height limit is the tighter one (6/24 < 16/32).
+    assert_eq!(
+        image_size("img { max-width: 16px; max-height: 6px; }"),
+        (8.0, 6.0)
+    );
+    // The width limit is the tighter one (8/32 < 12/24).
+    assert_eq!(
+        image_size("img { max-width: 8px; max-height: 12px; }"),
+        (8.0, 6.0)
+    );
+}
+
+#[test]
+fn a_conflicting_limit_on_the_other_axis_wins_over_the_ratio() {
+    // min-width alone would give 64x48, but max-height caps the height (the ratio is broken).
+    assert_eq!(
+        image_size("img { min-width: 64px; max-height: 30px; }"),
+        (64.0, 30.0)
+    );
+}
+
+#[test]
+fn an_image_within_its_limits_keeps_its_intrinsic_size() {
+    assert_eq!(
+        image_size("img { max-width: 240px; max-height: 240px; }"),
+        (32.0, 24.0)
+    );
+}
+
+#[test]
+fn padding_does_not_eat_into_an_image_under_border_box_sizing() {
+    // The intrinsic size is the content box whatever `box-sizing` says.
+    assert_eq!(
+        image_size("img { box-sizing: border-box; padding: 2px; }"),
+        (32.0, 24.0)
+    );
+}
+
+#[test]
+fn max_limits_on_an_image_are_border_box_relative_under_border_box_sizing() {
+    // max-width: 20px includes padding 2px on each side, so the content box is 16px wide.
+    assert_eq!(
+        image_size("img { box-sizing: border-box; padding: 2px; max-width: 20px; }"),
+        (16.0, 12.0)
+    );
+}
+
+#[test]
+fn a_flex_item_image_keeps_its_ratio_under_max_height() {
+    let html_src = format!(r#"<div class="row"><img src="{}"></div>"#, jpeg_data_uri());
+    let (dom, laid) = layout(
+        &html_src,
+        "body { margin: 0; } .row { display: flex; flex-wrap: wrap; } \
+         img { max-width: 240px; max-height: 12px; }",
+    );
+    let content = content_box(&dom, &laid, "img", 0);
+    assert_eq!((content.width, content.height), (16.0, 12.0));
+}
+
+#[test]
+fn a_flex_item_image_keeps_its_ratio_under_a_percentage_max_width() {
+    let html_src = format!(r#"<div class="row"><img src="{}"></div>"#, jpeg_data_uri());
+    let (dom, laid) = layout(
+        &html_src,
+        "body { margin: 0; } .row { display: flex; } img { max-width: 50%; }",
+    );
+    let content = content_box(&dom, &laid, "img", 0);
+    assert_eq!((content.width, content.height), (32.0, 24.0));
+}
+
+#[test]
+fn a_percentage_max_width_on_a_flex_item_image_resolves_against_the_container() {
+    // 50% of the 40px container is 20px, under the intrinsic 32px.
+    let html_src = format!(r#"<div class="row"><img src="{}"></div>"#, jpeg_data_uri());
+    let (dom, laid) = layout(
+        &html_src,
+        "body { margin: 0; } .row { display: flex; width: 40px; } img { max-width: 50%; }",
+    );
+    let content = content_box(&dom, &laid, "img", 0);
+    assert_eq!((content.width, content.height), (20.0, 15.0));
+}
+
+#[test]
+fn a_grid_item_image_keeps_its_ratio_under_a_percentage_max_width() {
+    // 50% of the 100px column is 50px, over the intrinsic 32px.
+    let html_src = format!(r#"<div class="grid"><img src="{}"></div>"#, jpeg_data_uri());
+    let (dom, laid) = layout(
+        &html_src,
+        "body { margin: 0; } .grid { display: grid; grid-template-columns: 100px 100px; } \
+         img { max-width: 50%; }",
+    );
+    let content = content_box(&dom, &laid, "img", 0);
+    assert_eq!((content.width, content.height), (32.0, 24.0));
+}
+
+#[test]
+fn a_grid_item_image_is_not_stretched_to_a_taller_row() {
+    let html_src = format!(
+        r#"<div class="grid"><img src="{}"><div class="tall"></div></div>"#,
+        jpeg_data_uri()
+    );
+    let (dom, laid) = layout(
+        &html_src,
+        "body { margin: 0; } .grid { display: grid; grid-template-columns: 100px 100px; } \
+         .tall { height: 80px; }",
+    );
+    let content = content_box(&dom, &laid, "img", 0);
+    assert_eq!((content.width, content.height), (32.0, 24.0));
+}
+
+#[test]
+fn an_inline_image_keeps_its_ratio_under_max_height() {
+    let html_src = format!(r#"<p>text <img src="{}"> text</p>"#, jpeg_data_uri());
+    let (dom, laid) = layout(&html_src, "body { margin: 0; } img { max-height: 12px; }");
+    let content = content_box(&dom, &laid, "img", 0);
+    assert_eq!((content.width, content.height), (16.0, 12.0));
+}
+
 // ===== flex =====
 
 #[test]
