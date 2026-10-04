@@ -8,6 +8,11 @@
 
 use crate::style::{Clear, Float};
 
+/// Slack (pt) allowed by the fit check in `place`. Widths that add up to exactly 100% in
+/// decimal, such as `66.66667%` + `33.33333%`, can overshoot the containing width slightly
+/// once resolved in f32, which would push the second float to the next shelf (#64).
+const FIT_EPSILON: f32 = 0.01;
+
 /// One float's rectangle in absolute (within-page) coordinates. `inner_edge_x` holds only
 /// the inner boundary needed for flow-around (the right edge for a left float, the left edge for a right float).
 #[derive(Debug, Clone, Copy)]
@@ -73,7 +78,7 @@ impl FloatContext {
                 )
             };
 
-            if available_right - available_left >= margin_box_width {
+            if available_right - available_left + FIT_EPSILON >= margin_box_width {
                 let x = if side == Float::Left {
                     available_left
                 } else {
@@ -202,6 +207,17 @@ mod tests {
         // A float of width 400 does not fit at y=0 (300 occupied, 200 free). Advancing to
         // y=30, where the first float ends, leaves only 50 occupied, freeing 450, so it fits.
         assert_eq!(ctx.place(Float::Left, 0.0, 0.0, 500.0, 400.0), (50.0, 30.0));
+    }
+
+    #[test]
+    fn place_tolerates_rounding_error_in_the_fit_check() {
+        let mut ctx = FloatContext::new();
+        ctx.register(Float::Left, 0.0, 0.0, 400.0, 50.0);
+        // Overshoots the 100pt gap by 0.005 (f32 rounding error), but stays on the same shelf.
+        assert_eq!(
+            ctx.place(Float::Left, 0.0, 0.0, 500.0, 100.005),
+            (400.0, 0.0)
+        );
     }
 
     #[test]
