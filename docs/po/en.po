@@ -7641,13 +7641,13 @@ msgstr ""
 
 #: src/supports/images.md:121
 msgid ""
-"**寸法**は、CSSの`width`/`height`、`width`/`height`属性、`viewBox`の 順に決め"
+"寸法は、CSSの`width`/`height`、`width`/`height`属性、`viewBox`の 順に決め"
 "ます。属性が片方だけなら、もう片方は`viewBox`の縦横比から 求めます。どれも無"
 "ければ、CSSの置換要素の既定値300×150になります。 `viewBox`だけがある場合は、"
 "`viewBox`の幅と高さがそのまま固有サイズに なります(ブラウザのように行の幅いっ"
 "ぱいには広げません)。 `width=\"100%\"`のような属性はCSSの値として扱います。"
 msgstr ""
-"The **size** is decided from the CSS `width`/`height`, then the "
+"The size is decided from the CSS `width`/`height`, then the "
 "`width`/`height` attributes, then the `viewBox`, in that order. If only one "
 "attribute is given, the other side is derived from the aspect ratio of the "
 "`viewBox`. If there is none of them, the CSS default replaced-element size "
@@ -7658,10 +7658,10 @@ msgstr ""
 
 #: src/supports/images.md:125
 msgid ""
-"**`currentColor`** は、その`<svg>`要素の計算済み`color`になります。 親に"
+"`currentColor` は、その`<svg>`要素の計算済み`color`になります。 親に"
 "`color: red`があれば赤です。"
 msgstr ""
-"**`currentColor`** is the computed `color` of that `<svg>` element. If a "
+"`currentColor` is the computed `color` of that `<svg>` element. If a "
 "parent has `color: red`, it is red."
 
 #: src/supports/images.md:129

@@ -433,6 +433,10 @@ pub struct ImageAssetCache {
     svg_fonts: SvgFontDb,
     /// Whether the "`<text>` inside an SVG is not drawn" warning has already been issued (once per document).
     warned_svg_text: Cell<bool>,
+    /// Whether the "inline `<svg>` failed to decode" warning has been issued (once per document).
+    warned_inline_svg_decode: Cell<bool>,
+    /// Whether the "inline `<svg>` has an unresolved `<use>`" warning has been issued.
+    warned_inline_svg_use: Cell<bool>,
 }
 
 impl ImageAssetCache {
@@ -457,6 +461,8 @@ impl ImageAssetCache {
             decoded: RefCell::new(HashMap::new()),
             svg_fonts: SvgFontDb::empty(),
             warned_svg_text: Cell::new(false),
+            warned_inline_svg_decode: Cell::new(false),
+            warned_inline_svg_use: Cell::new(false),
         }
     }
 
@@ -495,8 +501,28 @@ impl ImageAssetCache {
         let result = decode_image(markup.as_bytes(), &self.svg_fonts)
             .map(Rc::new)
             .map_err(|e| Rc::from(e.to_string()));
+        if let Err(error) = &result {
+            if !self.warned_inline_svg_decode.replace(true) {
+                eprintln!(
+                    "warning: an inline <svg> could not be drawn ({error}); it keeps its space \
+                     but nothing is drawn. Only the first such <svg> is reported"
+                );
+            }
+        }
         self.decoded.borrow_mut().insert(key, result.clone());
         result
+    }
+
+    /// Warn (once per document) that an inline `<svg>` has a `<use>` pointing at an id that
+    /// is not inside the same `<svg>`, which is drawn as nothing.
+    pub fn warn_inline_svg_unresolved_use(&self) {
+        if !self.warned_inline_svg_use.replace(true) {
+            eprintln!(
+                "warning: an inline <svg> has a <use href=\"#id\"> whose target is not inside \
+                 the same <svg> (sprite sheets are not supported); it is drawn as nothing. \
+                 Only the first such <svg> is reported"
+            );
+        }
     }
 
     /// Return the decoded image for `raw_src` (the raw value of the `<img src>` attribute).

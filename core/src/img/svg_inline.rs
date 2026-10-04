@@ -46,7 +46,9 @@ fn write_element(dom: &Dom, node: NodeId, is_root: bool, color: RgbaColor, out: 
         write_root_attributes(attrs, color, out);
     } else {
         for attr in attrs {
-            write_attribute(&qualified_name(attr), &attr.value, out);
+            if let Some(name) = serialisable_name(attr) {
+                write_attribute(&name, &attr.value, out);
+            }
         }
     }
     let mut children = dom.children(node).peekable();
@@ -73,7 +75,9 @@ fn write_root_attributes(attrs: &[Attribute], color: RgbaColor, out: &mut String
     let mut height = None;
 
     for attr in attrs {
-        let name = qualified_name(attr);
+        let Some(name) = serialisable_name(attr) else {
+            continue;
+        };
         match name.as_str() {
             "xmlns" => has_xmlns = true,
             "xmlns:xlink" => has_xmlns_xlink = true,
@@ -175,6 +179,60 @@ fn qualified_name(attr: &Attribute) -> String {
     }
 }
 
+/// The attribute's name as written in XML, or `None` when XML cannot carry it. HTML allows
+/// names such as `x-on:click`, `@click`, `:class` or `hx-on:click` (Alpine, Vue, htmx,
+/// Livewire); written back as they are they make the whole document ill-formed or give it
+/// an unbound namespace prefix, and the icon is lost. Only the prefixes the HTML parser
+/// itself recognises (`xlink:`, `xml:`, `xmlns:`) survive, and they arrive as a prefix.
+fn serialisable_name(attr: &Attribute) -> Option<String> {
+    let has_parser_prefix = attr.name.prefix.as_ref().is_some_and(|p| !p.is_empty());
+    let local = &*attr.name.local;
+    if local.contains(':') && !has_parser_prefix {
+        return None;
+    }
+    if !is_xml_name(local) {
+        return None;
+    }
+    Some(qualified_name(attr))
+}
+
+/// Whether `name` is a valid XML name without a colon.
+fn is_xml_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let start_ok = |c: char| c == '_' || c.is_alphabetic() || (c as u32) >= 0xC0;
+    match chars.next() {
+        Some(c) if start_ok(c) => {}
+        _ => return false,
+    }
+    chars.all(|c| start_ok(c) || c.is_ascii_digit() || c == '-' || c == '.' || c == '\u{B7}')
+}
+
+/// Whether the `<svg>` at `root` has a `<use>` that refers to an id (`href="#id"`) no element
+/// inside the same `<svg>` carries, which is how sprite sheets reference icons.
+pub fn has_unresolved_use(dom: &Dom, root: NodeId) -> bool {
+    fn walk(dom: &Dom, node: NodeId, ids: &mut Vec<String>, uses: &mut Vec<String>) {
+        if let NodeData::Element { name, attrs, .. } = &dom.node(node).data {
+            for attr in attrs {
+                match &*attr.name.local {
+                    "id" => ids.push(attr.value.to_string()),
+                    "href" if &*name.local == "use" => {
+                        if let Some(id) = attr.value.strip_prefix('#') {
+                            uses.push(id.to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for child in dom.children(node) {
+            walk(dom, child, ids, uses);
+        }
+    }
+    let (mut ids, mut uses) = (Vec::new(), Vec::new());
+    walk(dom, root, &mut ids, &mut uses);
+    uses.iter().any(|id| !ids.contains(id))
+}
+
 fn write_attribute(name: &str, value: &str, out: &mut String) {
     out.push(' ');
     out.push_str(name);
@@ -249,6 +307,56 @@ mod tests {
         );
         assert!(out.contains("<linearGradient"), "{out}");
         assert!(out.contains(r##"xlink:href="#g""##), "{out}");
+    }
+
+    #[test]
+    fn drops_attributes_xml_cannot_carry() {
+        let out = serialize(
+            r##"<svg x-on:click="go()" @click="go()" :class="c" hx-on:click="x" wire:click="y" viewBox="0 0 1 1" data-ok="1"><path :d="d" x-data="{}" d="M0 0" xlink:href="#a" xml:space="preserve"/></svg>"##,
+        );
+        for gone in [
+            "x-on:click",
+            "@click",
+            ":class",
+            "hx-on:click",
+            "wire:click",
+            ":d",
+        ] {
+            assert!(!out.contains(gone), "{gone} kept: {out}");
+        }
+        for kept in [
+            "viewBox=",
+            "data-ok=\"1\"",
+            "x-data=",
+            "xlink:href=\"#a\"",
+            "xml:space=",
+        ] {
+            assert!(out.contains(kept), "{kept} lost: {out}");
+        }
+    }
+
+    #[test]
+    fn xml_names_are_checked() {
+        assert!(is_xml_name("stroke-width"));
+        assert!(is_xml_name("_a.b1"));
+        assert!(!is_xml_name("@click"));
+        assert!(!is_xml_name("1a"));
+        assert!(!is_xml_name("a b"));
+        assert!(!is_xml_name(""));
+    }
+
+    #[test]
+    fn finds_a_use_that_points_outside_the_svg() {
+        let check = |markup: &str| {
+            let dom = html::parse(markup.as_bytes());
+            let svg = find_svg(&dom, dom.document()).unwrap();
+            has_unresolved_use(&dom, svg)
+        };
+        assert!(check(r##"<svg><use href="#icon"/></svg>"##));
+        assert!(!check(
+            r##"<svg><defs><path id="icon" d="M0 0"/></defs><use href="#icon"/></svg>"##
+        ));
+        assert!(!check(r#"<svg><path d="M0 0"/></svg>"#));
     }
 
     #[test]

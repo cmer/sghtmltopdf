@@ -117,13 +117,13 @@ HTMLに直接書いた`<svg>`要素は、`<img src="*.svg">`と同じ経路で�
 </p>
 ```
 
-* **寸法**は、CSSの`width`/`height`、`width`/`height`属性、`viewBox`の
+* 寸法は、CSSの`width`/`height`、`width`/`height`属性、`viewBox`の
   順に決めます。属性が片方だけなら、もう片方は`viewBox`の縦横比から
   求めます。どれも無ければ、CSSの置換要素の既定値300×150になります。
   `viewBox`だけがある場合は、`viewBox`の幅と高さがそのまま固有サイズに
   なります(ブラウザのように行の幅いっぱいには広げません)。
   `width="100%"`のような属性はCSSの値として扱います。
-* **`currentColor`** は、その`<svg>`要素の計算済み`color`になります。
+* `currentColor` は、その`<svg>`要素の計算済み`color`になります。
   親に`color: red`があれば赤です。
 * 行の中では`<img>`と同じくインラインの置換要素で、下端がベースラインに
   揃います。`display: block`も使えます。`display: none`なら描画しません

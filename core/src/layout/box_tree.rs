@@ -555,6 +555,9 @@ fn build_inline_svg_box_content(
     image_cache: &ImageAssetCache,
 ) -> ImageBoxContent {
     let markup = crate::img::serialize_inline_svg(dom, node, color);
+    if crate::img::has_unresolved_use(dom, node) {
+        image_cache.warn_inline_svg_unresolved_use();
+    }
     ImageBoxContent {
         image: image_cache.get_or_decode_inline_svg(&markup).ok(),
         // The `width`/`height` attributes are already part of the document handed to the SVG

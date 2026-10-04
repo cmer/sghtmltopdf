@@ -13,4 +13,4 @@ pub use resolve::{
     classify_img_src, resolve_against_base_href, resolve_local_asset_path, ImgSrc,
     ResolvedAssetPath,
 };
-pub use svg_inline::serialize_inline_svg;
+pub use svg_inline::{has_unresolved_use, serialize_inline_svg};

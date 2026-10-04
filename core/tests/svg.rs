@@ -945,3 +945,24 @@ fn a_broken_svg_does_not_abort_the_conversion() {
     assert_xref_is_consistent(&bytes);
     cleanup(&dir);
 }
+
+/// Alpine, Vue, Livewire and htmx put attributes on icons that are not valid XML names. They
+/// used to make the whole `<svg>` fail to decode, so the icon vanished.
+#[test]
+fn an_inline_svg_with_framework_attributes_is_still_drawn() {
+    for (mode, name) in MODES {
+        let pdf = convert(
+            r##"<body style="margin:0"><p>before
+                 <svg class="size-6" x-on:click="go()" @click="go()" :class="c"
+                      wire:click="y" hx-on:click="z" width="40" height="20">
+                   <rect width="40" height="20" fill="#ff0000"/>
+                   <circle cx="20" cy="10" r="8" fill="#00ff00"/>
+                 </svg> after</p></body>"##,
+            mode,
+            &format!("inline-framework-{name}"),
+        );
+        assert_embedded_as_vector(&pdf);
+        assert_xref_is_consistent(&pdf);
+        assert_close(xobject_cm(&pdf)[0], 40.0, "inline width");
+    }
+}
