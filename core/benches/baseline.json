@@ -522,6 +522,66 @@
       "peak_live_bytes": 0,
       "pages": 4,
       "pdf_bytes": 77698
+    },
+    {
+      "name": "scale/universal_custom_properties/batch/1000",
+      "seconds": 0.046183542,
+      "peak_rss_bytes": 32522240,
+      "alloc_count": 134468,
+      "alloc_bytes": 62308452,
+      "peak_live_bytes": 25593124,
+      "pages": 31,
+      "pdf_bytes": 110761
+    },
+    {
+      "name": "scale/universal_custom_properties/batch/5000",
+      "seconds": 0.196887709,
+      "peak_rss_bytes": 41648128,
+      "alloc_count": 662015,
+      "alloc_bytes": 180395832,
+      "peak_live_bytes": 33184492,
+      "pages": 152,
+      "pdf_bytes": 413855
+    },
+    {
+      "name": "scale/universal_custom_properties/batch/20000",
+      "seconds": 1.00178475,
+      "peak_rss_bytes": 79298560,
+      "alloc_count": 2660242,
+      "alloc_bytes": 628946926,
+      "peak_live_bytes": 64104557,
+      "pages": 607,
+      "pdf_bytes": 1554901
+    },
+    {
+      "name": "scale/universal_custom_properties/streaming/1000",
+      "seconds": 0.044713417,
+      "peak_rss_bytes": 31375360,
+      "alloc_count": 140488,
+      "alloc_bytes": 63560727,
+      "peak_live_bytes": 24672500,
+      "pages": 31,
+      "pdf_bytes": 110756
+    },
+    {
+      "name": "scale/universal_custom_properties/streaming/5000",
+      "seconds": 0.254920084,
+      "peak_rss_bytes": 35323904,
+      "alloc_count": 692773,
+      "alloc_bytes": 183821317,
+      "peak_live_bytes": 27276396,
+      "pages": 152,
+      "pdf_bytes": 413860
+    },
+    {
+      "name": "scale/universal_custom_properties/streaming/20000",
+      "seconds": 0.735086458,
+      "peak_rss_bytes": 44466176,
+      "alloc_count": 2783903,
+      "alloc_bytes": 645262462,
+      "peak_live_bytes": 37514293,
+      "pages": 607,
+      "pdf_bytes": 1554901
     }
   ]
 }

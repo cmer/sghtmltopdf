@@ -317,6 +317,20 @@ pub fn compute_custom_properties<'a, I>(
 where
     I: Iterator<Item = &'a PropertyDeclaration> + Clone,
 {
+    // Fast path: every winning value is one of the declared values, so when none of them can
+    // change the inherited map (a plain value equal to the one already inherited) the element
+    // shares its parent's map. Tailwind v3's preflight declares dozens of properties on `*`,
+    // which lands here on every element.
+    let unchanged = declarations.clone().all(|declaration| {
+        let PropertyDeclaration::Custom(custom) = declaration else {
+            return true;
+        };
+        is_plain_value(&custom.value) && inherited.get(&custom.name) == Some(&*custom.value)
+    });
+    if unchanged {
+        return inherited.clone();
+    }
+
     let mut winners: HashMap<Rc<str>, Rc<str>> = HashMap::new();
     for important in [false, true] {
         for declaration in declarations.clone() {
@@ -369,6 +383,17 @@ where
     }
 }
 
+/// Whether a declared value is already its own computed value: no `var()` to substitute and
+/// not a CSS-wide keyword to look up.
+fn is_plain_value(value: &str) -> bool {
+    const KEYWORDS: &[&str] = &["initial", "inherit", "unset", "revert", "revert-layer"];
+    !value
+        .as_bytes()
+        .windows(4)
+        .any(|w| w.eq_ignore_ascii_case(b"var("))
+        && !KEYWORDS.iter().any(|k| value.eq_ignore_ascii_case(k))
+}
+
 /// Parse `value` as the value of property `name`, requiring all of it to be consumed.
 fn parse_value_text(name: &str, value: &str) -> Option<Vec<PropertyDeclaration>> {
     let mut input = ParserInput::new(value);
@@ -383,6 +408,7 @@ fn parse_value_text(name: &str, value: &str) -> Option<Vec<PropertyDeclaration>>
 /// empty list when none of them parses (the declaration is then ignored).
 fn longhand_probe(name: &str) -> Vec<PropertyDeclaration> {
     const PROBES: &[&str] = &[
+        "0 none red",
         "0",
         "none",
         "auto",
@@ -398,7 +424,6 @@ fn longhand_probe(name: &str) -> Vec<PropertyDeclaration> {
         "nowrap",
         "row",
         "stretch",
-        "0 none red",
         "0 0",
     ];
     PROBES
@@ -538,6 +563,54 @@ mod tests {
             parent.0.as_ref().unwrap(),
             child.0.as_ref().unwrap()
         ));
+    }
+
+    #[test]
+    fn redeclaring_the_inherited_values_everywhere_shares_the_map() {
+        let css = "* { --a: 1px; --b: 2px !important; --c: solid }";
+        let parent = compute(&CustomProperties::default(), &decls(css));
+        let child = compute(&parent, &decls(css));
+        assert!(Rc::ptr_eq(
+            parent.0.as_ref().unwrap(),
+            child.0.as_ref().unwrap()
+        ));
+    }
+
+    #[test]
+    fn the_unchanged_fast_path_still_notices_a_difference() {
+        let parent = compute(&CustomProperties::default(), &decls("p { --a: 1px }"));
+        // One value equals the inherited one, the other does not.
+        let child = compute(&parent, &decls("p { --a: 1px; --b: 2px }"));
+        assert_eq!(child.get("--a"), Some("1px"));
+        assert_eq!(child.get("--b"), Some("2px"));
+        // An equal value that an `!important` declaration then overrides.
+        let child = compute(&parent, &decls("p { --a: 1px; --a: 3px !important }"));
+        assert_eq!(child.get("--a"), Some("3px"));
+    }
+
+    #[test]
+    fn css_wide_keywords_and_var_never_take_the_fast_path() {
+        let parent = compute(&CustomProperties::default(), &decls("p { --a: initial }"));
+        // `initial` is not the guaranteed-invalid value's textual form, so it must resolve.
+        assert_eq!(parent.get("--a"), None);
+        let parent = compute(&CustomProperties::default(), &decls("p { --a: 1px }"));
+        let child = compute(&parent, &decls("p { --a: initial }"));
+        assert_eq!(child.get("--a"), None);
+        let child = compute(&parent, &decls("p { --a: var(--missing) }"));
+        assert_eq!(child.get("--a"), None);
+        let child = compute(&parent, &decls("p { --a: VAR(--missing, 4px) }"));
+        assert_eq!(child.get("--a"), Some("4px"));
+    }
+
+    #[test]
+    fn an_invalid_border_var_resets_the_colour_too() {
+        let probe = longhand_probe("border");
+        assert!(
+            probe
+                .iter()
+                .any(|d| matches!(d, PropertyDeclaration::BorderTopColor(_))),
+            "{probe:?}"
+        );
     }
 
     #[test]
