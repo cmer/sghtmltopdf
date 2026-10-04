@@ -1291,8 +1291,6 @@ pub(super) fn apply_replaced_element_auto_size(
         (None, None) => intrinsic_size.unwrap_or((0.0, 0.0)),
     };
 
-    style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
-
     // An `aspect-ratio` given without `auto` (`aspect-ratio: 16 / 9`, say) wins over the
     // intrinsic ratio. The width stays intrinsic and only the height is redecided by the ratio.
     let height = if style.aspect_ratio.auto {
@@ -1300,7 +1298,129 @@ pub(super) fn apply_replaced_element_auto_size(
     } else {
         aspect_ratio_height(style, &padding, &border, width).unwrap_or(height)
     };
+
+    // HTML `width`/`height` attributes are presentational hints, i.e. not `auto` in CSS terms,
+    // so only a size taken from the image itself goes through the ratio-preserving table.
+    // Clamping the two axes independently afterwards would distort the image.
+    let (width, height) = if attr_size == (None, None) {
+        let (w, h) =
+            constrain_replaced_size(style, containing_width, &padding, &border, width, height);
+        // `width`/`height` are read as border-box lengths under `box-sizing: border-box`, but
+        // a size taken from the image is the content box.
+        if style.box_sizing == BoxSizing::BorderBox {
+            (
+                w + padding.left + padding.right + border.left + border.right,
+                h + padding.top + padding.bottom + border.top + border.bottom,
+            )
+        } else {
+            (w, h)
+        }
+    } else {
+        (width, height)
+    };
+
+    style.width = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(width));
     style.height = LengthPercentageOrAuto::LengthPercentage(LengthPercentage::Length(height));
+}
+
+/// The content-box `(width, height)` a replaced element with `width` and `height` both
+/// `auto` settles on, for callers that size it before laying it out (a flex or grid item
+/// measured by taffy). `None` when either of them is set.
+pub(super) fn replaced_auto_content_size(
+    style: &ComputedStyle,
+    image: &ImageBoxContent,
+    containing_width: f32,
+) -> Option<(f32, f32)> {
+    if !matches!(style.width, LengthPercentageOrAuto::Auto)
+        || !matches!(style.height, LengthPercentageOrAuto::Auto)
+    {
+        return None;
+    }
+    let mut style = style.clone();
+    apply_replaced_element_auto_size(&mut style, image, containing_width);
+    let width = resolve_lpa_or_zero(style.width, containing_width);
+    let height = resolve_lpa_or_zero(style.height, containing_width);
+    if style.box_sizing == BoxSizing::BorderBox {
+        let padding = resolve_padding(&style, containing_width);
+        let border = resolve_border(&style);
+        Some((
+            (width - padding.left - padding.right - border.left - border.right).max(0.0),
+            (height - padding.top - padding.bottom - border.top - border.bottom).max(0.0),
+        ))
+    } else {
+        Some((width, height))
+    }
+}
+
+/// Resolve `min-width`/`max-width`/`min-height`/`max-height` of a replaced element whose
+/// `width` and `height` are both `auto`, keeping the aspect ratio where the constraints allow
+/// (the table in CSS2.2 section 10.4). Returns the content-box `(width, height)`.
+///
+/// The limits are brought to content-box under `box-sizing: border-box` in the same way as
+/// [`clamp_used_width`]/[`clamp_used_height`], and a percentage `min-height`/`max-height` is
+/// ignored for the same reason (the containing block's height is indefinite).
+fn constrain_replaced_size(
+    style: &ComputedStyle,
+    containing_width: f32,
+    padding: &EdgeSizes,
+    border: &EdgeSizes,
+    width: f32,
+    height: f32,
+) -> (f32, f32) {
+    if width <= 0.0 || height <= 0.0 {
+        return (width, height);
+    }
+
+    let padding_lr = padding.left + padding.right;
+    let border_lr = border.left + border.right;
+    let padding_tb = padding.top + padding.bottom;
+    let border_tb = border.top + border.bottom;
+    let border_box = style.box_sizing == BoxSizing::BorderBox;
+    let to_content_w = |v: f32| {
+        if border_box {
+            (v - padding_lr - border_lr).max(0.0)
+        } else {
+            v
+        }
+    };
+    let to_content_h = |v: f32| {
+        if border_box {
+            (v - padding_tb - border_tb).max(0.0)
+        } else {
+            v
+        }
+    };
+
+    let min_w = to_content_w(resolve_lp(style.min_width, containing_width));
+    let max_w = match style.max_width {
+        MaxSize::LengthPercentage(lp) => to_content_w(resolve_lp(lp, containing_width)),
+        MaxSize::None => f32::INFINITY,
+    }
+    .max(min_w);
+    let min_h = definite_height_px(style.min_height)
+        .map(to_content_h)
+        .unwrap_or(0.0);
+    let max_h = match style.max_height {
+        MaxSize::LengthPercentage(lp) => definite_height_px(lp).map(to_content_h),
+        MaxSize::None => None,
+    }
+    .unwrap_or(f32::INFINITY)
+    .max(min_h);
+
+    let (w, h) = (width, height);
+    match (w > max_w, w < min_w, h > max_h, h < min_h) {
+        (true, _, true, _) if max_w / w <= max_h / h => (max_w, (max_w * h / w).max(min_h)),
+        (true, _, true, _) => ((max_h * w / h).max(min_w), max_h),
+        (_, true, _, true) if min_w / w <= min_h / h => ((min_h * w / h).min(max_w), min_h),
+        (_, true, _, true) => (min_w, (min_w * h / w).min(max_h)),
+        (_, true, true, _) => (min_w, max_h),
+        (true, _, _, true) => (max_w, min_h),
+        (true, _, _, _) => (max_w, (max_w * h / w).max(min_h)),
+        (_, true, _, _) => (min_w, (min_w * h / w).min(max_h)),
+        (_, _, true, _) => ((max_h * w / h).max(min_w), max_h),
+        (_, _, _, true) => ((min_h * w / h).min(max_w), min_h),
+        _ => (w, h),
+    }
 }
 
 /// The image's intrinsic aspect ratio (`width / height`). `None` when it has not been
@@ -1525,7 +1645,8 @@ fn place_atomic_inlines(lines: &mut [LineBox]) {
         for atomic in line.atomics.iter_mut() {
             // The target position of the top left of the margin box.
             let target_x = line.rect.x + atomic.x_offset;
-            let target_y = baseline_y - atomic.baseline_shift - atomic.margin_box_height;
+            let target_y = baseline_y - atomic.baseline_shift - atomic.margin_box_height
+                + atomic.baseline_from_bottom;
             // The current top left of the margin box (laid out at the origin 0, so it follows
             // from the content coordinates minus margin/border/padding).
             let layout = atomic.content.layout;
@@ -2023,6 +2144,38 @@ mod tests {
         assert_eq!(a_box.layout.content.x, 0.0);
         assert_eq!(b_box.layout.content.x, 100.0);
         assert_eq!(b_box.layout.content.y, 0.0);
+    }
+
+    #[test]
+    fn floats_with_non_round_percentages_summing_to_100_sit_side_by_side() {
+        // Bootstrap 3's `.col-xs-8`/`.col-xs-4`. Even when f32 rounding makes the two widths
+        // overshoot the containing width slightly, the second float stays on the same row (#64).
+        let dom = html::parse(
+            br#"<div class="outer"><div class="a">A</div><div class="b">B</div></div>"#,
+        );
+        let ua = user_agent_stylesheet();
+        let author = parse_stylesheet(
+            "body { margin: 0; } \
+             .a { float: left; width: 66.66667%; height: 50px; } \
+             .b { float: left; width: 33.33333%; height: 30px; }",
+        );
+        let styles = compute_styles(&dom, &ua, &author);
+        let tree = build_box_tree(&dom, &styles);
+        let fonts = test_fonts();
+
+        let mut divs = Vec::new();
+        find_all(&dom, dom.document(), "div", &mut divs);
+        for containing_width in [595.0, 612.0, 700.0, 793.7, 800.0, 1000.0] {
+            let laid = layout_document(&tree, &styles, &fonts, containing_width);
+            let a_box = find_laid_out(&laid, divs[1]).expect("a not found");
+            let b_box = find_laid_out(&laid, divs[2]).expect("b not found");
+
+            assert_eq!(
+                b_box.layout.content.y, 0.0,
+                "b stacked below a at containing width {containing_width}"
+            );
+            assert_eq!(b_box.layout.content.x, a_box.layout.content.width);
+        }
     }
 
     #[test]
