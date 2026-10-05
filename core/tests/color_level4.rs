@@ -60,23 +60,28 @@ fn oklab_background_color_renders_a_valid_pdf_end_to_end() {
     assert!(count_occurrences(&bytes, b"%%EOF") > 0);
 }
 
-/// Mask out the `/CreationDate` value.
+/// Mask out the `/CreationDate` value and the trailer's `/ID`, which hashes it.
 ///
-/// A PDF's Info dictionary always carries the creation time, so comparing two separately
+/// Both are built from the wall clock at the moment of writing, so comparing two separately
 /// generated PDFs directly would fail only when the two generations straddled a second
-/// boundary. The value is fixed-length (`D:YYYYMMDDHHMMSSZ`), so padding it to the same
-/// length leaves every later byte position (the cross-reference table offsets) unchanged.
-fn mask_creation_date(bytes: &[u8]) -> Vec<u8> {
-    const KEY: &[u8] = b"/CreationDate (";
+/// boundary. Both are fixed length (`D:YYYYMMDDHHMMSSZ` and two 16-byte hex strings), so
+/// blanking them leaves every later byte position (the cross-reference table offsets)
+/// unchanged.
+fn mask_wall_clock_metadata(bytes: &[u8]) -> Vec<u8> {
+    fn blank_value(bytes: &mut [u8], marker: &[u8], end: u8) {
+        let Some(start) = bytes.windows(marker.len()).position(|w| w == marker) else {
+            return;
+        };
+        let value = start + marker.len();
+        let Some(len) = bytes[value..].iter().position(|&b| b == end) else {
+            return;
+        };
+        bytes[value..value + len].fill(b'X');
+    }
+
     let mut out = bytes.to_vec();
-    let Some(key_at) = out.windows(KEY.len()).position(|w| w == KEY) else {
-        return out;
-    };
-    let value_at = key_at + KEY.len();
-    let Some(value_len) = out[value_at..].iter().position(|&b| b == b')') else {
-        return out;
-    };
-    out[value_at..value_at + value_len].fill(b'X');
+    blank_value(&mut out, b"/CreationDate (", b')');
+    blank_value(&mut out, b"/ID [", b']');
     out
 }
 
@@ -85,7 +90,10 @@ fn mask_creation_date(bytes: &[u8]) -> Vec<u8> {
 /// On a mismatch it prints only the first position and its surroundings. Passing arrays of
 /// tens of thousands of bytes to `assert_eq!` dumps both in full rather than the difference.
 fn assert_same_pdf(left: &[u8], right: &[u8]) {
-    let (left, right) = (mask_creation_date(left), mask_creation_date(right));
+    let (left, right) = (
+        mask_wall_clock_metadata(left),
+        mask_wall_clock_metadata(right),
+    );
     let first_diff = left
         .iter()
         .zip(right.iter())
@@ -140,6 +148,24 @@ fn the_comparison_ignores_the_creation_timestamp() {
     assert_ne!(
         bytes, later,
         "premise: only the date differs between the byte strings"
+    );
+    assert_same_pdf(&bytes, &later);
+}
+
+/// The same for the trailer's `/ID`: it hashes the creation time, so it differs as a whole
+/// between two generations that landed in different seconds (this did fail in CI).
+#[test]
+fn the_comparison_ignores_the_file_identifier() {
+    const KEY: &[u8] = b"/ID [<";
+    let bytes = build_pdf(".box { background-color: rgb(1, 2, 3); }");
+
+    let mut later = bytes.clone();
+    let value_at = later.windows(KEY.len()).position(|w| w == KEY).unwrap() + KEY.len();
+    later[value_at] = if later[value_at] == b'0' { b'1' } else { b'0' };
+
+    assert_ne!(
+        bytes, later,
+        "premise: only the identifier differs between the byte strings"
     );
     assert_same_pdf(&bytes, &later);
 }
