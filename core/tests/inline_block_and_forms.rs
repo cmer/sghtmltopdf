@@ -463,6 +463,93 @@ fn a_vertical_align_applies_to_an_inline_image() {
     );
 }
 
+/// Where CSS 2.2 section 10.8.1 puts the vertical midpoint of a `vertical-align: middle` box:
+/// the line's baseline raised by half the x-height of the surrounding 20px text.
+fn middle_target_y(line: &LineBox) -> f32 {
+    let x_height = Font::load(FONT_PATH)
+        .expect("should load bundled test font")
+        .x_height(20.0);
+    line.rect.y + line.baseline - x_height / 2.0
+}
+
+fn vertical_midpoint(line: &LineBox, index: usize) -> f32 {
+    let border_box = line.atomics[index].content.layout.border_box();
+    border_box.y + border_box.height / 2.0
+}
+
+#[test]
+fn vertical_align_middle_centers_an_inline_image_on_the_x_height() {
+    let html_src = format!(
+        r#"<p>x<img src="{}" width="20" height="40" style="vertical-align: middle;"></p>"#,
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(
+        &html_src,
+        "body { margin: 0; } p { margin: 0; font-size: 20px; }",
+    );
+    let line = &all_lines(&laid)[0];
+    let expected = middle_target_y(line);
+    assert!(
+        (vertical_midpoint(line, 0) - expected).abs() < 0.01,
+        "expected the image's midpoint at {expected}, got {}",
+        vertical_midpoint(line, 0)
+    );
+}
+
+#[test]
+fn vertical_align_middle_centers_an_inline_block_on_the_x_height() {
+    let (_, laid) = layout(
+        r#"<p>x<span class="box"></span></p>"#,
+        "body { margin: 0; } p { margin: 0; font-size: 20px; } \
+         .box { display: inline-block; width: 20px; height: 60px; vertical-align: middle; }",
+    );
+    let line = &all_lines(&laid)[0];
+    let expected = middle_target_y(line);
+    assert!(
+        (vertical_midpoint(line, 0) - expected).abs() < 0.01,
+        "expected the box's midpoint at {expected}, got {}",
+        vertical_midpoint(line, 0)
+    );
+}
+
+#[test]
+fn a_middle_aligned_image_does_not_push_the_text_down_like_a_baseline_one() {
+    // Baseline alignment puts the whole 40px image above the baseline, so the text sits at
+    // the bottom of the line. Middle alignment splits the image around the text instead.
+    let html_src = |align: &str| {
+        format!(
+            r#"<p>x<img src="{}" width="20" height="40" style="vertical-align: {align};"></p>"#,
+            jpeg_data_uri()
+        )
+    };
+    let css = "body { margin: 0; } p { margin: 0; font-size: 20px; }";
+    let (_, baseline_laid) = layout_with_images(&html_src("baseline"), css);
+    let (_, middle_laid) = layout_with_images(&html_src("middle"), css);
+    let baseline_line = &all_lines(&baseline_laid)[0];
+    let middle_line = &all_lines(&middle_laid)[0];
+    assert!(
+        middle_line.baseline < baseline_line.baseline,
+        "middle should raise the text: baseline {} vs middle {}",
+        baseline_line.baseline,
+        middle_line.baseline
+    );
+}
+
+#[test]
+fn a_middle_aligned_image_alone_on_its_line_is_laid_out() {
+    let html_src = format!(
+        r#"<p><img src="{}" width="20" height="40" style="vertical-align: middle;"></p>"#,
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(&html_src, "body { margin: 0; } p { margin: 0; }");
+    let line = &all_lines(&laid)[0];
+    assert!(
+        line.rect.height >= 40.0,
+        "the line should still hold the image, got {}",
+        line.rect.height
+    );
+}
+
 #[test]
 fn an_inline_image_is_embedded_in_the_pdf() {
     // Image resolution goes through the whole `Engine` pipeline (`paginate_document` rebuilds

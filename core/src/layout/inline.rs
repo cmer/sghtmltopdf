@@ -1724,6 +1724,12 @@ pub(super) fn finish_line(
     fonts: &FontCollection,
 ) -> LineBox {
     resolve_baseline_shifts(&mut runs, fonts);
+    let middle_x_height = runs.first().map(|first| {
+        fonts
+            .get(first.font_index)
+            .map(|f| f.x_height(first.font_size))
+            .unwrap_or(first.font_size * 0.5)
+    });
     // An atomic box aligns the bottom of its margin box to the baseline. That is, it takes
     // part in the line with ascent = the margin box height and descent = 0.
     for atomic in atomics.iter_mut() {
@@ -1732,8 +1738,14 @@ pub(super) fn finish_line(
             VerticalAlign::LengthPercentage(LengthPercentage::Percentage(fraction)) => {
                 height * fraction
             }
-            // `sub`/`super`/`text-*`/`middle` have strict definitions for a box that do not
-            // fit this engine's simplifications, so they are treated as `baseline`.
+            // The same reference as a text run's `middle`: the line's first run. A line with
+            // no text has no x-height to centre on, so the box stays on the baseline there.
+            VerticalAlign::Middle => middle_x_height.map_or(0.0, |x_height| {
+                let ascent = atomic.margin_box_height - atomic.baseline_from_bottom;
+                x_height / 2.0 - (ascent - atomic.baseline_from_bottom) / 2.0
+            }),
+            // `sub`/`super`/`text-*` have strict definitions for a box that do not fit this
+            // engine's simplifications, so they are treated as `baseline`.
             _ => 0.0,
         };
     }

@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An image grid item with `justify-self`/`align-self` left at `auto` is placed at the start
   of its grid area instead of being stretched to it, as `normal` alignment does for
   replaced elements.
+- `vertical-align: middle` on an inline image or `inline-block` box centres it on the
+  surrounding text's x-height, as it already did for text. It used to be treated as
+  `baseline`, so a label next to a signature or logo image sat at the image's bottom edge
+  instead of its middle. A box on a line with no text stays on the baseline.
 
 - `white-space: nowrap` in a table cell no longer leaves the table's own box behind its
   columns (#71). The columns already hold the whole line (see above), but the table box kept
