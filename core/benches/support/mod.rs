@@ -310,6 +310,13 @@ pub const SCALE_KINDS: &[ScaleKind] = &[
         generate: table_html,
         sizes: &[1_000, 5_000, 20_000, 40_000],
     },
+    ScaleKind {
+        // Tailwind v3's preflight declares dozens of custom properties on `*`, so every
+        // element recomputes its map although each value equals the inherited one.
+        name: "universal_custom_properties",
+        generate: universal_custom_properties_html,
+        sizes: &[1_000, 5_000, 20_000],
+    },
 ];
 
 /// `count` fixed-height paragraphs. The same shape as the documentation's
@@ -319,6 +326,25 @@ pub fn paragraphs_html(count: usize) -> String {
     html.push_str("<html><head><style>p { height: 60px; margin: 0; }</style></head><body>");
     for i in 0..count {
         let _ = write!(html, "<p>paragraph {i} lorem ipsum dolor sit amet</p>");
+    }
+    html.push_str("</body></html>");
+    html
+}
+
+/// `count` rows under a stylesheet that declares 40 custom properties on `*`, `::before` and
+/// `::after`, with `var()` used on every row.
+pub fn universal_custom_properties_html(count: usize) -> String {
+    let mut html = String::with_capacity(count * 64 + 2048);
+    html.push_str("<html><head><style>*, ::before, ::after {");
+    for i in 0..40 {
+        let _ = write!(html, " --tw-p{i}: {i}px;");
+    }
+    html.push_str(
+        " } .row { height: 20px; padding: var(--tw-p3); } \
+         .border { border: var(--tw-p1) solid #999; }</style></head><body>",
+    );
+    for i in 0..count {
+        let _ = write!(html, "<div class=\"row border\"><span>row {i}</span></div>");
     }
     html.push_str("</body></html>");
     html
