@@ -1724,6 +1724,12 @@ pub(super) fn finish_line(
     fonts: &FontCollection,
 ) -> LineBox {
     resolve_baseline_shifts(&mut runs, fonts);
+    let middle_x_height = runs.first().map(|first| {
+        fonts
+            .get(first.font_index)
+            .map(|f| f.x_height(first.font_size))
+            .unwrap_or(first.font_size * 0.5)
+    });
     // An atomic box aligns the bottom of its margin box to the baseline. That is, it takes
     // part in the line with ascent = the margin box height and descent = 0.
     for atomic in atomics.iter_mut() {
@@ -1732,8 +1738,14 @@ pub(super) fn finish_line(
             VerticalAlign::LengthPercentage(LengthPercentage::Percentage(fraction)) => {
                 height * fraction
             }
-            // `sub`/`super`/`text-*`/`middle` have strict definitions for a box that do not
-            // fit this engine's simplifications, so they are treated as `baseline`.
+            // The same reference as a text run's `middle`: the line's first run. A line with
+            // no text has no x-height to centre on, so the box stays on the baseline there.
+            VerticalAlign::Middle => middle_x_height.map_or(0.0, |x_height| {
+                let ascent = atomic.margin_box_height - atomic.baseline_from_bottom;
+                x_height / 2.0 - (ascent - atomic.baseline_from_bottom) / 2.0
+            }),
+            // `sub`/`super`/`text-*` have strict definitions for a box that do not fit this
+            // engine's simplifications, so they are treated as `baseline`.
             _ => 0.0,
         };
     }
@@ -1748,23 +1760,13 @@ pub(super) fn finish_line(
     let mut above = baseline;
     let mut below = height - baseline;
 
-    // An atomic box always takes part in the line's height (its bottom being the baseline).
-    // Unlike a text run it is not excluded even under `top`/`bottom`: on a line holding
-    // nothing but boxes (`<p><input></p>`, or a row of cards) the line height would be 0 and
-    // overlap what follows. For `top`/`bottom` it is enough that "the line is at least as
-    // tall as the box"; the real position is decided once the line's dimensions are settled.
-    for atomic in atomics.iter() {
-        if matches!(
-            atomic.vertical_align,
-            VerticalAlign::Top | VerticalAlign::Bottom
-        ) {
-            above = above.max(atomic.margin_box_height);
-        } else {
-            above = above.max(
-                atomic.margin_box_height - atomic.baseline_from_bottom + atomic.baseline_shift,
-            );
-            below = below.max(atomic.baseline_from_bottom - atomic.baseline_shift);
-        }
+    for atomic in atomics
+        .iter()
+        .filter(|a| !matches!(a.vertical_align, VerticalAlign::Top | VerticalAlign::Bottom))
+    {
+        above = above
+            .max(atomic.margin_box_height - atomic.baseline_from_bottom + atomic.baseline_shift);
+        below = below.max(atomic.baseline_from_bottom - atomic.baseline_shift);
     }
 
     // Only shifted runs are considered, and only for how far they stick out of the line box.
@@ -1776,6 +1778,21 @@ pub(super) fn finish_line(
     }) {
         above = above.max(run.ascent + run.baseline_shift);
         below = below.max(run.descent - run.baseline_shift);
+    }
+
+    // A `top`/`bottom` box only has to fit in the line; counting it as ascent would push the
+    // baseline down to its height. A taller one stretches the side away from the edge it is
+    // aligned to, as Chrome does, so the text stays at the top (or bottom) of the line.
+    for atomic in &atomics {
+        let shortfall = atomic.margin_box_height - (above + below);
+        if shortfall <= 0.0 {
+            continue;
+        }
+        match atomic.vertical_align {
+            VerticalAlign::Top => below += shortfall,
+            VerticalAlign::Bottom => above += shortfall,
+            _ => {}
+        }
     }
 
     let line_height = if runs.is_empty() && atomics.is_empty() {
