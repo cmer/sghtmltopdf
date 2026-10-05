@@ -1760,23 +1760,13 @@ pub(super) fn finish_line(
     let mut above = baseline;
     let mut below = height - baseline;
 
-    // An atomic box always takes part in the line's height (its bottom being the baseline).
-    // Unlike a text run it is not excluded even under `top`/`bottom`: on a line holding
-    // nothing but boxes (`<p><input></p>`, or a row of cards) the line height would be 0 and
-    // overlap what follows. For `top`/`bottom` it is enough that "the line is at least as
-    // tall as the box"; the real position is decided once the line's dimensions are settled.
-    for atomic in atomics.iter() {
-        if matches!(
-            atomic.vertical_align,
-            VerticalAlign::Top | VerticalAlign::Bottom
-        ) {
-            above = above.max(atomic.margin_box_height);
-        } else {
-            above = above.max(
-                atomic.margin_box_height - atomic.baseline_from_bottom + atomic.baseline_shift,
-            );
-            below = below.max(atomic.baseline_from_bottom - atomic.baseline_shift);
-        }
+    for atomic in atomics
+        .iter()
+        .filter(|a| !matches!(a.vertical_align, VerticalAlign::Top | VerticalAlign::Bottom))
+    {
+        above = above
+            .max(atomic.margin_box_height - atomic.baseline_from_bottom + atomic.baseline_shift);
+        below = below.max(atomic.baseline_from_bottom - atomic.baseline_shift);
     }
 
     // Only shifted runs are considered, and only for how far they stick out of the line box.
@@ -1788,6 +1778,21 @@ pub(super) fn finish_line(
     }) {
         above = above.max(run.ascent + run.baseline_shift);
         below = below.max(run.descent - run.baseline_shift);
+    }
+
+    // A `top`/`bottom` box only has to fit in the line; counting it as ascent would push the
+    // baseline down to its height. A taller one stretches the side away from the edge it is
+    // aligned to, as Chrome does, so the text stays at the top (or bottom) of the line.
+    for atomic in &atomics {
+        let shortfall = atomic.margin_box_height - (above + below);
+        if shortfall <= 0.0 {
+            continue;
+        }
+        match atomic.vertical_align {
+            VerticalAlign::Top => below += shortfall,
+            VerticalAlign::Bottom => above += shortfall,
+            _ => {}
+        }
     }
 
     let line_height = if runs.is_empty() && atomics.is_empty() {

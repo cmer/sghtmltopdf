@@ -550,6 +550,68 @@ fn a_middle_aligned_image_alone_on_its_line_is_laid_out() {
     );
 }
 
+/// The line a bare `x` lays out to under `css`, for comparing where the text sits.
+fn text_only_line(css: &str) -> LineBox {
+    let (_, laid) = layout("<p>x</p>", css);
+    all_lines(&laid)[0].clone()
+}
+
+fn image_line(align: &str, with_text: bool, css: &str) -> LineBox {
+    let html_src = format!(
+        r#"<p>{}<img src="{}" width="20" height="40" style="vertical-align: {align};"></p>"#,
+        if with_text { "x" } else { "" },
+        jpeg_data_uri()
+    );
+    let (_, laid) = layout_with_images(&html_src, css);
+    all_lines(&laid)[0].clone()
+}
+
+#[test]
+fn a_top_aligned_image_leaves_the_text_at_the_top_of_the_line() {
+    let css = "body { margin: 0; } p { margin: 0; font-size: 20px; }";
+    let text = text_only_line(css);
+    let line = image_line("top", true, css);
+    assert!(
+        (line.rect.height - 40.0).abs() < 0.01,
+        "the line should be as tall as the image, got {}",
+        line.rect.height
+    );
+    assert!(
+        (line.baseline - text.baseline).abs() < 0.01,
+        "the text should keep its own baseline {}, got {}",
+        text.baseline,
+        line.baseline
+    );
+}
+
+#[test]
+fn a_bottom_aligned_image_leaves_the_text_at_the_bottom_of_the_line() {
+    let css = "body { margin: 0; } p { margin: 0; font-size: 20px; }";
+    let text = text_only_line(css);
+    let line = image_line("bottom", true, css);
+    assert!(
+        (line.rect.height - 40.0).abs() < 0.01,
+        "the line should be as tall as the image, got {}",
+        line.rect.height
+    );
+    let below = line.rect.height - line.baseline;
+    let text_below = text.rect.height - text.baseline;
+    assert!(
+        (below - text_below).abs() < 0.01,
+        "the text should keep its own descent {text_below} below the baseline, got {below}"
+    );
+}
+
+#[test]
+fn a_top_aligned_image_alone_on_its_line_is_only_as_tall_as_the_image() {
+    let line = image_line("top", false, "body { margin: 0; } p { margin: 0; }");
+    assert!(
+        (line.rect.height - 40.0).abs() < 0.01,
+        "expected 40, got {}",
+        line.rect.height
+    );
+}
+
 #[test]
 fn an_inline_image_is_embedded_in_the_pdf() {
     // Image resolution goes through the whole `Engine` pipeline (`paginate_document` rebuilds

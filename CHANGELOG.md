@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   surrounding text's x-height, as it already did for text. It used to be treated as
   `baseline`, so a label next to a signature or logo image sat at the image's bottom edge
   instead of its middle. A box on a line with no text stays on the baseline.
+- An inline image or `inline-block` box with `vertical-align: top` or `bottom` no longer
+  pushes the line's baseline down to its own height. A `top` box used to leave the text at
+  the bottom of the line, and both made the line taller than the box by the text's descent.
+  A taller box now stretches the side away from the edge it is aligned to, as Chrome does.
 
 - `white-space: nowrap` in a table cell no longer leaves the table's own box behind its
   columns (#71). The columns already hold the whole line (see above), but the table box kept
