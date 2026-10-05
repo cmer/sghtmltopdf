@@ -262,10 +262,7 @@ fn a_percentage_max_width_with_auto_width_does_not_collapse_a_small_image() {
 fn tailwind_preflight_image_rules_do_not_collapse_a_large_image() {
     // `img { display: block; max-width: 100%; height: auto }` on a 600px image: the item
     // shrinks to what the row leaves it, never to 0.
-    let (item, name) = flex_row(
-        "img { display: block; max-width: 100%; height: auto }",
-        600,
-    );
+    let (item, name) = flex_row("img { display: block; max-width: 100%; height: auto }", 600);
     assert!(item.width > 300.0, "item width {}", item.width);
     assert!(name.width > 0.0 && item.width + name.width <= 540.5);
 }
