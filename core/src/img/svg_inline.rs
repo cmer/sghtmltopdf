@@ -59,6 +59,9 @@ fn write_element(dom: &Dom, node: NodeId, is_root: bool, color: RgbaColor, out: 
     out.push('>');
     for child in children {
         match &dom.node(child).data {
+            // An element with a namespace prefix (`sodipodi:namedview`, `rdf:RDF`) has no
+            // declared namespace once parsed as HTML; the SVG parser would reject the document.
+            NodeData::Element { name, .. } if name.local.contains(':') => {}
             NodeData::Element { .. } => write_element(dom, child, false, color, out),
             NodeData::Text { contents } => escape_into(contents, false, out),
             _ => {}
@@ -333,6 +336,18 @@ mod tests {
         ] {
             assert!(out.contains(kept), "{kept} lost: {out}");
         }
+    }
+
+    #[test]
+    fn drops_elements_with_a_namespace_prefix() {
+        let out = serialize(
+            r##"<svg viewBox="0 0 1 1"><sodipodi:namedview id="nv"><x/></sodipodi:namedview><metadata><rdf:RDF><cc:Work rdf:about=""/></rdf:RDF></metadata><path d="M0 0"/></svg>"##,
+        );
+        for gone in ["sodipodi", "rdf:", "cc:", "namedview"] {
+            assert!(!out.contains(gone), "{gone} kept: {out}");
+        }
+        assert!(out.contains("<path"), "{out}");
+        assert!(out.contains("<metadata"), "{out}");
     }
 
     #[test]

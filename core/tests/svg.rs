@@ -966,3 +966,25 @@ fn an_inline_svg_with_framework_attributes_is_still_drawn() {
         assert_close(xobject_cm(&pdf)[0], 40.0, "inline width");
     }
 }
+
+/// An SVG saved from Inkscape keeps `sodipodi:` and `rdf:` elements that have no namespace
+/// declaration once parsed as HTML. They are skipped instead of failing the whole icon.
+#[test]
+fn an_inline_svg_with_prefixed_elements_is_still_drawn() {
+    for (mode, name) in MODES {
+        let pdf = convert(
+            r##"<body style="margin:0"><p>before
+                 <svg inkscape:version="1.2" width="40" height="20">
+                   <sodipodi:namedview id="nv"/>
+                   <metadata><rdf:RDF><cc:Work rdf:about=""/></rdf:RDF></metadata>
+                   <rect width="40" height="20" fill="#ff0000"/>
+                   <circle cx="20" cy="10" r="8" fill="#00ff00"/>
+                 </svg> after</p></body>"##,
+            mode,
+            &format!("inline-prefixed-elements-{name}"),
+        );
+        assert_embedded_as_vector(&pdf);
+        assert_xref_is_consistent(&pdf);
+        assert_close(xobject_cm(&pdf)[0], 40.0, "inline width");
+    }
+}
