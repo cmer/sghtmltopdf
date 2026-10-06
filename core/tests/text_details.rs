@@ -194,6 +194,54 @@ fn overflow_wrap_keeps_short_words_intact() {
     assert_eq!(line_text(&lines[0]), "alpha beta gamma");
 }
 
+/// The width `text` takes on one line of a `<p>` styled with `p_css`.
+fn natural_line_width(text: &str, p_css: &str) -> f32 {
+    let css = format!("body {{ margin: 0; }} p {{ {p_css} }}");
+    let lines = lines_of_first_p(&format!("<p>{text}</p>"), &css);
+    assert_eq!(
+        lines.len(),
+        1,
+        "{text:?} should fit on one unconstrained line"
+    );
+    lines[0].rect.width
+}
+
+#[test]
+fn overflow_wrap_keeps_a_word_that_fits_up_to_rounding_error() {
+    // A table column or a shrink-to-fit box sized to a word's own width can come back a few
+    // millionths narrower through f32 arithmetic; the word must still not be split.
+    let width = natural_line_width("460.00", "") - 0.001;
+    let css = format!("body {{ margin: 0; }} p {{ width: {width}px; overflow-wrap: break-word; }}");
+    let lines = lines_of_first_p("<p>460.00</p>", &css);
+    assert_eq!(
+        lines.len(),
+        1,
+        "460.00 should stay on one line at {width}px"
+    );
+    assert_eq!(line_text(&lines[0]), "460.00");
+}
+
+#[test]
+fn a_line_that_fits_up_to_rounding_error_does_not_wrap() {
+    let width = natural_line_width("weight chocolate", "") - 0.001;
+    let css = format!("body {{ margin: 0; }} p {{ width: {width}px; }}");
+    let lines = lines_of_first_p("<p>weight chocolate</p>", &css);
+    assert_eq!(lines.len(), 1, "the line should not wrap at {width}px");
+}
+
+#[test]
+fn a_word_clearly_wider_than_the_line_is_still_wrapped_or_split() {
+    let width = natural_line_width("weight chocolate", "") - 0.5;
+    let css = format!("body {{ margin: 0; }} p {{ width: {width}px; }}");
+    assert_eq!(lines_of_first_p("<p>weight chocolate</p>", &css).len(), 2);
+
+    let width = natural_line_width("460.00", "") - 0.5;
+    let css = format!("body {{ margin: 0; }} p {{ width: {width}px; overflow-wrap: break-word; }}");
+    let lines = lines_of_first_p("<p>460.00</p>", &css);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(line_text(&lines[0]), "460.0");
+}
+
 #[test]
 fn word_wrap_is_accepted_as_a_legacy_alias() {
     let css = "body { margin: 0; } p { width: 60px; word-wrap: break-word; }";
