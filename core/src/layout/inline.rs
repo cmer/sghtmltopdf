@@ -501,7 +501,7 @@ fn layout_inline_content_in_flow(
                         &word_boundaries,
                     );
                     word_boundaries.clear();
-                    cursor_y += line_height;
+                    cursor_y += lines.last().expect("just pushed").rect.height;
                     current_width = 0.0;
                 }
                 // `<br clear="left|right|all">` (the legacy presentational attribute having
@@ -619,7 +619,7 @@ fn layout_inline_content_in_flow(
                     &word_boundaries,
                 );
                 word_boundaries.clear();
-                cursor_y += line_height;
+                cursor_y += lines.last().expect("just pushed").rect.height;
                 current_width = 0.0;
 
                 let hint = line_height_hint_for_chunk(&chunk);

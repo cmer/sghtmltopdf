@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Text after an `inline-block` (or `inline-flex`) box taller than the text no longer overlaps
+  the box (#91). When a line holding such a box ended by wrapping or at a `<br>`, the next
+  line started one text line-height lower instead of below the box, so the trailing text was
+  drawn over it. It now starts below the settled line's full height, as it already did when
+  the box itself wrapped.
 - A block `<img>` with a CSS `width` smaller than the image file no longer counts at its
   natural width when its container is sized (#77). A flex item holding a 160px-wide `<img
   style="display: block">` of a 600px PNG was measured as 600px wide, so its flex siblings

@@ -171,6 +171,65 @@ fn inline_blocks_wrap_to_the_next_line_when_they_do_not_fit() {
     assert!(lines.iter().all(|l| !l.atomics.is_empty()));
 }
 
+/// Assert that no line starts above the bottom of the line before it.
+fn assert_lines_do_not_overlap(lines: &[LineBox]) {
+    for pair in lines.windows(2) {
+        assert!(
+            pair[1].rect.y >= pair[0].rect.y + pair[0].rect.height - 0.01,
+            "a line at y={} overlaps the previous line ({} to {})",
+            pair[1].rect.y,
+            pair[0].rect.y,
+            pair[0].rect.y + pair[0].rect.height
+        );
+    }
+}
+
+#[test]
+fn text_wrapping_after_a_line_filling_inline_block_goes_below_it() {
+    // #91: the text after the box was drawn at the start of the box's line.
+    let (_, laid) = layout(
+        r#"<p>Some words first <span class="ib"></span> tail and more words after it</p>"#,
+        "body { margin: 0; } p { width: 200px; } \
+         .ib { display: inline-block; width: 200px; height: 60px; }",
+    );
+    let lines = all_lines(&laid);
+    assert!(lines.len() >= 3, "text, the box, then the trailing text");
+    assert_eq!(
+        lines[1].atomics.len(),
+        1,
+        "the box should be on a line of its own"
+    );
+    assert!(lines[1].rect.height >= 60.0);
+    assert_lines_do_not_overlap(&lines);
+}
+
+#[test]
+fn text_wrapping_after_a_tall_inline_block_mid_line_goes_below_it() {
+    // The box shares its line with the start of the trailing text, and the rest wraps.
+    let (_, laid) = layout(
+        r#"<p><span class="ib"></span> tail and more words after it</p>"#,
+        "body { margin: 0; } p { width: 200px; } \
+         .ib { display: inline-block; width: 150px; height: 60px; }",
+    );
+    let lines = all_lines(&laid);
+    assert!(lines.len() >= 2, "the trailing text should wrap");
+    assert_eq!(lines[0].atomics.len(), 1);
+    assert!(lines[0].rect.height >= 60.0);
+    assert_lines_do_not_overlap(&lines);
+}
+
+#[test]
+fn a_br_after_a_tall_inline_block_starts_the_next_line_below_it() {
+    let (_, laid) = layout(
+        r#"<p><span class="ib"></span> tail<br>after the br</p>"#,
+        "body { margin: 0; } .ib { display: inline-block; width: 50px; height: 60px; }",
+    );
+    let lines = all_lines(&laid);
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].rect.height >= 60.0);
+    assert_lines_do_not_overlap(&lines);
+}
+
 #[test]
 fn an_inline_block_uses_its_content_width_when_width_is_auto() {
     let (_, laid) = layout(
