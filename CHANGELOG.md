@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Text after an `inline-block` (or `inline-flex`) box taller than the text no longer overlaps
+  the box (#91). When a line holding such a box ended by wrapping or at a `<br>`, the next
+  line started one text line-height lower instead of below the box, so the trailing text was
+  drawn over it. It now starts below the settled line's full height, as it already did when
+  the box itself wrapped.
 - A word that exactly fits its line no longer wraps or, under `overflow-wrap: break-word`,
   loses its last character to the next line. A table column at a single word's min-content
   width (`460.00` became `460.0` / `0`) and a shrink-to-fit float holding a few words (two
