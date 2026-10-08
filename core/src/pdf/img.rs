@@ -413,6 +413,9 @@ use crate::img::{DocumentImageCache, ImageFetcher};
 use super::document::RefAllocator;
 use super::svg::SvgFontDb;
 
+/// Prefix of the [`ImageAssetCache`] key of an inline `<svg>` (no real `src` starts with a NUL).
+const INLINE_SVG_KEY_PREFIX: &str = "\0inline-svg\0";
+
 /// One [`ImageAssetCache`] result (the decoded image on success, or the reason for failure).
 type CachedDecodedImage = Result<Rc<PreparedImage>, Rc<str>>;
 
@@ -430,6 +433,10 @@ pub struct ImageAssetCache {
     svg_fonts: SvgFontDb,
     /// Whether the "`<text>` inside an SVG is not drawn" warning has already been issued (once per document).
     warned_svg_text: Cell<bool>,
+    /// Whether the "inline `<svg>` failed to decode" warning has been issued (once per document).
+    warned_inline_svg_decode: Cell<bool>,
+    /// Whether the "inline `<svg>` has an unresolved `<use>`" warning has been issued.
+    warned_inline_svg_use: Cell<bool>,
 }
 
 impl ImageAssetCache {
@@ -454,6 +461,8 @@ impl ImageAssetCache {
             decoded: RefCell::new(HashMap::new()),
             svg_fonts: SvgFontDb::empty(),
             warned_svg_text: Cell::new(false),
+            warned_inline_svg_decode: Cell::new(false),
+            warned_inline_svg_use: Cell::new(false),
         }
     }
 
@@ -469,10 +478,51 @@ impl ImageAssetCache {
     /// Whether at least one reference failed to fetch or decode
     /// (for the `--load-media-error-handling abort` decision).
     pub fn had_errors(&self) -> Option<String> {
-        self.decoded
-            .borrow()
-            .iter()
-            .find_map(|(src, result)| result.as_ref().err().map(|e| format!("{src}: {e}")))
+        self.decoded.borrow().iter().find_map(|(src, result)| {
+            // An inline `<svg>` is keyed by its whole document; do not print that.
+            let src = if src.starts_with(INLINE_SVG_KEY_PREFIX) {
+                "inline <svg>"
+            } else {
+                src.as_str()
+            };
+            result.as_ref().err().map(|e| format!("{src}: {e}"))
+        })
+    }
+
+    /// Decode an inline `<svg>` element, already serialised to an SVG document
+    /// ([`crate::img::serialize_inline_svg`]). Memoised on the document text, so an icon
+    /// repeated many times is converted (and later embedded) once.
+    pub fn get_or_decode_inline_svg(&self, markup: &str) -> CachedDecodedImage {
+        let key = format!("{INLINE_SVG_KEY_PREFIX}{markup}");
+        if let Some(cached) = self.decoded.borrow().get(&key) {
+            return cached.clone();
+        }
+        warn_if_svg_text_will_be_dropped(markup.as_bytes(), &self.svg_fonts, &self.warned_svg_text);
+        let result = decode_image(markup.as_bytes(), &self.svg_fonts)
+            .map(Rc::new)
+            .map_err(|e| Rc::from(e.to_string()));
+        if let Err(error) = &result {
+            if !self.warned_inline_svg_decode.replace(true) {
+                eprintln!(
+                    "warning: an inline <svg> could not be drawn ({error}); it keeps its space \
+                     but nothing is drawn. Only the first such <svg> is reported"
+                );
+            }
+        }
+        self.decoded.borrow_mut().insert(key, result.clone());
+        result
+    }
+
+    /// Warn (once per document) that an inline `<svg>` has a `<use>` pointing at an id that
+    /// is not inside the same `<svg>`, which is drawn as nothing.
+    pub fn warn_inline_svg_unresolved_use(&self) {
+        if !self.warned_inline_svg_use.replace(true) {
+            eprintln!(
+                "warning: an inline <svg> has a <use href=\"#id\"> whose target is not inside \
+                 the same <svg> (sprite sheets are not supported); it is drawn as nothing. \
+                 Only the first such <svg> is reported"
+            );
+        }
     }
 
     /// Return the decoded image for `raw_src` (the raw value of the `<img src>` attribute).
