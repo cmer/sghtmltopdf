@@ -173,6 +173,16 @@ pub fn matching_pseudo_content(
         .rev()
         .find_map(|decl| match decl {
             PropertyDeclaration::Content(content) => Some(content.clone()),
+            // `content: initial | inherit | unset` all compute to `normal` on a
+            // pseudo-element (the originating element's own `content` is `normal`).
+            PropertyDeclaration::CssWide(wide)
+                if wide
+                    .longhands
+                    .iter()
+                    .any(|d| matches!(d, PropertyDeclaration::Content(_))) =>
+            {
+                Some(None)
+            }
             PropertyDeclaration::Unparsed(unparsed)
                 if unparsed.name.eq_ignore_ascii_case("content") =>
             {

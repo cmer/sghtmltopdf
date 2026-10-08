@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The CSS-wide keywords `inherit`, `initial` and `unset` are supported on every property,
+  shorthands included (#65). They used to be invalid values, so the declaration was dropped
+  and an earlier declaration (or the default) stayed in effect. The common reset `html {
+  box-sizing: border-box } *, *::before, *::after { box-sizing: inherit }` (Bootstrap's
+  reboot) left every box at `content-box`, and `a { color: inherit }` or `button { font-family:
+  inherit }` did nothing. `inherit` takes the parent's computed value, also for properties
+  that are not inherited by default (`width`, `background`, `border`, ...), and a `var()`
+  fallback can supply a keyword (`var(--x, inherit)`). `revert` and `revert-layer` are still
+  unsupported and ignored.
 - `display: inline-flex` is supported. The element is an inline-level box on the line, like
   `inline-block` (shrink-to-fit width, padding, border and background), and its children are
   laid out as a flex container. It used to fall back to plain `inline`, so badges and pills

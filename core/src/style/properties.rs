@@ -198,6 +198,8 @@ pub enum PropertyDeclaration {
     /// An ordinary property whose value contains `var()`, parsed at computed-value time
     /// once the element's custom properties are known.
     Unparsed(super::custom_properties::UnparsedDeclaration),
+    /// An ordinary property set to `inherit`, `initial` or `unset`.
+    CssWide(super::css_wide::CssWideDeclaration),
 }
 
 /// Parse a value given a property name. Shorthands (`margin`/`padding`/`border`) are

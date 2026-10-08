@@ -4845,6 +4845,30 @@ msgstr ""
 msgid "`deg` / `rad` / `grad` / `turn`、および単位なしの`0`に対応 ✅。"
 msgstr ""
 
+#: src/supports/selectors.md:76
+msgid "CSS全体キーワード"
+msgstr ""
+
+#: src/supports/selectors.md:78
+msgid "キーワード"
+msgstr ""
+
+#: src/supports/selectors.md:80
+msgid "`inherit` / `initial` / `unset`"
+msgstr ""
+
+#: src/supports/selectors.md:80
+msgid "ショートハンドを含むすべてのプロパティで使える。`inherit`は親の計算値をそのまま引き継ぐ(`em`は親の側で解決済みの値になる)。`var()`のフォールバック(`var(--x, inherit)`)でも使える。`::before`/`::after`の`content`はどのキーワードでも`normal`(生成しない)になり、`counter-reset`/`counter-increment`はそれまでの宣言を打ち消すだけになる。`@page`の中と`::first-letter`では無視される"
+msgstr ""
+
+#: src/supports/selectors.md:81
+msgid "`revert` / `revert-layer`"
+msgstr ""
+
+#: src/supports/selectors.md:81
+msgid "宣言ごと無視される"
+msgstr ""
+
 #: src/supports/selectors.md:75 src/supports/selectors.md:77
 msgid "関数"
 msgstr ""
@@ -6362,7 +6386,7 @@ msgid "HTML/CSS側で必要になる調整"
 msgstr ""
 
 #: src/migration/wkhtmltopdf.md:82
-msgid "エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の3つです。"
+msgid "エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の2つです。"
 msgstr ""
 
 #: src/migration/wkhtmltopdf.md:85
@@ -6370,10 +6394,6 @@ msgid "`!important`が使えません。付いた宣言は無視されます"
 msgstr ""
 
 #: src/migration/wkhtmltopdf.md:86
-msgid "`inherit`/`initial`/`unset`が使えません"
-msgstr ""
-
-#: src/migration/wkhtmltopdf.md:87
 msgid ""
 "ビューポート単位(`vw`/`vh`等)と`ex`/`ch`/`lh`が使えません。長さは`px`/`em`/`rem`と絶対単位(`mm`/`cm`/`in`/`pt`/`pc`/`Q`)で書いてください"
 msgstr ""

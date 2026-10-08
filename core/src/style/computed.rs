@@ -12,6 +12,7 @@ use crate::html::{Dom, NodeData, NodeId};
 use super::cascade::{
     matching_declarations_by_origin, matching_pseudo_content, matching_pseudo_declarations,
 };
+use super::css_wide::{copy_computed, is_inherited, CssWideKeyword};
 use super::custom_properties::{
     compute_custom_properties, resolve_declarations, resolve_unparsed, uses_variables,
     CustomProperties,
@@ -984,20 +985,46 @@ fn compute_element_style(
         inherited_custom
     };
 
+    // The longhands whose winning declaration is a CSS-wide keyword, by placeholder.
+    let mut css_wide: Vec<(PropertyDeclaration, CssWideKeyword)> = Vec::new();
     let mut expanded: Vec<PropertyDeclaration>;
+    let mut keyword_longhands: Rc<[PropertyDeclaration]>;
     for source in all_declarations() {
         // `reset`: the declaration was invalid at computed-value time, so the properties it
         // names behave as `unset` (the inherited value or the initial value).
         let mut reset = false;
+        // A CSS-wide keyword is applied as a reset too, and what the keyword adds to `unset`
+        // is settled after the loop.
+        let mut keyword = None;
         let list: &[PropertyDeclaration] = match source {
             PropertyDeclaration::Custom(_) => &[],
             PropertyDeclaration::Unparsed(unparsed) => {
                 (expanded, reset) = resolve_unparsed(unparsed, &custom_properties);
-                &expanded
+                if let [PropertyDeclaration::CssWide(wide)] = &expanded[..] {
+                    keyword = Some(wide.keyword);
+                    reset = true;
+                    keyword_longhands = wide.longhands.clone();
+                    &keyword_longhands
+                } else {
+                    &expanded
+                }
+            }
+            PropertyDeclaration::CssWide(wide) => {
+                keyword = Some(wide.keyword);
+                reset = true;
+                &wide.longhands
             }
             other => std::slice::from_ref(other),
         };
         for decl in list {
+            if keyword.is_some() || !css_wide.is_empty() {
+                // This declaration wins over whatever was recorded for the same longhand.
+                let property = std::mem::discriminant(decl);
+                css_wide.retain(|(recorded, _)| std::mem::discriminant(recorded) != property);
+                if let Some(keyword) = keyword {
+                    css_wide.push((decl.clone(), keyword));
+                }
+            }
             match decl {
                 PropertyDeclaration::Display(v) => display = sel(reset, *v),
                 PropertyDeclaration::Width(v) => width = sel(reset, *v),
@@ -1149,12 +1176,39 @@ fn compute_element_style(
                 PropertyDeclaration::Transform(v) => transform = sel(reset, v.clone()),
                 PropertyDeclaration::TransformOrigin(v) => transform_origin = sel(reset, *v),
                 PropertyDeclaration::Opacity(v) => opacity = sel(reset, *v),
-                PropertyDeclaration::Custom(_) | PropertyDeclaration::Unparsed(_) => {}
+                PropertyDeclaration::Custom(_)
+                | PropertyDeclaration::Unparsed(_)
+                | PropertyDeclaration::CssWide(_) => {}
             }
         }
     }
 
     let initial = ComputedStyle::default();
+    // `initial` on an inherited property: inherit from a parent whose value is the initial
+    // one. It has to happen before the values below are resolved, because `em` lengths and
+    // `currentcolor` depend on the element's own `font-size` and `color`.
+    let original_parent = parent;
+    let parent_with_initials;
+    let mut parent = parent;
+    if css_wide
+        .iter()
+        .any(|(property, keyword)| *keyword == CssWideKeyword::Initial && is_inherited(property))
+    {
+        let mut patched = parent.cloned();
+        for (property, keyword) in &css_wide {
+            if *keyword != CssWideKeyword::Initial || !is_inherited(property) {
+                continue;
+            }
+            if let PropertyDeclaration::TextEmphasisColor(_) = property {
+                // Its initial value is `currentcolor`, which is this element's own colour.
+                text_emphasis_color = Some(Color::CurrentColor);
+            } else if let Some(patched) = &mut patched {
+                copy_computed(patched, &initial, property);
+            }
+        }
+        parent_with_initials = patched;
+        parent = parent_with_initials.as_ref();
+    }
     let inherited_font_size = parent.map_or(initial.font_size, |p| p.font_size);
     let inherited_font_family =
         parent.map_or_else(|| initial.font_family.clone(), |p| p.font_family.clone());
@@ -1366,18 +1420,11 @@ fn compute_element_style(
     // That lets the `Block` arm of `box_tree.rs::child_kind` work unchanged, so an inline
     // element (`<span style="position: absolute">`) is also picked up by `box_tree`'s
     // Blocks loop.
-    let resolved_display = match display.unwrap_or(initial.display) {
-        Display::Inline if resolved_float != Float::None || resolved_position.is_out_of_flow() => {
-            Display::Block
-        }
-        // `inline-flex` blockifies to `flex` in the same cases (CSS Display 3 section 2.7).
-        Display::InlineFlex
-            if resolved_float != Float::None || resolved_position.is_out_of_flow() =>
-        {
-            Display::Flex
-        }
-        other => other,
-    };
+    let resolved_display = blockify(
+        display.unwrap_or(initial.display),
+        resolved_float,
+        resolved_position,
+    );
 
     let resolved_quotes = quotes.unwrap_or(inherited_quotes);
 
@@ -1458,7 +1505,7 @@ fn compute_element_style(
         root_font_size,
     );
 
-    let style = ComputedStyle {
+    let mut style = ComputedStyle {
         display: resolved_display,
         width: resolve_lp_or_auto(width, initial.width),
         height: resolve_lp_or_auto(height, initial.height),
@@ -1607,7 +1654,32 @@ fn compute_element_style(
         custom_properties,
     };
 
+    // `inherit` on a non-inherited property takes the parent's computed value as it is.
+    if let Some(parent) = original_parent {
+        let mut copied = false;
+        for (property, keyword) in &css_wide {
+            if *keyword == CssWideKeyword::Inherit && !is_inherited(property) {
+                copy_computed(&mut style, parent, property);
+                copied = true;
+            }
+        }
+        if copied {
+            style.display = blockify(style.display, style.float, style.position);
+        }
+    }
+
     (style, pushed_counter_names, after_parts)
+}
+
+/// The computed `display` of an element with the given `float` and `position`.
+fn blockify(display: Display, float: Float, position: Position) -> Display {
+    let out_of_flow = float != Float::None || position.is_out_of_flow();
+    match display {
+        Display::Inline if out_of_flow => Display::Block,
+        // `inline-flex` blockifies to `flex` in the same cases (CSS Display 3 section 2.7).
+        Display::InlineFlex if out_of_flow => Display::Flex,
+        other => other,
+    }
 }
 
 /// Resolve a list of `content` parts into an actual string. `counters`/`quote_depth` must be

@@ -3,6 +3,7 @@
 mod cascade;
 mod color_mix;
 mod computed;
+mod css_wide;
 mod custom_properties;
 mod element_ref;
 mod extract;
