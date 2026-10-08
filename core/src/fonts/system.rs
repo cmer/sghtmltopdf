@@ -546,8 +546,35 @@ fn collect_rendered_chars<'a>(
             .map(|c| (c, style)),
     );
 
+    // An inline `<svg>` is drawn as one replaced box, so its `<title>`, `<desc>` and
+    // `<style>` text is never page text. Only `<text>` is drawn, with the document's fonts.
+    let in_svg = matches!(&dom.node(node).data,
+        NodeData::Element { name, .. } if &*name.local == "svg");
     for child in dom.children(node) {
-        collect_rendered_chars(dom, child, styles, out);
+        if in_svg {
+            collect_svg_text_chars(dom, child, styles, out);
+        } else {
+            collect_rendered_chars(dom, child, styles, out);
+        }
+    }
+}
+
+/// The characters of the `<text>` elements under an inline `<svg>`; everything else in the
+/// subtree is not drawn as text.
+fn collect_svg_text_chars<'a>(
+    dom: &'a Dom,
+    node: NodeId,
+    styles: &'a HashMap<NodeId, Rc<ComputedStyle>>,
+    out: &mut Vec<(char, &'a ComputedStyle)>,
+) {
+    if matches!(&dom.node(node).data,
+        NodeData::Element { name, .. } if &*name.local == "text")
+    {
+        collect_rendered_chars(dom, node, styles, out);
+        return;
+    }
+    for child in dom.children(node) {
+        collect_svg_text_chars(dom, child, styles, out);
     }
 }
 
@@ -961,6 +988,8 @@ mod tests {
             // `display` computes to `inline`. A per-node filter would miss it, so this
             // checks that walking the tree drops it.
             r#"<div style="display: none"><span>領収書</span></div>"#,
+            // Icon metadata is never drawn as text.
+            r#"<svg viewBox="0 0 1 1"><title>領収書</title><desc>領収書</desc></svg>"#,
         ] {
             assert_eq!(
                 count_for(hidden),

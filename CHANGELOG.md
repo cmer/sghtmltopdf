@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   laid out as a flex container. It used to fall back to plain `inline`, so badges and pills
   lost their shape (#73). Its text lines up with the surrounding text on the first item's
   baseline. `inline-grid` is still unsupported.
+- Inline `<svg>` elements are now drawn as vector graphics instead of being dropped with a
+  warning (#76). The element and its subtree are serialised into an SVG document (adding
+  `xmlns` and `xmlns:xlink` when the HTML left them out) and laid out as a replaced element
+  through the same path as `<img src="*.svg">`, in batch and streaming mode. The size comes
+  from CSS `width`/`height`, then the `width`/`height` attributes, then the `viewBox` (a
+  missing side follows its aspect ratio), then the CSS default of 300x150. `currentColor`
+  is the element's computed `color`, so Heroicons/Lucide style icons take the colour of
+  their text. They sit on the baseline in a line of text, work with `display: block`, and
+  the same icon repeated is embedded once. A `<style>` inside an `<svg>` applies to that SVG
+  only, so it no longer counts as a late page stylesheet in streaming mode. Not covered:
+  `<use href="#id">` pointing at a different `<svg>` in the page, and page CSS that sets
+  `fill`/`stroke` on SVG elements.
+
+### Removed
+
+- The "inline <svg> element(s), which are not drawn" warning.
 
 ### Fixed
 
@@ -22,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   line started one text line-height lower instead of below the box, so the trailing text was
   drawn over it. It now starts below the settled line's full height, as it already did when
   the box itself wrapped.
+- A word that exactly fits its line no longer wraps or, under `overflow-wrap: break-word`,
+  loses its last character to the next line. A table column at a single word's min-content
+  width (`460.00` became `460.0` / `0`) and a shrink-to-fit float holding a few words (two
+  lines instead of one) were laid out a few millionths of a pixel narrower than the measured
+  content through f32 arithmetic, and the exact fit check counted that as not fitting. The
+  check now allows 0.01 of slack, as `FIT_EPSILON` does for floats (#64).
 - A block `<img>` with a CSS `width` smaller than the image file no longer counts at its
   natural width when its container is sized (#77). A flex item holding a 160px-wide `<img
   style="display: block">` of a 600px PNG was measured as 600px wide, so its flex siblings
