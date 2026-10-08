@@ -6571,6 +6571,30 @@ msgstr "Angles, used only by `transform`"
 msgid "`deg` / `rad` / `grad` / `turn`、および単位なしの`0`に対応 ✅。"
 msgstr "`deg`, `rad`, `grad`, and `turn` are supported, as is a bare `0` ✅."
 
+#: src/supports/selectors.md:76
+msgid "CSS全体キーワード"
+msgstr "CSS-wide keywords"
+
+#: src/supports/selectors.md:78
+msgid "キーワード"
+msgstr "Keyword"
+
+#: src/supports/selectors.md:80
+msgid "`inherit` / `initial` / `unset`"
+msgstr "`inherit`, `initial`, `unset`"
+
+#: src/supports/selectors.md:80
+msgid "ショートハンドを含むすべてのプロパティで使える。`inherit`は親の計算値をそのまま引き継ぐ(`em`は親の側で解決済みの値になる)。`var()`のフォールバック(`var(--x, inherit)`)でも使える。`::before`/`::after`の`content`はどのキーワードでも`normal`(生成しない)になり、`counter-reset`/`counter-increment`はそれまでの宣言を打ち消すだけになる。`@page`の中と`::first-letter`では無視される"
+msgstr "Usable on every property, shorthands included. `inherit` takes the parent's computed value as it is (an `em` length is the value already resolved on the parent). A `var()` fallback can supply one too (`var(--x, inherit)`). On the `content` of `::before` and `::after` every keyword gives `normal` (no box is generated), and on `counter-reset` and `counter-increment` it only cancels the earlier declarations. Ignored inside `@page` and on `::first-letter`"
+
+#: src/supports/selectors.md:81
+msgid "`revert` / `revert-layer`"
+msgstr "`revert`, `revert-layer`"
+
+#: src/supports/selectors.md:81
+msgid "宣言ごと無視される"
+msgstr "The whole declaration is ignored"
+
 #: src/supports/selectors.md:75 src/supports/selectors.md:77
 msgid "関数"
 msgstr "Function"
@@ -8624,19 +8648,17 @@ msgstr "Adjustments you may need in the HTML and CSS"
 
 #: src/migration/wkhtmltopdf.md:82
 msgid ""
-"エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の3つ"
+"エンジンが別物なので、CSSの対応範囲も違います。 移行時によく当たるのは次の2つ"
 "です。"
-msgstr "Ranges"
+msgstr ""
+"The engine is a different one, so its CSS coverage differs too. These are "
+"the two you are most likely to run into when migrating."
 
 #: src/migration/wkhtmltopdf.md:85
 msgid "`!important`が使えません。付いた宣言は無視されます"
 msgstr "`!important` is not supported; a declaration carrying it is ignored"
 
 #: src/migration/wkhtmltopdf.md:86
-msgid "`inherit`/`initial`/`unset`が使えません"
-msgstr "`inherit`, `initial`, and `unset` are not supported"
-
-#: src/migration/wkhtmltopdf.md:87
 msgid ""
 "ビューポート単位(`vw`/`vh`等)と`ex`/`ch`/`lh`が使えません。長さは`px`/`em`/"
 "`rem`と絶対単位(`mm`/`cm`/`in`/`pt`/`pc`/`Q`)で書いてください"

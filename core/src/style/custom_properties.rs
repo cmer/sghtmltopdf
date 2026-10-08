@@ -23,6 +23,7 @@ use std::rc::Rc;
 
 use cssparser::{CowRcStr, ParseError, Parser, ParserInput, Token};
 
+use super::css_wide::{CssWideDeclaration, CssWideKeyword};
 use super::properties::{parse_declaration, PropertyDeclaration};
 
 /// The maximum nesting of `var()` fallbacks (`var(--a, var(--b, var(--c, ...)))`).
@@ -134,6 +135,12 @@ pub fn parse_declaration_or_defer<'i>(
             value: Rc::from(value.trim()),
             important,
         })]);
+    }
+    if let Some(keyword) = CssWideKeyword::parse(input) {
+        // An unknown property is rejected as it is with any other value.
+        return css_wide_declaration(name, keyword)
+            .map(|declaration| vec![declaration])
+            .ok_or_else(|| input.new_custom_error(()));
     }
     let error = match parse_declaration(name, input) {
         Ok(declarations) if input.is_exhausted() => return Ok(declarations),
@@ -403,7 +410,8 @@ fn parse_value_text(name: &str, value: &str) -> Option<Vec<PropertyDeclaration>>
 }
 
 /// Declarations covering every longhand `name` expands to, used to reset an ordinary
-/// property whose `var()` is invalid at computed-value time. Found by parsing values that
+/// property whose `var()` is invalid at computed-value time and to name the longhands of a
+/// CSS-wide keyword declaration. Found by parsing values that
 /// are valid for nearly every property, so no table of shorthands is needed. Returns an
 /// empty list when none of them parses (the declaration is then ignored).
 fn longhand_probe(name: &str) -> Vec<PropertyDeclaration> {
@@ -425,11 +433,33 @@ fn longhand_probe(name: &str) -> Vec<PropertyDeclaration> {
         "row",
         "stretch",
         "0 0",
+        "border-box",
+        "repeat",
+        "scroll",
+        "collapse",
+        "top",
+        "show",
+        "inside",
+        "over",
+        "clip",
+        "2",
     ];
     PROBES
         .iter()
         .find_map(|probe| parse_value_text(name, probe))
         .unwrap_or_default()
+}
+
+/// The declaration for property `name` set to a CSS-wide keyword, or `None` when `name` is
+/// not a property we know.
+fn css_wide_declaration(name: &str, keyword: CssWideKeyword) -> Option<PropertyDeclaration> {
+    let longhands = longhand_probe(name);
+    (!longhands.is_empty()).then(|| {
+        PropertyDeclaration::CssWide(CssWideDeclaration {
+            keyword,
+            longhands: longhands.into(),
+        })
+    })
 }
 
 /// Substitute `var()` in `declaration` against `properties`, giving the text to parse.
@@ -449,8 +479,15 @@ pub fn resolve_unparsed(
     declaration: &UnparsedDeclaration,
     properties: &CustomProperties,
 ) -> (Vec<PropertyDeclaration>, bool) {
-    let resolved = substitute_unparsed(declaration, properties)
-        .and_then(|text| parse_value_text(&declaration.name, &text));
+    let substituted = substitute_unparsed(declaration, properties);
+    // A `var()` fallback may supply a CSS-wide keyword (`var(--x, inherit)`).
+    if let Some(keyword) = substituted.as_deref().and_then(CssWideKeyword::from_text) {
+        return match css_wide_declaration(&declaration.name, keyword) {
+            Some(declaration) => (vec![declaration], false),
+            None => (Vec::new(), true),
+        };
+    }
+    let resolved = substituted.and_then(|text| parse_value_text(&declaration.name, &text));
     match resolved {
         Some(declarations) => (declarations, false),
         None => (longhand_probe(&declaration.name), true),
@@ -468,10 +505,14 @@ pub fn resolve_declarations<'a>(
     let mut out = Vec::new();
     for declaration in declarations {
         match declaration {
-            PropertyDeclaration::Custom(_) => {}
+            PropertyDeclaration::Custom(_) | PropertyDeclaration::CssWide(_) => {}
             PropertyDeclaration::Unparsed(unparsed) => {
                 if let (resolved, false) = resolve_unparsed(unparsed, properties) {
-                    out.extend(resolved);
+                    out.extend(
+                        resolved
+                            .into_iter()
+                            .filter(|d| !matches!(d, PropertyDeclaration::CssWide(_))),
+                    );
                 }
             }
             other => out.push(other.clone()),
@@ -494,6 +535,36 @@ pub fn uses_variables<'a>(mut declarations: impl Iterator<Item = &'a PropertyDec
 mod tests {
     use super::*;
     use crate::style::parse_stylesheet;
+
+    #[test]
+    fn every_kind_of_property_has_a_longhand_probe() {
+        // One property per probe value, plus the shorthands; a property without a probe
+        // could not be reset by an invalid `var()` or take a CSS-wide keyword.
+        for (name, longhands) in [
+            ("border", 12),
+            ("margin", 4),
+            ("outline", 3),
+            ("border-radius", 4),
+            ("width", 1),
+            ("display", 1),
+            ("color", 1),
+            ("font-family", 1),
+            ("box-sizing", 1),
+            ("background-repeat", 1),
+            ("background-attachment", 1),
+            ("border-collapse", 1),
+            ("caption-side", 1),
+            ("empty-cells", 1),
+            ("list-style-position", 1),
+            ("text-emphasis-position", 1),
+            ("text-overflow", 1),
+            ("orphans", 1),
+            ("widows", 1),
+        ] {
+            assert_eq!(longhand_probe(name).len(), longhands, "{name}");
+        }
+        assert!(longhand_probe("no-such-property").is_empty());
+    }
 
     fn decls(css: &str) -> Vec<PropertyDeclaration> {
         parse_stylesheet(css)

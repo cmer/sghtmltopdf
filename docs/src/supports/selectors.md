@@ -73,6 +73,13 @@
 
 `deg` / `rad` / `grad` / `turn`、および単位なしの`0`に対応 ✅。
 
+### CSS全体キーワード
+
+| キーワード | 対応 | 備考 |
+| - | - | - |
+| `inherit` / `initial` / `unset` | ✅ | ショートハンドを含むすべてのプロパティで使える。`inherit`は親の計算値をそのまま引き継ぐ(`em`は親の側で解決済みの値になる)。`var()`のフォールバック(`var(--x, inherit)`)でも使える。`::before`/`::after`の`content`はどのキーワードでも`normal`(生成しない)になり、`counter-reset`/`counter-increment`はそれまでの宣言を打ち消すだけになる。`@page`の中と`::first-letter`では無視される |
+| `revert` / `revert-layer` | ❌ | 宣言ごと無視される |
+
 ### 関数
 
 | 関数 | 対応 | 備考 |
