@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A word that exactly fits its line no longer wraps or, under `overflow-wrap: break-word`,
+  loses its last character to the next line. A table column at a single word's min-content
+  width (`460.00` became `460.0` / `0`) and a shrink-to-fit float holding a few words (two
+  lines instead of one) were laid out a few millionths of a pixel narrower than the measured
+  content through f32 arithmetic, and the exact fit check counted that as not fitting. The
+  check now allows 0.01 of slack, as `FIT_EPSILON` does for floats (#64).
 - A block `<img>` with a CSS `width` smaller than the image file no longer counts at its
   natural width when its container is sized (#77). A flex item holding a 160px-wide `<img
   style="display: block">` of a 600px PNG was measured as 600px wide, so its flex siblings

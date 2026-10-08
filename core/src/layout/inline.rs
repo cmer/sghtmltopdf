@@ -47,6 +47,14 @@ const HYPHEN: &str = "-";
 /// falls back to a hyphen.
 const ELLIPSIS: &str = "…";
 
+/// Slack allowed when deciding whether a word still fits on the line. A width
+/// measured as max- or min-content (a shrink-to-fit float, a table column at its min-content
+/// width) comes back through f32 arithmetic a few millionths short of the same content's
+/// width, so an exact comparison would wrap the last word or, under `overflow-wrap:
+/// break-word`, move a word's last character to the next line (the same kind of rounding as
+/// `FIT_EPSILON` in `float_ctx`).
+const LINE_FIT_EPSILON: f32 = 0.01;
+
 /// A run of consecutive text in one style and one font (part of a word, or a whole word).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextRun {
@@ -574,7 +582,7 @@ fn layout_inline_content_in_flow(
                 && allow_break_fallback
                 && overflow_wrap == OverflowWrap::BreakWord
                 && white_space != WhiteSpace::Nowrap
-                && chunk_width > line_available_width
+                && chunk_width > line_available_width + LINE_FIT_EPSILON
             {
                 let (head, rest) = split_chunk_to_fit(chunk, line_available_width);
                 if !head.is_empty() && !rest.is_empty() {
@@ -592,7 +600,7 @@ fn layout_inline_content_in_flow(
 
             if !starting_new_line
                 && white_space != WhiteSpace::Nowrap
-                && current_width + gap_width + chunk_width > line_available_width
+                && current_width + gap_width + chunk_width > line_available_width + LINE_FIT_EPSILON
             {
                 // When breaking at a soft hyphen, show a hyphen at the end of the line being settled.
                 //
